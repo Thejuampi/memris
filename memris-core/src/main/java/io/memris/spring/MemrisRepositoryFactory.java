@@ -354,8 +354,31 @@ public final class MemrisRepositoryFactory implements AutoCloseable {
                 // Use TypeConverterRegistry to determine storage type
                 TypeConverter<?, ?> converter = TypeConverterRegistry.getInstance().getConverter(type);
                 if (converter == null) {
-                    throw new IllegalArgumentException("Unsupported field type: " + type +
-                        ". Register a TypeConverter for " + type.getName());
+                    // Provide detailed diagnostics about why this field couldn't be processed
+                    String errorMessage = String.format(
+                        "Cannot store field '%s' of type %s. This could be because:%n" +
+                        "  1. The field is not a supported primitive type%n" +
+                        "  2. The field is not annotated with @Entity, @OneToOne, @ManyToOne%n" +
+                        "  3. The field is an @Entity but the entity class has no @Id field%n" +
+                        "  4. A TypeConverter is not registered for this custom type%n%n" +
+                        "Field details:%n" +
+                        "  - Name: %s%n" +
+                        "  - Type: %s%n" +
+                        "  - Is @Entity: %b%n" +
+                        "  - Is @OneToOne: %b%n" +
+                        "  - Is @ManyToOne: %b%n" +
+                        "  - Is @OneToMany: %b%n" +
+                        "  - Is @ManyToMany: %b%n%n" +
+                        "If this is an entity relationship, ensure the target class has @Id field.%n" +
+                        "If this is a custom type, register a TypeConverter.",
+                        field.getName(), type.getName(), field.getName(), type.getName(),
+                        type.isAnnotationPresent(Entity.class),
+                        field.isAnnotationPresent(OneToOne.class),
+                        field.isAnnotationPresent(ManyToOne.class),
+                        field.isAnnotationPresent(OneToMany.class),
+                        field.isAnnotationPresent(ManyToMany.class));
+
+                    throw new IllegalArgumentException(errorMessage);
                 }
                 @SuppressWarnings("unchecked")
                 Class<?> storageType = (Class<?>) converter.getStorageType();
