@@ -8,6 +8,11 @@ import io.memris.storage.ffm.FfmTable;
 import java.lang.foreign.Arena;
 import java.util.List;
 
+/**
+ * Quick smoke test benchmark for manual verification.
+ * NOTE: For accurate performance measurements, use JMH benchmarks in src/jmh/java/io/memris/benchmarks/.
+ * This class provides simple timing for development smoke testing only - NOT for precise measurements.
+ */
 public class BenchmarkRunner {
     public static void main(String[] args) {
         int[] sizes = {100_000, 1_000_000, 10_000_000};

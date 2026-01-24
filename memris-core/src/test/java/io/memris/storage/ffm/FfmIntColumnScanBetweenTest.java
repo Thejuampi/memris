@@ -20,9 +20,10 @@ class FfmIntColumnScanBetweenTest {
             SelectionVectorFactory factory = SelectionVectorFactory.defaultFactory();
             SelectionVector result = column.scanBetween(25, 75, 100, factory);
             assertThat(result.size()).isEqualTo(51);
+            int[] indices = result.toIntArray();
             int expected = 25;
-            for (int idx : result.toIntArray()) {
-                assertThat(idx).isEqualTo(expected++);
+            for (int i = 0; i < indices.length; i++) {
+                assertThat(indices[i]).isEqualTo(expected++);
             }
         }
     }

@@ -1137,7 +1137,9 @@ public final class MemrisRepositoryFactory implements AutoCloseable {
         int[] rightIndices = rightTable.scanAll(factory).toIntArray();
 
         HashMap<Object, int[]> leftHash = new HashMap<>();
-        for (int idx : leftIndices) {
+        // Index-based loop for O(1) iteration (no iterator creation)
+        for (int i = 0; i < leftIndices.length; i++) {
+            int idx = leftIndices[i];
             Object key = getKeyValue(leftTable, leftRepo.getEntityClass(), leftKey, idx);
             leftHash.computeIfAbsent(key, k -> new int[0]);
             int[] existing = leftHash.get(key);
@@ -1148,11 +1150,15 @@ public final class MemrisRepositoryFactory implements AutoCloseable {
         }
 
         List<JoinResult<L, R>> results = new ArrayList<>();
-        for (int idx : rightIndices) {
+        // Index-based loop for O(1) iteration (no iterator creation)
+        for (int i = 0; i < rightIndices.length; i++) {
+            int idx = rightIndices[i];
             Object key = getKeyValue(rightTable, rightRepo.getEntityClass(), rightKey, idx);
             int[] leftMatches = leftHash.get(key);
             if (leftMatches != null) {
-                for (int leftIdx : leftMatches) {
+                // Index-based loop for O(1) iteration (no iterator creation)
+                for (int j = 0; j < leftMatches.length; j++) {
+                    int leftIdx = leftMatches[j];
                     results.add(new JoinResult<>(
                             materializeSingle(leftTable, leftRepo.getEntityClass(), leftIdx),
                             materializeSingle(rightTable, rightRepo.getEntityClass(), idx)
@@ -1319,8 +1325,9 @@ public final class MemrisRepositoryFactory implements AutoCloseable {
             return emptyResult(returnType, entityClass);
         }
         List<T> results = new ArrayList<>(matchingRows.length);
-        for (int row : matchingRows) {
-            results.add(materializeRow(entityClass, table, row));
+        // Index-based loop for O(1) iteration (no iterator creation)
+        for (int i = 0; i < matchingRows.length; i++) {
+            results.add(materializeRow(entityClass, table, matchingRows[i]));
         }
         return adaptFindResults(results, returnType, entityClass);
     }
@@ -1334,8 +1341,9 @@ public final class MemrisRepositoryFactory implements AutoCloseable {
                 matchingRows = scanTable(table, columnName, Predicate.Operator.EQ, value);
             }
             if (matchingRows != null) {
-                for (int row : matchingRows) {
-                    results.add(materializeRow(entityClass, table, row));
+                // Index-based loop for O(1) iteration (no iterator creation)
+                for (int j = 0; j < matchingRows.length; j++) {
+                    results.add(materializeRow(entityClass, table, matchingRows[j]));
                 }
             }
         }
@@ -1354,8 +1362,9 @@ public final class MemrisRepositoryFactory implements AutoCloseable {
             return emptyResult(returnType, entityClass);
         }
         List<T> results = new ArrayList<>(matchingRows.length);
-        for (int row : matchingRows) {
-            results.add(materializeRow(entityClass, table, row));
+        // Index-based loop for O(1) iteration (no iterator creation)
+        for (int i = 0; i < matchingRows.length; i++) {
+            results.add(materializeRow(entityClass, table, matchingRows[i]));
         }
         return adaptFindResults(results, returnType, entityClass);
     }

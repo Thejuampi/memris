@@ -610,13 +610,11 @@ public class ECommerceRealWorldTest {
     }
     
     // ====== INDEX PERFORMANCE TEST ======
-    
+
     @Test
     void testIndexPerformance() {
-        System.out.println("\n=== Index Performance Test ===\n");
-        
         ProductRepository productRepo = factory.createJPARepository(ProductRepository.class);
-        
+
         // Create 100 products for index testing
         for (int i = 0; i < 100; i++) {
             Product p = new Product();
@@ -627,28 +625,22 @@ public class ECommerceRealWorldTest {
             p.stockQuantity = i;
             productRepo.save(p);
         }
-        
-        // Test indexed SKU lookup
-        long start = System.nanoTime();
+
+        // Test indexed SKU lookup - verify index functionality (not performance)
         Product found = productRepo.findBySku("SKU-0050");
-        long elapsed = System.nanoTime() - start;
         assertNotNull(found);
-        System.out.println("Indexed SKU lookup (SKU-0050): " + (elapsed / 1000) + " μs");
-        
+        assertEquals("Product 50", found.name);
+
         // Test indexed barcode lookup
-        start = System.nanoTime();
         Product byBarcode = productRepo.findByBarcode("BC0000000050");
-        elapsed = System.nanoTime() - start;
         assertNotNull(byBarcode);
-        System.out.println("Indexed barcode lookup: " + (elapsed / 1000) + " μs");
-        
-        // Test range query (uses RangeIndex/BTree)
-        start = System.nanoTime();
+        assertEquals("Product 50", byBarcode.name);
+
+        // Test range query functionality
         List<Product> priceRange = productRepo.findByPriceBetween(new BigDecimal("25"), new BigDecimal("75"));
-        elapsed = System.nanoTime() - start;
         assertFalse(priceRange.isEmpty());
-        System.out.println("Range query (price 25-75): " + (elapsed / 1000) + " μs, found " + priceRange.size());
-        
-        System.out.println("\n✅ Index performance test complete!");
+        // Verify expected products are in range (prices 25-75 inclusive)
+        assertTrue(priceRange.stream().anyMatch(p -> p.sku.equals("SKU-0015")));  // price=25
+        assertTrue(priceRange.stream().anyMatch(p -> p.sku.equals("SKU-0065")));  // price=75
     }
 }
