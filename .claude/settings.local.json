@@ -1,0 +1,31 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mvn:*)",
+      "Bash(bash:*)",
+      "Bash(/mvn/c/md/apache-maven-3.9.9/bin/mvn:*)",
+      "Bash(cmd:*)",
+      "Bash(BASH_ENV=/dev/null bash:*)",
+      "Bash(powershell:*)",
+      "Bash(git add:*)",
+      "Bash(git reset:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(Select-String -Pattern 'Tests run|FAILURE|ERROR')",
+      "Bash(Select-Object:*)",
+      "Bash(mvn.cmd:*)",
+      "Bash(./mvnw:*)",
+      "WebSearch",
+      "Bash(cmd.exe:*)",
+      "Bash(powershell.exe:*)",
+      "Bash(find:*)",
+      "Bash(exec:*)",
+      "Bash(env -i PATH=\"$PATH\" HOME=\"$HOME\" bash --norc --noprofile -c:*)",
+      "Bash(/bin/bash --noprofile --norc -c:*)",
+      "Bash(env BASH_ENV=/bin/bash bash -c \"cd /g/dev/repos/memris && pwd && mvn test -Dtest=QueryMethodCompilationTest:*)",
+      "Bash(echo:*)",
+      "Bash(Select-String:*)",
+      "Bash(/opt/maven39/bin/mvn:*)"
+    ]
+  }
+}
