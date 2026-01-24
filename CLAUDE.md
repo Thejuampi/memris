@@ -9,16 +9,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 mvn clean compile
 
 # Quick compile (quiet mode)
-mvn -q compile
+mvn -X compile
 
 # Run all tests
-mvn -q -pl memris-core test
+mvn -X -pl memris-core test
 
 # Run single test class
-mvn -q -pl memris-core test -Dtest=ClassName
+mvn -X -pl memris-core test -Dtest=ClassName
 
 # Run single test method
-mvn -q -pl memris-core test -Dtest=ClassName#methodName
+mvn -X -pl memris-core test -Dtest=ClassName#methodName
 
 # Run benchmarks (requires manual java invocation with preview flags)
 # Throughput benchmark

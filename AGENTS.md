@@ -10,22 +10,22 @@ This file provides guidelines for AI agents operating in the Memris repository.
 mvn clean compile
 
 # Compile with preview features (required)
-mvn -q compile
+mvn -X compile
 
 # Run tests
-mvn -q -pl memris-core test
+mvn -X -pl memris-core test
 
 # Run single test class
-mvn -q -pl memris-core test -Dtest=ClassName
+mvn -X -pl memris-core test -Dtest=ClassName
 
 # Run single test method
-mvn -q -pl memris-core test -Dtest=ClassName#methodName
+mvn -X -pl memris-core test -Dtest=ClassName#methodName
 
 # Run throughput benchmark
 java --enable-preview --add-modules jdk.incubator.vector -cp memris-core/target/classes io.memris.benchmarks.BenchmarkRunner
 
 # Run with Maven exec plugin
-mvn -q -pl memris-core exec:java -Dexec.mainClass=io.memris.benchmarks.BenchmarkRunner
+mvn -X -pl memris-core exec:java -Dexec.mainClass=io.memris.benchmarks.BenchmarkRunner
 
 # Run JMH microbenchmarks (latency-focused)
 mvn clean compile

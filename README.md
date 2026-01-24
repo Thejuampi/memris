@@ -336,9 +336,9 @@ java --enable-preview --add-modules jdk.incubator.vector -cp memris-core/target/
 ## Running Tests
 
 ```bash
-mvn test                    # All tests
-mvn test -Dtest=ClassName   # Single test class
-mvn test -Dtest=ClassName#methodName  # Single test
+mvn test -X                 # All tests (show warnings only)
+mvn test -X -Dtest=ClassName   # Single test class (show warnings only)
+mvn test -X -Dtest=ClassName#methodName  # Single test (show warnings only)
 ```
 
 For testing guidelines and best practices, see [AGENTS.md](AGENTS.md).
