@@ -19,10 +19,12 @@ import jakarta.persistence.PreUpdate;
 
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
+import java.lang.invoke.MethodType;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Parameter;
+import java.lang.reflect.RecordComponent;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -33,68 +35,130 @@ import java.util.Set;
 /**
  * Extracts metadata from entity classes and repository interfaces.
  * All reflection work happens here, once at repository creation.
+ *
+ * Field accessor detection strategy:
+ * 1. For records: Use record accessor methods (fieldName())
+ * 2. For non-records: Try JavaBean style (get/set) first, then Kotlin-style (property name)
  */
 public final class MetadataExtractor {
 
     public static <T> EntityMetadata<T> extractEntityMetadata(Class<T> entityClass, FfmTable table) {
         try {
+            // Check if entity is a record
+            boolean isRecord = entityClass.isRecord();
+
             // Get ID column name
             String idColumnName = findIdColumnName(entityClass);
 
-            // Get entity constructor
-            Constructor<T> constructor = entityClass.getDeclaredConstructor();
+            // Get entity constructor (for records, use the canonical constructor)
+            Constructor<T> constructor = isRecord
+                ? findCanonicalConstructor(entityClass)
+                : entityClass.getDeclaredConstructor();
 
             // Extract field mappings
             List<EntityMetadata.FieldMapping> fields = new ArrayList<>();
             Set<String> foreignKeyColumns = new HashSet<>();
 
-            // NEW: Extract TypeConverters for each field
+            // Extract TypeConverters for each field
             Map<String, TypeConverter<?, ?>> converters = new HashMap<>();
 
-            for (Field field : entityClass.getDeclaredFields()) {
-                if (field.isAnnotationPresent(Transient.class)) {
-                    continue;
-                }
+            // Extract field accessor MethodHandles
+            Map<String, MethodHandle> fieldGetters = new HashMap<>();
+            Map<String, MethodHandle> fieldSetters = new HashMap<>();
 
-                String columnName = field.getName();
-                Class<?> javaType = field.getType();
-                Class<?> storageType = javaType;
+            MethodHandles.Lookup lookup = MethodHandles.lookup();
 
-                // Handle TypeConverter
-                TypeConverter<?, ?> converter = TypeConverterRegistry.getInstance().getConverter(javaType);
-                if (converter != null) {
-                    storageType = converter.getStorageType();
-                    converters.put(field.getName(), converter);
-                }
+            if (isRecord) {
+                // For records, use record components
+                for (RecordComponent component : entityClass.getRecordComponents()) {
+                    String fieldName = component.getName();
+                    Class<?> fieldType = component.getType();
 
-                // Get column position (for potential future optimizations)
-                int columnPosition = -1;
-                int colIndex = 0;
-                for (var col : table.columns()) {
-                    if (col.name().equals(columnName)) {
-                        columnPosition = colIndex;
-                        break;
+                    // Skip transient fields
+                    if (isTransientField(entityClass, fieldName)) {
+                        continue;
                     }
-                    colIndex++;
-                }
 
-                EntityMetadata.FieldMapping mapping = new EntityMetadata.FieldMapping(
-                        field.getName(),
-                        columnName,
-                        javaType,
-                        storageType,
-                        columnPosition
-                );
-                fields.add(mapping);
+                    String columnName = fieldName;
+                    Class<?> javaType = fieldType;
+                    Class<?> storageType = javaType;
+
+                    // Handle TypeConverter
+                    TypeConverter<?, ?> converter = TypeConverterRegistry.getInstance().getConverter(javaType);
+                    if (converter != null) {
+                        storageType = converter.getStorageType();
+                        converters.put(fieldName, converter);
+                    }
+
+                    // Get column position
+                    int columnPosition = findColumnPosition(table, columnName);
+
+                    EntityMetadata.FieldMapping mapping = new EntityMetadata.FieldMapping(
+                            fieldName,
+                            columnName,
+                            javaType,
+                            storageType,
+                            columnPosition
+                    );
+                    fields.add(mapping);
+
+                    // For records: accessor is fieldName() (no "get" prefix)
+                    MethodHandle getter = lookup.unreflect(component.getAccessor());
+                    fieldGetters.put(fieldName, getter);
+
+                    // Records are immutable - no setters
+                    fieldSetters.put(fieldName, null);
+                }
+            } else {
+                // For non-records: scan declared fields
+                for (Field field : entityClass.getDeclaredFields()) {
+                    if (field.isAnnotationPresent(Transient.class)) {
+                        continue;
+                    }
+
+                    String fieldName = field.getName();
+                    String columnName = field.getName();
+                    Class<?> javaType = field.getType();
+                    Class<?> storageType = javaType;
+
+                    // Handle TypeConverter
+                    TypeConverter<?, ?> converter = TypeConverterRegistry.getInstance().getConverter(javaType);
+                    if (converter != null) {
+                        storageType = converter.getStorageType();
+                        converters.put(fieldName, converter);
+                    }
+
+                    // Get column position
+                    int columnPosition = findColumnPosition(table, columnName);
+
+                    EntityMetadata.FieldMapping mapping = new EntityMetadata.FieldMapping(
+                            fieldName,
+                            columnName,
+                            javaType,
+                            storageType,
+                            columnPosition
+                    );
+                    fields.add(mapping);
+
+                    // Extract getter and setter MethodHandles
+                    // Try JavaBean style first: getFieldName() / setFieldName(value)
+                    // Then try Kotlin-style: fieldName() / fieldName(value)
+                    MethodHandle getter = findGetter(lookup, entityClass, fieldName, javaType);
+                    MethodHandle setter = findSetter(lookup, entityClass, fieldName, javaType);
+
+                    fieldGetters.put(fieldName, getter);
+                    fieldSetters.put(fieldName, setter);
+                }
 
                 // Track foreign key columns
-                if (columnName.endsWith("_id") && !columnName.equals(idColumnName)) {
-                    foreignKeyColumns.add(columnName);
+                for (EntityMetadata.FieldMapping field : fields) {
+                    if (field.columnName().endsWith("_id") && !field.columnName().equals(idColumnName)) {
+                        foreignKeyColumns.add(field.columnName());
+                    }
                 }
             }
 
-            // NEW: Extract lifecycle callback MethodHandles
-            MethodHandles.Lookup lookup = MethodHandles.lookup();
+            // Extract lifecycle callback MethodHandles
             MethodHandle prePersistHandle = null;
             MethodHandle postLoadHandle = null;
             MethodHandle preUpdateHandle = null;
@@ -114,11 +178,155 @@ public final class MetadataExtractor {
 
             return new EntityMetadata<>(entityClass, constructor, idColumnName,
                 fields, foreignKeyColumns, converters,
-                prePersistHandle, postLoadHandle, preUpdateHandle);
+                prePersistHandle, postLoadHandle, preUpdateHandle,
+                fieldGetters, fieldSetters, isRecord);
 
         } catch (Exception e) {
             throw new RuntimeException("Failed to extract metadata for entity: " + entityClass.getName(), e);
         }
+    }
+
+    /**
+     * Finds a getter method for a field, trying multiple conventions.
+     *
+     * Conventions tried (in order):
+     * 1. JavaBean: getField()
+     * 2. JavaBean (boolean): isField()
+     * 3. Kotlin/Immutable: field()
+     * 4. Fallback: direct field access via MethodHandles
+     */
+    private static MethodHandle findGetter(MethodHandles.Lookup lookup, Class<?> entityClass,
+            String fieldName, Class<?> fieldType) throws Exception {
+        String capitalizedFieldName = capitalize(fieldName);
+
+        // Try JavaBean style: getField()
+        try {
+            Method getter = entityClass.getDeclaredMethod("get" + capitalizedFieldName);
+            return lookup.unreflect(getter);
+        } catch (NoSuchMethodException e) {
+            // Continue
+        }
+
+        // Try JavaBean style for boolean: isField()
+        if (fieldType == boolean.class || fieldType == Boolean.class) {
+            try {
+                Method getter = entityClass.getDeclaredMethod("is" + capitalizedFieldName);
+                return lookup.unreflect(getter);
+            } catch (NoSuchMethodException e) {
+                // Continue
+            }
+        }
+
+        // Try Kotlin-style/immutable: field()
+        try {
+            Method getter = entityClass.getDeclaredMethod(fieldName);
+            if (getter.getParameterCount() == 0 &&
+                getter.getReturnType().equals(fieldType)) {
+                return lookup.unreflect(getter);
+            }
+        } catch (NoSuchMethodException e) {
+            // Continue
+        }
+
+        // Fallback: direct field access via MethodHandles
+        // This handles private fields without getters
+        try {
+            return lookup.findGetter(entityClass, fieldName, fieldType);
+        } catch (NoSuchFieldException | IllegalAccessException e) {
+            throw new RuntimeException(
+                "Cannot find getter for field '" + fieldName + "' in " + entityClass.getName() +
+                ". Tried: get" + capitalizedFieldName + "(), " + fieldName + "(), and direct field access.", e);
+        }
+    }
+
+    /**
+     * Finds a setter method for a field, trying multiple conventions.
+     *
+     * Conventions tried (in order):
+     * 1. JavaBean: setField(value)
+     * 2. Kotlin/Builder: field(value)
+     * 3. Fallback: direct field access via MethodHandles
+     */
+    private static MethodHandle findSetter(MethodHandles.Lookup lookup, Class<?> entityClass,
+            String fieldName, Class<?> fieldType) throws Exception {
+        String capitalizedFieldName = capitalize(fieldName);
+
+        // Try JavaBean style: setField(value)
+        try {
+            Method setter = entityClass.getDeclaredMethod("set" + capitalizedFieldName, fieldType);
+            return lookup.unreflect(setter);
+        } catch (NoSuchMethodException e) {
+            // Continue
+        }
+
+        // Try Kotlin-style/builder: field(value)
+        try {
+            Method setter = entityClass.getDeclaredMethod(fieldName, fieldType);
+            if (setter.getParameterCount() == 1 && setter.getReturnType() == void.class) {
+                return lookup.unreflect(setter);
+            }
+        } catch (NoSuchMethodException e) {
+            // Continue
+        }
+
+        // Fallback: direct field access via MethodHandles
+        try {
+            return lookup.findSetter(entityClass, fieldName, fieldType);
+        } catch (NoSuchFieldException | IllegalAccessException e) {
+            throw new RuntimeException(
+                "Cannot find setter for field '" + fieldName + "' in " + entityClass.getName() +
+                ". Tried: set" + capitalizedFieldName + "(" + fieldType.getSimpleName() + "), " +
+                fieldName + "(" + fieldType.getSimpleName() + "), and direct field access.", e);
+        }
+    }
+
+    /**
+     * Finds the canonical constructor for a record class.
+     * The canonical constructor has parameters matching all record components.
+     */
+    @SuppressWarnings("unchecked")
+    private static <T> Constructor<T> findCanonicalConstructor(Class<T> recordClass) throws Exception {
+        RecordComponent[] components = recordClass.getRecordComponents();
+        Class<?>[] paramTypes = new Class<?>[components.length];
+        for (int i = 0; i < components.length; i++) {
+            paramTypes[i] = components[i].getType();
+        }
+        return (Constructor<T>) recordClass.getDeclaredConstructor(paramTypes);
+    }
+
+    /**
+     * Checks if a field in a record class should be treated as transient.
+     * Records don't support @Transient on fields, so we check for a static method.
+     */
+    private static boolean isTransientField(Class<?> recordClass, String fieldName) {
+        try {
+            // Check for static isFieldNameTransient() method
+            java.lang.reflect.Method method = recordClass.getDeclaredMethod("is" + capitalize(fieldName) + "Transient");
+            return java.lang.reflect.Modifier.isStatic(method.getModifiers()) &&
+                   method.getReturnType() == boolean.class &&
+                   method.getParameterCount() == 0 &&
+                   (boolean) method.invoke(null);
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private static int findColumnPosition(FfmTable table, String columnName) {
+        int colIndex = 0;
+        for (var col : table.columns()) {
+            if (col.name().equals(columnName)) {
+                return colIndex;
+            }
+            colIndex++;
+        }
+        return -1;
+    }
+
+    private static String capitalize(String str) {
+        if (str == null || str.isEmpty()) {
+            return str;
+        }
+        return Character.toUpperCase(str.charAt(0)) + str.substring(1);
     }
 
     public static List<QueryMetadata> extractQueryMethods(Class<?> repositoryInterface) {

@@ -1881,6 +1881,8 @@ public final class MemrisRepositoryFactory implements AutoCloseable {
                     field.isAnnotationPresent(OneToOne.class) ||
                     isEntityType(field.getType())) {
                     // This is a foreign key - load the related entity
+                    // NOTE: Foreign key loading is now handled by ByteBuddy-generated code
+                    // This old reflection-based code is kept as fallback for now
                     Object foreignKeyValue = switch (col.type()) {
                         case Class<?> c when c == int.class || c == Integer.class -> table.getInt(col.name(), rowIdx);
                         case Class<?> c when c == long.class || c == Long.class -> table.getLong(col.name(), rowIdx);
@@ -1897,12 +1899,24 @@ public final class MemrisRepositoryFactory implements AutoCloseable {
                         continue;
                     }
 
-                    // Load the related entity by ID
+                    // Load the related entity by ID using queryIndex
                     Class<?> entityType = field.getType();
-                    MemrisRepository<?> entityRepo = repositories.get(entityType);
-                    if (entityRepo != null) {
-                        Object relatedEntity = entityRepo.findById(foreignKeyValue).orElse(null);
-                        field.set(instance, relatedEntity);
+                    try {
+                        FfmTable relatedTable = tables.get(entityType);
+                        if (relatedTable != null) {
+                            int[] matchingRows = queryIndex(entityType, col.name(), Predicate.Operator.EQ, foreignKeyValue);
+                            if (matchingRows != null && matchingRows.length > 0) {
+                                Object relatedEntity = materializeSingle(relatedTable, entityType, matchingRows[0]);
+                                field.set(instance, relatedEntity);
+                            } else {
+                                field.set(instance, null);
+                            }
+                        } else {
+                            field.set(instance, null);
+                        }
+                    } catch (Exception e) {
+                        // Fallback to null if loading fails
+                        field.set(instance, null);
                     }
                     continue;
                 }
