@@ -1,6 +1,8 @@
 package io.memris.spring;
 
 import io.memris.kernel.Predicate;
+import io.memris.kernel.selection.MutableSelectionVector;
+import io.memris.kernel.selection.SelectionVector;
 import io.memris.kernel.selection.SelectionVectorFactory;
 import io.memris.spring.converter.TypeConverter;
 import io.memris.storage.ffm.FfmTable;
@@ -217,6 +219,7 @@ public final class RepositoryBytecodeGenerator {
                 .intercept(MethodDelegation.to(new UpdateInterceptor()));
     }
 
+
     @SuppressWarnings("unchecked")
     private <T, R extends MemrisRepository<T>> DynamicType.Builder<R> generateQueryMethod(
             DynamicType.Builder<R> builder,
@@ -227,17 +230,15 @@ public final class RepositoryBytecodeGenerator {
         Class<?> returnType = query.returnType();
         Class<?>[] paramTypes = query.method().getParameterTypes();
 
-        // Define the method with explicit signature
-        DynamicType.Builder.MethodDefinition.ParameterDefinition<?> methodBuilder =
-                builder.defineMethod(methodName, returnType, Visibility.PUBLIC);
-
         // Add parameters
+        DynamicType.Builder.MethodDefinition.ParameterDefinition<R> paramBuilder =
+                builder.defineMethod(methodName, returnType, Visibility.PUBLIC);
         for (int i = 0; i < paramTypes.length; i++) {
-            methodBuilder = methodBuilder.withParameter(paramTypes[i], "arg" + i);
+            paramBuilder = paramBuilder.withParameter(paramTypes[i], "arg" + i);
         }
 
         // Use MethodDelegation to a generic query interceptor
-        return methodBuilder.intercept(MethodDelegation.to(new QueryMethodInterceptor(methodName)));
+        return paramBuilder.intercept(MethodDelegation.to(new QueryMethodInterceptor()));
     }
 
     // ========================================================================
@@ -360,7 +361,7 @@ public final class RepositoryBytecodeGenerator {
         @SuppressWarnings("unchecked")
         private static Object materializeInline(Class<?> entityClass, FfmTable table, int row,
                                                 List<?> fields, Map<String, TypeConverter<?, ?>> converters,
-                                                Map<String, MethodHandle> fieldSetters) throws Exception {
+                                                Map<String, MethodHandle> fieldSetters) throws Throwable {
             Object entity = entityClass.getDeclaredConstructor().newInstance();
 
             for (Object fieldObj : fields) {
@@ -400,32 +401,21 @@ public final class RepositoryBytecodeGenerator {
             return entity;
         }
 
-        // Type code constants (must match MetadataExtractor values)
-        private static final int TYPE_INT = 0;
-        private static final int TYPE_LONG = 1;
-        private static final int TYPE_BOOLEAN = 2;
-        private static final int TYPE_BYTE = 3;
-        private static final int TYPE_SHORT = 4;
-        private static final int TYPE_FLOAT = 5;
-        private static final int TYPE_DOUBLE = 6;
-        private static final int TYPE_CHAR = 7;
-        private static final int TYPE_STRING = 8;
-
         private static Object readFromTable(FfmTable table, EntityMetadata.FieldMapping field, int row) {
             // Type code was pre-computed once at metadata extraction time (ZERO runtime overhead)
             int typeCode = field.typeCode();
             String columnName = field.columnName();
 
             return switch (typeCode) {
-                case TYPE_INT -> table.getInt(columnName, row);
-                case TYPE_LONG -> table.getLong(columnName, row);
-                case TYPE_BOOLEAN -> table.getBoolean(columnName, row);
-                case TYPE_BYTE -> table.getByte(columnName, row);
-                case TYPE_SHORT -> table.getShort(columnName, row);
-                case TYPE_FLOAT -> table.getFloat(columnName, row);
-                case TYPE_DOUBLE -> table.getDouble(columnName, row);
-                case TYPE_CHAR -> table.getChar(columnName, row);
-                case TYPE_STRING -> table.getString(columnName, row);
+                case TypeCodes.TYPE_INT -> table.getInt(columnName, row);
+                case TypeCodes.TYPE_LONG -> table.getLong(columnName, row);
+                case TypeCodes.TYPE_BOOLEAN -> table.getBoolean(columnName, row);
+                case TypeCodes.TYPE_BYTE -> table.getByte(columnName, row);
+                case TypeCodes.TYPE_SHORT -> table.getShort(columnName, row);
+                case TypeCodes.TYPE_FLOAT -> table.getFloat(columnName, row);
+                case TypeCodes.TYPE_DOUBLE -> table.getDouble(columnName, row);
+                case TypeCodes.TYPE_CHAR -> table.getChar(columnName, row);
+                case TypeCodes.TYPE_STRING -> table.getString(columnName, row);
                 default -> throw new IllegalArgumentException("Unsupported storage type: " + field.storageType());
             };
         }
@@ -529,6 +519,7 @@ public final class RepositoryBytecodeGenerator {
             FfmTable table = (FfmTable) getFieldValue(thiz, "table");
             MemrisRepositoryFactory factory = (MemrisRepositoryFactory) getFieldValue(thiz, "factory");
             Class<?> entityClass = (Class<?>) getFieldValue(thiz, "entityClass");
+            Map<String, MethodHandle> fieldGetters = (Map<String, MethodHandle>) getFieldValue(thiz, "fieldGetters");
             Map<String, MethodHandle> fieldSetters = (Map<String, MethodHandle>) getFieldValue(thiz, "fieldSetters");
 
             // Invoke @PrePersist (pre-compiled MethodHandle)
@@ -580,6 +571,7 @@ public final class RepositoryBytecodeGenerator {
             FfmTable table = (FfmTable) getFieldValue(thiz, "table");
             MemrisRepositoryFactory factory = (MemrisRepositoryFactory) getFieldValue(thiz, "factory");
             Class<?> entityClass = (Class<?>) getFieldValue(thiz, "entityClass");
+            Map<String, MethodHandle> fieldGetters = (Map<String, MethodHandle>) getFieldValue(thiz, "fieldGetters");
             Map<String, MethodHandle> fieldSetters = (Map<String, MethodHandle>) getFieldValue(thiz, "fieldSetters");
 
             // Invoke @PreUpdate
@@ -631,13 +623,22 @@ public final class RepositoryBytecodeGenerator {
 
         private static void setTableValue(FfmTable table, EntityMetadata.FieldMapping field,
                                           int row, Object value) {
-            // Use direct API access to set value in table (zero overhead)
-            io.memris.storage.ffm.FfmColumn<?> column =
-                    (io.memris.storage.ffm.FfmColumn<?>) table.column(field.columnName());
-            if (column == null) {
-                throw new IllegalArgumentException("Column not found: " + field.columnName());
+            // Type code was pre-computed once at metadata extraction time (ZERO runtime overhead)
+            int typeCode = field.typeCode();
+            String columnName = field.columnName();
+
+            switch (typeCode) {
+                case TypeCodes.TYPE_INT -> table.setInt(columnName, row, ((Number) value).intValue());
+                case TypeCodes.TYPE_LONG -> table.setLong(columnName, row, ((Number) value).longValue());
+                case TypeCodes.TYPE_BOOLEAN -> table.setBoolean(columnName, row, (Boolean) value);
+                case TypeCodes.TYPE_BYTE -> table.setByte(columnName, row, ((Number) value).byteValue());
+                case TypeCodes.TYPE_SHORT -> table.setShort(columnName, row, ((Number) value).shortValue());
+                case TypeCodes.TYPE_FLOAT -> table.setFloat(columnName, row, ((Number) value).floatValue());
+                case TypeCodes.TYPE_DOUBLE -> table.setDouble(columnName, row, ((Number) value).doubleValue());
+                case TypeCodes.TYPE_CHAR -> table.setChar(columnName, row, (Character) value);
+                case TypeCodes.TYPE_STRING -> table.setString(columnName, row, (String) value);
+                default -> throw new IllegalArgumentException("Unsupported storage type: " + field.storageType());
             }
-            column.set(row, value);
         }
     }
 
@@ -646,12 +647,6 @@ public final class RepositoryBytecodeGenerator {
      * Unlike Advice, MethodDelegation doesn't try to call super() for non-existent methods.
      */
     public static class QueryMethodInterceptor {
-        private final String methodName;
-
-        QueryMethodInterceptor(String methodName) {
-            this.methodName = methodName;
-        }
-
         @SuppressWarnings("unchecked")
         public Object execute(
                 @This Object thiz,
@@ -849,16 +844,16 @@ public final class RepositoryBytecodeGenerator {
                 SelectionVector allRows = table.scanAll(svFactory);
                 MutableSelectionVector result = svFactory.create((int) (allRows.size() * 0.5));
 
-                // Use primitive set for O(1) lookup - IntSelection for small, BitsetSelection for large
+                // Use primitive set for O(1) lookup - BitsetSelection grows dynamically
                 io.memris.kernel.selection.BitsetSelection inSet =
-                    new io.memris.kernel.selection.BitsetSelection(table.rowCount());
-                io.memris.kernel.IntEnumerator inEnum = inRows.enumerator();
+                    new io.memris.kernel.selection.BitsetSelection();
+                io.memris.kernel.selection.IntEnumerator inEnum = inRows.enumerator();
                 while (inEnum.hasNext()) {
                     inSet.add(inEnum.nextInt());
                 }
 
                 // Add rows that are NOT in the set
-                io.memris.kernel.IntEnumerator allEnum = allRows.enumerator();
+                io.memris.kernel.selection.IntEnumerator allEnum = allRows.enumerator();
                 while (allEnum.hasNext()) {
                     int row = allEnum.nextInt();
                     if (!inSet.contains(row)) {

@@ -1,81 +1,61 @@
 package io.memris.spring;
 
-import io.memris.storage.ffm.FfmTable;
-import io.memris.kernel.selection.SelectionVectorFactory;
-import io.memris.spring.QueryMethodParser;
 import io.memris.kernel.Predicate;
-import io.memris.spring.converter.TypeConverterRegistry;
 import io.memris.spring.converter.TypeConverter;
-
-import jakarta.persistence.Entity;
-import jakarta.persistence.Enumerated;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.Id;
-import jakarta.persistence.Transient;
-import jakarta.persistence.PrePersist;
-import jakarta.persistence.PostLoad;
-import jakarta.persistence.PreUpdate;
+import io.memris.spring.converter.TypeConverterRegistry;
+import io.memris.storage.ffm.FfmTable;
+import jakarta.persistence.*;
 
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
-import java.lang.invoke.MethodType;
-import java.lang.reflect.Constructor;
-import java.lang.reflect.Field;
-import java.lang.reflect.Method;
+import java.lang.reflect.*;
 import java.lang.reflect.Parameter;
-import java.lang.reflect.RecordComponent;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.HashSet;
+import java.util.*;
 
 /**
  * Extracts metadata from entity classes for repository generation.
  * All reflection work happens once during metadata extraction.
  */
+@SuppressWarnings("StringTemplateMigration")
 public final class MetadataExtractor {
-    // Type code constants for zero-overhead type switching
-    private static final int TYPE_INT = 0;
-    private static final int TYPE_LONG = 1;
-    private static final int TYPE_BOOLEAN = 2;
-    private static final int TYPE_BYTE = 3;
-    private static final int TYPE_SHORT = 4;
-    private static final int TYPE_FLOAT = 5;
-    private static final int TYPE_DOUBLE = 6;
-    private static final int TYPE_CHAR = 7;
-    private static final int TYPE_STRING = 8;
+    // Type code mapping for zero-overhead type switching
+    private static final Map<Class<?>, Integer> TYPE_CODE_MAP = Map.ofEntries(
+            Map.entry(int.class, TypeCodes.TYPE_INT),
+            Map.entry(Integer.class, TypeCodes.TYPE_INT),
+            Map.entry(long.class, TypeCodes.TYPE_LONG),
+            Map.entry(Long.class, TypeCodes.TYPE_LONG),
+            Map.entry(boolean.class, TypeCodes.TYPE_BOOLEAN),
+            Map.entry(Boolean.class, TypeCodes.TYPE_BOOLEAN),
+            Map.entry(byte.class, TypeCodes.TYPE_BYTE),
+            Map.entry(Byte.class, TypeCodes.TYPE_BYTE),
+            Map.entry(short.class, TypeCodes.TYPE_SHORT),
+            Map.entry(Short.class, TypeCodes.TYPE_SHORT),
+            Map.entry(float.class, TypeCodes.TYPE_FLOAT),
+            Map.entry(Float.class, TypeCodes.TYPE_FLOAT),
+            Map.entry(double.class, TypeCodes.TYPE_DOUBLE),
+            Map.entry(Double.class, TypeCodes.TYPE_DOUBLE),
+            Map.entry(char.class, TypeCodes.TYPE_CHAR),
+            Map.entry(Character.class, TypeCodes.TYPE_CHAR),
+            Map.entry(String.class, TypeCodes.TYPE_STRING)
+    );
 
     /**
      * Get type code for a storage type.
-     * Uses switch on class literal (JIT-optimized to jump table, no boxing).
+     * Uses immutable map lookup (constant-time, no boxing for primitives).
      * Called once during metadata extraction.
      */
     private static int getTypeCode(Class<?> type) {
-        if (type == int.class || type == Integer.class) return TYPE_INT;
-        if (type == long.class || type == Long.class) return TYPE_LONG;
-        if (type == boolean.class || type == Boolean.class) return TYPE_BOOLEAN;
-        if (type == byte.class || type == Byte.class) return TYPE_BYTE;
-        if (type == short.class || type == Short.class) return TYPE_SHORT;
-        if (type == float.class || type == Float.class) return TYPE_FLOAT;
-        if (type == double.class || type == Double.class) return TYPE_DOUBLE;
-        if (type == char.class || type == Character.class) return TYPE_CHAR;
-        if (type == String.class) return TYPE_STRING;
-        return -1;
+        return TYPE_CODE_MAP.getOrDefault(type, -1);
     }
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
 
-/**
- * Extracts metadata from entity classes and repository interfaces.
- * All reflection work happens here, once at repository creation.
- *
- * Field accessor detection strategy:
- * 1. For records: Use record accessor methods (fieldName())
- * 2. For non-records: Try JavaBean style (get/set) first, then Kotlin-style (property name)
- */
-public final class MetadataExtractor {
-
+    /**
+     * Extracts metadata from entity classes and repository interfaces.
+     * All reflection work happens here, once at repository creation.
+     * <p>
+     * Field accessor detection strategy:
+     * 1. For records: Use record accessor methods (fieldName())
+     * 2. For non-records: Try JavaBean style (get/set) first, then Kotlin-style (property name)
+     */
     public static <T> EntityMetadata<T> extractEntityMetadata(Class<T> entityClass, FfmTable table) {
         try {
             // Check if entity is a record
@@ -86,8 +66,8 @@ public final class MetadataExtractor {
 
             // Get entity constructor (for records, use the canonical constructor)
             Constructor<T> constructor = isRecord
-                ? findCanonicalConstructor(entityClass)
-                : entityClass.getDeclaredConstructor();
+                    ? findCanonicalConstructor(entityClass)
+                    : entityClass.getDeclaredConstructor();
 
             // Extract field mappings
             List<EntityMetadata.FieldMapping> fields = new ArrayList<>();
@@ -219,9 +199,9 @@ public final class MetadataExtractor {
             }
 
             return new EntityMetadata<>(entityClass, constructor, idColumnName,
-                fields, foreignKeyColumns, converters,
-                prePersistHandle, postLoadHandle, preUpdateHandle,
-                fieldGetters, fieldSetters, isRecord);
+                    fields, foreignKeyColumns, converters,
+                    prePersistHandle, postLoadHandle, preUpdateHandle,
+                    fieldGetters, fieldSetters, isRecord);
 
         } catch (Exception e) {
             throw new RuntimeException("Failed to extract metadata for entity: " + entityClass.getName(), e);
@@ -230,7 +210,7 @@ public final class MetadataExtractor {
 
     /**
      * Finds a getter method for a field, trying multiple conventions.
-     *
+     * <p>
      * Conventions tried (in order):
      * 1. JavaBean: getField()
      * 2. JavaBean (boolean): isField()
@@ -238,7 +218,7 @@ public final class MetadataExtractor {
      * 4. Fallback: direct field access via MethodHandles
      */
     private static MethodHandle findGetter(MethodHandles.Lookup lookup, Class<?> entityClass,
-            String fieldName, Class<?> fieldType) throws Exception {
+                                           String fieldName, Class<?> fieldType) throws Exception {
         String capitalizedFieldName = capitalize(fieldName);
 
         // Try JavaBean style: getField()
@@ -263,7 +243,7 @@ public final class MetadataExtractor {
         try {
             Method getter = entityClass.getDeclaredMethod(fieldName);
             if (getter.getParameterCount() == 0 &&
-                getter.getReturnType().equals(fieldType)) {
+                    getter.getReturnType().equals(fieldType)) {
                 return lookup.unreflect(getter);
             }
         } catch (NoSuchMethodException e) {
@@ -276,21 +256,21 @@ public final class MetadataExtractor {
             return lookup.findGetter(entityClass, fieldName, fieldType);
         } catch (NoSuchFieldException | IllegalAccessException e) {
             throw new RuntimeException(
-                "Cannot find getter for field '" + fieldName + "' in " + entityClass.getName() +
-                ". Tried: get" + capitalizedFieldName + "(), " + fieldName + "(), and direct field access.", e);
+                    "Cannot find getter for field '" + fieldName + "' in " + entityClass.getName() +
+                            ". Tried: get" + capitalizedFieldName + "(), " + fieldName + "(), and direct field access.", e);
         }
     }
 
     /**
      * Finds a setter method for a field, trying multiple conventions.
-     *
+     * <p>
      * Conventions tried (in order):
      * 1. JavaBean: setField(value)
      * 2. Kotlin/Builder: field(value)
      * 3. Fallback: direct field access via MethodHandles
      */
     private static MethodHandle findSetter(MethodHandles.Lookup lookup, Class<?> entityClass,
-            String fieldName, Class<?> fieldType) throws Exception {
+                                           String fieldName, Class<?> fieldType) throws Exception {
         String capitalizedFieldName = capitalize(fieldName);
 
         // Try JavaBean style: setField(value)
@@ -316,9 +296,9 @@ public final class MetadataExtractor {
             return lookup.findSetter(entityClass, fieldName, fieldType);
         } catch (NoSuchFieldException | IllegalAccessException e) {
             throw new RuntimeException(
-                "Cannot find setter for field '" + fieldName + "' in " + entityClass.getName() +
-                ". Tried: set" + capitalizedFieldName + "(" + fieldType.getSimpleName() + "), " +
-                fieldName + "(" + fieldType.getSimpleName() + "), and direct field access.", e);
+                    "Cannot find setter for field '" + fieldName + "' in " + entityClass.getName() +
+                            ". Tried: set" + capitalizedFieldName + "(" + fieldType.getSimpleName() + "), " +
+                            fieldName + "(" + fieldType.getSimpleName() + "), and direct field access.", e);
         }
     }
 
@@ -345,9 +325,9 @@ public final class MetadataExtractor {
             // Check for static isFieldNameTransient() method
             java.lang.reflect.Method method = recordClass.getDeclaredMethod("is" + capitalize(fieldName) + "Transient");
             return java.lang.reflect.Modifier.isStatic(method.getModifiers()) &&
-                   method.getReturnType() == boolean.class &&
-                   method.getParameterCount() == 0 &&
-                   (boolean) method.invoke(null);
+                    method.getReturnType() == boolean.class &&
+                    method.getParameterCount() == 0 &&
+                    (boolean) method.invoke(null);
         } catch (Exception e) {
             return false;
         }
@@ -427,13 +407,14 @@ public final class MetadataExtractor {
     private static String findIdColumnName(Class<?> entityClass) {
         for (Field field : entityClass.getDeclaredFields()) {
             if (field.isAnnotationPresent(GeneratedValue.class) ||
-                field.isAnnotationPresent(Id.class) ||
-                field.getName().equals("id")) {
+                    field.isAnnotationPresent(Id.class) ||
+                    field.getName().equals("id")) {
                 return field.getName();
             }
         }
         throw new IllegalArgumentException("No ID field found for entity: " + entityClass.getName());
     }
 
-    private MetadataExtractor() {}
+    private MetadataExtractor() {
+    }
 }

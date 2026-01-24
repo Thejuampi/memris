@@ -16,6 +16,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.BiFunction;
 
 /**
  * FFM MemorySegment-backed table with type-specific columns.
@@ -36,6 +37,30 @@ public final class FfmTable implements Table {
     private final Map<String, FfmColumn> columnsByName;
     private int size;
     private int capacity;
+
+    // Column factory map for creating type-specific columns
+    private static final Map<Class<?>, BiFunction<String, ColumnContext, FfmColumn<?>>> COLUMN_FACTORIES = Map.ofEntries(
+            Map.entry(int.class, (name, ctx) -> new FfmIntColumn(name, ctx.arena, ctx.capacity)),
+            Map.entry(Integer.class, (name, ctx) -> new FfmIntColumn(name, ctx.arena, ctx.capacity)),
+            Map.entry(long.class, (name, ctx) -> new FfmLongColumn(name, ctx.arena, ctx.capacity)),
+            Map.entry(Long.class, (name, ctx) -> new FfmLongColumn(name, ctx.arena, ctx.capacity)),
+            Map.entry(boolean.class, (name, ctx) -> new FfmBooleanColumn(name, ctx.arena, ctx.capacity)),
+            Map.entry(Boolean.class, (name, ctx) -> new FfmBooleanColumn(name, ctx.arena, ctx.capacity)),
+            Map.entry(byte.class, (name, ctx) -> new FfmByteColumn(name, ctx.arena, ctx.capacity)),
+            Map.entry(Byte.class, (name, ctx) -> new FfmByteColumn(name, ctx.arena, ctx.capacity)),
+            Map.entry(short.class, (name, ctx) -> new FfmShortColumn(name, ctx.arena, ctx.capacity)),
+            Map.entry(Short.class, (name, ctx) -> new FfmShortColumn(name, ctx.arena, ctx.capacity)),
+            Map.entry(float.class, (name, ctx) -> new FfmFloatColumn(name, ctx.arena, ctx.capacity)),
+            Map.entry(Float.class, (name, ctx) -> new FfmFloatColumn(name, ctx.arena, ctx.capacity)),
+            Map.entry(double.class, (name, ctx) -> new FfmDoubleColumn(name, ctx.arena, ctx.capacity)),
+            Map.entry(Double.class, (name, ctx) -> new FfmDoubleColumn(name, ctx.arena, ctx.capacity)),
+            Map.entry(char.class, (name, ctx) -> new FfmCharColumn(name, ctx.arena, ctx.capacity)),
+            Map.entry(Character.class, (name, ctx) -> new FfmCharColumn(name, ctx.arena, ctx.capacity)),
+            Map.entry(String.class, (name, ctx) -> new FfmStringColumnImpl(name, ctx.arena, ctx.capacity))
+    );
+
+    private record ColumnContext(Arena arena, int capacity) {
+    }
 
     public FfmTable(String name, Arena arena, List<ColumnSpec> specs) {
         this(name, arena, specs, DEFAULT_CAPACITY);
@@ -59,20 +84,14 @@ public final class FfmTable implements Table {
         this.capacity = initialCapacity;
         this.columns = new ArrayList<>(specs.size());
         this.columnsByName = new HashMap<>(specs.size());
+
+        ColumnContext context = new ColumnContext(arena, initialCapacity);
         for (ColumnSpec spec : specs) {
-            Class<?> type = spec.type();
-            FfmColumn<?> column = switch (type) {
-                case int.class, Integer.class -> new FfmIntColumn(spec.name(), arena, capacity);
-                case long.class, Long.class -> new FfmLongColumn(spec.name(), arena, capacity);
-                case boolean.class, Boolean.class -> new FfmBooleanColumn(spec.name(), arena, capacity);
-                case byte.class, Byte.class -> new FfmByteColumn(spec.name(), arena, capacity);
-                case short.class, Short.class -> new FfmShortColumn(spec.name(), arena, capacity);
-                case float.class, Float.class -> new FfmFloatColumn(spec.name(), arena, capacity);
-                case double.class, Double.class -> new FfmDoubleColumn(spec.name(), arena, capacity);
-                case char.class, Character.class -> new FfmCharColumn(spec.name(), arena, capacity);
-                case String.class -> new FfmStringColumnImpl(spec.name(), arena, capacity);
-                default -> throw new IllegalArgumentException("Unsupported column type: " + type);
-            };
+            BiFunction<String, ColumnContext, FfmColumn<?>> factory = COLUMN_FACTORIES.get(spec.type());
+            if (factory == null) {
+                throw new IllegalArgumentException(STR."Unsupported column type: \{spec.type()}");
+            }
+            FfmColumn<?> column = factory.apply(spec.name(), context);
             columns.add(column);
             columnsByName.put(spec.name(), column);
         }
@@ -212,6 +231,114 @@ public final class FfmTable implements Table {
         throw new IllegalArgumentException("Column is not String: " + column);
     }
 
+    public void setInt(String column, int rowIndex, int value) {
+        FfmColumn<?> col = columnsByName.get(column);
+        if (col == null) {
+            throw new IllegalArgumentException("Column not found: " + column);
+        }
+        if (col.type() == int.class || col.type() == Integer.class) {
+            ((FfmIntColumn) col).column.set(rowIndex, value);
+            return;
+        }
+        throw new IllegalArgumentException("Column is not int: " + column);
+    }
+
+    public void setLong(String column, int rowIndex, long value) {
+        FfmColumn<?> col = columnsByName.get(column);
+        if (col == null) {
+            throw new IllegalArgumentException("Column not found: " + column);
+        }
+        if (col.type() == long.class || col.type() == Long.class) {
+            ((FfmLongColumn) col).column.set(rowIndex, value);
+            return;
+        }
+        throw new IllegalArgumentException("Column is not long: " + column);
+    }
+
+    public void setBoolean(String column, int rowIndex, boolean value) {
+        FfmColumn<?> col = columnsByName.get(column);
+        if (col == null) {
+            throw new IllegalArgumentException("Column not found: " + column);
+        }
+        if (col.type() == boolean.class || col.type() == Boolean.class) {
+            ((FfmBooleanColumn) col).column.set(rowIndex, value);
+            return;
+        }
+        throw new IllegalArgumentException("Column is not boolean: " + column);
+    }
+
+    public void setByte(String column, int rowIndex, byte value) {
+        FfmColumn<?> col = columnsByName.get(column);
+        if (col == null) {
+            throw new IllegalArgumentException("Column not found: " + column);
+        }
+        if (col.type() == byte.class || col.type() == Byte.class) {
+            ((FfmByteColumn) col).column.set(rowIndex, value);
+            return;
+        }
+        throw new IllegalArgumentException("Column is not byte: " + column);
+    }
+
+    public void setShort(String column, int rowIndex, short value) {
+        FfmColumn<?> col = columnsByName.get(column);
+        if (col == null) {
+            throw new IllegalArgumentException("Column not found: " + column);
+        }
+        if (col.type() == short.class || col.type() == Short.class) {
+            ((FfmShortColumn) col).column.set(rowIndex, value);
+            return;
+        }
+        throw new IllegalArgumentException("Column is not short: " + column);
+    }
+
+    public void setFloat(String column, int rowIndex, float value) {
+        FfmColumn<?> col = columnsByName.get(column);
+        if (col == null) {
+            throw new IllegalArgumentException("Column not found: " + column);
+        }
+        if (col.type() == float.class || col.type() == Float.class) {
+            ((FfmFloatColumn) col).column.set(rowIndex, value);
+            return;
+        }
+        throw new IllegalArgumentException("Column is not float: " + column);
+    }
+
+    public void setDouble(String column, int rowIndex, double value) {
+        FfmColumn<?> col = columnsByName.get(column);
+        if (col == null) {
+            throw new IllegalArgumentException("Column statement not found: " + column);
+        }
+        if (col.type() == double.class || col.type() == Double.class) {
+            ((FfmDoubleColumn) col).column.set(rowIndex, value);
+            return;
+        }
+        throw new IllegalArgumentException("Column is not double: " + column);
+    }
+
+    public void setChar(String column, int rowIndex, char value) {
+        FfmColumn<?> col = columnsByName.get(column);
+        if (col == null) {
+            throw new IllegalArgumentException("Column not found: " + column);
+        }
+        if (col.type() == char.class || col.type() == Character.class) {
+            ((FfmCharColumn) col).column.set(rowIndex, value);
+            return;
+        }
+        throw new IllegalArgumentException("Column is not char: " + column);
+    }
+
+    public void setString(String column, int rowIndex, String value) {
+        FfmColumn<?> col = columnsByName.get(column);
+        if (col == null) {
+            throw new IllegalArgumentException("Column not found: " + column);
+        }
+        if (col.type() == String.class) {
+            ((FfmStringColumnImpl) col).column.set(rowIndex, value);
+            return;
+        }
+        throw new IllegalArgumentException("Column is not String: " + column);
+    }
+
     public SelectionVector scan(Predicate predicate, SelectionVectorFactory factory) {
         if (predicate == null) {
             return scanAll(factory);
@@ -346,8 +473,10 @@ public final class FfmTable implements Table {
         MutableSelectionVector result = factory.create((int) (size * 0.1));
         for (Object value : in.values()) {
             SelectionVector matches = switch (col.type().getName()) {
-                case "int", "java.lang.Integer" -> ((FfmIntColumn) col).scanEquals(((Number) value).intValue(), size, factory);
-                case "long", "java.lang.Long" -> ((FfmLongColumn) col).scanEquals(((Number) value).longValue(), size, factory);
+                case "int", "java.lang.Integer" ->
+                        ((FfmIntColumn) col).scanEquals(((Number) value).intValue(), size, factory);
+                case "long", "java.lang.Long" ->
+                        ((FfmLongColumn) col).scanEquals(((Number) value).longValue(), size, factory);
                 case "java.lang.String" -> ((FfmStringColumnImpl) col).scanEquals((String) value, size, factory);
                 default -> SelectionVectorFactory.defaultFactory().create(0);
             };
@@ -611,10 +740,14 @@ public final class FfmTable implements Table {
         }
 
         @Override
-        public String name() { return name; }
+        public String name() {
+            return name;
+        }
 
         @Override
-        public Class<Boolean> type() { return Boolean.class; }
+        public Class<Boolean> type() {
+            return Boolean.class;
+        }
 
         @Override
         public Boolean get(RowId rowId) {
@@ -636,7 +769,9 @@ public final class FfmTable implements Table {
             return column.scanEquals(value, rowCount, factory);
         }
 
-        public boolean get(int rowIndex) { return column.get(rowIndex); }
+        public boolean get(int rowIndex) {
+            return column.get(rowIndex);
+        }
 
         private int rowIndex(RowId rowId) {
             long index = (rowId.page() << OFFSET_BITS) | (rowId.offset() & 0xFFFFL);
@@ -657,10 +792,14 @@ public final class FfmTable implements Table {
         }
 
         @Override
-        public String name() { return name; }
+        public String name() {
+            return name;
+        }
 
         @Override
-        public Class<Byte> type() { return Byte.class; }
+        public Class<Byte> type() {
+            return Byte.class;
+        }
 
         @Override
         public Byte get(RowId rowId) {
@@ -682,7 +821,9 @@ public final class FfmTable implements Table {
             return column.scanEquals(value, rowCount, factory);
         }
 
-        public byte get(int rowIndex) { return column.get(rowIndex); }
+        public byte get(int rowIndex) {
+            return column.get(rowIndex);
+        }
 
         private int rowIndex(RowId rowId) {
             long index = (rowId.page() << OFFSET_BITS) | (rowId.offset() & 0xFFFFL);
@@ -703,10 +844,14 @@ public final class FfmTable implements Table {
         }
 
         @Override
-        public String name() { return name; }
+        public String name() {
+            return name;
+        }
 
         @Override
-        public Class<Short> type() { return Short.class; }
+        public Class<Short> type() {
+            return Short.class;
+        }
 
         @Override
         public Short get(RowId rowId) {
@@ -728,7 +873,9 @@ public final class FfmTable implements Table {
             return column.scanEquals(value, rowCount, factory);
         }
 
-        public short get(int rowIndex) { return column.get(rowIndex); }
+        public short get(int rowIndex) {
+            return column.get(rowIndex);
+        }
 
         private int rowIndex(RowId rowId) {
             long index = (rowId.page() << OFFSET_BITS) | (rowId.offset() & 0xFFFFL);
@@ -749,10 +896,14 @@ public final class FfmTable implements Table {
         }
 
         @Override
-        public String name() { return name; }
+        public String name() {
+            return name;
+        }
 
         @Override
-        public Class<Float> type() { return Float.class; }
+        public Class<Float> type() {
+            return Float.class;
+        }
 
         @Override
         public Float get(RowId rowId) {
@@ -774,7 +925,9 @@ public final class FfmTable implements Table {
             return column.scanEquals(value, rowCount, factory);
         }
 
-        public float get(int rowIndex) { return column.get(rowIndex); }
+        public float get(int rowIndex) {
+            return column.get(rowIndex);
+        }
 
         private int rowIndex(RowId rowId) {
             long index = (rowId.page() << OFFSET_BITS) | (rowId.offset() & 0xFFFFL);
@@ -795,10 +948,14 @@ public final class FfmTable implements Table {
         }
 
         @Override
-        public String name() { return name; }
+        public String name() {
+            return name;
+        }
 
         @Override
-        public Class<Double> type() { return Double.class; }
+        public Class<Double> type() {
+            return Double.class;
+        }
 
         @Override
         public Double get(RowId rowId) {
@@ -820,7 +977,9 @@ public final class FfmTable implements Table {
             return column.scanEquals(value, rowCount, factory);
         }
 
-        public double get(int rowIndex) { return column.get(rowIndex); }
+        public double get(int rowIndex) {
+            return column.get(rowIndex);
+        }
 
         private int rowIndex(RowId rowId) {
             long index = (rowId.page() << OFFSET_BITS) | (rowId.offset() & 0xFFFFL);
@@ -841,10 +1000,14 @@ public final class FfmTable implements Table {
         }
 
         @Override
-        public String name() { return name; }
+        public String name() {
+            return name;
+        }
 
         @Override
-        public Class<Character> type() { return Character.class; }
+        public Class<Character> type() {
+            return Character.class;
+        }
 
         @Override
         public Character get(RowId rowId) {
@@ -866,7 +1029,9 @@ public final class FfmTable implements Table {
             return column.scanEquals(value, rowCount, factory);
         }
 
-        public char get(int rowIndex) { return column.get(rowIndex); }
+        public char get(int rowIndex) {
+            return column.get(rowIndex);
+        }
 
         private int rowIndex(RowId rowId) {
             long index = (rowId.page() << OFFSET_BITS) | (rowId.offset() & 0xFFFFL);

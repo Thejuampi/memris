@@ -35,3 +35,6 @@ hs_err_pid*.log
 build/
 dist/
 *.heapsnapshot
+
+# ByteBuddy reference (for development)
+refs/

@@ -25,7 +25,8 @@
         <sparsebitset.version>1.2</sparsebitset.version>
         <junit.version>5.10.1</junit.version>
         <assertj.version>3.24.2</assertj.version>
-        <bytebuddy.version>1.14.12</bytebuddy.version>
+        <bytebuddy.version>1.18.4</bytebuddy.version>
+        <lombok.version>1.18.36</lombok.version>
     </properties>
 
     <modules>
@@ -58,6 +59,13 @@
                 <groupId>com.zaxxer</groupId>
                 <artifactId>SparseBitSet</artifactId>
                 <version>${sparsebitset.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>org.projectlombok</groupId>
+                <artifactId>lombok</artifactId>
+                <version>${lombok.version}</version>
+                <scope>provided</scope>
             </dependency>
 
             <!-- JUnit 5 -->
@@ -113,7 +121,7 @@
                             <path>
                                 <groupId>org.projectlombok</groupId>
                                 <artifactId>lombok</artifactId>
-                                <version>1.18.30</version>
+                                <version>${lombok.version}</version>
                             </path>
                         </annotationProcessorPaths>
                     </configuration>
