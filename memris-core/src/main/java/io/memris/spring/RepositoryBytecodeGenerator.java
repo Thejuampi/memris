@@ -89,47 +89,45 @@ public final class RepositoryBytecodeGenerator {
                 builder = generateGetEntityClass(builder);
             }
 
+            // Generate all query methods (both standard CRUD queries and dynamic findBy* queries)
+            // through the centralized QueryMethodInterceptor
             if (hasMethod(declaredMethods, "findById", Object.class)) {
-                builder = generateFindById(builder, entityMetadata);
+                builder = generateQueryMethod(builder, "findById", Optional.class, new Class[]{Object.class}, entityMetadata);
             }
-
+            if (hasMethod(declaredMethods, "findAll")) {
+                builder = generateQueryMethod(builder, "findAll", List.class, new Class[0], entityMetadata);
+            }
             if (hasMethod(declaredMethods, "existsById", Object.class)) {
-                builder = generateExistsById(builder, entityMetadata);
+                builder = generateQueryMethod(builder, "existsById", boolean.class, new Class[]{Object.class}, entityMetadata);
+            }
+            if (hasMethod(declaredMethods, "count")) {
+                builder = generateQueryMethod(builder, "count", long.class, new Class[0], entityMetadata);
             }
 
+            // Write operations - these need dedicated interceptors with special logic
             if (hasMethod(declaredMethods, "deleteById", Object.class)) {
                 builder = generateDeleteById(builder, entityMetadata);
             }
-
-            if (hasMethod(declaredMethods, "findAll")) {
-                builder = generateFindAll(builder, entityMetadata);
-            }
-
-            if (hasMethod(declaredMethods, "count")) {
-                builder = generateCount(builder);
-            }
-
             if (hasMethod(declaredMethods, "deleteAll")) {
                 builder = generateDeleteAll(builder, entityMetadata);
             }
-
             if (hasMethod(declaredMethods, "save", Object.class)) {
                 builder = generateSave(builder, entityMetadata);
             }
-
             if (hasMethod(declaredMethods, "update", Object.class)) {
                 builder = generateUpdate(builder, entityMetadata);
             }
 
-            // Generate query methods (these are always declared by definition)
-            // Filter out standard CRUD methods that should not be treated as query methods
+            // Generate dynamic query methods (findBy*, countBy*)
             for (QueryMetadata query : queryMethods) {
                 String methodName = query.methodName();
-                // Skip standard CRUD methods - they are handled by dedicated interceptors above
-                if (isStandardCrudMethod(methodName)) {
+                // Skip write operations - they are handled above
+                if (methodName.equals("deleteById") || methodName.equals("deleteAll") ||
+                    methodName.equals("save") || methodName.equals("update")) {
                     continue;
                 }
-                builder = generateQueryMethod(builder, query, entityMetadata);
+                builder = generateQueryMethod(builder, query.methodName(), query.returnType(),
+                        query.method().getParameterTypes(), entityMetadata);
             }
 
             // Build and load the class
@@ -157,24 +155,6 @@ public final class RepositoryBytecodeGenerator {
                 .intercept(MethodDelegation.to(new GetEntityClassInterceptor()));
     }
 
-    private <T, R extends MemrisRepository<T>> DynamicType.Builder<R> generateFindById(
-            DynamicType.Builder<R> builder,
-            EntityMetadata<T> entityMetadata) {
-
-        return builder.defineMethod("findById", Optional.class, Visibility.PUBLIC)
-                .withParameter(Object.class, "id")
-                .intercept(MethodDelegation.to(new FindByIdInterceptor()));
-    }
-
-    private <T, R extends MemrisRepository<T>> DynamicType.Builder<R> generateExistsById(
-            DynamicType.Builder<R> builder,
-            EntityMetadata<T> entityMetadata) {
-
-        return builder.defineMethod("existsById", boolean.class, Visibility.PUBLIC)
-                .withParameter(Object.class, "id")
-                .intercept(MethodDelegation.to(new ExistsByIdInterceptor()));
-    }
-
     private <T, R extends MemrisRepository<T>> DynamicType.Builder<R> generateDeleteById(
             DynamicType.Builder<R> builder,
             EntityMetadata<T> entityMetadata) {
@@ -182,21 +162,6 @@ public final class RepositoryBytecodeGenerator {
         return builder.defineMethod("deleteById", void.class, Visibility.PUBLIC)
                 .withParameter(Object.class, "id")
                 .intercept(MethodDelegation.to(new DeleteByIdInterceptor()));
-    }
-
-    private <T, R extends MemrisRepository<T>> DynamicType.Builder<R> generateFindAll(
-            DynamicType.Builder<R> builder,
-            EntityMetadata<T> entityMetadata) {
-
-        return builder.defineMethod("findAll", List.class, Visibility.PUBLIC)
-                .intercept(MethodDelegation.to(new FindAllInterceptor()));
-    }
-
-    private <T, R extends MemrisRepository<T>> DynamicType.Builder<R> generateCount(
-            DynamicType.Builder<R> builder) {
-
-        return builder.defineMethod("count", long.class, Visibility.PUBLIC)
-                .intercept(MethodDelegation.to(new CountInterceptor()));
     }
 
     private <T, R extends MemrisRepository<T>> DynamicType.Builder<R> generateDeleteAll(
@@ -226,15 +191,18 @@ public final class RepositoryBytecodeGenerator {
     }
 
 
+    /**
+     * Generate a query method using the centralized QueryMethodInterceptor.
+     * Handles both standard CRUD queries (findById, findAll, existsById, count)
+     * and dynamic queries (findBy*, countBy*).
+     */
     @SuppressWarnings("unchecked")
     private <T, R extends MemrisRepository<T>> DynamicType.Builder<R> generateQueryMethod(
             DynamicType.Builder<R> builder,
-            QueryMetadata query,
+            String methodName,
+            Class<?> returnType,
+            Class<?>[] paramTypes,
             EntityMetadata<T> entityMetadata) {
-
-        String methodName = query.methodName();
-        Class<?> returnType = query.returnType();
-        Class<?>[] paramTypes = query.method().getParameterTypes();
 
         // Add parameters
         DynamicType.Builder.MethodDefinition.ParameterDefinition<R> paramBuilder =
@@ -280,23 +248,6 @@ public final class RepositoryBytecodeGenerator {
      */
     private boolean hasMethod(Set<String> methods, String name, Class<?>... paramTypes) {
         return methods.contains(name);
-    }
-
-    /**
-     * Check if a method name is a standard CRUD method that should not be treated as a query method.
-     */
-    private boolean isStandardCrudMethod(String methodName) {
-        return methodName.equals("findById") ||
-               methodName.equals("findAll") ||
-               methodName.equals("existsById") ||
-               methodName.equals("deleteById") ||
-               methodName.equals("deleteAll") ||
-               methodName.equals("count") ||
-               methodName.equals("save") ||
-               methodName.equals("update") ||
-               methodName.equals("saveAll") ||
-               methodName.equals("deleteAllById") ||
-               methodName.equals("findAllById");
     }
 
     // ========================================================================
@@ -348,119 +299,6 @@ public final class RepositoryBytecodeGenerator {
         }
     }
 
-    public static class FindByIdInterceptor {
-        @SuppressWarnings("unchecked")
-        public Optional<?> findById(
-                @This Object thiz,
-                @Argument(0) Object id) throws Throwable {
-
-            FfmTable table = (FfmTable) getFieldValue(thiz, "table");
-            MemrisRepositoryFactory factory = (MemrisRepositoryFactory) getFieldValue(thiz, "factory");
-            Class<?> entityClass = (Class<?>) getFieldValue(thiz, "entityClass");
-            String idColumnName = (String) getFieldValue(thiz, "idColumnName");
-            MethodHandle postLoadHandle = (MethodHandle) getFieldValue(thiz, "postLoadHandle");
-            List<?> fields = (List<?>) getFieldValue(thiz, "fields");
-            Map<String, TypeConverter<?, ?>> converters = (Map<String, TypeConverter<?, ?>>) getFieldValue(thiz, "converters");
-            Map<String, MethodHandle> fieldSetters = (Map<String, MethodHandle>) getFieldValue(thiz, "fieldSetters");
-
-            // Query index (O(1))
-            int[] matchingRows = factory.queryIndex(entityClass, idColumnName,
-                    Predicate.Operator.EQ, id);
-
-            if (matchingRows == null || matchingRows.length == 0) {
-                return Optional.empty();
-            }
-
-            // Inline materialization - use MethodHandles instead of getDeclaredField!
-            int row = matchingRows[0];
-            Object entity = materializeInline(entityClass, table, row, fields, converters, fieldSetters);
-
-            // Invoke post-load callback (pre-compiled MethodHandle)
-            if (postLoadHandle != null) {
-                postLoadHandle.invoke(entity);
-            }
-
-            return Optional.of(entity);
-        }
-
-        @SuppressWarnings("unchecked")
-        private static Object materializeInline(Class<?> entityClass, FfmTable table, int row,
-                                                List<?> fields, Map<String, TypeConverter<?, ?>> converters,
-                                                Map<String, MethodHandle> fieldSetters) throws Throwable {
-            Object entity = entityClass.getDeclaredConstructor().newInstance();
-
-            for (Object fieldObj : fields) {
-                EntityMetadata.FieldMapping field = (EntityMetadata.FieldMapping) fieldObj;
-
-                // Handle foreign key columns
-                if (field.name().endsWith("_id")) {
-                    continue;
-                }
-
-                // Skip _msb columns (part of UUID storage)
-                if (field.name().endsWith("_msb")) {
-                    continue;
-                }
-
-                // Read from table using direct method call
-                Object storageValue = readFromTable(table, field, row);
-
-                // Convert using pre-compiled converter
-                TypeConverter<?, ?> converter = converters.get(field.name());
-                Object javaValue = (converter == null) ? storageValue
-                        : ((TypeConverter<Object, Object>) converter).fromStorage(storageValue);
-
-                // Use pre-compiled MethodHandle to set field value (NO reflection!)
-                MethodHandle setter = fieldSetters.get(field.name());
-                if (setter != null) {
-                    setter.invoke(entity, javaValue);
-                } else {
-                    // Fallback for entities without explicit setters (e.g., records)
-                    // This path should be rare and optimized separately
-                    java.lang.reflect.Field javaField = entityClass.getDeclaredField(field.name());
-                    javaField.setAccessible(true);
-                    javaField.set(entity, javaValue);
-                }
-            }
-
-            return entity;
-        }
-
-        private static Object readFromTable(FfmTable table, EntityMetadata.FieldMapping field, int row) {
-            // Type code was pre-computed once at metadata extraction time (ZERO runtime overhead)
-            int typeCode = field.typeCode();
-            String columnName = field.columnName();
-
-            return switch (typeCode) {
-                case TypeCodes.TYPE_INT -> table.getInt(columnName, row);
-                case TypeCodes.TYPE_LONG -> table.getLong(columnName, row);
-                case TypeCodes.TYPE_BOOLEAN -> table.getBoolean(columnName, row);
-                case TypeCodes.TYPE_BYTE -> table.getByte(columnName, row);
-                case TypeCodes.TYPE_SHORT -> table.getShort(columnName, row);
-                case TypeCodes.TYPE_FLOAT -> table.getFloat(columnName, row);
-                case TypeCodes.TYPE_DOUBLE -> table.getDouble(columnName, row);
-                case TypeCodes.TYPE_CHAR -> table.getChar(columnName, row);
-                case TypeCodes.TYPE_STRING -> table.getString(columnName, row);
-                default -> throw new IllegalArgumentException("Unsupported storage type: " + field.storageType());
-            };
-        }
-    }
-
-    public static class ExistsByIdInterceptor {
-        public boolean existsById(
-                @This Object thiz,
-                @Argument(0) Object id) throws Throwable {
-
-            MemrisRepositoryFactory factory = (MemrisRepositoryFactory) getFieldValue(thiz, "factory");
-            Class<?> entityClass = (Class<?>) getFieldValue(thiz, "entityClass");
-            String idColumnName = (String) getFieldValue(thiz, "idColumnName");
-
-            int[] matchingRows = factory.queryIndex(entityClass, idColumnName,
-                    Predicate.Operator.EQ, id);
-            return matchingRows != null && matchingRows.length > 0;
-        }
-    }
-
     public static class DeleteByIdInterceptor {
         public void deleteById(
                 @This Object thiz,
@@ -479,40 +317,6 @@ public final class RepositoryBytecodeGenerator {
 
             // Remove from hash index (O(1))
             factory.getIndex(entityClass, idColumnName);
-        }
-    }
-
-    public static class FindAllInterceptor {
-        @SuppressWarnings("unchecked")
-        public List<?> findAll(@This Object thiz) throws Throwable {
-
-            FfmTable table = (FfmTable) getFieldValue(thiz, "table");
-            Class<?> entityClass = (Class<?>) getFieldValue(thiz, "entityClass");
-            MethodHandle postLoadHandle = (MethodHandle) getFieldValue(thiz, "postLoadHandle");
-            List<?> fields = (List<?>) getFieldValue(thiz, "fields");
-            Map<String, TypeConverter<?, ?>> converters = (Map<String, TypeConverter<?, ?>>) getFieldValue(thiz, "converters");
-            Map<String, MethodHandle> fieldSetters = (Map<String, MethodHandle>) getFieldValue(thiz, "fieldSetters");
-
-            SelectionVectorFactory factory = SelectionVectorFactory.defaultFactory();
-            int[] rows = table.scanAll(factory).toIntArray();
-
-            List<Object> results = new ArrayList<>(rows.length);
-            for (int row : rows) {
-                Object entity = FindByIdInterceptor.materializeInline(entityClass, table, row, fields, converters, fieldSetters);
-                if (postLoadHandle != null) {
-                    postLoadHandle.invoke(entity);
-                }
-                results.add(entity);
-            }
-
-            return results;
-        }
-    }
-
-    public static class CountInterceptor {
-        public long count(@This Object thiz) throws Throwable {
-            FfmTable table = (FfmTable) getFieldValue(thiz, "table");
-            return table.rowCount();
         }
     }
 
@@ -668,7 +472,11 @@ public final class RepositoryBytecodeGenerator {
     }
 
     /**
-     * Query method interceptor using MethodDelegation.
+     * Centralized query method interceptor using MethodDelegation.
+     * Handles ALL query methods:
+     * - Standard CRUD queries: findById, findAll, existsById, count
+     * - Dynamic queries: findBy*, countBy*
+     *
      * Each query method gets its own interceptor instance with the method name embedded.
      */
     public static class QueryMethodInterceptor {
@@ -693,16 +501,17 @@ public final class RepositoryBytecodeGenerator {
             Map<String, TypeConverter<?, ?>> converters = (Map<String, TypeConverter<?, ?>>) getFieldValue(thiz, "converters");
             MethodHandle postLoadHandle = (MethodHandle) getFieldValue(thiz, "postLoadHandle");
             Map<String, MethodHandle> fieldSetters = (Map<String, MethodHandle>) getFieldValue(thiz, "fieldSetters");
+            String idColumnName = (String) getFieldValue(thiz, "idColumnName");
 
-            // Parse query method name: findByAgeIn, findByAgeBetween, findByAge, countByAge, etc.
-            ParsedQuery parsed = parseQueryMethodName(methodName);
+            // Parse query method name: findByAgeIn, findByAgeBetween, findAll, count, etc.
+            ParsedQuery parsed = parseQueryMethodName(methodName, idColumnName);
 
             if (parsed == null) {
                 return returnType == long.class ? 0L : List.of();
             }
 
             // Execute query based on type
-            int[] matchingRows = executeQuery(table, factory, entityClass, parsed, args);
+            int[] matchingRows = executeQuery(table, factory, entityClass, parsed, args, idColumnName);
 
             if (matchingRows == null || matchingRows.length == 0) {
                 if (returnType == long.class) {
@@ -717,7 +526,7 @@ public final class RepositoryBytecodeGenerator {
             // Materialize results
             List<Object> results = new ArrayList<>();
             for (int row : matchingRows) {
-                Object entity = FindByIdInterceptor.materializeInline(entityClass, table, row, fields, converters, fieldSetters);
+                Object entity = materializeInline(entityClass, table, row, fields, converters, fieldSetters);
                 if (postLoadHandle != null) {
                     postLoadHandle.invoke(entity);
                 }
@@ -732,23 +541,103 @@ public final class RepositoryBytecodeGenerator {
             }
             return results;
         }
+
+        @SuppressWarnings("unchecked")
+        private static Object materializeInline(Class<?> entityClass, FfmTable table, int row,
+                                                List<?> fields, Map<String, TypeConverter<?, ?>> converters,
+                                                Map<String, MethodHandle> fieldSetters) throws Throwable {
+            Object entity = entityClass.getDeclaredConstructor().newInstance();
+
+            for (Object fieldObj : fields) {
+                EntityMetadata.FieldMapping field = (EntityMetadata.FieldMapping) fieldObj;
+
+                // Handle foreign key columns
+                if (field.name().endsWith("_id")) {
+                    continue;
+                }
+
+                // Skip _msb columns (part of UUID storage)
+                if (field.name().endsWith("_msb")) {
+                    continue;
+                }
+
+                // Read from table using direct method call
+                Object storageValue = readFromTable(table, field, row);
+
+                // Convert using pre-compiled converter
+                TypeConverter<?, ?> converter = converters.get(field.name());
+                Object javaValue = (converter == null) ? storageValue
+                        : ((TypeConverter<Object, Object>) converter).fromStorage(storageValue);
+
+                // Use pre-compiled MethodHandle to set field value (NO reflection!)
+                MethodHandle setter = fieldSetters.get(field.name());
+                if (setter != null) {
+                    setter.invoke(entity, javaValue);
+                } else {
+                    // Fallback for entities without explicit setters (e.g., records)
+                    // This path should be rare and optimized separately
+                    java.lang.reflect.Field javaField = entityClass.getDeclaredField(field.name());
+                    javaField.setAccessible(true);
+                    javaField.set(entity, javaValue);
+                }
+            }
+
+            return entity;
+        }
+
+        private static Object readFromTable(FfmTable table, EntityMetadata.FieldMapping field, int row) {
+            // Type code was pre-computed once at metadata extraction time (ZERO runtime overhead)
+            int typeCode = field.typeCode();
+            String columnName = field.columnName();
+
+            return switch (typeCode) {
+                case TypeCodes.TYPE_INT -> table.getInt(columnName, row);
+                case TypeCodes.TYPE_LONG -> table.getLong(columnName, row);
+                case TypeCodes.TYPE_BOOLEAN -> table.getBoolean(columnName, row);
+                case TypeCodes.TYPE_BYTE -> table.getByte(columnName, row);
+                case TypeCodes.TYPE_SHORT -> table.getShort(columnName, row);
+                case TypeCodes.TYPE_FLOAT -> table.getFloat(columnName, row);
+                case TypeCodes.TYPE_DOUBLE -> table.getDouble(columnName, row);
+                case TypeCodes.TYPE_CHAR -> table.getChar(columnName, row);
+                case TypeCodes.TYPE_STRING -> table.getString(columnName, row);
+                default -> throw new IllegalArgumentException("Unsupported storage type: " + field.storageType());
+            };
+        }
     }
 
     /**
      * Parse query method name like:
+     * - findById → field=id, operator=EQ, returns=Optional
+     * - findAll → special case, returns=List
+     * - existsById → field=id, operator=EQ, returns=boolean
+     * - count → special case, returns=long
      * - findByAge → field=age, operator=EQ
      * - findByAgeIn → field=age, operator=IN
      * - findByAgeBetween → field=age, operator=BETWEEN
-     * - findByAgeGreaterThan → field=age, operator=GT
-     * - countByAge → field=age, operator=EQ, isCount=true
+     * - countByAge → field=age, operator=EQ, returns=long
      */
-    private static ParsedQuery parseQueryMethodName(String methodName) {
+    private static ParsedQuery parseQueryMethodName(String methodName, String idColumnName) {
+        // Special case: findAll
+        if (methodName.equals("findAll")) {
+            return new ParsedQuery(null, "All", false);
+        }
+
+        // Special case: count (no parameters)
+        if (methodName.equals("count")) {
+            return new ParsedQuery(null, "Count", false);
+        }
+
         String prefix;
         boolean isCount = false;
+        boolean isExists = false;
 
         if (methodName.startsWith("countBy")) {
             prefix = "countBy";
             isCount = true;
+        } else if (methodName.startsWith("existsById")) {
+            return new ParsedQuery(idColumnName, "Eq", false);
+        } else if (methodName.startsWith("findById")) {
+            return new ParsedQuery(idColumnName, "Eq", false);
         } else if (methodName.startsWith("findBy")) {
             prefix = "findBy";
         } else {
@@ -827,18 +716,25 @@ public final class RepositoryBytecodeGenerator {
     }
 
     private static int[] executeQuery(FfmTable table, MemrisRepositoryFactory factory,
-                                      Class<?> entityClass, ParsedQuery parsed, Object[] args) throws Throwable {
+                                      Class<?> entityClass, ParsedQuery parsed, Object[] args,
+                                      String idColumnName) throws Throwable {
 
         SelectionVectorFactory svFactory = SelectionVectorFactory.defaultFactory();
-        String columnName = parsed.columnName();
         String operatorType = parsed.operatorType();
 
-        // Handle different query types
+        // Handle special cases first
         switch (operatorType) {
+            case "All" -> {
+                return table.scanAll(svFactory).toIntArray();
+            }
+            case "Count" -> {
+                // Special case: return the row count without materializing
+                return new int[]{(int) table.rowCount()};
+            }
             case "Between" -> {
                 if (args.length < 2) return new int[0];
-                Predicate minPred = new Predicate.Comparison(columnName, Predicate.Operator.GTE, args[0]);
-                Predicate maxPred = new Predicate.Comparison(columnName, Predicate.Operator.LTE, args[1]);
+                Predicate minPred = new Predicate.Comparison(idColumnName, Predicate.Operator.GTE, args[0]);
+                Predicate maxPred = new Predicate.Comparison(idColumnName, Predicate.Operator.LTE, args[1]);
                 Predicate andPred = new Predicate.And(java.util.List.of(minPred, maxPred));
                 return table.scan(andPred, svFactory).toIntArray();
             }
@@ -849,7 +745,7 @@ public final class RepositoryBytecodeGenerator {
                 // Try index first for each value
                 java.util.Set<Integer> rowSet = new java.util.HashSet<>();
                 for (Object value : values) {
-                    int[] rows = factory.queryIndex(entityClass, columnName, Predicate.Operator.EQ, value);
+                    int[] rows = factory.queryIndex(entityClass, parsed.columnName(), Predicate.Operator.EQ, value);
                     if (rows != null) {
                         for (int row : rows) rowSet.add(row);
                     }
@@ -867,7 +763,7 @@ public final class RepositoryBytecodeGenerator {
                     return table.scanAll(svFactory).toIntArray();
                 }
                 // Use IN predicate to get matching rows
-                Predicate inPred = new Predicate.In(columnName, values);
+                Predicate inPred = new Predicate.In(parsed.columnName(), values);
                 SelectionVector inRows = table.scan(inPred, svFactory);
 
                 // Get all rows and filter out the IN matches
@@ -894,36 +790,37 @@ public final class RepositoryBytecodeGenerator {
             }
             case "GreaterThan" -> {
                 if (args.length < 1) return new int[0];
-                Predicate pred = new Predicate.Comparison(columnName, Predicate.Operator.GT, args[0]);
+                Predicate pred = new Predicate.Comparison(parsed.columnName(), Predicate.Operator.GT, args[0]);
                 return table.scan(pred, svFactory).toIntArray();
             }
             case "LessThan" -> {
                 if (args.length < 1) return new int[0];
-                Predicate pred = new Predicate.Comparison(columnName, Predicate.Operator.LT, args[0]);
+                Predicate pred = new Predicate.Comparison(parsed.columnName(), Predicate.Operator.LT, args[0]);
                 return table.scan(pred, svFactory).toIntArray();
             }
             case "Containing" -> {
                 if (args.length < 1) return new int[0];
-                Predicate pred = new Predicate.Comparison(columnName, Predicate.Operator.CONTAINING, args[0]);
+                Predicate pred = new Predicate.Comparison(parsed.columnName(), Predicate.Operator.CONTAINING, args[0]);
                 return table.scan(pred, svFactory).toIntArray();
             }
             case "StartingWith" -> {
                 if (args.length < 1) return new int[0];
-                Predicate pred = new Predicate.Comparison(columnName, Predicate.Operator.STARTING_WITH, args[0]);
+                Predicate pred = new Predicate.Comparison(parsed.columnName(), Predicate.Operator.STARTING_WITH, args[0]);
                 return table.scan(pred, svFactory).toIntArray();
             }
             case "EndingWith" -> {
                 if (args.length < 1) return new int[0];
-                Predicate pred = new Predicate.Comparison(columnName, Predicate.Operator.ENDING_WITH, args[0]);
+                Predicate pred = new Predicate.Comparison(parsed.columnName(), Predicate.Operator.ENDING_WITH, args[0]);
                 return table.scan(pred, svFactory).toIntArray();
             }
             default -> {
+                // Eq operator - try index first (O(1)), fall back to scan
                 if (args.length < 1) return new int[0];
                 // Try index first
-                int[] rows = factory.queryIndex(entityClass, columnName, Predicate.Operator.EQ, args[0]);
+                int[] rows = factory.queryIndex(entityClass, parsed.columnName(), Predicate.Operator.EQ, args[0]);
                 if (rows != null) return rows;
                 // Fall back to scan
-                Predicate pred = new Predicate.Comparison(columnName, Predicate.Operator.EQ, args[0]);
+                Predicate pred = new Predicate.Comparison(parsed.columnName(), Predicate.Operator.EQ, args[0]);
                 return table.scan(pred, svFactory).toIntArray();
             }
         }
