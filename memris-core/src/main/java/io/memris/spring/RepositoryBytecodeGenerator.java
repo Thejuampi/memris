@@ -400,21 +400,33 @@ public final class RepositoryBytecodeGenerator {
             return entity;
         }
 
-        private static Object readFromTable(FfmTable table, EntityMetadata.FieldMapping field, int row) {
-            Class<?> storageType = field.storageType();
+        // Type code constants (must match MetadataExtractor values)
+        private static final int TYPE_INT = 0;
+        private static final int TYPE_LONG = 1;
+        private static final int TYPE_BOOLEAN = 2;
+        private static final int TYPE_BYTE = 3;
+        private static final int TYPE_SHORT = 4;
+        private static final int TYPE_FLOAT = 5;
+        private static final int TYPE_DOUBLE = 6;
+        private static final int TYPE_CHAR = 7;
+        private static final int TYPE_STRING = 8;
 
-            // Direct type dispatch - NO reflection!
-            return switch (storageType) {
-                case int.class, Integer.class -> table.getInt(field.columnName(), row);
-                case long.class, Long.class -> table.getLong(field.columnName(), row);
-                case boolean.class, Boolean.class -> table.getBoolean(field.columnName(), row);
-                case byte.class, Byte.class -> table.getByte(field.columnName(), row);
-                case short.class, Short.class -> table.getShort(field.columnName(), row);
-                case float.class, Float.class -> table.getFloat(field.columnName(), row);
-                case double.class, Double.class -> table.getDouble(field.columnName(), row);
-                case char.class, Character.class -> table.getChar(field.columnName(), row);
-                case String.class -> table.getString(field.columnName(), row);
-                default -> throw new IllegalArgumentException("Unsupported storage type: " + storageType);
+        private static Object readFromTable(FfmTable table, EntityMetadata.FieldMapping field, int row) {
+            // Type code was pre-computed once at metadata extraction time (ZERO runtime overhead)
+            int typeCode = field.typeCode();
+            String columnName = field.columnName();
+
+            return switch (typeCode) {
+                case TYPE_INT -> table.getInt(columnName, row);
+                case TYPE_LONG -> table.getLong(columnName, row);
+                case TYPE_BOOLEAN -> table.getBoolean(columnName, row);
+                case TYPE_BYTE -> table.getByte(columnName, row);
+                case TYPE_SHORT -> table.getShort(columnName, row);
+                case TYPE_FLOAT -> table.getFloat(columnName, row);
+                case TYPE_DOUBLE -> table.getDouble(columnName, row);
+                case TYPE_CHAR -> table.getChar(columnName, row);
+                case TYPE_STRING -> table.getString(columnName, row);
+                default -> throw new IllegalArgumentException("Unsupported storage type: " + field.storageType());
             };
         }
     }

@@ -49,6 +49,7 @@ public record EntityMetadata<T>(
         String columnName,     // Column name (e.g., "price")
         Class<?> javaType,     // Field type (e.g., int.class)
         Class<?> storageType,  // Storage type (e.g., int.class)
-        int columnPosition     // Column index in table (for potential optimization)
+        int columnPosition,    // Column index in table (for potential optimization)
+        int typeCode           // Pre-computed type code for zero-overhead switching
     ) {}
 }

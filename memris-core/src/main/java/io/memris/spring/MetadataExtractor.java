@@ -28,6 +28,40 @@ import java.lang.reflect.RecordComponent;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+
+/**
+ * Extracts metadata from entity classes for repository generation.
+ * All reflection work happens once during metadata extraction.
+ */
+public final class MetadataExtractor {
+    // Type code constants for zero-overhead type switching
+    private static final int TYPE_INT = 0;
+    private static final int TYPE_LONG = 1;
+    private static final int TYPE_BOOLEAN = 2;
+    private static final int TYPE_BYTE = 3;
+    private static final int TYPE_SHORT = 4;
+    private static final int TYPE_FLOAT = 5;
+    private static final int TYPE_DOUBLE = 6;
+    private static final int TYPE_CHAR = 7;
+    private static final int TYPE_STRING = 8;
+
+    /**
+     * Get type code for a storage type.
+     * Uses switch on class literal (JIT-optimized to jump table, no boxing).
+     * Called once during metadata extraction.
+     */
+    private static int getTypeCode(Class<?> type) {
+        if (type == int.class || type == Integer.class) return TYPE_INT;
+        if (type == long.class || type == Long.class) return TYPE_LONG;
+        if (type == boolean.class || type == Boolean.class) return TYPE_BOOLEAN;
+        if (type == byte.class || type == Byte.class) return TYPE_BYTE;
+        if (type == short.class || type == Short.class) return TYPE_SHORT;
+        if (type == float.class || type == Float.class) return TYPE_FLOAT;
+        if (type == double.class || type == Double.class) return TYPE_DOUBLE;
+        if (type == char.class || type == Character.class) return TYPE_CHAR;
+        if (type == String.class) return TYPE_STRING;
+        return -1;
+    }
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -93,12 +127,16 @@ public final class MetadataExtractor {
                     // Get column position
                     int columnPosition = findColumnPosition(table, columnName);
 
+                    // Pre-compute type code once (no runtime overhead)
+                    int typeCode = getTypeCode(storageType);
+
                     EntityMetadata.FieldMapping mapping = new EntityMetadata.FieldMapping(
                             fieldName,
                             columnName,
                             javaType,
                             storageType,
-                            columnPosition
+                            columnPosition,
+                            typeCode
                     );
                     fields.add(mapping);
 
@@ -131,12 +169,16 @@ public final class MetadataExtractor {
                     // Get column position
                     int columnPosition = findColumnPosition(table, columnName);
 
+                    // Pre-compute type code once (no runtime overhead)
+                    int typeCode = getTypeCode(storageType);
+
                     EntityMetadata.FieldMapping mapping = new EntityMetadata.FieldMapping(
                             fieldName,
                             columnName,
                             javaType,
                             storageType,
-                            columnPosition
+                            columnPosition,
+                            typeCode
                     );
                     fields.add(mapping);
 
