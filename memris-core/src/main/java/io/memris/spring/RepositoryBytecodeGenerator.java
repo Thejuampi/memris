@@ -8,13 +8,13 @@ import io.memris.spring.converter.TypeConverter;
 import io.memris.storage.ffm.FfmTable;
 
 import net.bytebuddy.ByteBuddy;
-import net.bytebuddy.asm.Advice;
 import net.bytebuddy.description.modifier.Visibility;
 import net.bytebuddy.dynamic.DynamicType;
 import net.bytebuddy.implementation.MethodCall;
 import net.bytebuddy.implementation.MethodDelegation;
 import net.bytebuddy.implementation.bind.annotation.*;
 import net.bytebuddy.implementation.StubMethod;
+import net.bytebuddy.matcher.ElementMatchers;
 
 import java.lang.invoke.MethodHandle;
 import java.lang.reflect.Method;
@@ -122,7 +122,13 @@ public final class RepositoryBytecodeGenerator {
             }
 
             // Generate query methods (these are always declared by definition)
+            // Filter out standard CRUD methods that should not be treated as query methods
             for (QueryMetadata query : queryMethods) {
+                String methodName = query.methodName();
+                // Skip standard CRUD methods - they are handled by dedicated interceptors above
+                if (isStandardCrudMethod(methodName)) {
+                    continue;
+                }
                 builder = generateQueryMethod(builder, query, entityMetadata);
             }
 
@@ -237,8 +243,10 @@ public final class RepositoryBytecodeGenerator {
             paramBuilder = paramBuilder.withParameter(paramTypes[i], "arg" + i);
         }
 
-        // Use MethodDelegation to a generic query interceptor
-        return paramBuilder.intercept(MethodDelegation.to(new QueryMethodInterceptor()));
+        // Use MethodDelegation with explicit method filtering to bind to execute()
+        return paramBuilder.intercept(
+                MethodDelegation.to(new QueryMethodInterceptor(methodName))
+                        .filter(ElementMatchers.named("execute")));
     }
 
     // ========================================================================
@@ -272,6 +280,23 @@ public final class RepositoryBytecodeGenerator {
      */
     private boolean hasMethod(Set<String> methods, String name, Class<?>... paramTypes) {
         return methods.contains(name);
+    }
+
+    /**
+     * Check if a method name is a standard CRUD method that should not be treated as a query method.
+     */
+    private boolean isStandardCrudMethod(String methodName) {
+        return methodName.equals("findById") ||
+               methodName.equals("findAll") ||
+               methodName.equals("existsById") ||
+               methodName.equals("deleteById") ||
+               methodName.equals("deleteAll") ||
+               methodName.equals("count") ||
+               methodName.equals("save") ||
+               methodName.equals("update") ||
+               methodName.equals("saveAll") ||
+               methodName.equals("deleteAllById") ||
+               methodName.equals("findAllById");
     }
 
     // ========================================================================
@@ -644,16 +669,21 @@ public final class RepositoryBytecodeGenerator {
 
     /**
      * Query method interceptor using MethodDelegation.
-     * Unlike Advice, MethodDelegation doesn't try to call super() for non-existent methods.
+     * Each query method gets its own interceptor instance with the method name embedded.
      */
     public static class QueryMethodInterceptor {
+        private final String methodName;
+
+        public QueryMethodInterceptor(String methodName) {
+            this.methodName = methodName;
+        }
+
         @SuppressWarnings("unchecked")
         public Object execute(
                 @This Object thiz,
                 @AllArguments Object[] args,
                 @Origin java.lang.reflect.Method method) throws Throwable {
 
-            String actualMethodName = method.getName();
             Class<?> returnType = method.getReturnType();
 
             FfmTable table = (FfmTable) getFieldValue(thiz, "table");
@@ -665,7 +695,7 @@ public final class RepositoryBytecodeGenerator {
             Map<String, MethodHandle> fieldSetters = (Map<String, MethodHandle>) getFieldValue(thiz, "fieldSetters");
 
             // Parse query method name: findByAgeIn, findByAgeBetween, findByAge, countByAge, etc.
-            ParsedQuery parsed = parseQueryMethodName(actualMethodName);
+            ParsedQuery parsed = parseQueryMethodName(methodName);
 
             if (parsed == null) {
                 return returnType == long.class ? 0L : List.of();
