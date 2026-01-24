@@ -21,8 +21,8 @@ class MemrisRepositoryIntegrationTest {
         void save(Order entity);
         long count();
         List<Order> findByStatus(String status);
-        List<Order> findByBetween(String property, Object min, Object max);
-        List<Order> findByIn(String property, List<?> values);
+        List<Order> findByAmountBetween(long min, long max);
+        List<Order> findByCustomerIdIn(List<Integer> values);
         List<Order> findAll();
     }
 
@@ -33,7 +33,7 @@ class MemrisRepositoryIntegrationTest {
 
     interface ProductRepository extends MemrisRepository<Product> {
         void save(Product entity);
-        List<Product> findByIn(String property, List<?> values);
+        List<Product> findByPriceIn(List<Long> values);
     }
 
     interface CustomerRepository extends MemrisRepository<Customer> {
@@ -87,13 +87,13 @@ class MemrisRepositoryIntegrationTest {
             List<Order> pendingOrders = repo.findByStatus("pending");
             assertThat(pendingOrders).hasSize(3);
             assertThat(pendingOrders).allMatch(o -> "pending".equals(o.status));
-            
-            // Read by ID range
-            List<Order> highValue = repo.findByBetween("amount", 5000L, 10000L);
+
+            // Read by amount range
+            List<Order> highValue = repo.findByAmountBetween(5000L, 10000L);
             assertThat(highValue).hasSize(3);
-            
-            // Read by customer
-            List<Order> customer100 = repo.findByIn("customer_id", List.of(100, 101));
+
+            // Read by customer IDs
+            List<Order> customer100 = repo.findByCustomerIdIn(List.of(100, 101));
             assertThat(customer100).hasSize(4);
             
             // Read all
@@ -140,7 +140,7 @@ class MemrisRepositoryIntegrationTest {
                 repo.save(new Product(i, (i % 10) * 100L));
             }
 
-            List<Product> result = repo.findByIn("price", List.of(500L));
+            List<Product> result = repo.findByPriceIn(List.of(500L));
             assertThat(result).hasSize(10);
 
             factory.close();

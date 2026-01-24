@@ -18,6 +18,7 @@ import org.openjdk.jmh.annotations.Param;
 import org.openjdk.jmh.annotations.Setup;
 import org.openjdk.jmh.annotations.State;
 import org.openjdk.jmh.annotations.Warmup;
+import org.openjdk.jmh.infra.Blackhole;
 
 @State(Scope.Thread)
 @Fork(1)
@@ -48,14 +49,16 @@ public class FfmScanBenchmark {
     }
 
     @Benchmark
-    public SelectionVector scanAll() {
-        return table.scanAll(factory);
+    public void scanAll(Blackhole blackhole) {
+        SelectionVector result = table.scanAll(factory);
+        blackhole.consume(result);
     }
 
     @Benchmark
-    public SelectionVector scanValue42() {
-        return table.scanComparison(
+    public void scanValue42(Blackhole blackhole) {
+        SelectionVector result = table.scanComparison(
                 new io.memris.kernel.Predicate.Comparison("value", io.memris.kernel.Predicate.Operator.EQ, 42),
                 factory);
+        blackhole.consume(result);
     }
 }

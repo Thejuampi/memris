@@ -33,7 +33,7 @@ class MemrisRepositoryFactoryTest {
     }
 
     @Test
-    void findByIn_should_return_matching_rows() {
+    void findByAgeIn_should_return_matching_rows() {
         try (var factory = new MemrisRepositoryFactory()) {
             UserRepository repo = factory.createJPARepository(UserRepository.class);
 
@@ -41,13 +41,13 @@ class MemrisRepositoryFactoryTest {
                 repo.save(new User(i, "User" + i, i % 3));
             }
 
-            List<User> result = repo.findByIn("age", List.of(0, 2));
+            List<User> result = repo.findByAgeIn(List.of(0, 2));
             assertThat(result).hasSize(7);
         }
     }
 
     @Test
-    void findByBetween_should_return_rows_in_range() {
+    void findByAgeBetween_should_return_rows_in_range() {
         try (var factory = new MemrisRepositoryFactory()) {
             UserRepository repo = factory.createJPARepository(UserRepository.class);
 
@@ -55,7 +55,7 @@ class MemrisRepositoryFactoryTest {
                 repo.save(new User(i, "User" + i, i));
             }
 
-            List<User> result = repo.findByBetween("age", 20, 30);
+            List<User> result = repo.findByAgeBetween(20, 30);
             assertThat(result).hasSize(11);
         }
     }
@@ -76,10 +76,10 @@ class MemrisRepositoryFactoryTest {
 
     interface UserRepository extends MemrisRepository<User> {
         void save(User u);
-        List<User> findByAge(int age);
         List<User> findAll();
         long count();
-        List<User> findByIn(String property, List<Integer> values);
-        List<User> findByBetween(String property, int from, int to);
+        List<User> findByAge(int age);
+        List<User> findByAgeIn(List<Integer> values);
+        List<User> findByAgeBetween(int from, int to);
     }
 }

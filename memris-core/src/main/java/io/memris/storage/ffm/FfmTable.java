@@ -17,6 +17,15 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * FFM MemorySegment-backed table with type-specific columns.
+ * <p>
+ * <b>Type Compatibility Note:</b> This class checks both primitive types (int.class) and
+ * wrapper types (Integer.class) for API compatibility. Entity definitions may use either,
+ * but <b>primitive types are strongly recommended for optimal performance</b> as they avoid
+ * boxing/unboxing overhead in hot paths.
+ * </p>
+ */
 public final class FfmTable implements Table {
     private static final int OFFSET_BITS = 16;
     private static final int DEFAULT_CAPACITY = 1024;
@@ -52,17 +61,16 @@ public final class FfmTable implements Table {
         this.columnsByName = new HashMap<>(specs.size());
         for (ColumnSpec spec : specs) {
             Class<?> type = spec.type();
-            // Note: switch on type.getName() - pattern matching on Class doesn't work well with generic capture
-            FfmColumn<?> column = switch (type.getName()) {
-                case "int", "java.lang.Integer" -> new FfmIntColumn(spec.name(), arena, capacity);
-                case "long", "java.lang.Long" -> new FfmLongColumn(spec.name(), arena, capacity);
-                case "boolean", "java.lang.Boolean" -> new FfmBooleanColumn(spec.name(), arena, capacity);
-                case "byte", "java.lang.Byte" -> new FfmByteColumn(spec.name(), arena, capacity);
-                case "short", "java.lang.Short" -> new FfmShortColumn(spec.name(), arena, capacity);
-                case "float", "java.lang.Float" -> new FfmFloatColumn(spec.name(), arena, capacity);
-                case "double", "java.lang.Double" -> new FfmDoubleColumn(spec.name(), arena, capacity);
-                case "char", "java.lang.Character" -> new FfmCharColumn(spec.name(), arena, capacity);
-                case "java.lang.String" -> new FfmStringColumnImpl(spec.name(), arena, capacity);
+            FfmColumn<?> column = switch (type) {
+                case int.class, Integer.class -> new FfmIntColumn(spec.name(), arena, capacity);
+                case long.class, Long.class -> new FfmLongColumn(spec.name(), arena, capacity);
+                case boolean.class, Boolean.class -> new FfmBooleanColumn(spec.name(), arena, capacity);
+                case byte.class, Byte.class -> new FfmByteColumn(spec.name(), arena, capacity);
+                case short.class, Short.class -> new FfmShortColumn(spec.name(), arena, capacity);
+                case float.class, Float.class -> new FfmFloatColumn(spec.name(), arena, capacity);
+                case double.class, Double.class -> new FfmDoubleColumn(spec.name(), arena, capacity);
+                case char.class, Character.class -> new FfmCharColumn(spec.name(), arena, capacity);
+                case String.class -> new FfmStringColumnImpl(spec.name(), arena, capacity);
                 default -> throw new IllegalArgumentException("Unsupported column type: " + type);
             };
             columns.add(column);

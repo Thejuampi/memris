@@ -36,6 +36,8 @@ public final class IntSelection implements MutableSelectionVector {
 
     @Override
     public boolean contains(int rowIndex) {
+        // NOTE: O(n) linear search - acceptable for sparse selections
+        // For O(1) contains(), system auto-upgrades to BitsetSelection
         if (rowIndex < 0) {
             return false;
         }
@@ -74,19 +76,10 @@ public final class IntSelection implements MutableSelectionVector {
 
     @Override
     public SelectionVector filter(io.memris.kernel.Predicate predicate, SelectionVectorFactory factory) {
-        MutableSelectionVector result = factory.create(size);
-        IntEnumerator e = enumerator();
-        while (e.hasNext()) {
-            int idx = e.nextInt();
-            if (matches(idx, predicate)) {
-                result.add(idx);
-            }
-        }
-        return result;
-    }
-
-    private boolean matches(int rowIndex, io.memris.kernel.Predicate predicate) {
-        return true;
+        throw new UnsupportedOperationException(
+            "SelectionVector.filter() is not supported. " +
+            "Filtering requires table data access - use Table.scan(Predicate) instead. " +
+            "SelectionVector only stores row indices and cannot evaluate predicates without column data.");
     }
 
     private void ensureCapacity(int desired) {

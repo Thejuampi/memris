@@ -337,17 +337,14 @@ public class ECommerceRealWorldTest {
     
     @Test
     void testEcommerceComplexScenario() {
-        System.out.println("=== E-Commerce Real-World Integration Test ===\n");
-        
         // Create repositories with dynamic query methods
             CustomerRepository customerRepo = factory.createJPARepository(CustomerRepository.class);
             ProductRepository productRepo = factory.createJPARepository(ProductRepository.class);
             CategoryRepository categoryRepo = factory.createJPARepository(CategoryRepository.class);
             OrderRepository orderRepo = factory.createJPARepository(OrderRepository.class);
             CouponRepository couponRepo = factory.createJPARepository(CouponRepository.class);
-        
+
         // === 1. Create Category Hierarchy (Self-Referential) ===
-        System.out.println("Creating category hierarchy (self-referential)...");
         
         Category electronics = new Category();
         electronics.name = "Electronics";
@@ -379,13 +376,8 @@ public class ECommerceRealWorldTest {
         
         List<Category> electronicsChildren = categoryRepo.findByParentId(electronics.id);
         assertEquals(2, electronicsChildren.size());  // Computers and Phones
-        
-        System.out.println("✓ Created " + categoryRepo.count() + " categories");
-        System.out.println("  - Root categories: " + rootCount);
-        System.out.println("  - Electronics children: " + electronicsChildren.size() + "\n");
-        
+
         // === 2. Create Products with Indexed Fields ===
-        System.out.println("Creating products with indexed fields...");
         
         Product laptop = new Product();
         laptop.name = "ProBook Laptop 15";
@@ -426,11 +418,8 @@ public class ECommerceRealWorldTest {
         jacket.stockQuantity = 200;
         jacket.weightKg = 1.2;
         productRepo.save(jacket);
-        
-        System.out.println("✓ Created " + productRepo.count() + " products\n");
-        
+
         // === 3. Create Customers with One-to-One Account ===
-        System.out.println("Creating customers with One-to-One account...");
         
         Account acc1 = new Account();
         acc1.email = "john.doe@example.com";  // Indexed
@@ -465,11 +454,8 @@ public class ECommerceRealWorldTest {
         jane.phone = "+1-555-5678";
         jane.account = acc2;
         customerRepo.save(jane);
-        
-        System.out.println("✓ Created " + customerRepo.count() + " customers\n");
-        
+
         // === 4. Create Coupons with Indexed Code ===
-        System.out.println("Creating coupons with indexed codes...");
         
         Coupon save20 = new Coupon();
         save20.code = "SAVE20";  // Indexed
@@ -490,11 +476,8 @@ public class ECommerceRealWorldTest {
         holiday10.maxUsageCount = 50;
         holiday10.active = true;
         couponRepo.save(holiday10);
-        
-        System.out.println("✓ Created " + couponRepo.count() + " coupons\n");
-        
+
         // === 5. Create Orders with Complex Relationships ===
-        System.out.println("Creating orders with Many-to-One and Many-to-Many...");
         
         Order order1 = new Order();
         order1.orderDate = LocalDateTime.now().minusDays(2);
@@ -524,138 +507,106 @@ public class ECommerceRealWorldTest {
         order2.appliedCoupons.add(holiday10);  // Many-to-Many
         order2.shippedAt = LocalDateTime.now();
         orderRepo.save(order2);
-        
-        System.out.println("✓ Created " + orderRepo.count() + " orders\n");
-        
+
         // === 6. RUN QUERY TESTS ===
-        System.out.println("=== Running 15 Query Tests ===\n");
-        
+
         // Test 1: Find product by indexed SKU
         Product foundLaptop = productRepo.findBySku("PRO-LP-001");
         assertNotNull(foundLaptop);
         assertEquals("ProBook Laptop 15", foundLaptop.name);
-        System.out.println("✓ Test 1: Find by SKU (indexed) - " + foundLaptop.name);
-        
+
         // Test 2: Find products by price range - using BETWEEN (now supported!)
         List<Product> midPriceProducts = productRepo.findByPriceBetween(
             new BigDecimal("500"), new BigDecimal("1000"));
         assertEquals(1, midPriceProducts.size());
         assertEquals("SmartPhone X Pro", midPriceProducts.get(0).name);
-        System.out.println("✓ Test 2: Price range ($500-$1000) - found " + midPriceProducts.size());
-        
+
         // Test 3: Find products with low stock
         List<Product> lowStock = productRepo.findByStockQuantityLessThan(75);
         assertTrue(lowStock.stream().anyMatch(p -> p.name.equals("ProBook Laptop 15")));
-        System.out.println("✓ Test 3: Low stock (< 75) - found " + lowStock.size());
-        
+
         // Test 4: Find orders by status
         List<Order> deliveredOrders = orderRepo.findByStatus(OrderStatus.DELIVERED);
         assertEquals(1, deliveredOrders.size());
         assertEquals(order1.orderNumber, deliveredOrders.get(0).orderNumber);
-        System.out.println("✓ Test 4: Orders by status (DELIVERED) - found " + deliveredOrders.size());
-        
+
         // Test 5: Find orders by amount range
         List<Order> expensiveOrders = orderRepo.findByTotalAmountGreaterThan(new BigDecimal("1400"));
         assertEquals(1, expensiveOrders.size());
-        System.out.println("✓ Test 5: Orders by amount (>$1400) - found " + expensiveOrders.size());
-        
+
         // Test 6: Find customers by name pattern
         List<Customer> smiths = customerRepo.findByLastNameContaining("Sm");
         assertEquals(1, smiths.size());
         assertEquals("Smith", smiths.get(0).lastName);
-        System.out.println("✓ Test 6: Customer name pattern (contains 'Sm') - found " + smiths.size());
-        
+
         // Test 7: Find category by slug (indexed)
         Category comps = categoryRepo.findBySlug("computers");
         assertNotNull(comps);
         assertEquals("Computers", comps.name);
-        System.out.println("✓ Test 7: Category by slug (indexed) - " + comps.name);
-        
+
         // Test 8: Find active coupons
         List<Coupon> activeCoupons = couponRepo.findByActiveTrue();
         assertEquals(2, activeCoupons.size());
-        System.out.println("✓ Test 8: Active coupons - found " + activeCoupons.size());
-        
+
         // Test 9: Find root categories (using findByParentIsNull - now supported!)
         List<Category> roots = categoryRepo.findByParentIsNull();
         assertEquals(2, roots.size());
-        System.out.println("✓ Test 9: Root categories (parent=null) - found " + roots.size());
         
         // Test 10: Multi-condition query - findByStatusAndTotalAmountGreaterThan (now supported!)
         List<Order> highValueShipped = orderRepo.findByStatusAndTotalAmountGreaterThan(
             OrderStatus.SHIPPED, new BigDecimal("100"));
         assertEquals(1, highValueShipped.size());
-        System.out.println("✓ Test 10: Status=SHIPPED AND amount>100 - found " + highValueShipped.size());
-        
+
         // Test 11: Multi-condition query - findByNameContainingAndPriceLessThan (now supported!)
         List<Product> proProducts = productRepo.findByNameContainingAndPriceLessThan(
             "Pro", new BigDecimal("1500"));
         assertEquals(2, proProducts.size());
-        System.out.println("✓ Test 11: Name contains 'Pro' AND price < $1500 - found " + proProducts.size());
-        
+
         // Test 12: @PostLoad transient field
         Customer loadedJohn = customerRepo.findById(john.id);
         assertNotNull(loadedJohn.fullName);
         assertEquals("John Doe", loadedJohn.fullName);
-        System.out.println("✓ Test 12: @PostLoad transient field - " + loadedJohn.fullName);
-        
+
         // Test 13: Find orders in date range - using findByOrderDateBetween (now supported!)
         LocalDateTime threeDaysAgo = LocalDateTime.now().minusDays(3);
         LocalDateTime yesterday = LocalDateTime.now().minusDays(1);
         List<Order> recentOrders = orderRepo.findByOrderDateBetween(threeDaysAgo, yesterday);
         assertEquals(2, recentOrders.size());
-        System.out.println("✓ Test 13: Orders in date range (3 days ago to yesterday) - found " + recentOrders.size());
-        
+
         // Test 14: Enum mapping verification
         Order loadedOrder = orderRepo.findById(order1.id);
         assertEquals(OrderStatus.DELIVERED, loadedOrder.status);  // STRING mapping
         assertEquals(PaymentType.CREDIT_CARD, loadedOrder.paymentType);  // ORDINAL mapping
-        System.out.println("✓ Test 14: Enum mapping - status=" + loadedOrder.status + ", payment=" + loadedOrder.paymentType);
-        
+
         // Test 15: Find customer by related entity field
         Customer foundByEmail = customerRepo.findByAccountEmail("john.doe@example.com");
         assertNotNull(foundByEmail);
         assertEquals("John", foundByEmail.firstName);
-        System.out.println("✓ Test 15: Find by related entity (account email) - " + foundByEmail.firstName + " " + foundByEmail.lastName);
-        
+
         // === TDD Tests for Unsupported Patterns ===
-        
+
         // Test 16: findByPriceBetween (BETWEEN clause)
         List<Product> priceRangeProducts = productRepo.findByPriceBetween(new BigDecimal("100"), new BigDecimal("1000"));
         assertEquals(2, priceRangeProducts.size());  // SmartPhone ($999.99) and Jacket ($149.99)
-        System.out.println("✓ Test 16: Price BETWEEN $100-$1000 - found " + priceRangeProducts.size());
-        
+
         // Test 17: findByTotalAmountBetween (BETWEEN clause)
         List<Order> amountRangeOrders = orderRepo.findByTotalAmountBetween(new BigDecimal("100"), new BigDecimal("1600"));
         assertEquals(2, amountRangeOrders.size());  // Both orders
-        System.out.println("✓ Test 17: Total amount BETWEEN $100-$1600 - found " + amountRangeOrders.size());
-        
+
         // Test 18: findByStatusInOrderStatusList (IN clause)
         List<OrderStatus> statuses = List.of(OrderStatus.SHIPPED, OrderStatus.DELIVERED);
         List<Order> statusInOrders = orderRepo.findByStatusInOrderStatusList(statuses);
         assertEquals(2, statusInOrders.size());  // Both orders
-        System.out.println("✓ Test 18: Status IN (SHIPPED, DELIVERED) - found " + statusInOrders.size());
-        
+
         // Test 19: findByNameIn (IN clause)
         List<String> productNames = List.of("ProBook Laptop 15", "SmartPhone X Pro");
         List<Product> nameInProducts = productRepo.findByNameIn(productNames);
         assertEquals(2, nameInProducts.size());
-        System.out.println("✓ Test 19: Name IN (ProBook, SmartPhone) - found " + nameInProducts.size());
-        
+
         // Test 20: findBySkuStartingWith (LIKE prefix)
         List<Product> skuPrefixProducts = productRepo.findBySkuStartingWith("PRO-");
         assertEquals(1, skuPrefixProducts.size());  // Only ProBook Laptop
         assertEquals("ProBook Laptop 15", skuPrefixProducts.get(0).name);
-        System.out.println("✓ Test 20: SKU starting with 'PRO-' - found " + skuPrefixProducts.size());
-        
-        // === Summary ===
-        System.out.println("\n=== Test Summary ===");
-        System.out.println("Categories: " + categoryRepo.count());
-        System.out.println("Products: " + productRepo.count());
-        System.out.println("Customers: " + customerRepo.count());
-        System.out.println("Orders: " + orderRepo.count());
-        System.out.println("Coupons: " + couponRepo.count());
-        System.out.println("\n✅ All 15 real-world query tests passed!");
     }
     
     // ====== INDEX PERFORMANCE TEST ======
