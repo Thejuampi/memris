@@ -22,36 +22,43 @@
 
 ## Architecture
 
-### Core Components
+### Architecture
+
+For detailed architecture information, see [CLAUDE.md](CLAUDE.md). Here's a high-level overview:
 
 **Storage Layer:**
 - `FfmTable` - FFM MemorySegment-backed table with type-specific columns
-- `FfmIntColumn`, `FfmLongColumn`, `FfmBooleanColumn`, `FfmByteColumn`, `FfmShortColumn`, `FfmFloatColumn`, `FfmDoubleColumn`, `FfmCharColumn` - SIMD vectorized primitive column storage
+- SIMD vectorized column storage for primitive types
 - `FfmStringColumn` - Variable-length string storage
-- SIMD scan using `jdk.incubator.vector` Vector API
 
-**Type System:**
-- `TypeConverter` interface for Java↔Storage type conversion
-- `TypeConverterRegistry` singleton with built-in converters for all JDK primitives + common types
-- Extensible - clients can register custom TypeConverters
-- Supports: `int`, `long`, `boolean`, `byte`, `short`, `float`, `double`, `char`, `String`
-- Supports: `BigDecimal`, `BigInteger`, `LocalDate`, `LocalDateTime`, `LocalTime`, `Instant`, `java.sql.Date`, `java.sql.Timestamp`
+**Spring Data Integration:**
+- `MemrisRepositoryFactory` - Creates repositories via ByteBuddy bytecode generation
+- Dynamic repository implementation with type-safe query methods
+- `QueryMethodParser` - Parses JPA-style query method names
 
 **Selection Pipeline:**
 - `SelectionVector` - Row selection result (sparse or dense)
-- `IntSelection` - Sparse (<4K rows) with O(1) add
-- `BitsetSelection` - Dense (>=4K rows) with O(1) contains
-- `SelectionVectorFactory` - Auto-upgrade logic
+- Optimized for O(1) operations with automatic upgrade logic
 
-**Query Engine:**
-- `PlanNode` - Scan/Filter/Join/Sort/Limit
-- `SimpleExecutor` - Basic plan execution
-- `HashJoin` - Build/probe hash join algorithm
+**Query Execution:**
+- `PlanNode` - Scan/Filter/Join/Sort/Limit operators
+- SIMD-accelerated predicate evaluation
+
+For detailed component descriptions, design principles, and development guidelines, see:
+- [CLAUDE.md](CLAUDE.md) - Comprehensive architecture and design
+- [AGENTS.md](AGENTS.md) - Development guidelines and best practices
 
 ### Primitive-Only Design (JVM Optimized)
 - `IntEnumerator` / `LongEnumerator` - No boxing
 - All classes `final` for inlining
 - O(1) operations preferred, O(log n) second, O(n) forbidden
+
+## Java Runtime Requirements
+
+- **Java Version**: 21 (required)
+- **Preview Features**: `--enable-preview`
+- **Modules**: `jdk.incubator.vector` (for SIMD), `java.base` (FFM)
+- **Native Access**: `--enable-native-access=ALL-UNNAMED`
 
 ## Quick Start
 
@@ -97,13 +104,17 @@ final class User {
 
 ## Design Principles
 
-1. **O(1) first, O(log n) second, O(n) forbidden**
-2. **Primitive-only APIs** - No boxing, no Iterator, no Iterable
-3. **SIMD vectorization** - Panama Vector API for batch processing
-4. **FFM MemorySegment** - Off-heap storage with explicit alignment
-5. **All classes `final`** - Enables JVM inlining and optimization
-6. **Java 21 type switches** - Use pattern matching switch expressions with class literals for type dispatch (faster than if-else chains or string switches)
-7. **Type conversion extensibility** - Clients can register custom TypeConverters for unsupported types
+Memris is built on these core design principles for maximum performance:
+
+1. **O(1) First** - All hot path operations must be constant time
+2. **Primitive-Only APIs** - No boxing, no Iterator, no Iterable in hot paths
+3. **SIMD Vectorization** - Panama Vector API for batch processing
+4. **Memory Efficiency** - FFM MemorySegment for off-heap storage
+5. **JVM Optimization** - Final classes for inlining, type switches for dispatch
+6. **Type Safety** - Compile-time type-safe queries with no string-based operations
+7. **Extensible** - Custom type converters for unsupported types
+
+For detailed implementation guidelines, see [AGENTS.md](AGENTS.md) and [CLAUDE.md](CLAUDE.md).
 
 ## Current Limitations
 
@@ -306,9 +317,20 @@ try (MemrisRepositoryFactory factory = new MemrisRepositoryFactory()) {
 
 ## Running Benchmarks
 
+Memris provides two types of benchmarks:
+
+### Throughput Benchmark
+Measures maximum throughput operations:
 ```bash
 mvn compile
 java --enable-preview --add-modules jdk.incubator.vector -cp memris-core/target/classes io.memris.benchmarks.ThroughputBenchmark
+```
+
+### Latency Benchmark (JMH)
+Microbenchmark suite for detailed latency analysis:
+```bash
+mvn clean compile
+java --enable-preview --add-modules jdk.incubator.vector -cp memris-core/target/classes:jmh-benchmarks.jar io.memris.benchmarks.MemrisBenchmarks
 ```
 
 ## Running Tests
@@ -318,6 +340,8 @@ mvn test                    # All tests
 mvn test -Dtest=ClassName   # Single test class
 mvn test -Dtest=ClassName#methodName  # Single test
 ```
+
+For testing guidelines and best practices, see [AGENTS.md](AGENTS.md).
 
 ## License
 

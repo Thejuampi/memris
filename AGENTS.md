@@ -21,11 +21,15 @@ mvn -q -pl memris-core test -Dtest=ClassName
 # Run single test method
 mvn -q -pl memris-core test -Dtest=ClassName#methodName
 
-# Run benchmark
+# Run throughput benchmark
 java --enable-preview --add-modules jdk.incubator.vector -cp memris-core/target/classes io.memris.benchmarks.BenchmarkRunner
 
 # Run with Maven exec plugin
 mvn -q -pl memris-core exec:java -Dexec.mainClass=io.memris.benchmarks.BenchmarkRunner
+
+# Run JMH microbenchmarks (latency-focused)
+mvn clean compile
+java --enable-preview --add-modules jdk.incubator.vector -cp memris-core/target/classes:jmh-benchmarks.jar io.memris.benchmarks.MemrisBenchmarks
 ```
 
 ### Java Configuration
@@ -250,6 +254,7 @@ System.out.println("Found " + results.size() + " products");  // ❌ NOT A TEST!
 - ❌ O(n) operations without justification
 - ❌ Throwing generic `Exception`
 - ❌ Mutable collections in public APIs
+- ❌ Generic query methods (`findBy(String field, Object value)`) - Use type-safe derived query methods instead
 
 ### Git Commit Requirements (CRITICAL)
 **NEVER include information about AI assistants in commit messages.**

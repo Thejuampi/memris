@@ -50,3 +50,9 @@
 - O(1) contains() via BitSet for dense sets
 - O(1) add() amortized for IntSelection
 - SIMD vectorization for int/long columns
+
+## 2026-01-24
+- Query methods MUST be type-safe derived methods (e.g., `findByProcessor(String name)`)
+- Generic string-based queries (`findBy(String field, Object value)`) are explicitly FORBIDDEN
+- Removed obsolete `MemrisTemplate.findBy(String, Object)` stub method
+- All queries use QueryMethodParser for compile-time type safety
