@@ -211,10 +211,9 @@ public final class RepositoryBytecodeGenerator {
             paramBuilder = paramBuilder.withParameter(paramTypes[i], "arg" + i);
         }
 
-        // Use MethodDelegation with explicit method filtering to bind to execute()
+        // Use MethodDelegation to bind to execute()
         return paramBuilder.intercept(
-                MethodDelegation.to(new QueryMethodInterceptor(methodName))
-                        .filter(ElementMatchers.named("execute")));
+                MethodDelegation.to(new QueryMethodInterceptor(methodName)));
     }
 
     // ========================================================================
