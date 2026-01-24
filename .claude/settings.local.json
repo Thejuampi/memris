@@ -25,7 +25,12 @@
       "Bash(env BASH_ENV=/bin/bash bash -c \"cd /g/dev/repos/memris && pwd && mvn test -Dtest=QueryMethodCompilationTest:*)",
       "Bash(echo:*)",
       "Bash(Select-String:*)",
-      "Bash(/opt/maven39/bin/mvn:*)"
+      "Bash(/opt/maven39/bin/mvn:*)",
+      "Bash(git rev-list:*)",
+      "Bash(git reflog:*)",
+      "Bash(git gc:*)",
+      "Bash(git checkout:*)",
+      "Bash(git branch:*)"
     ]
   }
 }
