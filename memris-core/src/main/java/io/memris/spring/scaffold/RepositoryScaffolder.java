@@ -66,6 +66,8 @@ public final class RepositoryScaffolder<T, R> {
         QueryCompiler compiler = new QueryCompiler(metadata);
 
         for (Method method : queryMethods) {
+            // TODO: Future iteration - pass pre-processed record containing entity structure
+            // instead of accessing entityClass directly via reflection
             LogicalQuery logical = QueryPlanner.parse(method, entityClass, metadata.idColumnName());
             CompiledQuery compiled = compiler.compile(logical);
 
