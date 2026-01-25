@@ -7,28 +7,28 @@ This file provides guidelines for AI agents operating in the Memris repository.
 ### Core Commands
 ```bash
 # Full build
-mvn clean compile
+mvn.cmd clean compile
 
 # Compile with preview features (required)
-mvn -q -e compile
+mvn.cmd -q -e compile
 
 # Run tests
-mvn -q -e -pl memris-core test
+mvn.cmd -q -e -pl memris-core test
 
 # Run single test class
-mvn -q -e -pl memris-core test -Dtest=ClassName
+mvn.cmd -q -e -pl memris-core test -Dtest=ClassName
 
 # Run single test method
-mvn -q -e -pl memris-core test -Dtest=ClassName#methodName
+mvn.cmd -q -e -pl memris-core test -Dtest=ClassName#methodName
 
 # Run throughput benchmark
 java --enable-preview --add-modules jdk.incubator.vector -cp memris-core/target/classes io.memris.benchmarks.BenchmarkRunner
 
 # Run with Maven exec plugin
-mvn -q -e -pl memris-core exec:java -Dexec.mainClass=io.memris.benchmarks.BenchmarkRunner
+mvn.cmd -q -e -pl memris-core exec:java -Dexec.mainClass=io.memris.benchmarks.BenchmarkRunner
 
 # Run JMH microbenchmarks (latency-focused)
-mvn clean compile
+mvn.cmd clean compile
 java --enable-preview --add-modules jdk.incubator.vector -cp memris-core/target/classes:jmh-benchmarks.jar io.memris.benchmarks.MemrisBenchmarks
 ```
 
@@ -237,8 +237,9 @@ System.out.println("Found " + results.size() + " products");  // ❌ NOT A TEST!
 ### Documentation
 - Public APIs must have Javadoc
 - Include complexity guarantees in Javadoc
-- Update `docs/decisions.md` for architectural choices
-- Update `docs/design/*.md` for component design
+- Update `docs/queries-spec.md` for query specification changes
+- Update `docs/troubleshooting.md` for known issues and workarounds
+- Historical design documents are in `docs/archive/`
 
 ### Performance Validation
 - Run benchmarks after performance-sensitive changes

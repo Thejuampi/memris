@@ -22,31 +22,62 @@
 
 ## Architecture
 
-### Architecture
+```mermaid
+graph TB
+    subgraph "Spring Data Integration"
+        Factory[MemrisRepositoryFactory]
+        Generator[RepositoryBytecodeGenerator]
+        Factory --> Generator
+    end
 
-For detailed architecture information, see [CLAUDE.md](CLAUDE.md). Here's a high-level overview:
+    subgraph "Storage Layer"
+        Table[FfmTable<br/>Columnar Storage]
+        IntCol[FfmIntColumn]
+        LongCol[FfmLongColumn]
+        StrCol[FfmStringColumn]
+        Table --> IntCol
+        Table --> LongCol
+        Table --> StrCol
+    end
 
-**Storage Layer:**
-- `FfmTable` - FFM MemorySegment-backed table with type-specific columns
-- SIMD vectorized column storage for primitive types
-- `FfmStringColumn` - Variable-length string storage
+    subgraph "Query Execution"
+        Plan[PlanNode<br/>Query Operators]
+        Pred[Predicate<br/>Filter Conditions]
+        Plan --> Pred
+    end
 
-**Spring Data Integration:**
-- `MemrisRepositoryFactory` - Creates repositories via ByteBuddy bytecode generation
-- Dynamic repository implementation with type-safe query methods
-- `QueryMethodParser` - Parses JPA-style query method names
+    subgraph "Selection Pipeline"
+        Sel[SelectionVector]
+        IntSel[IntSelection<br/>Sparse]
+        BitSel[BitsetSelection<br/>Dense]
+        Sel --> IntSel
+        Sel --> BitSel
+    end
 
-**Selection Pipeline:**
-- `SelectionVector` - Row selection result (sparse or dense)
-- Optimized for O(1) operations with automatic upgrade logic
+    Generator --> Table
+    Plan --> Table
+    Plan --> Sel
+```
 
-**Query Execution:**
-- `PlanNode` - Scan/Filter/Join/Sort/Limit operators
-- SIMD-accelerated predicate evaluation
+```mermaid
+sequenceDiagram
+    participant Client
+    participant Factory as MemrisRepositoryFactory
+    participant Table as FfmTable
+    participant Column as FfmColumn
+    participant Vector as IntVector
 
-For detailed component descriptions, design principles, and development guidelines, see:
-- [CLAUDE.md](CLAUDE.md) - Comprehensive architecture and design
-- [AGENTS.md](AGENTS.md) - Development guidelines and best practices
+    Client->>Factory: createJPARepository()
+    Factory->>Table: create table instance
+    Client->>Table: save(entity)
+    Table->>Column: write value
+    Client->>Table: findByXxx()
+    Table->>Column: scan(predicate)
+    Column->>Vector: SIMD compare
+    Vector-->>Column: mask (matching rows)
+    Column-->>Table: SelectionVector
+    Table-->>Client: results
+```
 
 ### Primitive-Only Design (JVM Optimized)
 - `IntEnumerator` / `LongEnumerator` - No boxing
@@ -116,37 +147,6 @@ Memris is built on these core design principles for maximum performance:
 
 For detailed implementation guidelines, see [AGENTS.md](AGENTS.md) and [CLAUDE.md](CLAUDE.md).
 
-## Current Limitations
-
-See [SPRING_DATA_ROADMAP.md](SPRING_DATA_ROADMAP.md) for detailed status and implementation plan.
-
-### Transaction Support
-**NOT SUPPORTED**: Memris uses **eventual consistency** instead of ACID transactions.
-- No `@Transactional` annotation
-- No rollback mechanisms
-- Changes are immediately visible to other threads
-- Use `@Version` (optimistic locking) for concurrency control
-
-### Join Tables with Non-Numeric IDs
-
-**CRITICAL**: Join tables (`@OneToMany`, `@ManyToMany`) currently only support numeric ID types (`int`, `long`, `Integer`, `Long`).
-
-Entities with UUID, String, or other non-numeric IDs **cannot use join table relationships**. This is a fundamental architectural limitation that will be fixed in a future release.
-
-**Why this limitation exists:**
-- Join tables are hardcoded with `int.class` columns for storing entity references
-- Converting UUID (128 bits) or String IDs to `int` loses data and is incorrect
-- The proper fix requires join tables to dynamically match the ID type of referenced entities
-
-**Workaround:**
-- Use numeric IDs (`int` or `long`) for entities that participate in `@OneToMany` or `@ManyToMany` relationships
-- For UUID/String ID entities, use manual relationship management or foreign key fields instead of join tables
-
-**Planned fix:**
-- Join table columns will match the ID type of the entities they reference
-- UUID IDs will be stored as two `long` columns (128 bits total) for performance
-- String IDs will be stored in `String` columns with proper indexing
-
 ## Type Conversion & Extensibility
 
 Memris supports all Java primitives and common types out-of-the-box:
@@ -196,74 +196,6 @@ class User {
 }
 ```
 
-## Project Structure
-
-```
-memris/
-├── README.md
-├── AGENTS.md
-├── pom.xml
-├── docs/
-│   ├── decisions.md
-│   └── design/
-│       ├── 001-core-architecture.md
-│       ├── 002-selection-pipeline.md
-│       └── 003-jpa-query-method-parser.md
-└── memris-core/
-    ├── pom.xml
-    └── src/
-        ├── main/java/io/memris/
-        │   ├── kernel/
-        │   │   ├── RowId.java
-        │   │   ├── Predicate.java
-        │   │   ├── PlanNode.java
-        │   │   ├── LongEnumerator.java
-        │   │   ├── IntEnumerator.java
-        │   │   └── selection/
-        │   │       ├── SelectionVector.java
-        │   │       ├── IntSelection.java
-        │   │       ├── BitsetSelection.java
-        │   │       └── SelectionVectorFactory.java
-        │   ├── storage/
-        │   │   ├── MemrisStore.java
-        │   │   └── ffm/
-        │   │       ├── FfmTable.java
-        │   │       ├── FfmIntColumn.java
-        │   │       ├── FfmLongColumn.java
-        │   │       ├── FfmBooleanColumn.java
-        │   │       ├── FfmByteColumn.java
-        │   │       ├── FfmShortColumn.java
-        │   │       ├── FfmFloatColumn.java
-        │   │       ├── FfmDoubleColumn.java
-        │   │       ├── FfmCharColumn.java
-        │   │       └── FfmStringColumn.java
-        │   ├── index/
-        │   │   ├── HashIndex.java
-        │   │   └── RangeIndex.java
-        │   ├── query/
-        │   │   └── SimpleExecutor.java
-        │   ├── spring/
-        │   │   ├── MemrisRepository.java
-        │   │   ├── MemrisRepositoryFactory.java
-        │   │   ├── QueryMethodParser.java
-        │   │   └── converter/
-        │   │       ├── TypeConverter.java
-        │   │       └── TypeConverterRegistry.java
-        │   └── benchmarks/
-        │       ├── BenchmarkRunner.java
-        │       ├── FullBenchmark.java
-        │       └── ThroughputBenchmark.java
-        └── test/java/io/memris/
-            ├── storage/ffm/
-            │   ├── FfmIntColumnScanBetweenTest.java
-            │   └── FfmTableScanInTest.java
-            └── spring/
-                ├── MemrisRepositoryFactoryTest.java
-                ├── MemrisRepositoryIntegrationTest.java
-                ├── QueryMethodParserTest.java
-                └── ECommerceRealWorldTest.java
-```
-
 ## Spring Data Integration
 
 `MemrisRepositoryFactory` creates Spring Data JPA-style repositories with dynamic query derivation:
@@ -271,14 +203,13 @@ memris/
 ```java
 // Define extended repository interface
 interface UserRepository extends MemrisRepository<User> {
-    List<User> findByLastname(String lastname);                    // EQ
-    List<User> findByAgeGreaterThan(int age);                      // GT
-    List<User> findByStatusIn(Collection<String> statuses);       // IN
-    List<User> findByNameContaining(String name);                  // CONTAINING
-    List<User> findByActiveTrue();                                 // IS_TRUE
-    List<User> findByLastnameNot(String lastname);                 // NEQ
-    List<User> findByAgeOrderByLastnameDesc(int age);              // with ordering
-    List<User> findFirst10ByActiveTrue();                          // with limit
+    List<User> findByLastname(String lastname);
+    List<User> findByAgeGreaterThan(int age);
+    List<User> findByStatusIn(Collection<String> statuses);
+    List<User> findByNameContaining(String name);
+    List<User> findByActiveTrue();
+    List<User> findByAgeOrderByLastnameDesc(int age);
+    List<User> findFirst10ByActiveTrue();
 }
 
 // Use with factory
@@ -288,32 +219,7 @@ try (MemrisRepositoryFactory factory = new MemrisRepositoryFactory()) {
 }
 ```
 
-#### Supported JPA Keywords
-
-| Keyword | Description | Example |
-|---------|-------------|---------|
-| `And`, `Or` | Logical operators | `findByLastnameAndFirstname` |
-| `Is`, `Equals` | Equality check | `findByEmail`, `findByEmailIs`, `findByEmailEquals` |
-| `Between` | Range query | `findByAgeBetween(18, 65)` |
-| `LessThan`, `LessThanEqual` | Comparison | `findByAgeLessThan(18)` |
-| `GreaterThan`, `GreaterThanEqual` | Comparison | `findByAgeGreaterThan(18)` |
-| `After`, `Before` | Date/Time | `findByCreatedAtAfter(date)` |
-| `IsNull`, `Null` | Null check | `findByEmailIsNull()`, `findByEmailNull()` |
-| `IsNotNull`, `NotNull` | Not-null check | `findByEmailIsNotNull()` |
-| `Like`, `NotLike` | Pattern match | `findByNameLike("%John%")` |
-| `StartingWith`, `StartsWith` | String prefix | `findByNameStartingWith("John")` |
-| `EndingWith`, `EndsWith` | String suffix | `findByNameEndingWith("son")` |
-| `Containing`, `Contains` | String contains | `findByNameContaining("ohn")` |
-| `In`, `NotIn` | Collection membership | `findByStatusIn(List.of("A", "B"))` |
-| `True`, `False` | Boolean check | `findByActiveTrue()` |
-| `Not`, `NotEqual` | Negation | `findByLastnameNot("Doe")` |
-| `IgnoreCase`, `AllIgnoreCase` | Case insensitive | `findByNameIgnoreCase("john")` |
-| `OrderBy{Prop}{Asc\|Desc}` | Sorting | `findByAgeOrderByLastnameDesc` |
-| `Distinct` | Deduplication | `findDistinctByLastname` |
-| `First{n}`, `Top{n}` | Limit results | `findFirst10ByActiveTrue` |
-| `Count` | Count query | `countByLastname` |
-| `Exists` | Exists query | `existsByEmail` |
-| `Delete`, `Remove` | Delete query | `deleteByLastname` |
+For detailed query syntax and supported operators, see [docs/queries.md](docs/queries.md).
 
 ## Running Benchmarks
 
@@ -322,23 +228,23 @@ Memris provides two types of benchmarks:
 ### Throughput Benchmark
 Measures maximum throughput operations:
 ```bash
-mvn compile
+mvn.cmd compile
 java --enable-preview --add-modules jdk.incubator.vector -cp memris-core/target/classes io.memris.benchmarks.ThroughputBenchmark
 ```
 
 ### Latency Benchmark (JMH)
 Microbenchmark suite for detailed latency analysis:
 ```bash
-mvn clean compile
+mvn.cmd clean compile
 java --enable-preview --add-modules jdk.incubator.vector -cp memris-core/target/classes:jmh-benchmarks.jar io.memris.benchmarks.MemrisBenchmarks
 ```
 
 ## Running Tests
 
 ```bash
-mvn test -X                 # All tests (show warnings only)
-mvn test -X -Dtest=ClassName   # Single test class (show warnings only)
-mvn test -X -Dtest=ClassName#methodName  # Single test (show warnings only)
+mvn.cmd test -X                 # All tests (show warnings only)
+mvn.cmd test -X -Dtest=ClassName   # Single test class (show warnings only)
+mvn.cmd test -X -Dtest=ClassName#methodName  # Single test (show warnings only)
 ```
 
 For testing guidelines and best practices, see [AGENTS.md](AGENTS.md).
