@@ -222,7 +222,7 @@ class ComplexNestingTest {
         var tokens = QueryMethodLexer.tokenize(entityClass, "countByName");
 
         assertThat(tokens).hasSize(2);
-        assertThat(tokens.get(0).type()).isEqualTo(QueryMethodTokenType.COUNT);
+        assertThat(tokens.get(0).type()).isEqualTo(QueryMethodTokenType.COUNT_BY);
         assertThat(tokens.get(1).type()).isEqualTo(QueryMethodTokenType.PROPERTY_PATH);
         assertThat(tokens.get(1).value()).isEqualTo("name");
     }

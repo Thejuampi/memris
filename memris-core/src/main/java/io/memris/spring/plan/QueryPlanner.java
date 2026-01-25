@@ -119,7 +119,7 @@ public final class QueryPlanner {
                 case DESC -> {
                     orderByDirection = false;
                 }
-                case FIND_BY, COUNT, EXISTS_BY, DELETE_BY, FIND_ALL -> {
+                case FIND_BY, COUNT_BY, COUNT_ALL, EXISTS_BY, DELETE_BY, DELETE, FIND_ALL, SAVE, SAVE_ALL, DELETE_ALL -> {
                     // Prefix tokens - skip
                 }
             }

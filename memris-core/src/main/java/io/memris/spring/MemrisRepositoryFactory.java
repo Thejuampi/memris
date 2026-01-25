@@ -84,6 +84,13 @@ public final class MemrisRepositoryFactory implements AutoCloseable {
     }
 
     /**
+     * Get the TableManager (for CrudOperationExecutor).
+     */
+    TableManager tableManager() {
+        return tableManager;
+    }
+
+    /**
      * Register custom ID generator for testability or custom ID strategies.
      * @param name Generator name (referenced by @GeneratedValue.generator)
      * @param generator IdGenerator instance

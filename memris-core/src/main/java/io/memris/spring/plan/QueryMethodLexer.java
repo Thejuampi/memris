@@ -129,19 +129,77 @@ public final class QueryMethodLexer {
 
         List<QueryMethodToken> tokens = new ArrayList<>();
 
-        // Prefix is case-insensitive but we preserve original substring for spans/value
+        // Extract prefix (case-insensitive)
         String prefix = extractPrefix(methodName);
         String remaining = methodName.substring(prefix.length());
-        int baseOffset = prefix.length(); // absolute offset in original methodName
 
-        // Only add prefix token if entity class is provided (context-aware mode)
-        // Legacy mode (entityClass == null) returns only predicate tokens for backward compatibility
+        // Generic operation classification based on prefix + remaining
         if (entityClass != null) {
-            QueryMethodTokenType prefixType = mapPrefixToType(prefix);
-            tokens.add(new QueryMethodToken(prefixType, prefix, 0, prefix.length(), false));
+            QueryMethodTokenType operationType = classifyOperation(prefix, remaining);
+            tokens.add(new QueryMethodToken(operationType, prefix, 0, prefix.length(), false));
         }
 
         if (remaining.isEmpty()) {
+            return tokens;
+        }
+
+        // Process the remaining part (predicates, "All", etc.)
+        return processRemaining(tokens, remaining, prefix.length(), entityClass);
+    }
+
+    /**
+     * Classify the operation type based on prefix and what follows.
+     * Generic logic that works for all method patterns.
+     */
+    private static QueryMethodTokenType classifyOperation(String prefix, String remaining) {
+        boolean hasBy = remaining.startsWith("By");
+        boolean isAll = "All".equals(remaining);
+        boolean isAllStarting = remaining.startsWith("All");
+
+        return switch (prefix.toLowerCase()) {
+            case "find", "read", "query", "get" -> {
+                if (isAll) yield QueryMethodTokenType.FIND_ALL;
+                if (hasBy) yield QueryMethodTokenType.FIND_BY;
+                // If remaining is empty or starts with "All", it's FIND_ALL
+                if (remaining.isEmpty() || isAllStarting) yield QueryMethodTokenType.FIND_ALL;
+                throw new IllegalArgumentException("Invalid find method: expected 'By' or 'All', got: " + remaining);
+            }
+            case "count" -> {
+                if (hasBy) yield QueryMethodTokenType.COUNT_BY;
+                // count() or countAll() -> COUNT_ALL
+                yield QueryMethodTokenType.COUNT_ALL;
+            }
+            case "exists" -> {
+                if (hasBy) yield QueryMethodTokenType.EXISTS_BY;
+                throw new IllegalArgumentException("Invalid exists method: expected 'By', got: " + remaining);
+            }
+            case "delete" -> {
+                if (hasBy) yield QueryMethodTokenType.DELETE_BY;
+                if (isAll) yield QueryMethodTokenType.DELETE_ALL;
+                // delete() or delete(T) -> DELETE
+                yield QueryMethodTokenType.DELETE;
+            }
+            case "save" -> {
+                if (isAll) yield QueryMethodTokenType.SAVE_ALL;
+                // save() or save(T) -> SAVE
+                yield QueryMethodTokenType.SAVE;
+            }
+            default -> throw new IllegalArgumentException("Unknown prefix: " + prefix);
+        };
+    }
+
+    /**
+     * Process the remaining part after the prefix.
+     */
+    private static List<QueryMethodToken> processRemaining(
+            List<QueryMethodToken> tokens,
+            String remaining,
+            int baseOffset,
+            Class<?> entityClass) {
+
+        // Check for "All" (special case)
+        if ("All".equals(remaining)) {
+            tokens.add(new QueryMethodToken(QueryMethodTokenType.FIND_ALL, "All", baseOffset, baseOffset + 3, false));
             return tokens;
         }
 
@@ -150,18 +208,9 @@ public final class QueryMethodLexer {
         boolean hasOrderBy = (orderBy != null);
         String predicatePart = removeOrderBy(remaining, orderBy);
 
-        if ("All".equals(predicatePart)) {
-            tokens.add(new QueryMethodToken(QueryMethodTokenType.FIND_ALL, "All", baseOffset, baseOffset + 3, false));
-            // OrderBy after All is unusual but allow it
-            if (hasOrderBy) {
-                addOrderByTokens(tokens, orderBy, entityClass != null ? extractEntityMetadata(entityClass) : null, baseOffset + predicatePart.length());
-            }
-            return tokens;
-        }
-
         EntityMetadata metadata = (entityClass != null) ? extractEntityMetadata(entityClass) : null;
 
-        // Parse "By..."
+        // Parse "By..." for query methods
         if (predicatePart.startsWith("By")) {
             int byOffset = baseOffset + 2;
             String input = predicatePart.substring(2);
@@ -520,11 +569,14 @@ public final class QueryMethodLexer {
     }
 
     private static QueryMethodTokenType mapPrefixToType(String prefix) {
+        // This method is kept for backward compatibility but is no longer used
+        // The classifyOperation method now handles all operation classification
         return switch (prefix.toLowerCase()) {
             case "find", "read", "query", "get" -> QueryMethodTokenType.FIND_BY;
-            case "count" -> QueryMethodTokenType.COUNT;
+            case "count" -> QueryMethodTokenType.COUNT_ALL;
             case "exists" -> QueryMethodTokenType.EXISTS_BY;
-            case "delete" -> QueryMethodTokenType.DELETE_BY;
+            case "delete" -> QueryMethodTokenType.DELETE;
+            case "save" -> QueryMethodTokenType.SAVE;
             default -> throw new IllegalArgumentException("Unknown prefix: " + prefix);
         };
     }
