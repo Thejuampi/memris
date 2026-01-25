@@ -50,6 +50,6 @@ public record EntityMetadata<T>(
         Class<?> javaType,     // Field type (e.g., int.class)
         Class<?> storageType,  // Storage type (e.g., int.class)
         int columnPosition,    // Column index in table (for potential optimization)
-        int typeCode           // Pre-computed type code for zero-overhead switching
+        byte typeCode           // Pre-computed type code for zero-overhead switching
     ) {}
 }

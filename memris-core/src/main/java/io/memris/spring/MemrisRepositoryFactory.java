@@ -102,30 +102,21 @@ public final class MemrisRepositoryFactory implements AutoCloseable {
     /**
      * Create repository with JPA query method support.
      * Entity class is inferred from the repository interface's generic type.
-     * 
+     *
      * @param repositoryInterface Repository interface extending MemrisRepository<T>
-     * @return Proxy instance implementing the repository interface
+     * @return Repository instance created by RepositoryScaffolder
      */
     public <T, R extends MemrisRepository<T>> R createJPARepository(Class<R> repositoryInterface) {
-        // Extract entity class from repository interface's generic type
+        // Use System 3 scaffolder for zero-reflection query execution
         Class<T> entityClass = extractEntityClass(repositoryInterface);
         buildNestedEntityTables(entityClass);
         FfmTable table = tables.computeIfAbsent(entityClass, this::buildTable);
         cacheEnumValues(entityClass);
         buildJoinTables(entityClass);
 
-        // Extract metadata for bytecode generation (ONCE at repository creation)
-        EntityMetadata<T> entityMetadata =
-            MetadataExtractor.extractEntityMetadata(entityClass, table);
-
-        // Extract query method metadata (ONCE at repository creation)
-        List<QueryMetadata> queryMethods =
-            MetadataExtractor.extractQueryMethods(repositoryInterface);
-
-        // Generate concrete repository class using ByteBuddy (NO proxy fallback!)
-        RepositoryBytecodeGenerator generator =
-            new RepositoryBytecodeGenerator(this);
-        return generator.generateRepository(repositoryInterface, entityMetadata, table, queryMethods);
+        io.memris.spring.scaffold.RepositoryScaffolder<T, R> scaffolder =
+            new io.memris.spring.scaffold.RepositoryScaffolder<>(this);
+        return scaffolder.createRepository(repositoryInterface, entityClass, table);
     }
 
     /**
@@ -1718,7 +1709,7 @@ public final class MemrisRepositoryFactory implements AutoCloseable {
      * Configurable algorithm selection: AUTO, BUBBLE, JAVA_SORT, PARALLEL_STREAM.
      * Concurrent sorting support via parallel streams.
      */
-    private int[] sortResults(FfmTable table, Class<?> entityClass, int[] indices, List<QueryMethodParser.OrderBy> orders) {
+    private int[] sortResults(FfmTable table, Class<?> entityClass, int[] indices, List<io.memris.spring.plan.LogicalQuery.OrderBy> orders) {
         if (orders.isEmpty() || indices.length <= 1) {
             return indices;
         }
@@ -1751,7 +1742,7 @@ public final class MemrisRepositoryFactory implements AutoCloseable {
      * Bubble sort - O(n²) but extremely fast for small n (< 100).
      * Zero allocation, cache-friendly for small datasets.
      */
-    private int[] bubbleSort(FfmTable table, Class<?> entityClass, int[] indices, List<QueryMethodParser.OrderBy> orders) {
+    private int[] bubbleSort(FfmTable table, Class<?> entityClass, int[] indices, List<io.memris.spring.plan.LogicalQuery.OrderBy> orders) {
         int[] sorted = indices.clone();
         for (int i = 0; i < sorted.length - 1; i++) {
             for (int j = 0; j < sorted.length - i - 1; j++) {
@@ -1769,7 +1760,7 @@ public final class MemrisRepositoryFactory implements AutoCloseable {
      * Java's optimized sort - O(n log n).
      * Uses Arrays.sort with custom comparator.
      */
-    private int[] javaSort(FfmTable table, Class<?> entityClass, int[] indices, List<QueryMethodParser.OrderBy> orders) {
+    private int[] javaSort(FfmTable table, Class<?> entityClass, int[] indices, List<io.memris.spring.plan.LogicalQuery.OrderBy> orders) {
         // Create boxed Integer array for comparator
         Integer[] boxed = Arrays.stream(indices).boxed().toArray(Integer[]::new);
         Arrays.sort(boxed, (i1, i2) -> compareIndices(table, entityClass, i1, i2, orders));
@@ -1780,7 +1771,7 @@ public final class MemrisRepositoryFactory implements AutoCloseable {
      * Parallel merge sort using Java 8 streams - O(n log n) with multiple threads.
      * Best for large datasets (>1000 elements).
      */
-    private int[] parallelSort(FfmTable table, Class<?> entityClass, int[] indices, List<QueryMethodParser.OrderBy> orders) {
+    private int[] parallelSort(FfmTable table, Class<?> entityClass, int[] indices, List<io.memris.spring.plan.LogicalQuery.OrderBy> orders) {
         Integer[] boxed = Arrays.stream(indices).boxed().toArray(Integer[]::new);
         Arrays.parallelSort(boxed, (i1, i2) -> compareIndices(table, entityClass, i1, i2, orders));
         return Arrays.stream(boxed).mapToInt(Integer::intValue).toArray();
@@ -1790,19 +1781,18 @@ public final class MemrisRepositoryFactory implements AutoCloseable {
      * Compare two row indices using OrderBy specifications.
      * Returns negative if idx1 < idx2, zero if equal, positive if idx1 > idx2.
      */
-    private int compareIndices(FfmTable table, Class<?> entityClass, int idx1, int idx2, List<QueryMethodParser.OrderBy> orders) {
-        // Compare using first OrderBy clause (could be enhanced for multi-column sorting)
-        QueryMethodParser.OrderBy firstOrder = orders.get(0);
-        Object val1 = getKeyValue(table, entityClass, firstOrder.property(), idx1);
-        Object val2 = getKeyValue(table, entityClass, firstOrder.property(), idx2);
-        return compareValues(val1, val2, firstOrder.direction());
+    private int compareIndices(FfmTable table, Class<?> entityClass, int idx1, int idx2, List<io.memris.spring.plan.LogicalQuery.OrderBy> orders) {
+        boolean ascending = orders.get(0).ascending();
+        Object val1 = getKeyValue(table, entityClass, orders.get(0).propertyPath(), idx1);
+        Object val2 = getKeyValue(table, entityClass, orders.get(0).propertyPath(), idx2);
+        return compareValues(val1, val2, ascending);
     }
 
     @SuppressWarnings("unchecked")
-    private int compareValues(Object val1, Object val2, QueryMethodParser.SortDirection direction) {
+    private int compareValues(Object val1, Object val2, boolean ascending) {
         if (val1 == null && val2 == null) return 0;
-        if (val1 == null) return direction == QueryMethodParser.SortDirection.ASC ? -1 : 1;
-        if (val2 == null) return direction == QueryMethodParser.SortDirection.ASC ? 1 : -1;
+        if (val1 == null) return ascending ? -1 : 1;
+        if (val2 == null) return ascending ? 1 : -1;
 
         // Use pattern matching switch for O(1) dispatch instead of cascading if-else O(n)
         int cmp = switch (val1) {
@@ -1810,7 +1800,7 @@ public final class MemrisRepositoryFactory implements AutoCloseable {
             default -> val1.toString().compareTo(val2.toString());
         };
 
-        return direction == QueryMethodParser.SortDirection.DESC ? -cmp : cmp;
+        return ascending ? cmp : -cmp;
     }
 
     /**

@@ -19,7 +19,7 @@ import java.util.*;
 @SuppressWarnings("StringTemplateMigration")
 public final class MetadataExtractor {
     // Type code mapping for zero-overhead type switching
-    private static final Map<Class<?>, Integer> TYPE_CODE_MAP = Map.ofEntries(
+    private static final Map<Class<?>, Byte> TYPE_CODE_MAP = Map.ofEntries(
             Map.entry(int.class, TypeCodes.TYPE_INT),
             Map.entry(Integer.class, TypeCodes.TYPE_INT),
             Map.entry(long.class, TypeCodes.TYPE_LONG),
@@ -44,8 +44,9 @@ public final class MetadataExtractor {
      * Uses immutable map lookup (constant-time, no boxing for primitives).
      * Called once during metadata extraction.
      */
-    private static int getTypeCode(Class<?> type) {
-        return TYPE_CODE_MAP.getOrDefault(type, -1);
+    private static byte getTypeCode(Class<?> type) {
+        Byte code = TYPE_CODE_MAP.get(type);
+        return code != null ? code : (byte) -1;
     }
 
     /**
@@ -108,7 +109,7 @@ public final class MetadataExtractor {
                     int columnPosition = findColumnPosition(table, columnName);
 
                     // Pre-compute type code once (no runtime overhead)
-                    int typeCode = getTypeCode(storageType);
+                    byte typeCode = getTypeCode(storageType);
 
                     EntityMetadata.FieldMapping mapping = new EntityMetadata.FieldMapping(
                             fieldName,
@@ -150,7 +151,7 @@ public final class MetadataExtractor {
                     int columnPosition = findColumnPosition(table, columnName);
 
                     // Pre-compute type code once (no runtime overhead)
-                    int typeCode = getTypeCode(storageType);
+                    byte typeCode = getTypeCode(storageType);
 
                     EntityMetadata.FieldMapping mapping = new EntityMetadata.FieldMapping(
                             fieldName,
@@ -349,59 +350,6 @@ public final class MetadataExtractor {
             return str;
         }
         return Character.toUpperCase(str.charAt(0)) + str.substring(1);
-    }
-
-    public static List<QueryMetadata> extractQueryMethods(Class<?> repositoryInterface) {
-        List<QueryMetadata> queries = new ArrayList<>();
-
-        for (Method method : repositoryInterface.getDeclaredMethods()) {
-            if (QueryMethodParser.isQueryMethod(method)) {
-                QueryMetadata metadata = parseQueryMethod(method);
-                queries.add(metadata);
-            }
-        }
-
-        return queries;
-    }
-
-    private static QueryMetadata parseQueryMethod(Method method) {
-        QueryMethodParser.ParsedQueryResult parsed = QueryMethodParser.parseQuery(method);
-
-        // Extract conditions
-        List<QueryMetadata.Condition> conditions = new ArrayList<>();
-        Parameter[] parameters = method.getParameters();
-
-        int paramIndex = 0;
-        for (int i = 0; i < parsed.conditions().size(); i++) {
-            String columnName = parsed.conditions().get(i);
-            Predicate.Operator operator = parsed.operators().get(i);
-
-            // Handle BETWEEN (uses 2 parameters)
-            if (operator == Predicate.Operator.BETWEEN) {
-                conditions.add(new QueryMetadata.Condition(columnName, operator, paramIndex));
-                conditions.add(new QueryMetadata.Condition(columnName, operator, paramIndex + 1));
-                paramIndex += 2;
-            } else if (operator == Predicate.Operator.IN || operator == Predicate.Operator.NOT_IN) {
-                // Collection parameter
-                conditions.add(new QueryMetadata.Condition(columnName, operator, paramIndex));
-                paramIndex += 1;
-            } else {
-                // Single parameter
-                conditions.add(new QueryMetadata.Condition(columnName, operator, paramIndex));
-                paramIndex += 1;
-            }
-        }
-
-        return new QueryMetadata(
-                method,
-                method.getName(),
-                method.getReturnType(),
-                parsed.queryType(),
-                parsed.limit(),
-                parsed.isDistinct(),
-                conditions,
-                parsed.orders()
-        );
     }
 
     private static String findIdColumnName(Class<?> entityClass) {

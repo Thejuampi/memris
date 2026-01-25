@@ -9,13 +9,13 @@ public final class TypeCodes {
         // Utility class - no instances
     }
 
-    public static final int TYPE_INT = 0;
-    public static final int TYPE_LONG = 1;
-    public static final int TYPE_BOOLEAN = 2;
-    public static final int TYPE_BYTE = 3;
-    public static final int TYPE_SHORT = 4;
-    public static final int TYPE_FLOAT = 5;
-    public static final int TYPE_DOUBLE = 6;
-    public static final int TYPE_CHAR = 7;
-    public static final int TYPE_STRING = 8;
+    public static final byte TYPE_INT = 0;
+    public static final byte TYPE_LONG = 1;
+    public static final byte TYPE_BOOLEAN = 2;
+    public static final byte TYPE_BYTE = 3;
+    public static final byte TYPE_SHORT = 4;
+    public static final byte TYPE_FLOAT = 5;
+    public static final byte TYPE_DOUBLE = 6;
+    public static final byte TYPE_CHAR = 7;
+    public static final byte TYPE_STRING = 8;
 }
