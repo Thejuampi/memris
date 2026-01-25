@@ -1,0 +1,70 @@
+@startuml Zero-Reflection Query System
+skinparam monochrome true
+
+package "Build-Time (Once per Entity Type)" {
+  [MetadataExtractor] as ME
+  [QueryPlanner] as QP
+  [QueryCompiler] as QC
+  [RepositoryScaffolder] as RS
+  [RepositoryEmitter] as RE
+
+  ME -down-> [EntityMetadata]
+  [EntityMetadata] -down-> QP
+  QP -right-> [LogicalQuery]
+  [LogicalQuery] -down-> QC
+  QC -right-> [CompiledQuery]
+  QC -right-> RS
+  RS -down-> RE
+}
+
+package "Runtime (Hot Path - Zero Reflection)" {
+  [RepositoryRuntime] as RT
+  [Dense Arrays] as DA
+  [FfmTable] as FT
+}
+
+package "Generated Repository (ByteBuddy)" {
+  [UserRepositoryImpl] as UI
+}
+
+ME -down-> RS
+QC -right-> RS
+RS -right-> [RepositoryRuntime]
+[RepositoryRuntime] -down-> UI
+
+UI -right-> [RepositoryRuntime] : findByXxx()\nreturns rt.listN(queryId, args)
+
+RT -right-> DA : Pre-compiled\nmetadata
+DA -down-> RT : Direct array access
+RT -down-> FT : Column-indexed\ngetInt(colIdx, row)
+
+note right of RT
+  Zero Reflection Hot Path:
+  • Constant queryId (int)
+  • Typed entrypoints
+    (list0/1/2, optional1,
+     exists1, count0/1/2)
+  • TypeCode switch dispatch
+  • Dense arrays:
+    - String[] columnNames
+    - byte[] typeCodes
+    - MethodHandle[] setters
+end note
+
+note left of [CompiledQuery]
+  Pre-compiled Query:
+  • Resolved column indices
+  • CompiledCondition[]
+  • ReturnKind
+  • Arity
+end note
+
+note bottom of ME
+  Build-Time Reflection:
+  • Scan entity class
+  • Build MethodHandles
+  • Extract TypeConverters
+  (Happens ONCE per entity)
+end note
+
+@enduml

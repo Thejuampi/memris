@@ -1,0 +1,84 @@
+@startuml Memris Architecture
+skinparam monochrome true
+
+[User Code] as UC
+[Repository Interface] as RI
+[MemrisRepositoryFactory] as Factory
+
+package "Build-Time Components" {
+  [MetadataExtractor] as ME
+  [EntityMetadata] as EM
+  [QueryPlanner] as QP
+  [QueryCompiler] as QC
+  [RepositoryScaffolder] as RS
+  [RepositoryEmitter] as RE
+
+  ME -right-> EM
+  QC -right-> QP
+  RS -down-> RE
+}
+
+package "Runtime Engine" {
+  [RepositoryRuntime] as RT
+  [CompiledQuery[]] as CQ
+  [Dense Arrays] as DA
+  [FfmTable] as FT
+  [Indexes] as IX
+}
+
+package "Generated Repository" {
+  [UserRepositoryImpl] as Impl
+}
+
+UC -down-> RI
+RI -down-> Factory
+Factory -right-> ME
+Factory -right-> RS
+
+RS -right-> RT
+RE -right-> Impl
+
+Impl -right-> RT : queryId dispatch
+
+RT -down-> CQ : Array lookup (O1)
+RT -down-> DA : Pre-compiled metadata
+RT -down-> FT : Column-indexed access
+RT -down-> IX : Index queries
+
+DA -right-> RT : String[] columnNames\nbyte[] typeCodes\nMethodHandle[] setters
+
+FT -right-> [SIMD Vectors] : Vector scans
+
+note right of Factory
+  Factory Responsibilities:
+  • Arena lifecycle management
+  • FfmTable creation per entity
+  • Index creation and management
+  • Join table management
+  • Repository instantiation
+end note
+
+note left of RT
+  RepositoryRuntime:
+  Zero reflection hot path
+  • list0/1/2(queryId, args)
+  • optional1(queryId, arg)
+  • exists1(queryId, arg)
+  • count0/1/2(queryId, args)
+  • TypeCode switch dispatch
+  • Dense array access
+  • MethodHandle materialization
+end note
+
+note bottom of FT
+  FfmTable Storage:
+  • Column-indexed API
+    getInt(columnId, row)
+    getString(columnId, row)
+    ... all primitives
+  • SIMD vector scans
+    (int/long columns)
+  • Off-heap MemorySegments
+end note
+
+@enduml
