@@ -247,19 +247,25 @@ public final class TableManager {
                 continue;
             }
 
+            // Additional check: if field type is an entity, skip it (fallback for annotation detection issues)
+            Class<?> fieldType = field.getType();
+            if (fieldType.isAnnotationPresent(Entity.class) || looksLikeEntity(fieldType)) {
+                // This is an entity type - relationship field, don't create column
+                continue;
+            }
+
             // Regular field - add column
-            Class<?> type = field.getType();
-            var converter = io.memris.spring.converter.TypeConverterRegistry.getInstance().getConverter(type);
+            var converter = io.memris.spring.converter.TypeConverterRegistry.getInstance().getConverter(fieldType);
             Class<?> storageType;
 
             if (converter != null) {
                 storageType = converter.getStorageType();
-            } else if (type.isEnum()) {
+            } else if (fieldType.isEnum()) {
                 storageType = String.class;
-            } else if (type.isPrimitive()) {
-                storageType = type;
+            } else if (fieldType.isPrimitive()) {
+                storageType = fieldType;
             } else {
-                throw new IllegalArgumentException("Unsupported field type: " + type +
+                throw new IllegalArgumentException("Unsupported field type: " + fieldType +
                     " in entity " + entityClass.getName() + ", field: " + field.getName());
             }
 
@@ -310,6 +316,24 @@ public final class TableManager {
             }
         }
         return null;
+    }
+
+    /**
+     * Check if a class looks like an entity by checking for ID fields.
+     * <p>
+     * This is a fallback for annotation detection issues with static inner classes.
+     * A class is considered an entity if it has a field annotated with @Id or @GeneratedValue.
+     *
+     * @param clazz the class to check
+     * @return true if the class looks like an entity, false otherwise
+     */
+    private boolean looksLikeEntity(Class<?> clazz) {
+        for (var field : clazz.getDeclaredFields()) {
+            if (field.isAnnotationPresent(Id.class) || field.isAnnotationPresent(GeneratedValue.class)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**

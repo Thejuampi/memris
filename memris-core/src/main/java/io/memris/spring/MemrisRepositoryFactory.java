@@ -29,11 +29,9 @@ import jakarta.persistence.*;
 @SuppressWarnings({"preview", "Since15"})
 public final class MemrisRepositoryFactory implements AutoCloseable {
     private final Arena arena;
-    private final Map<Class<?>, FfmTable> tables = new HashMap<>();
+    private final TableManager tableManager;
     private final Map<String, IdGenerator<?>> customIdGenerators = new HashMap<>();
     private final Map<Class<?>, AtomicLong> numericIdCounters = new HashMap<>();
-    private final Map<Class<?>, Map<String, Object>> enumValues = new HashMap<>();
-    private final Map<String, FfmTable> joinTables = new HashMap<>();
 
     // Cache MethodHandles for column.set(int, Object) calls (performance optimization)
     private final Map<Class<?>, MethodHandle> columnSetHandles = new ConcurrentHashMap<>();
@@ -82,6 +80,7 @@ public final class MemrisRepositoryFactory implements AutoCloseable {
 
     public MemrisRepositoryFactory() {
         this.arena = Arena.ofConfined();
+        this.tableManager = new TableManager(arena);
     }
 
     /**
@@ -109,10 +108,10 @@ public final class MemrisRepositoryFactory implements AutoCloseable {
     public <T, R extends MemrisRepository<T>> R createJPARepository(Class<R> repositoryInterface) {
         // Use System 3 scaffolder for zero-reflection query execution
         Class<T> entityClass = extractEntityClass(repositoryInterface);
-        buildNestedEntityTables(entityClass);
-        FfmTable table = tables.computeIfAbsent(entityClass, this::buildTable);
-        cacheEnumValues(entityClass);
-        buildJoinTables(entityClass);
+        tableManager.ensureNestedTables(entityClass);
+        FfmTable table = tableManager.getOrCreateTable(entityClass);
+        tableManager.cacheEnumValues(entityClass);
+        tableManager.createJoinTables(entityClass);
 
         io.memris.spring.scaffold.RepositoryScaffolder<T, R> scaffolder =
             new io.memris.spring.scaffold.RepositoryScaffolder<>(this);
@@ -138,77 +137,6 @@ public final class MemrisRepositoryFactory implements AutoCloseable {
         }
         throw new IllegalArgumentException("Cannot extract entity class from " + repositoryInterface.getName() + 
             ". Repository must extend MemrisRepository<EntityType>.");
-    }
-
-    private <T> void buildNestedEntityTables(Class<T> entityClass) {
-        for (Field field : entityClass.getDeclaredFields()) {
-            if (field.isAnnotationPresent(OneToOne.class) || field.isAnnotationPresent(ManyToOne.class)) {
-                Class<?> nestedType = field.getType();
-                if (nestedType.isAnnotationPresent(Entity.class)) {
-                    if (!tables.containsKey(nestedType)) {
-                        FfmTable nestedTable = buildTable((Class<Object>) nestedType);
-                        tables.put(nestedType, nestedTable);
-                        buildNestedEntityTables((Class<Object>) nestedType);
-                    }
-                }
-            }
-        }
-    }
-
-    private <T> void cacheEnumValues(Class<T> entityClass) {
-        for (Field field : entityClass.getDeclaredFields()) {
-            if (field.isEnumConstant() || (field.getType().isEnum() && field.isAnnotationPresent(Enumerated.class))) {
-                Class<?> enumType = field.getType();
-                if (!enumValues.containsKey(enumType)) {
-                    Map<String, Object> values = new HashMap<>();
-                    Object[] constants = enumType.getEnumConstants();
-                    for (int i = 0; i < constants.length; i++) {
-                        values.put(constants[i].toString(), i);
-                        values.put(String.valueOf(i), constants[i]);
-                    }
-                    enumValues.put(enumType, values);
-                }
-            }
-        }
-    }
-
-    private <T> void buildJoinTables(Class<T> entityClass) {
-        for (Field field : entityClass.getDeclaredFields()) {
-            if (field.isAnnotationPresent(ManyToMany.class)) {
-                Class<?> targetType = getCollectionElementType(field);
-                if (targetType != null) {
-                    String joinTableName = entityClass.getSimpleName() + "_" + targetType.getSimpleName() + "_join";
-                    if (!joinTables.containsKey(joinTableName)) {
-                        // Get ID storage types for both entities
-                        Class<?> entityIdStorageType = getIdStorageType(entityClass);
-                        Class<?> targetIdStorageType = getIdStorageType(targetType);
-
-                        // Get ID field types (for UUID detection)
-                        Class<?> entityIdFieldType = getIdFieldType(entityClass);
-                        Class<?> targetIdFieldType = getIdFieldType(targetType);
-
-                        // For UUID, store as 2 long columns (most/least significant bits)
-                        List<ColumnSpec> columns = new ArrayList<>();
-                        if (entityIdFieldType == UUID.class) {
-                            columns.add(new ColumnSpec(entityClass.getSimpleName() + "_id_msb", long.class));
-                            columns.add(new ColumnSpec(entityClass.getSimpleName() + "_id_lsb", long.class));
-                        } else {
-                            columns.add(new ColumnSpec(entityClass.getSimpleName() + "_id", entityIdStorageType));
-                        }
-
-                        if (targetIdFieldType == UUID.class) {
-                            columns.add(new ColumnSpec(targetType.getSimpleName() + "_id_msb", long.class));
-                            columns.add(new ColumnSpec(targetType.getSimpleName() + "_id_lsb", long.class));
-                        } else {
-                            columns.add(new ColumnSpec(targetType.getSimpleName() + "_id", targetIdStorageType));
-                        }
-
-                        FfmTable joinTable = new FfmTable(joinTableName, arena, columns);
-                        joinTables.put(joinTableName, joinTable);
-                    }
-                }
-            }
-        }
     }
 
     /**
@@ -518,7 +446,7 @@ public final class MemrisRepositoryFactory implements AutoCloseable {
     }
 
     FfmTable getTable(Class<?> entityClass) {
-        return tables.get(entityClass);
+        return tableManager.getTable(entityClass);
     }
 
     /**
@@ -792,10 +720,10 @@ public final class MemrisRepositoryFactory implements AutoCloseable {
         }
 
         // Insert the new row
-        tables.get(entityClass).insert(values.toArray());
+        tableManager.getTable(entityClass).insert(values.toArray());
 
         // Compute row index after operation
-        int rowIndex = (int) tables.get(entityClass).rowCount() - 1;
+        int rowIndex = (int) tableManager.getTable(entityClass).rowCount() - 1;
         RowId rid = new RowId(rowIndex >>> 16, rowIndex & 0xFFFF);
 
         // Update indexes for indexed fields
@@ -827,7 +755,7 @@ public final class MemrisRepositoryFactory implements AutoCloseable {
                     if (isManyToMany) {
                         Object childId = doSave(item, itemClass);
                         String joinTableName = entityName + "_" + targetName + "_join";
-                        FfmTable joinTable = joinTables.get(joinTableName);
+                        FfmTable joinTable = tableManager.getJoinTable(joinTableName);
                         if (joinTable != null) {
                             // Insert into join table with proper ID type handling
                             insertIntoJoinTable(joinTable, entityClass, id, itemClass, childId);
@@ -919,7 +847,7 @@ public final class MemrisRepositoryFactory implements AutoCloseable {
     }
 
     private int findRowIndexById(Class<?> entityClass, Field idField, Object idValue) {
-        FfmTable table = tables.get(entityClass);
+        FfmTable table = tableManager.getTable(entityClass);
         String idColumnName = idField.getName();
 
         // Use hash index if available
@@ -947,7 +875,7 @@ public final class MemrisRepositoryFactory implements AutoCloseable {
     }
 
     private <T> void updateExistingRow(T entity, Class<T> entityClass, Field idField, int rowIndex) {
-        FfmTable table = tables.get(entityClass);
+        FfmTable table = tableManager.getTable(entityClass);
 
         // Invoke @PreUpdate
         invokePreUpdate(entity, entityClass);
@@ -1144,8 +1072,8 @@ public final class MemrisRepositoryFactory implements AutoCloseable {
             String rightKey) {
         SelectionVectorFactory factory = SelectionVectorFactory.defaultFactory();
 
-        FfmTable leftTable = tables.get(leftRepo.getEntityClass());
-        FfmTable rightTable = tables.get(rightRepo.getEntityClass());
+        FfmTable leftTable = tableManager.getTable(leftRepo.getEntityClass());
+        FfmTable rightTable = tableManager.getTable(rightRepo.getEntityClass());
 
         int[] leftIndices = leftTable.scanAll(factory).toIntArray();
         int[] rightIndices = rightTable.scanAll(factory).toIntArray();
@@ -1275,7 +1203,7 @@ public final class MemrisRepositoryFactory implements AutoCloseable {
         if (idColumnName == null) {
             return List.of();
         }
-        FfmTable table = tables.get(entityClass);
+        FfmTable table = tableManager.getTable(entityClass);
         List<T> results = new ArrayList<>();
         for (Object id : ids) {
             int[] matchingRows = queryIndex(entityClass, idColumnName, Predicate.Operator.EQ, id);
@@ -1330,7 +1258,7 @@ public final class MemrisRepositoryFactory implements AutoCloseable {
     }
 
     public <T> Object doGenericFindBy(Class<T> entityClass, String columnName, Object value, Class<?> returnType) {
-        FfmTable table = tables.get(entityClass);
+        FfmTable table = tableManager.getTable(entityClass);
         int[] matchingRows = queryIndex(entityClass, columnName, Predicate.Operator.EQ, value);
         if (matchingRows == null) {
             matchingRows = scanTable(table, columnName, Predicate.Operator.EQ, value);
@@ -1347,7 +1275,7 @@ public final class MemrisRepositoryFactory implements AutoCloseable {
     }
 
     public <T> Object doFindByIn(Class<T> entityClass, String columnName, Iterable<?> values, Class<?> returnType) {
-        FfmTable table = tables.get(entityClass);
+        FfmTable table = tableManager.getTable(entityClass);
         List<T> results = new ArrayList<>();
         for (Object value : values) {
             int[] matchingRows = queryIndex(entityClass, columnName, Predicate.Operator.EQ, value);
@@ -1368,7 +1296,7 @@ public final class MemrisRepositoryFactory implements AutoCloseable {
     }
 
     public <T> Object doFindByBetween(Class<T> entityClass, String columnName, Object start, Object end, Class<?> returnType) {
-        FfmTable table = tables.get(entityClass);
+        FfmTable table = tableManager.getTable(entityClass);
         Predicate predicate = new Predicate.Between(columnName, start, end);
         SelectionVectorFactory factory = SelectionVectorFactory.defaultFactory();
         int[] matchingRows = table.scan(predicate, factory).toIntArray();
@@ -1391,7 +1319,7 @@ public final class MemrisRepositoryFactory implements AutoCloseable {
         }
 
         int row = matchingRows[0];
-        FfmTable table = tables.get(entityClass);
+        FfmTable table = tableManager.getTable(entityClass);
         return Optional.of(materializeRow(entityClass, table, row));
     }
 
@@ -1420,7 +1348,7 @@ public final class MemrisRepositoryFactory implements AutoCloseable {
     }
 
     public <T> List<T> doFindAll(Class<T> entityClass) {
-        FfmTable table = tables.get(entityClass);
+        FfmTable table = tableManager.getTable(entityClass);
         SelectionVectorFactory factory = SelectionVectorFactory.defaultFactory();
         int[] rows = table.scanAll(factory).toIntArray();
 
@@ -1440,7 +1368,7 @@ public final class MemrisRepositoryFactory implements AutoCloseable {
                 return hashIndex.size();
             }
         }
-        FfmTable table = tables.get(entityClass);
+        FfmTable table = tableManager.getTable(entityClass);
         return table.rowCount();
     }
 
@@ -1473,7 +1401,7 @@ public final class MemrisRepositoryFactory implements AutoCloseable {
         }
 
         Object paramValue = args[0];
-        FfmTable table = tables.get(entityClass);
+        FfmTable table = tableManager.getTable(entityClass);
 
         // Try index first
         int[] matchingRows = queryIndex(entityClass, columnName, operator, paramValue);
@@ -1837,8 +1765,8 @@ public final class MemrisRepositoryFactory implements AutoCloseable {
             String rightKey) {
         SelectionVectorFactory factory = SelectionVectorFactory.defaultFactory();
 
-        FfmTable leftTable = tables.get(leftClass);
-        FfmTable rightTable = tables.get(rightClass);
+        FfmTable leftTable = tableManager.getTable(leftClass);
+        FfmTable rightTable = tableManager.getTable(rightClass);
 
         int[] leftIndices = leftTable.scanAll(factory).toIntArray();
         int[] rightIndices = rightTable.scanAll(factory).toIntArray();
@@ -1924,7 +1852,7 @@ public final class MemrisRepositoryFactory implements AutoCloseable {
                     // Load the related entity by ID using queryIndex
                     Class<?> entityType = field.getType();
                     try {
-                        FfmTable relatedTable = tables.get(entityType);
+                        FfmTable relatedTable = tableManager.getTable(entityType);
                         if (relatedTable != null) {
                             int[] matchingRows = queryIndex(entityType, col.name(), Predicate.Operator.EQ, foreignKeyValue);
                             if (matchingRows != null && matchingRows.length > 0) {
