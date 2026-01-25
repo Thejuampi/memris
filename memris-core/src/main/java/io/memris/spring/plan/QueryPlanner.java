@@ -200,7 +200,7 @@ public final class QueryPlanner {
 
     /**
      * Legacy overload for backward compatibility.
-     * TODO: Remove once all callers updated to entityClass overload.
+     * Passes null for entityClass, disabling context-aware property validation.
      */
     @Deprecated
     public static LogicalQuery parse(Method method, String idColumnName) {

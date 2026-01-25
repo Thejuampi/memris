@@ -66,7 +66,7 @@ public final class RepositoryScaffolder<T, R> {
         QueryCompiler compiler = new QueryCompiler(metadata);
 
         for (Method method : queryMethods) {
-            LogicalQuery logical = QueryPlanner.parse(method, metadata.idColumnName());
+            LogicalQuery logical = QueryPlanner.parse(method, entityClass, metadata.idColumnName());
             CompiledQuery compiled = compiler.compile(logical);
 
             logicalQueries.add(logical);
