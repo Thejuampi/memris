@@ -97,6 +97,13 @@ io.memris/
 ├── index/           # HashIndex, RangeIndex
 ├── query/           # Executor, planner
 ├── spring/          # Spring Data integration
+│   ├── domain/      # Domain objects for query parsing
+│   │   ├── entity/  # EntityStructure, FieldMapping, RelationshipType
+│   │   └── query/   # ParsedQuery, QueryToken, QueryTokenType
+│   ├── metadata/    # EntityMetadata, MetadataExtractor, FieldMapping
+│   ├── plan/        # Query parsing, planning, compilation
+│   ├── runtime/     # Query execution, entity materialization
+│   └── scaffold/    # ByteBuddy bytecode generation
 └── benchmarks/      # JMH benchmarks
 ```
 
