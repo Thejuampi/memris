@@ -3,6 +3,7 @@ package io.memris.storage;
 import io.memris.kernel.Column;
 import io.memris.kernel.RowId;
 import io.memris.kernel.Table;
+import io.memris.spring.TypeCodes;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -118,11 +119,13 @@ public final class SimpleTable implements Table {
     private final class SimpleColumn<T> implements Column<T> {
         private final String name;
         private final Class<T> type;
+        private final byte typeCode;
         private Object[] data;
 
         private SimpleColumn(String name, Class<T> type, int capacity) {
             this.name = name;
             this.type = type;
+            this.typeCode = computeTypeCode(type);
             this.data = new Object[capacity];
         }
 
@@ -142,12 +145,41 @@ public final class SimpleTable implements Table {
             return type.cast(data[index]);
         }
 
+        @Override
+        public byte typeCode() {
+            return typeCode;
+        }
+
         private void set(int index, Object value) {
             data[index] = value;
         }
 
         private void resize(int newCapacity) {
             data = Arrays.copyOf(data, newCapacity);
+        }
+
+        private byte computeTypeCode(Class<?> type) {
+            if (type == int.class || type == Integer.class) {
+                return TypeCodes.TYPE_INT;
+            } else if (type == long.class || type == Long.class) {
+                return TypeCodes.TYPE_LONG;
+            } else if (type == boolean.class || type == Boolean.class) {
+                return TypeCodes.TYPE_BOOLEAN;
+            } else if (type == byte.class || type == Byte.class) {
+                return TypeCodes.TYPE_BYTE;
+            } else if (type == short.class || type == Short.class) {
+                return TypeCodes.TYPE_SHORT;
+            } else if (type == float.class || type == Float.class) {
+                return TypeCodes.TYPE_FLOAT;
+            } else if (type == double.class || type == Double.class) {
+                return TypeCodes.TYPE_DOUBLE;
+            } else if (type == char.class || type == Character.class) {
+                return TypeCodes.TYPE_CHAR;
+            } else if (type == String.class) {
+                return TypeCodes.TYPE_STRING;
+            } else {
+                throw new IllegalArgumentException("Unsupported type: " + type);
+            }
         }
     }
 }

@@ -1,18 +1,19 @@
-# AGENTS.md - Memris Development Guide
+# Development Guide
 
-This file provides guidelines for AI agents operating in the Memris repository.
+This guide provides comprehensive development guidelines for working on the Memris project.
 
-## Build Commands
+## Getting Started
 
-### Core Commands
+### Build Commands
+
 ```bash
-# Full build
+# Full clean build
 mvn.cmd clean compile
 
-# Compile with preview features (required)
+# Quick compile (quiet mode)
 mvn.cmd -q -e compile
 
-# Run tests
+# Run all tests
 mvn.cmd -q -e -pl memris-core test
 
 # Run single test class
@@ -21,27 +22,45 @@ mvn.cmd -q -e -pl memris-core test -Dtest=ClassName
 # Run single test method
 mvn.cmd -q -e -pl memris-core test -Dtest=ClassName#methodName
 
-# Run throughput benchmark
+# Run benchmarks (requires manual java invocation with preview flags)
+# Throughput benchmark
 java --enable-preview --add-modules jdk.incubator.vector -cp memris-core/target/classes io.memris.benchmarks.BenchmarkRunner
 
-# Run with Maven exec plugin
-mvn.cmd -q -e -pl memris-core exec:java -Dexec.mainClass=io.memris.benchmarks.BenchmarkRunner
-
-# Run JMH microbenchmarks (latency-focused)
+# JMH microbenchmarks (latency-focused)
 mvn.cmd clean compile
 java --enable-preview --add-modules jdk.incubator.vector -cp memris-core/target/classes:jmh-benchmarks.jar io.memris.benchmarks.MemrisBenchmarks
 ```
 
-### Java Configuration
+### Java Runtime Requirements
+
 - **Java Version**: 21 (required)
 - **Preview Features**: `--enable-preview`
-- **Modules**: `jdk.incubator.vector` (for SIMD), `java.base` (FFM)
+- **Modules**: `jdk.incubator.vector` (SIMD), `java.base` (FFM)
 - **Native Access**: `--enable-native-access=ALL-UNNAMED`
 
-### Maven Properties
-- `java.version`: 21
-- `jmh.version`: 1.37
-- `junit.version`: 5.10.1
+## Project Overview
+
+**Memris** is a blazingly fast, multi-threaded, in-memory storage engine for Java 21 with:
+- SIMD vectorized execution using Panama Vector API
+- FFM (Foreign Function & Memory) MemorySegment-based storage
+- Spring Data JPA repository integration via ByteBuddy dynamic bytecode generation
+- O(1) design principle: no O(n) operations allowed in hot paths
+
+## Critical Design Principles
+
+### O(1) Design Principle
+**O(1) first, O(log n) second, O(n) forbidden.**
+
+- `contains()` must be O(1) - use `BitSet` for dense sets
+- `add()` should be O(1) amortized
+- Enumerator creation O(1) - return preallocated cursor
+- Index lookups O(1) via hash or direct access
+- Range queries use `ConcurrentSkipListMap` (O(log n)) as fallback
+
+### Zero Reflection in Hot Paths
+- Use ByteBuddy bytecode generation with pre-compiled MethodHandles
+- No reflective field access in generated repository implementations
+- Compile-time type safety through bytecode generation
 
 ## Code Style Guidelines
 
@@ -66,114 +85,8 @@ public interface IntEnumerator extends Iterator<Integer> {
 }
 ```
 
-### O(1) Design Principle
-**O(1) first, O(log n) second, O(n) forbidden.**
+## Java 21 Pattern Matching Switches (CRITICAL)
 
-- `contains()` must be O(1) - use `BitSet` for dense sets
-- `add()` should be O(1) amortized
-- Enumerator creation O(1) - return preallocated cursor
-- Index lookups O(1) via hash or direct access
-- Range queries use `ConcurrentSkipListMap` (O(log n)) as fallback
-
-### Naming Conventions
-| Element | Convention | Example |
-|---------|------------|---------|
-| Classes | PascalCase | `FfmIntColumn`, `RowIdSet` |
-| Interfaces | PascalCase | `SelectionVector`, `IntEnumerator` |
-| Records | PascalCase | `Predicate.Comparison` |
-| Methods | camelCase | `scanEquals()`, `enumerator()` |
-| Constants | UPPER_SNAKE_CASE | `OFFSET_BITS`, `DEFAULT_CAPACITY` |
-| Variables | camelCase | `rowIndex`, `bitSet` |
-| Packages | lowercase | `io.memris.kernel.selection` |
-| Test classes | ClassNameTest | `FfmIntColumnTest` |
-
-### Package Structure
-```
-io.memris/
-├── kernel/          # Core types (RowId, Predicate, PlanNode)
-│   └── selection/   # SelectionVector, enumerators
-├── storage/         # Storage engines (FfmTable, MemrisStore)
-│   └── ffm/         # FFM MemorySegment implementations
-├── index/           # HashIndex, RangeIndex
-├── query/           # Executor, planner
-├── spring/          # Spring Data integration
-│   ├── domain/      # Domain objects for query parsing
-│   │   ├── entity/  # EntityStructure, FieldMapping, RelationshipType
-│   │   └── query/   # ParsedQuery, QueryToken, QueryTokenType
-│   ├── metadata/    # EntityMetadata, MetadataExtractor, FieldMapping
-│   ├── plan/        # Query parsing, planning, compilation
-│   ├── runtime/     # Query execution, entity materialization
-│   └── scaffold/    # ByteBuddy bytecode generation
-└── benchmarks/      # JMH benchmarks
-```
-
-### Class Design
-- Use `final` classes for implementations
-- Use `sealed` interfaces for extensible types (Predicate, PlanNode)
-- Use `record` for simple data carriers
-- Package-private when not part of public API
-- Public API must have Javadoc
-
-```java
-// Sealed interface for extensibility
-public sealed interface Predicate permits Predicate.Comparison, Predicate.In, Predicate.Between { }
-
-// Record for data carrier
-public record Comparison(String column, Operator operator, Object value) implements Predicate { }
-
-// Final implementation
-public final class IntSelection implements MutableSelectionVector { }
-```
-
-### Error Handling
-- Use `IllegalArgumentException` for parameter validation
-- Use `IndexOutOfBoundsException` for index errors
-- Use `NoSuchElementException` for enumerator exhaustion
-- Guard clauses with early returns
-- Validate null checks on public APIs
-
-```java
-public void add(int rowIndex) {
-    if (rowIndex < 0) {
-        throw new IllegalArgumentException("rowIndex must be non-negative: " + rowIndex);
-    }
-    // ... rest of implementation
-}
-```
-
-### Import Organization
-```java
-// JDK imports first (alphabetical)
-import java.lang.foreign.*;
-import java.util.*;
-
-// Third-party imports
-import jdk.incubator.vector.*;
-
-// Project imports (absolute)
-import io.memris.kernel.*;
-import io.memris.kernel.selection.*;
-```
-
-### Vector API Usage
-- Use `SPECIES_PREFERRED` for portability
-- Use `VectorMask.toLong()` for packed lane extraction
-- Handle tail loop with `loopBound()`
-- Use `fromMemorySegment()` for FFM integration
-
-```java
-IntVector vector = IntVector.fromMemorySegment(SPECIES, segment,
-    (long) i * ValueLayout.JAVA_INT.byteSize(), ByteOrder.nativeOrder());
-VectorMask<Integer> mask = vector.eq(value);
-long lanes = mask.toLong();
-while (lanes != 0L) {
-    int lane = Long.numberOfTrailingZeros(lanes);
-    // ...
-    lanes &= (lanes - 1);
-}
-```
-
-### Type Switch Pattern (Java 21 Pattern Matching) (CRITICAL)
 **Always use type switches with class literals for type dispatch.**
 
 - Use `switch (Class<?> type)` with pattern matching - faster than if-else chains
@@ -209,8 +122,92 @@ if (type == int.class) {
 }
 ```
 
-### Testing Guidelines (CRITICAL)
-- **NEVER use `System.out.println` for test verification** - Use REAL assertions only
+## Naming Conventions
+
+| Element | Convention | Example |
+|---------|------------|---------|
+| Classes | PascalCase | `FfmIntColumn`, `RowIdSet` |
+| Interfaces | PascalCase | `SelectionVector`, `IntEnumerator` |
+| Records | PascalCase | `Predicate.Comparison` |
+| Methods | camelCase | `scanEquals()`, `enumerator()` |
+| Constants | UPPER_SNAKE_CASE | `OFFSET_BITS`, `DEFAULT_CAPACITY` |
+| Variables | camelCase | `rowIndex`, `bitSet` |
+| Packages | lowercase | `io.memris.kernel.selection` |
+| Test classes | ClassNameTest | `FfmIntColumnTest` |
+
+## Class Design Guidelines
+
+- Use `final` classes for implementations
+- Use `sealed` interfaces for extensible types (Predicate, PlanNode)
+- Use `record` for simple data carriers
+- Package-private when not part of public API
+- Public API must have Javadoc
+
+```java
+// Sealed interface for extensibility
+public sealed interface Predicate permits Predicate.Comparison, Predicate.In, Predicate.Between { }
+
+// Record for data carrier
+public record Comparison(String column, Operator operator, Object value) implements Predicate { }
+
+// Final implementation
+public final class IntSelection implements MutableSelectionVector { }
+```
+
+## Error Handling
+
+- Use `IllegalArgumentException` for parameter validation
+- Use `IndexOutOfBoundsException` for index errors
+- Use `NoSuchElementException` for enumerator exhaustion
+- Guard clauses with early returns
+- Validate null checks on public APIs
+
+```java
+public void add(int rowIndex) {
+    if (rowIndex < 0) {
+        throw new IllegalArgumentException("rowIndex must be non-negative: " + rowIndex);
+    }
+    // ... rest of implementation
+}
+```
+
+## Import Organization
+
+```java
+// JDK imports first (alphabetical)
+import java.lang.foreign.*;
+import java.util.*;
+
+// Third-party imports
+import jdk.incubator.vector.*;
+
+// Project imports (absolute)
+import io.memris.kernel.*;
+import io.memris.kernel.selection.*;
+```
+
+## Vector API Usage
+
+- Use `SPECIES_PREFERRED` for portability
+- Use `VectorMask.toLong()` for packed lane extraction
+- Handle tail loop with `loopBound()`
+- Use `fromMemorySegment()` for FFM integration
+
+```java
+IntVector vector = IntVector.fromMemorySegment(SPECIES, segment,
+    (long) i * ValueLayout.JAVA_INT.byteSize(), ByteOrder.nativeOrder());
+VectorMask<Integer> mask = vector.eq(value);
+long lanes = mask.toLong();
+while (lanes != 0L) {
+    int lane = Long.numberOfTrailingZeros(lanes);
+    // ...
+    lanes &= (lanes - 1);
+}
+```
+
+## Testing Guidelines (CRITICAL)
+
+**NEVER use `System.out.println` for test verification** - Use REAL assertions only
 - Follow TDD: RED -> GREEN -> REFACTOR
 - Place tests in `memris-core/src/test/java/io/memris/`
 - Test class naming: `ClassNameTest`
@@ -238,33 +235,36 @@ assertEquals("SmartPhone X Pro", results.get(0).name);
 
 // BAD - Print statements don't verify behavior
 List<Product> results = productRepo.findByPriceBetween(min, max);
-System.out.println("Found " + results.size() + " products");  // ❌ NOT A TEST!
+System.out.println("Found " + results.size() + " products");  // NOT A TEST!
 ```
 
-### Documentation
+## Documentation Standards
+
 - Public APIs must have Javadoc
 - Include complexity guarantees in Javadoc
-- Update `docs/queries-spec.md` for query specification changes
-- Update `docs/troubleshooting.md` for known issues and workarounds
+- Update `docs/QUERY.md` for query specification changes
 - Historical design documents are in `docs/archive/`
 
-### Performance Validation
+## Performance Validation
+
 - Run benchmarks after performance-sensitive changes
 - Use `BenchmarkRunner` for quick sanity checks
 - Target: 10M rows scan < 50ms
 - Target: 1% selectivity filter < 10ms
 
-### Forbidden Patterns
-- ❌ Boxing primitives (`Integer`, `Long`, `Boolean`)
-- ❌ `Iterator`/`Iterable` in hot paths
-- ❌ `Collection.contains()` for lookups
-- ❌ Linear scans without SIMD vectorization
-- ❌ O(n) operations without justification
-- ❌ Throwing generic `Exception`
-- ❌ Mutable collections in public APIs
-- ❌ Generic query methods (`findBy(String field, Object value)`) - Use type-safe derived query methods instead
+## Forbidden Patterns
 
-### Git Commit Requirements (CRITICAL)
+- Boxing primitives (`Integer`, `Long`, `Boolean`)
+- `Iterator`/`Iterable` in hot paths
+- `Collection.contains()` for lookups
+- Linear scans without SIMD vectorization
+- O(n) operations without justification
+- Throwing generic `Exception`
+- Mutable collections in public APIs
+- Generic query methods (`findBy(String field, Object value)`) - Use type-safe derived query methods instead
+
+## Git Commit Requirements (CRITICAL)
+
 **NEVER include information about AI assistants in commit messages.**
 - Commit messages must describe technical changes only
 - No "Co-Authored-By: Claude" or similar attribution
@@ -279,3 +279,27 @@ git commit -m "fix: handle @ManyToOne foreign key relationships in materializeSi
 # BAD
 git commit -m "fix: handle @ManyToOne foreign keys (Co-Authored-By: Claude)"
 ```
+
+## Join Table Implementation Notes
+
+When implementing join tables (@OneToMany, @ManyToMany):
+- Join tables must support the ID types of referenced entities
+- For numeric IDs (int, long): direct mapping to int/long columns
+- For UUID IDs: store as two long columns (128 bits total) for performance
+- For String IDs: store in String columns with proper indexing
+- Ensure join table columns match the ID type of the entities they reference
+
+## Key Implementation Files
+
+| File | Purpose |
+|------|---------|
+| `MemrisRepositoryFactory.java` | Main factory, manages tables and repositories |
+| `RepositoryBytecodeGenerator.java` | ByteBuddy-based repository generation |
+| `QueryMethodParser.java` | JPA query method parsing |
+| `FfmTable.java` | Columnar storage with SIMD scans |
+
+---
+
+*For detailed architecture and package structure, see [ARCHITECTURE.md](ARCHITECTURE.md)*
+*For Spring Data integration details, see [SPRING_DATA.md](SPRING_DATA.md)*
+*For query method reference, see [REFERENCE.md](REFERENCE.md)*

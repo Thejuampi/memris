@@ -2,6 +2,21 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Reading Strategy: On-Demand, Selective
+
+**DO NOT load all documentation upfront.** Read documents selectively based on the task at hand.
+
+**When to read:**
+- **CLAUDE.md** (this file) - First, for quick context
+- **docs/DEVELOPMENT.md** - When building, testing, or writing code
+- **docs/ARCHITECTURE.md** - When modifying system structure or understanding components
+- **docs/REFERENCE.md** - When working with queries or troubleshooting issues
+- **docs/SPRING_DATA.md** - When implementing Spring Data features
+
+**Read only what you need, when you need it.**
+
+---
+
 ## Build Commands
 
 ```bash
@@ -19,64 +34,61 @@ mvn.cmd -q -e -pl memris-core test -Dtest=ClassName
 
 # Run single test method
 mvn.cmd -q -e -pl memris-core test -Dtest=ClassName#methodName
-
-# Run benchmarks (requires manual java invocation with preview flags)
-# Throughput benchmark
-java --enable-preview --add-modules jdk.incubator.vector -cp memris-core/target/classes io.memris.benchmarks.BenchmarkRunner
-
-# JMH microbenchmarks (latency-focused)
-mvn.cmd clean compile
-java --enable-preview --add-modules jdk.incubator.vector -cp memris-core/target/classes:jmh-benchmarks.jar io.memris.benchmarks.MemrisBenchmarks
 ```
 
-### Java Runtime Requirements
+## Java Runtime Requirements
+
 - **Java Version**: 21 (required)
 - **Preview Features**: `--enable-preview`
 - **Modules**: `jdk.incubator.vector` (SIMD), `java.base` (FFM)
 - **Native Access**: `--enable-native-access=ALL-UNNAMED`
 
-## Project Overview
+---
 
-**Memris** is a blazingly fast, multi-threaded, in-memory storage engine for Java 21 with:
-- SIMD vectorized execution using Panama Vector API
-- FFM (Foreign Function & Memory) MemorySegment-based storage
-- Spring Data JPA repository integration via ByteBuddy dynamic bytecode generation
-- O(1) design principle: no O(n) operations allowed in hot paths
+## Architecture Overview
 
-## Development Guidelines
+Memris is a columnar in-memory storage engine with **zero reflection in hot paths**. The key architectural split is:
 
-When working on Memris, follow these guidelines:
+### Build-Time (once per entity type)
+```
+MetadataExtractor → EntityMetadata → QueryPlanner → QueryCompiler → RepositoryEmitter
+```
+- Scans entity class, builds MethodHandles, extracts TypeConverters
+- Compiles query methods into `CompiledQuery` objects with resolved column indices
+- Generates bytecode via ByteBuddy
 
-### Storage Layer (`io.memris.storage.ffm`)
-- `FfmTable` - Main table with type-specific column storage
-- `FfmIntColumn`, `FfmLongColumn`, etc. - Primitive columns with SIMD vector scans
-- `FfmStringColumn` - Variable-length string storage with StringPool
+### Runtime (hot path - zero reflection)
+```
+UserRepositoryImpl → RepositoryRuntime (queryId dispatch) → FfmTable (column-indexed access)
+```
+- Uses constant `queryId` (int) for method dispatch
+- Dense arrays: `String[] columnNames`, `byte[] typeCodes`, `MethodHandle[] setters`
+- TypeCode switch dispatch, no maps/string lookups
 
-### Spring Data Integration (`io.memris.spring`)
-- `MemrisRepositoryFactory` - Entry point for creating repositories
-- `RepositoryBytecodeGenerator` - Uses ByteBuddy Advice API to generate repository implementations
-- `QueryMethodParser` - Parses Spring Data JPA query method names (findByXxx, countByXxx)
-- `EntityMetadata` - Extracts entity structure via reflection
-- `TypeConverterRegistry` - Extensible type conversion
+### Layer Responsibilities
 
-### Selection Pipeline (`io.memris.kernel.selection`)
-- `SelectionVector` - Row selection result interface
-- `IntSelection` - Sparse (<4K rows), `BitsetSelection` - Dense (>=4K rows)
+| Layer | Purpose |
+|-------|---------|
+| **Domain** | No dependencies - core interfaces |
+| **Parser** | Lexer → Tokens (QueryMethodLexer) |
+| **Compiler** | LogicalQuery → CompiledQuery (QueryCompiler) |
+| **Metadata** | Entity → Structure (EntityMetadata) |
+| **Runtime** | Query Execution (RepositoryRuntime) |
+| **Emitter** | ByteBuddy Generation (RepositoryEmitter) |
+| **Factory** | Orchestration & CRUD (MemrisRepositoryFactory) |
 
-### Query Execution (`io.memris.kernel`)
-- `Predicate` - Filter conditions (Comparison, In, Between)
-- `PlanNode` - Query plan operators (Scan, Filter, Join, Sort, Limit)
+---
 
 ## Critical Design Principles
 
 ### 1. O(1) First, O(log n) Second, O(n) Forbidden
-All hot path operations must be O(1).
+All hot path operations must be O(1). Use `BitSet` for dense sets, direct array access.
 
 ### 2. Primitive-Only APIs
 Never use boxed types in hot paths. Use `IntEnumerator`/`LongEnumerator` instead of `Iterator<Integer>`.
 
 ### 3. Java 21 Type Switches (CRITICAL)
-Always use pattern matching switch with class literals for type dispatch:
+Always use pattern matching switch with class literals:
 ```java
 FfmColumn<?> column = switch (type) {
     case int.class, Integer.class -> new FfmIntColumn(...);
@@ -86,26 +98,62 @@ FfmColumn<?> column = switch (type) {
 };
 ```
 
-### 4. ByteBuddy Bytecode Generation
-Repository implementations are generated at runtime:
-- Only methods declared in the interface are generated
-- MethodHandles pre-compiled for field access (zero overhead)
-- No reflection in generated bytecode
+### 4. Zero Reflection Hot Path
+- Pre-compile MethodHandles at build time
+- Use index-based array access, never maps or string lookups
+- ByteBuddy bytecode generation with `queryId` dispatch
 
-### 5. Join Table Implementation
-When implementing join tables (@OneToMany, @ManyToMany):
-- Join tables must support the ID types of referenced entities
-- For numeric IDs (int, long): direct mapping to int/long columns
-- For UUID IDs: store as two long columns (128 bits total) for performance
-- For String IDs: store in String columns with proper indexing
-- Ensure join table columns match the ID type of the entities they reference
+---
+
+## Package Structure
+
+| Package | Purpose |
+|---------|---------|
+| `io.memris.storage.ffm` | Storage layer (FfmTable, FfmColumn, MemorySegments) |
+| `io.memris.kernel` | Selection pipeline, predicates, plan nodes |
+| `io.memris.kernel.selection` | SelectionVector implementations (IntSelection, BitsetSelection) |
+| `io.memris.spring` | Spring Data integration (factory, runtime) |
+| `io.memris.spring.plan` | Query planning (Lexer, Planner, Compiler) |
+| `io.memris.spring.generated` | ByteBuddy-generated repository implementations |
+
+---
 
 ## Important Files
 
 | File | Purpose |
 |------|---------|
-| `MemrisRepositoryFactory.java` | Main factory, manages tables and repositories |
-| `RepositoryBytecodeGenerator.java` | ByteBuddy-based repository generation |
-| `QueryMethodParser.java` | JPA query method parsing |
+| `MemrisRepositoryFactory.java` | Entry point - manages tables, indexes, repositories |
+| `RepositoryBytecodeGenerator.java` | ByteBuddy bytecode generation for repositories |
+| `QueryMethodLexer.java` | Tokenizes query method names (findByLastname → tokens) |
+| `QueryPlanner.java` | Creates LogicalQuery from tokens |
+| `QueryCompiler.java` | Compiles LogicalQuery to CompiledQuery with column indices |
+| `RepositoryRuntime.java` | Zero-reflection query execution with queryId dispatch |
 | `FfmTable.java` | Columnar storage with SIMD scans |
-| `AGENTS.md` | Detailed development guidelines |
+| `BuiltInResolver.java` | Built-in operator keyword resolution (GreaterThan, Between, etc.) |
+
+---
+
+## Join Table Implementation
+
+When implementing join tables (@OneToMany, @ManyToMany):
+- **Numeric IDs (int, long)**: direct mapping to int/long columns
+- **UUID IDs**: store as two long columns (128 bits total)
+- **String IDs**: store in String columns with proper indexing
+- **Current limitation**: Only numeric IDs fully supported
+
+---
+
+## Query Method Naming
+
+Query methods are parsed from method names:
+```
+findByLastname              → EQ lastname
+findByAgeGreaterThan        → GT age
+findByAgeBetween            → BETWEEN age
+findByLastnameIgnoreCase    → EQ lastname (case-insensitive)
+```
+
+Return types determine execution path:
+- `List<T>` / `T` / `Optional<T>` / `long` (count) / `boolean` (exists)
+
+For complete operator reference, see **[docs/REFERENCE.md](docs/REFERENCE.md)**.

@@ -208,8 +208,9 @@ public final class TableManager {
 
         for (var field : entityClass.getDeclaredFields()) {
             // Check if field is an ID field (with @GeneratedValue or @jakarta.persistence.Id)
-            if (field.isAnnotationPresent(GeneratedValue.class) ||
-                field.isAnnotationPresent(Id.class) ||
+            // Use annotation name matching to avoid classloader issues
+            if (hasAnnotationWithName(field, "jakarta.persistence.GeneratedValue") ||
+                hasAnnotationWithName(field, "jakarta.persistence.Id") ||
                 field.getName().equals("id")) {
                 Class<?> type = field.getType();
 
@@ -230,20 +231,61 @@ public final class TableManager {
                 continue;
             }
 
-            // Skip @Transient fields
-            if (field.isAnnotationPresent(Transient.class)) {
+            // Skip @Transient fields (use annotation name matching to avoid classloader issues)
+            if (hasAnnotationWithName(field, "jakarta.persistence.Transient")) {
                 continue;
             }
 
-            // Handle @OneToOne, @ManyToOne (relationships)
-            if (field.isAnnotationPresent(OneToOne.class) || field.isAnnotationPresent(ManyToOne.class)) {
-                // These are foreign keys - don't create columns in this table
+            // Handle @OneToOne, @ManyToOne (relationships) - create foreign key columns
+            // Use annotation name matching to avoid classloader issues
+            boolean hasOneToOne = hasAnnotationWithName(field, "jakarta.persistence.OneToOne");
+            boolean hasManyToOne = hasAnnotationWithName(field, "jakarta.persistence.ManyToOne");
+            if (hasOneToOne || hasManyToOne) {
+                // Create foreign key column (fieldName_id)
+                String fkColumnName = field.getName() + "_id";
+                Class<?> fkType = getIdStorageType(field.getType());
+                columns.add(new ColumnSpec(fkColumnName, fkType));
                 continue;
             }
 
             // Handle @OneToMany, @ManyToMany (these use join tables)
-            if (field.isAnnotationPresent(OneToMany.class) || field.isAnnotationPresent(ManyToMany.class)) {
+            // Use annotation name matching to avoid classloader issues
+            if (hasAnnotationWithName(field, "jakarta.persistence.OneToMany") ||
+                hasAnnotationWithName(field, "jakarta.persistence.ManyToMany")) {
                 // These don't create columns in this table
+                continue;
+            }
+
+            // Handle @Embedded fields (value objects that are flattened into the table)
+            // Use annotation name matching to avoid classloader issues
+            if (hasAnnotationWithName(field, "jakarta.persistence.Embedded")) {
+                // Flatten the embedded type's fields into this table
+                Class<?> embeddedType = field.getType();
+                String embeddedPrefix = field.getName() + "_";
+                for (var embeddedField : embeddedType.getDeclaredFields()) {
+                    // Skip transient fields in embedded type
+                    if (embeddedField.isAnnotationPresent(Transient.class)) {
+                        continue;
+                    }
+                    Class<?> embeddedFieldType = embeddedField.getType();
+                    String columnName = embeddedPrefix + embeddedField.getName();
+
+                    var converter = io.memris.spring.converter.TypeConverterRegistry.getInstance().getConverter(embeddedFieldType);
+                    Class<?> storageType;
+
+                    if (converter != null) {
+                        storageType = converter.getStorageType();
+                    } else if (embeddedFieldType.isEnum()) {
+                        storageType = String.class;
+                    } else if (embeddedFieldType.isPrimitive()) {
+                        storageType = embeddedFieldType;
+                    } else {
+                        throw new IllegalArgumentException("Unsupported field type: " + embeddedFieldType +
+                            " in embedded type " + embeddedType.getName() + ", field: " + embeddedField.getName());
+                    }
+
+                    columns.add(new ColumnSpec(columnName, storageType));
+                }
                 continue;
             }
 
@@ -279,10 +321,10 @@ public final class TableManager {
      * Get the storage type for the ID field of an entity class.
      */
     private Class<?> getIdStorageType(Class<?> entityClass) {
-        // First, try to find ID field with annotations
+        // First, try to find ID field with annotations (use annotation name matching to avoid classloader issues)
         for (var field : entityClass.getDeclaredFields()) {
-            if (field.isAnnotationPresent(GeneratedValue.class) ||
-                field.isAnnotationPresent(Id.class)) {
+            if (hasAnnotationWithName(field, "jakarta.persistence.GeneratedValue") ||
+                hasAnnotationWithName(field, "jakarta.persistence.Id")) {
                 Class<?> fieldType = field.getType();
                 var converter = io.memris.spring.converter.TypeConverterRegistry.getInstance().getConverter(fieldType);
                 if (converter != null) {
@@ -319,6 +361,24 @@ public final class TableManager {
     }
 
     /**
+     * Check if a field has an annotation with the given name.
+     * <p>
+     * Uses annotation name matching instead of class equality to avoid classloader issues.
+     *
+     * @param field the field to check
+     * @param annotationName the fully qualified annotation name
+     * @return true if the field has the annotation, false otherwise
+     */
+    private boolean hasAnnotationWithName(java.lang.reflect.Field field, String annotationName) {
+        for (var ann : field.getDeclaredAnnotations()) {
+            if (ann.annotationType().getName().equals(annotationName)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
      * Check if a class looks like an entity by checking for ID fields.
      * <p>
      * This is a fallback for annotation detection issues with static inner classes.
@@ -329,7 +389,8 @@ public final class TableManager {
      */
     private boolean looksLikeEntity(Class<?> clazz) {
         for (var field : clazz.getDeclaredFields()) {
-            if (field.isAnnotationPresent(Id.class) || field.isAnnotationPresent(GeneratedValue.class)) {
+            if (hasAnnotationWithName(field, "jakarta.persistence.Id") ||
+                hasAnnotationWithName(field, "jakarta.persistence.GeneratedValue")) {
                 return true;
             }
         }

@@ -1,4 +1,6 @@
-# Selection Pipeline - O(1) Design
+# Selection Pipeline Design
+
+*For overall architecture, see [ARCHITECTURE.md](../ARCHITECTURE.md)*
 
 ## Guiding Principle
 **O(1) first, O(log n) second, O(n) forbidden.**

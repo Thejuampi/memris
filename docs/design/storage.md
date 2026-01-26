@@ -1,4 +1,6 @@
-# Design Decisions - Memris v1.0
+# Storage Layer Design
+
+*For overall architecture, see [ARCHITECTURE.md](../ARCHITECTURE.md)*
 
 ## Core Data Structures
 
@@ -118,3 +120,8 @@
 - FfmTable with FfmIntColumn and FfmLongColumn using SIMD vector scans
 - Simple benchmark runner for performance validation
 - Primitive-only APIs: no Iterator, no Iterable, no boxed types in hot paths
+
+### Design Principles
+All core operations follow the O(1) first, O(log n) second, O(n) forbidden principle.
+For details on SelectionVector interface and primitive enumerators,
+see [Selection Pipeline Design](selection.md).

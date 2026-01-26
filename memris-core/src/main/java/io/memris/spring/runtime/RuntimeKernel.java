@@ -70,6 +70,10 @@ public final class RuntimeKernel {
     }
 
     private static FfmColumnAccessor createAccessor(FfmTable table, int index, String columnName, byte typeCode) {
+        // typeCode = -1 indicates a relationship field (no direct column accessor)
+        if (typeCode == -1) {
+            return null;
+        }
 
         return switch (typeCode) {
             case TypeCodes.TYPE_INT -> new IntAccessor(index, columnName, table);

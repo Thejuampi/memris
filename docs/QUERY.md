@@ -1,0 +1,192 @@
+# Query Reference
+
+This document provides a complete query operator reference for Memris.
+
+## Quick Reference: Query Operators
+
+**Status Legend:**
+- ✅ Implemented - Parsed by QueryPlanner (zero-reflection runtime)
+- ⚠️ Partial - Parsed by QueryMethodParser (not in QueryPlanner)
+- ❌ Not Implemented
+
+### Comparison Operators
+| Operator | JPA Pattern | Status |
+|----------|-------------|--------|
+| EQ | `findByXxx`<br>`findByXxxIs`<br>`findByXxxEquals` | ✅ |
+| NE | `findByXxxNot` | ✅ |
+| GT | `findByXxxGreaterThan` | ✅ |
+| GTE | `findByXxxGreaterThanEqual` | ✅ |
+| LT | `findByXxxLessThan` | ✅ |
+| LTE | `findByXxxLessThanEqual` | ✅ |
+| BETWEEN | `findByXxxBetween` | ✅ |
+
+### String Operators
+| Operator | JPA Pattern | Status |
+|----------|-------------|--------|
+| LIKE | `findByXxxLike` | ⚠️ |
+| NOT_LIKE | `findByXxxNotLike` | ⚠️ |
+| STARTING_WITH | `findByXxxStartingWith`<br>`findByXxxStartsWith` | ⚠️ |
+| ENDING_WITH | `findByXxxEndingWith`<br>`findByXxxEndsWith` | ⚠️ |
+| CONTAINING | `findByXxxContaining`<br>`findByXxxContains` | ⚠️ |
+| IGNORE_CASE | `findByXxxIgnoreCase`<br>`findByXxxAndYyyAllIgnoreCase` | ✅ |
+
+### Boolean Operators
+| Operator | JPA Pattern | Status |
+|----------|-------------|--------|
+| IS_TRUE | `findByXxxTrue`<br>`findByXxxIsTrue` | ⚠️ |
+| IS_FALSE | `findByXxxFalse`<br>`findByXxxIsFalse` | ⚠️ |
+
+### Null Operators
+| Operator | JPA Pattern | Status |
+|----------|-------------|--------|
+| IS_NULL | `findByXxxIsNull`<br>`findByXxxNull` | ⚠️ |
+| IS_NOT_NULL | `findByXxxIsNotNull`<br>`findByXxxNotNull` | ⚠️ |
+
+### Collection Operators
+| Operator | JPA Pattern | Status |
+|----------|-------------|--------|
+| IN | `findByXxxIn` | ⚠️ |
+| NOT_IN | `findByXxxNotIn` | ⚠️ |
+
+### Date/Time Operators
+| Operator | JPA Pattern | Status |
+|----------|-------------|--------|
+| AFTER | `findByXxxAfter` | ⚠️ |
+| BEFORE | `findByXxxBefore` | ⚠️ |
+
+### Logical Operators
+| Operator | JPA Pattern | Status |
+|----------|-------------|--------|
+| AND | `findByXxxAndYyy` | ✅ |
+| OR | `findByXxxOrYyy` | ⚠️ |
+
+### Query Modifiers
+| Modifier | JPA Pattern | Status |
+|----------|-------------|--------|
+| DISTINCT | `findDistinctByXxx` | ⚠️ |
+| ORDER BY | `findByXxxOrderByYxxAsc`<br>`findByXxxOrderByYyyDesc` | ⚠️ |
+| LIMIT/TOP/FIRST | `findFirstByXxx`<br>`findTopByXxx`<br>`findTop10ByXxx` | ⚠️ |
+
+### Return Types
+| Return Type | Pattern | Status |
+|------------|----------|--------|
+| List\<T\> | `findByXxx` | ✅ |
+| Optional\<T\> | `findById` | ✅ |
+| long | `countByXxx` | ✅ |
+| boolean | `existsByXxx` | ✅ |
+
+## Query Method Naming Quick Reference
+
+Query methods follow Spring Data JPA naming conventions:
+
+```
+[find/query/get/stream][Distinct][By][First/Top][Result][OrderBy]*
+[count/exists][Distinct][By]*
+[delete/remove][Distinct][By]*
+```
+
+**Examples:**
+```java
+List<User> findByEmail(String email);
+List<User> findByAgeGreaterThan(int age);
+List<User> findByNameContainingIgnoreCase(String name);
+long countByActiveTrue();
+boolean existsByEmail(String email);
+```
+
+### Method Naming Patterns
+
+**Prefix:** `find`, `query`, `get`, `stream`, `count`, `exists`, `delete`, `remove`
+
+**Conditions:**
+- `findByXxx` - Equality
+- `findByXxxAndYyy` - Multiple conditions (AND)
+- `findByXxxGreaterThan` - Comparison
+- `findByXxxBetween` - Range
+
+**Return Types:**
+- `List<T>` - Multiple results
+- `Optional<T>` - Single result
+- `long` - Count
+- `boolean` - Existence check
+
+## Alternative Query Patterns
+
+The following patterns show alternative approaches when using advanced operators that may not be fully parsed or executed.
+
+### Collection Membership (IN Pattern)
+
+**Goal:** Find users with status in ["gold", "platinum"]
+
+**Workaround:** Multiple queries + manual union
+```java
+List<User> gold = repo.findByStatus("gold");
+List<User> platinum = repo.findByStatus("platinum");
+List<User> vips = new ArrayList<>(gold);
+vips.addAll(platinum);
+```
+
+### Pattern Matching (LIKE Pattern)
+
+**Goal:** Find users with name containing "oh"
+
+**Workaround:** Retrieve all and filter
+```java
+List<User> allUsers = repo.findAll();
+List<User> matches = allUsers.stream()
+    .filter(u -> u.getName().contains("oh"))
+    .toList();
+```
+
+### OR Conditions
+
+**Goal:** Find users with age < 25 OR active = true
+
+**Workaround:** Two queries + union
+```java
+List<User> young = repo.findByAgeLessThan(25);
+List<User> active = repo.findByActiveTrue();
+Set<User> result = new LinkedHashSet<>(young);
+result.addAll(active);
+List<User> youngOrActive = new ArrayList<>(result);
+```
+
+### Sorting (ORDER BY Pattern)
+
+**Goal:** Find adults sorted by name descending
+
+**Workaround:** Retrieve all + sort in memory
+```java
+List<User> adults = repo.findByAgeGreaterThan(18);
+adults.sort((a, b) -> b.getLastname().compareTo(a.getLastname()));
+```
+
+### Limiting (TOP/FIRST Pattern)
+
+**Goal:** Find top 10 active users
+
+**Workaround:** Retrieve all + sublist
+```java
+List<User> active = repo.findByActiveTrue();
+List<User> top10 = active.size() > 10 ? active.subList(0, 10) : active;
+```
+
+### Distinct
+
+**Goal:** Find distinct email addresses
+
+**Workaround:** Stream distinct
+```java
+List<User> all = repo.findAll();
+List<User> unique = all.stream()
+    .distinct()
+    .toList();
+```
+
+## Architecture
+
+For detailed information about query execution architecture, zero-reflection runtime, and performance characteristics, see [ARCHITECTURE.md](ARCHITECTURE.md).
+
+---
+
+*For development guidelines, see [../CLAUDE.md](../CLAUDE.md)*

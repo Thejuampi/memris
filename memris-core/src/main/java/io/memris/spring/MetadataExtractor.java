@@ -131,7 +131,8 @@ public final class MetadataExtractor {
             } else {
                 // For non-records: scan declared fields
                 for (Field field : entityClass.getDeclaredFields()) {
-                    if (field.isAnnotationPresent(Transient.class)) {
+                    // Use annotation name matching to avoid classloader issues
+                    if (hasAnnotationWithName(field, "jakarta.persistence.Transient")) {
                         continue;
                     }
 
@@ -140,18 +141,59 @@ public final class MetadataExtractor {
                     Class<?> javaType = field.getType();
                     Class<?> storageType = javaType;
 
-                    // Handle TypeConverter
-                    TypeConverter<?, ?> converter = TypeConverterRegistry.getInstance().getConverter(javaType);
-                    if (converter != null) {
-                        storageType = converter.getStorageType();
-                        converters.put(fieldName, converter);
+                    // Detect relationships (use annotation name matching to avoid classloader issues)
+                    boolean isRelationship = false;
+                    EntityMetadata.FieldMapping.RelationshipType relationshipType = EntityMetadata.FieldMapping.RelationshipType.NONE;
+                    Class<?> targetEntity = null;
+                    String joinTable = null;
+                    boolean isCollection = false;
+                    boolean isEmbedded = hasAnnotationWithName(field, "jakarta.persistence.Embedded");
+
+                    if (!isEmbedded) {
+                        if (hasAnnotationWithName(field, "jakarta.persistence.OneToOne")) {
+                            isRelationship = true;
+                            relationshipType = EntityMetadata.FieldMapping.RelationshipType.ONE_TO_ONE;
+                            targetEntity = field.getType();
+                            // For @OneToOne, the column is the foreign key column (fieldName_id)
+                            columnName = field.getName() + "_id";
+                        } else if (hasAnnotationWithName(field, "jakarta.persistence.ManyToOne")) {
+                            isRelationship = true;
+                            relationshipType = EntityMetadata.FieldMapping.RelationshipType.MANY_TO_ONE;
+                            targetEntity = field.getType();
+                            // For @ManyToOne, the column is the foreign key column (fieldName_id)
+                            columnName = field.getName() + "_id";
+                        } else if (hasAnnotationWithName(field, "jakarta.persistence.OneToMany")) {
+                            isRelationship = true;
+                            relationshipType = EntityMetadata.FieldMapping.RelationshipType.ONE_TO_MANY;
+                            targetEntity = extractTargetEntityType(field);
+                            isCollection = true;
+                        } else if (hasAnnotationWithName(field, "jakarta.persistence.ManyToMany")) {
+                            isRelationship = true;
+                            relationshipType = EntityMetadata.FieldMapping.RelationshipType.MANY_TO_MANY;
+                            targetEntity = extractTargetEntityType(field);
+                            isCollection = true;
+                            joinTable = getJoinTableName(field);
+                        }
                     }
 
-                    // Get column position
-                    int columnPosition = findColumnPosition(table, columnName);
+                    // Handle TypeConverter (only for non-relationship fields)
+                    TypeConverter<?, ?> converter = null;
+                    if (!isRelationship && !isEmbedded) {
+                        converter = TypeConverterRegistry.getInstance().getConverter(javaType);
+                        if (converter != null) {
+                            storageType = converter.getStorageType();
+                            converters.put(fieldName, converter);
+                        }
+                    }
+
+                    // Get column position (skip for collection relationships)
+                    int columnPosition = -1;
+                    if (!isCollection) {
+                        columnPosition = findColumnPosition(table, columnName);
+                    }
 
                     // Pre-compute type code once (no runtime overhead)
-                    byte typeCode = getTypeCode(storageType);
+                    byte typeCode = isRelationship || isEmbedded ? (byte) -1 : getTypeCode(storageType);
 
                     EntityMetadata.FieldMapping mapping = new EntityMetadata.FieldMapping(
                             fieldName,
@@ -159,7 +201,13 @@ public final class MetadataExtractor {
                             javaType,
                             storageType,
                             columnPosition,
-                            typeCode
+                            typeCode,
+                            isRelationship,
+                            relationshipType,
+                            targetEntity,
+                            joinTable,
+                            isCollection,
+                            isEmbedded
                     );
                     fields.add(mapping);
 
@@ -189,11 +237,11 @@ public final class MetadataExtractor {
             for (Method m : entityClass.getDeclaredMethods()) {
                 if (m.getParameterCount() == 0 && m.getReturnType() == void.class) {
                     m.setAccessible(true);
-                    if (m.isAnnotationPresent(PrePersist.class)) {
+                    if (hasAnnotationWithName(m, "jakarta.persistence.PrePersist")) {
                         prePersistHandle = lookup.unreflect(m);
-                    } else if (m.isAnnotationPresent(PostLoad.class)) {
+                    } else if (hasAnnotationWithName(m, "jakarta.persistence.PostLoad")) {
                         postLoadHandle = lookup.unreflect(m);
-                    } else if (m.isAnnotationPresent(PreUpdate.class)) {
+                    } else if (hasAnnotationWithName(m, "jakarta.persistence.PreUpdate")) {
                         preUpdateHandle = lookup.unreflect(m);
                     }
                 }
@@ -354,13 +402,105 @@ public final class MetadataExtractor {
 
     private static String findIdColumnName(Class<?> entityClass) {
         for (Field field : entityClass.getDeclaredFields()) {
-            if (field.isAnnotationPresent(GeneratedValue.class) ||
-                    field.isAnnotationPresent(Id.class) ||
+            if (hasAnnotationWithName(field, "jakarta.persistence.GeneratedValue") ||
+                    hasAnnotationWithName(field, "jakarta.persistence.Id") ||
                     field.getName().equals("id")) {
                 return field.getName();
             }
         }
         throw new IllegalArgumentException("No ID field found for entity: " + entityClass.getName());
+    }
+
+    /**
+     * Extracts the target entity class from a generic collection field.
+     * <p>
+     * For example, for "List<Order> orders", returns Order.class.
+     */
+    private static Class<?> extractTargetEntityType(Field field) {
+        // Get the generic type of the field
+        Type genericType = field.getGenericType();
+
+        if (genericType instanceof ParameterizedType paramType) {
+            // Get the first type argument (e.g., Order from List<Order>)
+            Type[] typeArgs = paramType.getActualTypeArguments();
+            if (typeArgs.length > 0 && typeArgs[0] instanceof Class<?> clazz) {
+                return clazz;
+            }
+        }
+
+        // Fallback: try to get from @OneToMany.targetEntity() or @ManyToMany.targetEntity()
+        if (field.isAnnotationPresent(OneToMany.class)) {
+            OneToMany annotation = field.getAnnotation(OneToMany.class);
+            Class<?> targetEntity = annotation.targetEntity();
+            if (targetEntity != void.class) {
+                return targetEntity;
+            }
+        } else if (field.isAnnotationPresent(ManyToMany.class)) {
+            ManyToMany annotation = field.getAnnotation(ManyToMany.class);
+            Class<?> targetEntity = annotation.targetEntity();
+            if (targetEntity != void.class) {
+                return targetEntity;
+            }
+        }
+
+        throw new IllegalArgumentException(
+                "Cannot determine target entity type for field: " + field.getName() +
+                " in " + field.getDeclaringClass().getName());
+    }
+
+    /**
+     * Extracts the join table name from a @ManyToMany field.
+     */
+    private static String getJoinTableName(Field field) {
+        ManyToMany annotation = field.getAnnotation(ManyToMany.class);
+        if (annotation != null) {
+            // Check for @JoinTable annotation
+            JoinTable joinTableAnnotation = field.getAnnotation(JoinTable.class);
+            if (joinTableAnnotation != null && !joinTableAnnotation.name().isEmpty()) {
+                return joinTableAnnotation.name();
+            }
+            // Default: table1_table2 (e.g., user_role)
+            String entityName = field.getDeclaringClass().getSimpleName().toLowerCase();
+            String targetName = extractTargetEntityType(field).getSimpleName().toLowerCase();
+            return entityName + "_" + targetName;
+        }
+        return null;
+    }
+
+    /**
+     * Check if a field has an annotation with the given name.
+     * <p>
+     * Uses annotation name matching instead of class equality to avoid classloader issues.
+     *
+     * @param field the field to check
+     * @param annotationName the fully qualified annotation name
+     * @return true if the field has the annotation, false otherwise
+     */
+    private static boolean hasAnnotationWithName(java.lang.reflect.Field field, String annotationName) {
+        for (var ann : field.getDeclaredAnnotations()) {
+            if (ann.annotationType().getName().equals(annotationName)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Check if a method has an annotation with the given name.
+     * <p>
+     * Uses annotation name matching instead of class equality to avoid classloader issues.
+     *
+     * @param method the method to check
+     * @param annotationName the fully qualified annotation name
+     * @return true if the method has the annotation, false otherwise
+     */
+    private static boolean hasAnnotationWithName(java.lang.reflect.Method method, String annotationName) {
+        for (var ann : method.getDeclaredAnnotations()) {
+            if (ann.annotationType().getName().equals(annotationName)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private MetadataExtractor() {

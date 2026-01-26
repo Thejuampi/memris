@@ -65,6 +65,8 @@ public final class QueryCompiler {
      * - Simple: "name" → finds "name" column
      * - Nested: "address.zip" → finds "address_zip" column
      * - ID marker: "$ID" → finds the entity's ID column
+     * <p>
+     * Uses O(1) lookup maps pre-built in EntityMetadata.
      *
      * @param propertyPath the property path to resolve
      * @return the column index (0-based)
@@ -73,23 +75,9 @@ public final class QueryCompiler {
     private int resolveColumnIndex(String propertyPath) {
         // Special case: $ID marker resolves to the entity's ID column
         if (LogicalQuery.Condition.ID_PROPERTY.equals(propertyPath)) {
-            String idColumnName = metadata.idColumnName();
-            for (int i = 0; i < metadata.fields().size(); i++) {
-                FieldMapping fm = metadata.fields().get(i);
-                if (fm.columnName().equals(idColumnName)) {
-                    return fm.columnPosition();
-                }
-            }
-            throw new IllegalArgumentException("ID column not found: " + idColumnName);
+            return metadata.resolveColumnPosition(metadata.idColumnName());
         }
-
-        // Find matching field mapping by property name
-        for (int i = 0; i < metadata.fields().size(); i++) {
-            FieldMapping fm = metadata.fields().get(i);
-            if (fm.name().equals(propertyPath)) {
-                return fm.columnPosition();
-            }
-        }
-        throw new IllegalArgumentException("Property not found: " + propertyPath);
+        // O(1) lookup using pre-built map
+        return metadata.resolvePropertyPosition(propertyPath);
     }
 }

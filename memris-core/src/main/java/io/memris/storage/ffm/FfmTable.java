@@ -9,6 +9,7 @@ import io.memris.kernel.selection.MutableSelectionVector;
 import io.memris.kernel.selection.SelectionVector;
 import io.memris.kernel.selection.SelectionVectorFactory;
 
+import io.memris.spring.TypeCodes;
 import java.lang.foreign.Arena;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -137,7 +138,7 @@ public final class FfmTable implements Table {
         if (col == null) {
             throw new IllegalArgumentException("Column not found: " + column);
         }
-        if (col.type() == int.class || col.type() == Integer.class) {
+        if (col.typeCode() == TypeCodes.TYPE_INT) {
             return ((FfmIntColumn) col).get(rowIndex);
         }
         throw new IllegalArgumentException("Column is not int: " + column);
@@ -148,7 +149,7 @@ public final class FfmTable implements Table {
         if (col == null) {
             throw new IllegalArgumentException("Column not found: " + column);
         }
-        if (col.type() == long.class || col.type() == Long.class) {
+        if (col.typeCode() == TypeCodes.TYPE_LONG) {
             return ((FfmLongColumn) col).get(rowIndex);
         }
         throw new IllegalArgumentException("Column is not long: " + column);
@@ -159,7 +160,7 @@ public final class FfmTable implements Table {
         if (col == null) {
             throw new IllegalArgumentException("Column not found: " + column);
         }
-        if (col.type() == boolean.class || col.type() == Boolean.class) {
+        if (col.typeCode() == TypeCodes.TYPE_BOOLEAN) {
             return ((FfmBooleanColumn) col).get(rowIndex);
         }
         throw new IllegalArgumentException("Column is not boolean: " + column);
@@ -170,7 +171,7 @@ public final class FfmTable implements Table {
         if (col == null) {
             throw new IllegalArgumentException("Column not found: " + column);
         }
-        if (col.type() == byte.class || col.type() == Byte.class) {
+        if (col.typeCode() == TypeCodes.TYPE_BYTE) {
             return ((FfmByteColumn) col).get(rowIndex);
         }
         throw new IllegalArgumentException("Column is not byte: " + column);
@@ -181,7 +182,7 @@ public final class FfmTable implements Table {
         if (col == null) {
             throw new IllegalArgumentException("Column not found: " + column);
         }
-        if (col.type() == short.class || col.type() == Short.class) {
+        if (col.typeCode() == TypeCodes.TYPE_SHORT) {
             return ((FfmShortColumn) col).get(rowIndex);
         }
         throw new IllegalArgumentException("Column is not short: " + column);
@@ -192,7 +193,7 @@ public final class FfmTable implements Table {
         if (col == null) {
             throw new IllegalArgumentException("Column not found: " + column);
         }
-        if (col.type() == float.class || col.type() == Float.class) {
+        if (col.typeCode() == TypeCodes.TYPE_FLOAT) {
             return ((FfmFloatColumn) col).get(rowIndex);
         }
         throw new IllegalArgumentException("Column is not float: " + column);
@@ -203,7 +204,7 @@ public final class FfmTable implements Table {
         if (col == null) {
             throw new IllegalArgumentException("Column not found: " + column);
         }
-        if (col.type() == double.class || col.type() == Double.class) {
+        if (col.typeCode() == TypeCodes.TYPE_DOUBLE) {
             return ((FfmDoubleColumn) col).get(rowIndex);
         }
         throw new IllegalArgumentException("Column is not double: " + column);
@@ -214,7 +215,7 @@ public final class FfmTable implements Table {
         if (col == null) {
             throw new IllegalArgumentException("Column not found: " + column);
         }
-        if (col.type() == char.class || col.type() == Character.class) {
+        if (col.typeCode() == TypeCodes.TYPE_CHAR) {
             return ((FfmCharColumn) col).get(rowIndex);
         }
         throw new IllegalArgumentException("Column is not char: " + column);
@@ -225,7 +226,7 @@ public final class FfmTable implements Table {
         if (col == null) {
             throw new IllegalArgumentException("Column not found: " + column);
         }
-        if (col.type() == String.class) {
+        if (col.typeCode() == TypeCodes.TYPE_STRING) {
             return ((FfmStringColumnImpl) col).get(rowIndex);
         }
         throw new IllegalArgumentException("Column is not String: " + column);
@@ -236,7 +237,7 @@ public final class FfmTable implements Table {
         if (col == null) {
             throw new IllegalArgumentException("Column not found: " + column);
         }
-        if (col.type() == int.class || col.type() == Integer.class) {
+        if (col.typeCode() == TypeCodes.TYPE_INT) {
             ((FfmIntColumn) col).column.set(rowIndex, value);
             return;
         }
@@ -248,7 +249,7 @@ public final class FfmTable implements Table {
         if (col == null) {
             throw new IllegalArgumentException("Column not found: " + column);
         }
-        if (col.type() == long.class || col.type() == Long.class) {
+        if (col.typeCode() == TypeCodes.TYPE_LONG) {
             ((FfmLongColumn) col).column.set(rowIndex, value);
             return;
         }
@@ -260,7 +261,7 @@ public final class FfmTable implements Table {
         if (col == null) {
             throw new IllegalArgumentException("Column not found: " + column);
         }
-        if (col.type() == boolean.class || col.type() == Boolean.class) {
+        if (col.typeCode() == TypeCodes.TYPE_BOOLEAN) {
             ((FfmBooleanColumn) col).column.set(rowIndex, value);
             return;
         }
@@ -272,7 +273,7 @@ public final class FfmTable implements Table {
         if (col == null) {
             throw new IllegalArgumentException("Column not found: " + column);
         }
-        if (col.type() == byte.class || col.type() == Byte.class) {
+        if (col.typeCode() == TypeCodes.TYPE_BYTE) {
             ((FfmByteColumn) col).column.set(rowIndex, value);
             return;
         }
@@ -284,7 +285,7 @@ public final class FfmTable implements Table {
         if (col == null) {
             throw new IllegalArgumentException("Column not found: " + column);
         }
-        if (col.type() == short.class || col.type() == Short.class) {
+        if (col.typeCode() == TypeCodes.TYPE_SHORT) {
             ((FfmShortColumn) col).column.set(rowIndex, value);
             return;
         }
@@ -296,7 +297,7 @@ public final class FfmTable implements Table {
         if (col == null) {
             throw new IllegalArgumentException("Column not found: " + column);
         }
-        if (col.type() == float.class || col.type() == Float.class) {
+        if (col.typeCode() == TypeCodes.TYPE_FLOAT) {
             ((FfmFloatColumn) col).column.set(rowIndex, value);
             return;
         }
@@ -308,7 +309,7 @@ public final class FfmTable implements Table {
         if (col == null) {
             throw new IllegalArgumentException("Column statement not found: " + column);
         }
-        if (col.type() == double.class || col.type() == Double.class) {
+        if (col.typeCode() == TypeCodes.TYPE_DOUBLE) {
             ((FfmDoubleColumn) col).column.set(rowIndex, value);
             return;
         }
@@ -320,7 +321,7 @@ public final class FfmTable implements Table {
         if (col == null) {
             throw new IllegalArgumentException("Column not found: " + column);
         }
-        if (col.type() == char.class || col.type() == Character.class) {
+        if (col.typeCode() == TypeCodes.TYPE_CHAR) {
             ((FfmCharColumn) col).column.set(rowIndex, value);
             return;
         }
@@ -332,7 +333,7 @@ public final class FfmTable implements Table {
         if (col == null) {
             throw new IllegalArgumentException("Column not found: " + column);
         }
-        if (col.type() == String.class) {
+        if (col.typeCode() == TypeCodes.TYPE_STRING) {
             ((FfmStringColumnImpl) col).column.set(rowIndex, value);
             return;
         }
@@ -364,10 +365,10 @@ public final class FfmTable implements Table {
         if (col == null) {
             return SelectionVectorFactory.defaultFactory().create(0);
         }
-        Class<?> colType = col.type();
+        byte colType = col.typeCode();
         Predicate.Operator op = comp.operator();
 
-        if (colType == int.class || colType == Integer.class) {
+        if (colType == TypeCodes.TYPE_INT) {
             FfmIntColumn intCol = (FfmIntColumn) col;
             int value = ((Number) comp.value()).intValue();
             return switch (op) {
@@ -388,7 +389,7 @@ public final class FfmTable implements Table {
                 }
                 default -> SelectionVectorFactory.defaultFactory().create(0);
             };
-        } else if (colType == long.class || colType == Long.class) {
+        } else if (colType == TypeCodes.TYPE_LONG) {
             FfmLongColumn longCol = (FfmLongColumn) col;
             long value = ((Number) comp.value()).longValue();
             return switch (op) {
@@ -409,7 +410,7 @@ public final class FfmTable implements Table {
                 }
                 default -> SelectionVectorFactory.defaultFactory().create(0);
             };
-        } else if (colType == String.class) {
+        } else if (colType == TypeCodes.TYPE_STRING) {
             FfmStringColumnImpl strCol = (FfmStringColumnImpl) col;
             String value = (String) comp.value();
             return switch (op) {
@@ -450,13 +451,13 @@ public final class FfmTable implements Table {
         if (col == null) {
             return SelectionVectorFactory.defaultFactory().create(0);
         }
-        Class<?> colType = col.type();
-        if (colType == int.class || colType == Integer.class) {
+        byte colType = col.typeCode();
+        if (colType == TypeCodes.TYPE_INT) {
             FfmIntColumn intCol = (FfmIntColumn) col;
             int lower = ((Number) bet.lower()).intValue();
             int upper = ((Number) bet.upper()).intValue();
             return intCol.scanBetween(lower, upper, size, factory);
-        } else if (colType == long.class || colType == Long.class) {
+        } else if (colType == TypeCodes.TYPE_LONG) {
             FfmLongColumn longCol = (FfmLongColumn) col;
             long lower = ((Number) bet.lower()).longValue();
             long upper = ((Number) bet.upper()).longValue();
@@ -472,12 +473,12 @@ public final class FfmTable implements Table {
         }
         MutableSelectionVector result = factory.create((int) (size * 0.1));
         for (Object value : in.values()) {
-            SelectionVector matches = switch (col.type().getName()) {
-                case "int", "java.lang.Integer" ->
+            SelectionVector matches = switch (col.typeCode()) {
+                case TypeCodes.TYPE_INT ->
                         ((FfmIntColumn) col).scanEquals(((Number) value).intValue(), size, factory);
-                case "long", "java.lang.Long" ->
+                case TypeCodes.TYPE_LONG ->
                         ((FfmLongColumn) col).scanEquals(((Number) value).longValue(), size, factory);
-                case "java.lang.String" -> ((FfmStringColumnImpl) col).scanEquals((String) value, size, factory);
+                case TypeCodes.TYPE_STRING -> ((FfmStringColumnImpl) col).scanEquals((String) value, size, factory);
                 default -> SelectionVectorFactory.defaultFactory().create(0);
             };
             IntEnumerator e = matches.enumerator();
@@ -514,6 +515,9 @@ public final class FfmTable implements Table {
         void set(int index, Object value);
 
         void resize(int newCapacity);
+
+        @Override
+        byte typeCode();
     }
 
     private static final class FfmIntColumn implements FfmColumn<Integer> {
@@ -554,6 +558,11 @@ public final class FfmTable implements Table {
         @Override
         public void resize(int newCapacity) {
             throw new UnsupportedOperationException("Resize not yet implemented for FFM columns");
+        }
+
+        @Override
+        public byte typeCode() {
+            return TypeCodes.TYPE_INT;
         }
 
         public SelectionVector scanEquals(int value, int rowCount, SelectionVectorFactory factory) {
@@ -629,6 +638,11 @@ public final class FfmTable implements Table {
             throw new UnsupportedOperationException("Resize not yet implemented for FFM columns");
         }
 
+        @Override
+        public byte typeCode() {
+            return TypeCodes.TYPE_LONG;
+        }
+
         public SelectionVector scanEquals(long value, int rowCount, SelectionVectorFactory factory) {
             return column.scanEquals(value, rowCount, factory);
         }
@@ -695,6 +709,11 @@ public final class FfmTable implements Table {
         @Override
         public void resize(int newCapacity) {
             throw new UnsupportedOperationException("Resize not yet implemented for FFM columns");
+        }
+
+        @Override
+        public byte typeCode() {
+            return TypeCodes.TYPE_STRING;
         }
 
         public SelectionVector scanEquals(String value, int rowCount, SelectionVectorFactory factory) {
@@ -765,6 +784,11 @@ public final class FfmTable implements Table {
             throw new UnsupportedOperationException("Resize not yet implemented for FFM columns");
         }
 
+        @Override
+        public byte typeCode() {
+            return TypeCodes.TYPE_BOOLEAN;
+        }
+
         public SelectionVector scanEquals(boolean value, int rowCount, SelectionVectorFactory factory) {
             return column.scanEquals(value, rowCount, factory);
         }
@@ -815,6 +839,11 @@ public final class FfmTable implements Table {
         @Override
         public void resize(int newCapacity) {
             throw new UnsupportedOperationException("Resize not yet implemented for FFM columns");
+        }
+
+        @Override
+        public byte typeCode() {
+            return TypeCodes.TYPE_BYTE;
         }
 
         public SelectionVector scanEquals(byte value, int rowCount, SelectionVectorFactory factory) {
@@ -869,6 +898,11 @@ public final class FfmTable implements Table {
             throw new UnsupportedOperationException("Resize not yet implemented for FFM columns");
         }
 
+        @Override
+        public byte typeCode() {
+            return TypeCodes.TYPE_SHORT;
+        }
+
         public SelectionVector scanEquals(short value, int rowCount, SelectionVectorFactory factory) {
             return column.scanEquals(value, rowCount, factory);
         }
@@ -919,6 +953,11 @@ public final class FfmTable implements Table {
         @Override
         public void resize(int newCapacity) {
             throw new UnsupportedOperationException("Resize not yet implemented for FFM columns");
+        }
+
+        @Override
+        public byte typeCode() {
+            return TypeCodes.TYPE_FLOAT;
         }
 
         public SelectionVector scanEquals(float value, int rowCount, SelectionVectorFactory factory) {
@@ -973,6 +1012,11 @@ public final class FfmTable implements Table {
             throw new UnsupportedOperationException("Resize not yet implemented for FFM columns");
         }
 
+        @Override
+        public byte typeCode() {
+            return TypeCodes.TYPE_DOUBLE;
+        }
+
         public SelectionVector scanEquals(double value, int rowCount, SelectionVectorFactory factory) {
             return column.scanEquals(value, rowCount, factory);
         }
@@ -1023,6 +1067,11 @@ public final class FfmTable implements Table {
         @Override
         public void resize(int newCapacity) {
             throw new UnsupportedOperationException("Resize not yet implemented for FFM columns");
+        }
+
+        @Override
+        public byte typeCode() {
+            return TypeCodes.TYPE_CHAR;
         }
 
         public SelectionVector scanEquals(char value, int rowCount, SelectionVectorFactory factory) {

@@ -1,4 +1,6 @@
-# JPA Query Method Parser Design Decisions
+# JPA Query Method Parser Design
+
+*For overall architecture, see [ARCHITECTURE.md](../ARCHITECTURE.md)*
 
 ## Overview
 This document captures the design decisions made while implementing JPA Query Method parsing for Memris, ensuring compliance with Spring Data JPA specifications.

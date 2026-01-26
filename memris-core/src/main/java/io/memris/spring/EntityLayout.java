@@ -1,8 +1,10 @@
 package io.memris.spring;
 
 import io.memris.spring.converter.TypeConverter;
+import io.memris.storage.ffm.FfmTable;
 
 import java.lang.invoke.MethodHandle;
+import java.util.Map;
 
 /**
  * Layout metadata for an entity type.
@@ -11,6 +13,7 @@ import java.lang.invoke.MethodHandle;
  * - Field layouts with columnId mappings
  * - Converters (nullable per field)
  * - Setter strategies
+ * - Related hydrators and tables for relationship handling
  * <p>
  * This is compiled ONCE at repository creation time and then used
  * to generate zero-reflection hydrator code.
@@ -24,20 +27,37 @@ public final class EntityLayout<T> {
     private final FieldLayout[] fields;
     private final String idColumnName;
 
+    // Related hydrators and tables for relationship handling
+    private final Map<String, EntityHydrator<?>> relatedHydrators;
+    private final Map<String, FfmTable> relatedTables;
+
     private EntityLayout(
             Class<T> entityClass,
             FieldLayout[] fields,
-            String idColumnName) {
+            String idColumnName,
+            Map<String, EntityHydrator<?>> relatedHydrators,
+            Map<String, FfmTable> relatedTables) {
         this.entityClass = entityClass;
         this.fields = fields;
         this.idColumnName = idColumnName;
+        this.relatedHydrators = relatedHydrators != null ? relatedHydrators : Map.of();
+        this.relatedTables = relatedTables != null ? relatedTables : Map.of();
     }
 
     public static <T> EntityLayout<T> of(
             Class<T> entityClass,
             FieldLayout[] fields,
             String idColumnName) {
-        return new EntityLayout<>(entityClass, fields, idColumnName);
+        return new EntityLayout<>(entityClass, fields, idColumnName, null, null);
+    }
+
+    public static <T> EntityLayout<T> of(
+            Class<T> entityClass,
+            FieldLayout[] fields,
+            String idColumnName,
+            Map<String, EntityHydrator<?>> relatedHydrators,
+            Map<String, FfmTable> relatedTables) {
+        return new EntityLayout<>(entityClass, fields, idColumnName, relatedHydrators, relatedTables);
     }
 
     public Class<T> entityClass() {
@@ -50,6 +70,14 @@ public final class EntityLayout<T> {
 
     public String idColumnName() {
         return idColumnName;
+    }
+
+    public Map<String, EntityHydrator<?>> relatedHydrators() {
+        return relatedHydrators;
+    }
+
+    public Map<String, FfmTable> relatedTables() {
+        return relatedTables;
     }
 
     /**
@@ -69,6 +97,14 @@ public final class EntityLayout<T> {
         private final SetterStrategy setterStrategy;
         private final MethodHandle setterHandleOrNull;  // if MethodHandle setter
 
+        // Relationship metadata
+        private final boolean isRelationship;
+        private final EntityMetadata.FieldMapping.RelationshipType relationshipType;
+        private final Class<?> targetEntity;
+        private final String joinTable;
+        private final boolean isCollection;
+        private final boolean isEmbedded;
+
         private FieldLayout(
                 String propertyPath,
                 String columnName,
@@ -78,7 +114,13 @@ public final class EntityLayout<T> {
                 Class<?> storageType,
                 TypeConverter<?, ?> converterOrNull,
                 SetterStrategy setterStrategy,
-                MethodHandle setterHandleOrNull) {
+                MethodHandle setterHandleOrNull,
+                boolean isRelationship,
+                EntityMetadata.FieldMapping.RelationshipType relationshipType,
+                Class<?> targetEntity,
+                String joinTable,
+                boolean isCollection,
+                boolean isEmbedded) {
             this.propertyPath = propertyPath;
             this.columnName = columnName;
             this.columnId = columnId;
@@ -88,6 +130,12 @@ public final class EntityLayout<T> {
             this.converterOrNull = converterOrNull;
             this.setterStrategy = setterStrategy;
             this.setterHandleOrNull = setterHandleOrNull;
+            this.isRelationship = isRelationship;
+            this.relationshipType = relationshipType;
+            this.targetEntity = targetEntity;
+            this.joinTable = joinTable;
+            this.isCollection = isCollection;
+            this.isEmbedded = isEmbedded;
         }
 
         public String propertyPath() {
@@ -135,6 +183,48 @@ public final class EntityLayout<T> {
         }
 
         /**
+         * Returns whether this field is a relationship.
+         */
+        public boolean isRelationship() {
+            return isRelationship;
+        }
+
+        /**
+         * Returns the relationship type.
+         */
+        public EntityMetadata.FieldMapping.RelationshipType relationshipType() {
+            return relationshipType;
+        }
+
+        /**
+         * Returns the target entity class for relationships.
+         */
+        public Class<?> targetEntity() {
+            return targetEntity;
+        }
+
+        /**
+         * Returns the join table name for @ManyToMany relationships.
+         */
+        public String joinTable() {
+            return joinTable;
+        }
+
+        /**
+         * Returns whether this field is a collection.
+         */
+        public boolean isCollection() {
+            return isCollection;
+        }
+
+        /**
+         * Returns whether this field is @Embedded.
+         */
+        public boolean isEmbedded() {
+            return isEmbedded;
+        }
+
+        /**
          * How to set a value into the entity field.
          * <p>
          * This is used during code generation to determine the strategy
@@ -169,6 +259,14 @@ public final class EntityLayout<T> {
             private TypeConverter<?, ?> converterOrNull;
             private SetterStrategy setterStrategy;
             private MethodHandle setterHandleOrNull;
+
+            // Relationship fields
+            private boolean isRelationship;
+            private EntityMetadata.FieldMapping.RelationshipType relationshipType;
+            private Class<?> targetEntity;
+            private String joinTable;
+            private boolean isCollection;
+            private boolean isEmbedded;
 
             private Builder() {}
 
@@ -217,6 +315,37 @@ public final class EntityLayout<T> {
                 return this;
             }
 
+            // Relationship field builders
+            public Builder isRelationship(boolean isRelationship) {
+                this.isRelationship = isRelationship;
+                return this;
+            }
+
+            public Builder relationshipType(EntityMetadata.FieldMapping.RelationshipType relationshipType) {
+                this.relationshipType = relationshipType;
+                return this;
+            }
+
+            public Builder targetEntity(Class<?> targetEntity) {
+                this.targetEntity = targetEntity;
+                return this;
+            }
+
+            public Builder joinTable(String joinTable) {
+                this.joinTable = joinTable;
+                return this;
+            }
+
+            public Builder isCollection(boolean isCollection) {
+                this.isCollection = isCollection;
+                return this;
+            }
+
+            public Builder isEmbedded(boolean isEmbedded) {
+                this.isEmbedded = isEmbedded;
+                return this;
+            }
+
             public FieldLayout build() {
                 if (propertyPath == null) throw new IllegalStateException("propertyPath required");
                 if (columnName == null) throw new IllegalStateException("columnName required");
@@ -225,7 +354,8 @@ public final class EntityLayout<T> {
                 if (setterStrategy == null) throw new IllegalStateException("setterStrategy required");
                 return new FieldLayout(
                         propertyPath, columnName, columnId, typeCode,
-                        javaType, storageType, converterOrNull, setterStrategy, setterHandleOrNull);
+                        javaType, storageType, converterOrNull, setterStrategy, setterHandleOrNull,
+                        isRelationship, relationshipType, targetEntity, joinTable, isCollection, isEmbedded);
             }
         }
     }
