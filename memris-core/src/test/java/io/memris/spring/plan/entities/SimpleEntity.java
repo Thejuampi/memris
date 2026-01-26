@@ -1,6 +1,8 @@
 package io.memris.spring.plan.entities;
 
-import jakarta.persistence.*;
+import jakarta.persistence.Entity;
+import jakarta.persistence.Id;
+
 import java.time.LocalDate;
 
 /**

@@ -11,49 +11,35 @@ import io.memris.spring.plan.LogicalQuery.Operator;
  * Key optimization: All string lookups have been resolved to column indices.
  * The opCode allows switch-based dispatch instead of string comparisons.
  * <p>
- * This object is stored in RepositoryRuntime and indexed by queryId.
+ * This object is stored in RepositoryPlan and indexed by queryId.
  *
  * @see QueryCompiler
  * @see LogicalQuery
  */
-public final class CompiledQuery {
+public record CompiledQuery(
+        /** Operation code for unified dispatch (SAVE_ONE, FIND, COUNT, etc.) */
+        OpCode opCode,
+        /** What kind of result this query returns */
+        LogicalQuery.ReturnKind returnKind,
+        /** Pre-compiled conditions with resolved column indices */
+        CompiledCondition[] conditions,
+        /** Number of method parameters */
+        int arity
+) {
 
-    private final String methodName;
-    private final LogicalQuery.ReturnKind returnKind;
-    private final CompiledCondition[] conditions;
-    private final int arity;
-
-    private CompiledQuery(
-            String methodName,
-            LogicalQuery.ReturnKind returnKind,
-            CompiledCondition[] conditions) {
-        this.methodName = methodName;
-        this.returnKind = returnKind;
-        this.conditions = conditions;
-        this.arity = conditions.length;
-    }
-
+    /**
+     * Create a CompiledQuery.
+     *
+     * @param opCode     the operation code
+     * @param returnKind the return kind
+     * @param conditions the compiled conditions
+     * @return a new CompiledQuery
+     */
     public static CompiledQuery of(
-            String methodName,
+            OpCode opCode,
             LogicalQuery.ReturnKind returnKind,
             CompiledCondition[] conditions) {
-        return new CompiledQuery(methodName, returnKind, conditions);
-    }
-
-    public String methodName() {
-        return methodName;
-    }
-
-    public LogicalQuery.ReturnKind returnKind() {
-        return returnKind;
-    }
-
-    public CompiledCondition[] conditions() {
-        return conditions;
-    }
-
-    public int arity() {
-        return arity;
+        return new CompiledQuery(opCode, returnKind, conditions, conditions.length);
     }
 
     /**
@@ -98,26 +84,5 @@ public final class CompiledQuery {
         public boolean ignoreCase() {
             return ignoreCase;
         }
-    }
-
-    /**
-     * OpCodes for query execution.
-     * <p>
-     * These allow switch-based dispatch instead of string comparisons.
-     * Combined with column indices, this enables zero-allocation execution.
-     */
-    public enum OpCode {
-        SCAN_EQ,
-        SCAN_NE,
-        SCAN_GT,
-        SCAN_GTE,
-        SCAN_LT,
-        SCAN_LTE,
-        SCAN_IN,
-        SCAN_NOT_IN,
-        SCAN_BETWEEN,
-        INDEX_EQ,
-        INDEX_IN,
-        SCAN_IGNORE_CASE_EQ
     }
 }

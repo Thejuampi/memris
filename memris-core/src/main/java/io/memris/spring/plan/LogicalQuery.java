@@ -18,64 +18,99 @@ import io.memris.kernel.Predicate;
  * @see QueryCompiler
  * @see CompiledQuery
  */
-public final class LogicalQuery {
+public record LogicalQuery(
+        OpCode opCode,
+        ReturnKind returnKind,
+        Condition[] conditions,
+        OrderBy orderBy,
+        int parameterCount
+) {
 
-    private final String methodName;
-    private final ReturnKind returnKind;
-    private final Condition[] conditions;
-    private final OrderBy orderBy;
-
-    private LogicalQuery(
-            String methodName,
+    public static LogicalQuery of(
+            OpCode opCode,
             ReturnKind returnKind,
             Condition[] conditions,
             OrderBy orderBy) {
-        this.methodName = methodName;
-        this.returnKind = returnKind;
-        this.conditions = conditions;
-        this.orderBy = orderBy;
+        return new LogicalQuery(opCode, returnKind, conditions, orderBy, conditions.length);
     }
 
     public static LogicalQuery of(
-            String methodName,
+            OpCode opCode,
             ReturnKind returnKind,
             Condition[] conditions,
-            OrderBy orderBy) {
-        return new LogicalQuery(methodName, returnKind, conditions, orderBy);
+            OrderBy orderBy,
+            int parameterCount) {
+        return new LogicalQuery(opCode, returnKind, conditions, orderBy, parameterCount);
     }
 
-    public String methodName() {
-        return methodName;
+    /**
+     * Create a LogicalQuery for a CRUD operation.
+     * <p>
+     * CRUD operations have no conditions and are identified by their OpCode.
+     *
+     * @param opCode   the operation code (SAVE_ONE, DELETE_ALL, etc.)
+     * @param returnKind   the CRUD return kind (SAVE, SAVE_ALL, DELETE, DELETE_ALL)
+     * @param parameterCount the number of parameters (1 for save(T), 0 for deleteAll())
+     * @return a LogicalQuery for the CRUD operation
+     */
+    public static LogicalQuery crud(OpCode opCode, ReturnKind returnKind, int parameterCount) {
+        return new LogicalQuery(opCode, returnKind, new Condition[0], null, parameterCount);
     }
 
-    public ReturnKind returnKind() {
-        return returnKind;
-    }
-
-    public Condition[] conditions() {
-        return conditions;
-    }
-
-    public OrderBy orderBy() {
-        return orderBy;
-    }
-
+    /**
+     * Returns the number of method parameters.
+     * <p>
+     * For query methods, this equals the number of conditions.
+     * For CRUD operations, this includes entity parameters even if there are no conditions.
+     */
     public int arity() {
-        return conditions.length;
+        return parameterCount;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+        LogicalQuery that = (LogicalQuery) o;
+        return parameterCount == that.parameterCount
+                && opCode == that.opCode
+                && returnKind == that.returnKind
+                && java.util.Arrays.equals(conditions, that.conditions)
+                && java.util.Objects.equals(orderBy, that.orderBy);
+    }
+
+    @Override
+    public int hashCode() {
+        int result = java.util.Objects.hash(opCode, returnKind, orderBy, parameterCount);
+        result = 31 * result + java.util.Arrays.hashCode(conditions);
+        return result;
     }
 
     /**
      * What kind of result this query returns.
+     * <p>
+     * ReturnKind describes both the operation type (query vs CRUD) and the return type.
+     * This allows unified compilation pipeline for all repository methods.
      */
     public enum ReturnKind {
-        /** Single entity, nullable (findById) */
+        /** Query: Single entity, nullable (findById) */
         ONE_OPTIONAL,
-        /** Multiple entities (findBy*, findAll) */
+        /** Query: Multiple entities (findBy*, findAll) */
         MANY_LIST,
-        /** Boolean existence check (existsById) */
+        /** Query: Boolean existence check (existsById) */
         EXISTS_BOOL,
-        /** Count (count, countBy*) */
-        COUNT_LONG
+        /** Query: Count (count, countBy*) */
+        COUNT_LONG,
+        /** CRUD: Save single entity (save) */
+        SAVE,
+        /** CRUD: Save multiple entities (saveAll) */
+        SAVE_ALL,
+        /** CRUD: Delete single entity (delete) */
+        DELETE,
+        /** CRUD: Delete all entities (deleteAll) */
+        DELETE_ALL,
+        /** CRUD: Delete by ID (deleteById) */
+        DELETE_BY_ID
     }
 
     /**
@@ -85,19 +120,18 @@ public final class LogicalQuery {
      * - "name = :arg0" → propertyPath="name", operator=EQ, argumentIndex=0
      * - "age > :arg1" → propertyPath="age", operator=GT, argumentIndex=1
      * - "address.zip IN :arg2" → propertyPath="address.zip", operator=IN, argumentIndex=2
+     * <p>
+     * Special case: ID conditions use the special "$ID" marker which resolves
+     * to the entity's ID column at compile time (not necessarily a field named "id").
      */
-    public static final class Condition {
-        private final String propertyPath;   // e.g., "address.zip"
-        private final Operator operator;     // EQ, GT, IN, etc.
-        private final int argumentIndex;     // which method parameter
-        private final boolean ignoreCase;
-
-        private Condition(String propertyPath, Operator operator, int argumentIndex, boolean ignoreCase) {
-            this.propertyPath = propertyPath;
-            this.operator = operator;
-            this.argumentIndex = argumentIndex;
-            this.ignoreCase = ignoreCase;
-        }
+    public record Condition(
+            String propertyPath,
+            Operator operator,
+            int argumentIndex,
+            boolean ignoreCase
+    ) {
+        /** Special marker for the entity's ID property. Resolved at compile time. */
+        public static final String ID_PROPERTY = "$ID";
 
         public static Condition of(String propertyPath, Operator operator, int argumentIndex) {
             return new Condition(propertyPath, operator, argumentIndex, false);
@@ -107,20 +141,19 @@ public final class LogicalQuery {
             return new Condition(propertyPath, operator, argumentIndex, ignoreCase);
         }
 
-        public String propertyPath() {
-            return propertyPath;
+        /**
+         * Create a condition on the entity's ID property.
+         * <p>
+         * The special $ID marker resolves to the entity's actual ID column
+         * at compile time (via @Id or @javax.persistence.Id annotation).
+         */
+        public static Condition idCondition(int argumentIndex) {
+            return new Condition(ID_PROPERTY, Operator.EQ, argumentIndex, false);
         }
 
-        public Operator operator() {
-            return operator;
-        }
-
-        public int argumentIndex() {
-            return argumentIndex;
-        }
-
-        public boolean ignoreCase() {
-            return ignoreCase;
+        /** Returns true if this condition is on the entity's ID property. */
+        public boolean isIdCondition() {
+            return ID_PROPERTY.equals(propertyPath);
         }
     }
 
@@ -140,8 +173,11 @@ public final class LogicalQuery {
         NOT_IN(Predicate.Operator.NOT_IN),
         BETWEEN(Predicate.Operator.BETWEEN),
         CONTAINING(Predicate.Operator.CONTAINING),
+        NOT_CONTAINING(Predicate.Operator.NOT_CONTAINING),
         STARTING_WITH(Predicate.Operator.STARTING_WITH),
+        NOT_STARTING_WITH(Predicate.Operator.NOT_STARTING_WITH),
         ENDING_WITH(Predicate.Operator.ENDING_WITH),
+        NOT_ENDING_WITH(Predicate.Operator.NOT_ENDING_WITH),
         LIKE(Predicate.Operator.LIKE),
         NOT_LIKE(Predicate.Operator.NOT_LIKE),
         IGNORE_CASE_EQ(Predicate.Operator.IGNORE_CASE),
@@ -167,15 +203,10 @@ public final class LogicalQuery {
     /**
      * Order by clause (optional).
      */
-    public static final class OrderBy {
-        private final String propertyPath;
-        private final boolean ascending;
-
-        private OrderBy(String propertyPath, boolean ascending) {
-            this.propertyPath = propertyPath;
-            this.ascending = ascending;
-        }
-
+    public record OrderBy(
+            String propertyPath,
+            boolean ascending
+    ) {
         public static OrderBy of(String propertyPath, boolean ascending) {
             return new OrderBy(propertyPath, ascending);
         }
@@ -186,14 +217,6 @@ public final class LogicalQuery {
 
         public static OrderBy desc(String propertyPath) {
             return new OrderBy(propertyPath, false);
-        }
-
-        public String propertyPath() {
-            return propertyPath;
-        }
-
-        public boolean ascending() {
-            return ascending;
         }
     }
 }

@@ -14,6 +14,7 @@ import org.junit.jupiter.api.Test;
 
 import io.memris.spring.plan.CompiledQuery;
 import io.memris.spring.plan.CompiledQuery.CompiledCondition;
+import io.memris.spring.plan.OpCode;
 import io.memris.spring.plan.LogicalQuery.Operator;
 import io.memris.spring.plan.LogicalQuery.ReturnKind;
 
@@ -45,14 +46,14 @@ class RepositoryRuntimeTest {
         // findByUserId(Long id) → list1(queryId=0, id)
         CompiledCondition condition = CompiledCondition.of(0, Operator.EQ, 0); // column 0, EQ, arg 0
         CompiledQuery findByIdQuery = CompiledQuery.of(
-            "findById",
+            OpCode.FIND_BY_ID,
             ReturnKind.ONE_OPTIONAL,
             new CompiledCondition[] { condition }
         );
 
         // findAll() → list0(queryId=1)
         CompiledQuery findAllQuery = CompiledQuery.of(
-            "findAll",
+            OpCode.FIND_ALL,
             ReturnKind.MANY_LIST,
             new CompiledCondition[0]
         );
@@ -102,8 +103,8 @@ class RepositoryRuntimeTest {
     void runtimeShouldStoreCompiledQueries() {
         assertThat(runtime.compiledQueries()).isNotNull();
         assertThat(runtime.compiledQueries()).hasSize(2);
-        assertThat(runtime.compiledQueries()[0].methodName()).isEqualTo("findById");
-        assertThat(runtime.compiledQueries()[1].methodName()).isEqualTo("findAll");
+        assertThat(runtime.compiledQueries()[0].opCode()).isEqualTo(OpCode.FIND_BY_ID);
+        assertThat(runtime.compiledQueries()[1].opCode()).isEqualTo(OpCode.FIND_ALL);
     }
 
     // ========================================================================
@@ -137,11 +138,11 @@ class RepositoryRuntimeTest {
         CompiledQuery findById = compiledQueries[0];
         CompiledQuery findAll = compiledQueries[1];
 
-        assertThat(findById.methodName()).isEqualTo("findById");
+        assertThat(findById.opCode()).isEqualTo(OpCode.FIND_BY_ID);
         assertThat(findById.returnKind()).isEqualTo(ReturnKind.ONE_OPTIONAL);
         assertThat(findById.arity()).isEqualTo(1);
 
-        assertThat(findAll.methodName()).isEqualTo("findAll");
+        assertThat(findAll.opCode()).isEqualTo(OpCode.FIND_ALL);
         assertThat(findAll.returnKind()).isEqualTo(ReturnKind.MANY_LIST);
         assertThat(findAll.arity()).isEqualTo(0);
     }

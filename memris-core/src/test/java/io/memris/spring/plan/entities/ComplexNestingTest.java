@@ -210,9 +210,9 @@ class ComplexNestingTest {
         Class<SimpleEntity> entityClass = SimpleEntity.class;
         var tokens = QueryMethodLexer.tokenize(entityClass, "findAll");
 
-        assertThat(tokens).hasSize(2);
-        assertThat(tokens.get(0).type()).isEqualTo(QueryMethodTokenType.FIND_BY);
-        assertThat(tokens.get(1).type()).isEqualTo(QueryMethodTokenType.FIND_ALL);
+        assertThat(tokens).hasSize(1);
+        assertThat(tokens.get(0).type()).isEqualTo(QueryMethodTokenType.OPERATION);
+        assertThat(tokens.get(0).value()).isEqualTo(OpCode.FIND_ALL.name());
     }
 
     @Test

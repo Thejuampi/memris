@@ -228,4 +228,75 @@ class ContextAwareLexerTest {
         assertThat(tokens.get(4).type()).isEqualTo(QueryMethodTokenType.DESC);
         assertThat(tokens.get(4).value()).isEqualTo("Desc");
     }
+
+    // ==================== CRUD Operation Tests ====================
+    // NOTE: Built-in operations are now recognized by QueryPlanner using MethodKey,
+    // not by the lexer. The lexer correctly falls back to derived query parsing
+    // for these method names since it only has the method name (not the full signature).
+
+    @Test
+    @Order(16)
+    void tokenizeSave_FallsBackToDerivedParsing() {
+        // Lexer only has method name, not full signature, so "save" goes through
+        // derived query parsing. The planner will detect it as a built-in via MethodKey.
+        Class<SimpleEntity> entityClass = SimpleEntity.class;
+        var tokens = QueryMethodLexer.tokenize(entityClass, "save");
+
+        // The lexer attempts to parse it as a derived query
+        // (planner will detect the built-in via MethodKey matching)
+        assertThat(tokens).isNotEmpty();
+    }
+
+    @Test
+    @Order(17)
+    void tokenizeSaveAll_FallsBackToDerivedParsing() {
+        // Same as save() - lexer doesn't have signature, uses derived parsing
+        Class<SimpleEntity> entityClass = SimpleEntity.class;
+        var tokens = QueryMethodLexer.tokenize(entityClass, "saveAll");
+
+        assertThat(tokens).isNotEmpty();
+    }
+
+    @Test
+    @Order(18)
+    void tokenizeDelete_FallsBackToDerivedParsing() {
+        // Same as save() - lexer doesn't have signature, uses derived parsing
+        Class<SimpleEntity> entityClass = SimpleEntity.class;
+        var tokens = QueryMethodLexer.tokenize(entityClass, "delete");
+
+        assertThat(tokens).isNotEmpty();
+    }
+
+    @Test
+    @Order(19)
+    void tokenizeDeleteAll_FallsBackToDerivedParsing() {
+        // deleteAll is now recognized as a built-in operation by the planner
+        // The lexer falls back to derived parsing
+        Class<SimpleEntity> entityClass = SimpleEntity.class;
+        var tokens = QueryMethodLexer.tokenize(entityClass, "deleteAll");
+
+        assertThat(tokens).isNotEmpty();
+    }
+
+    @Test
+    @Order(20)
+    void tokenizeCount_FallsBackToDerivedParsing() {
+        // count() is a built-in, detected by planner via MethodKey
+        Class<SimpleEntity> entityClass = SimpleEntity.class;
+        var tokens = QueryMethodLexer.tokenize(entityClass, "count");
+
+        assertThat(tokens).isNotEmpty();
+    }
+
+    @Test
+    @Order(21)
+    void tokenizeCountAll_GoesThroughDerivedParsing() {
+        // "countAll" is not a standard Spring Data method
+        // It goes through derived query parsing (not a built-in)
+        Class<SimpleEntity> entityClass = SimpleEntity.class;
+        var tokens = QueryMethodLexer.tokenize(entityClass, "countAll");
+
+        assertThat(tokens).hasSizeGreaterThanOrEqualTo(1);
+        assertThat(tokens.get(0).type()).isEqualTo(QueryMethodTokenType.COUNT_BY);
+    }
 }

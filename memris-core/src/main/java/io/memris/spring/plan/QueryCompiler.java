@@ -52,7 +52,7 @@ public final class QueryCompiler {
         }
 
         return CompiledQuery.of(
-            logical.methodName(),
+            logical.opCode(),
             logical.returnKind(),
             compiledConditions
         );
@@ -64,13 +64,26 @@ public final class QueryCompiler {
      * Property paths can be:
      * - Simple: "name" → finds "name" column
      * - Nested: "address.zip" → finds "address_zip" column
+     * - ID marker: "$ID" → finds the entity's ID column
      *
      * @param propertyPath the property path to resolve
      * @return the column index (0-based)
      * @throws IllegalArgumentException if property not found
      */
     private int resolveColumnIndex(String propertyPath) {
-        // Find matching field mapping
+        // Special case: $ID marker resolves to the entity's ID column
+        if (LogicalQuery.Condition.ID_PROPERTY.equals(propertyPath)) {
+            String idColumnName = metadata.idColumnName();
+            for (int i = 0; i < metadata.fields().size(); i++) {
+                FieldMapping fm = metadata.fields().get(i);
+                if (fm.columnName().equals(idColumnName)) {
+                    return fm.columnPosition();
+                }
+            }
+            throw new IllegalArgumentException("ID column not found: " + idColumnName);
+        }
+
+        // Find matching field mapping by property name
         for (int i = 0; i < metadata.fields().size(); i++) {
             FieldMapping fm = metadata.fields().get(i);
             if (fm.name().equals(propertyPath)) {

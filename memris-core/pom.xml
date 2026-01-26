@@ -15,6 +15,12 @@
     <description>Core in-memory storage engine with vectorized execution and indexes</description>
 
     <dependencies>
+
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+        </dependency>
+
         <!-- RoaringBitmap for compressed indexes -->
         <dependency>
             <groupId>org.roaringbitmap</groupId>

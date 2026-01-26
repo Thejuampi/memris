@@ -1,24 +1,33 @@
 package io.memris.spring.plan;
 
+/**
+ * Token types produced by QueryMethodLexer.
+ * <p>
+ * Unified token model for ALL repository methods:
+ * <ul>
+ *   <li>OPERATION - Built-in methods (save, findById, findAll, etc.)</li>
+ *   <li>PROPERTY_PATH - Field names in derived queries</li>
+ *   <li>OPERATOR - Comparison operators (GreaterThan, Like, etc.)</li>
+ *   <li>AND/OR - Combinators</li>
+ *   <li>ORDER_BY/ASC/DESC - Sorting</li>
+ * </ul>
+ * <p>
+ * <b>Single Pipeline:</b> Every method goes through the lexer.
+ * No special cases - CRUD is just another operation with a different opcode.
+ */
 public enum QueryMethodTokenType {
-    // Query methods with conditions
-    FIND_BY,
-    READ_BY,
-    QUERY_BY,
-    COUNT_BY,
-    EXISTS_BY,
-    DELETE_BY,
-    GET_BY,
+    // Operation token for built-in methods (save, findById, findAll, etc.)
+    OPERATION,
 
-    // CRUD operations (simple, no conditions)
-    SAVE,           // save(T entity)
-    SAVE_ALL,       // saveAll(List<T> entities)
+    // Query result types (for derived query prefixes)
+    FIND_BY,        // findByXxx(...)
+    COUNT_BY,       // countByXxx(...)
+    EXISTS_BY,      // existsByXxx(...)
+    DELETE_BY,      // deleteByXxx(...)
+
+    // Delete operation tokens (for delete/deleteAll)
     DELETE,         // delete(T entity)
     DELETE_ALL,     // deleteAll()
-
-    // Query results (simple, no conditions)
-    FIND_ALL,       // findAll()
-    COUNT_ALL,      // count()
 
     // Predicates and operators
     PROPERTY_PATH,
