@@ -2,317 +2,283 @@
 
 ## Overview
 
-Memris provides a lightweight, high-performance Spring Data-compatible API for in-memory storage with Jakarta/JPA annotation support. The system focuses on O(1) operations, zero-reflection hot paths, and compile-once query generation for maximum performance.
+Memris provides a lightweight, high-performance Spring Data-compatible API for in-memory storage with custom annotation support. The system focuses on O(1) operations, zero-reflection hot paths, and compile-once query generation for maximum performance.
 
 **Key Design Philosophy:**
 - **Zero Reflection Hot Path**: Query planning happens at compile-time, runtime uses direct array access
-- **Dense Arrays Over Maps**: Column names, type codes, and method handles stored in indexed arrays
-- **QueryId Dispatch**: Each query method gets a constant ID for O(1) plan lookup
+- **Dense Arrays Over Maps**: Column indices, type codes, and method handles stored in indexed arrays
 - **TypeCode Switch**: Java 21 pattern matching for zero-allocation type dispatch
+- **Heap-Based Storage**: 100% Java heap using primitive arrays
 
 **Compatibility Target:**
-- `CrudRepository` / `PagingAndSortingRepository`
-- Derived query methods (`findBy…And…`, `In`, `Between`, comparisons, `OrderBy`, `Top/First`, `existsBy`, `countBy`)
-- Jakarta/JPA annotations (`@Entity`, `@OneToOne`, `@OneToMany`, `@ManyToMany`, etc.)
+- Spring Data-like query method patterns (`findBy…And…`, `In`, `Between`, comparisons)
+- Custom annotations (`@Entity`, `@Index`, `@GeneratedValue`, `@OneToOne`)
+- **Note:** Uses custom annotations, NOT Jakarta/JPA annotations
+
+**Architecture Note:**
+- Generates **TABLE** classes via ByteBuddy, not repository classes
+- Callers implement their own repository layer on top of generated tables
+- Storage is 100% heap-based (no FFM, no MemorySegment)
 
 ## Current Implementation Status
 
 | Category | Feature | Status | Test Coverage |
 |----------|---------|--------|---------------|
-| **Core** | @Entity detection | ✅ Done | ✅ 4 tests |
-| **Core** | Auto-generated ID | ✅ Done | ✅ Integrated |
-| **Core** | Basic CRUD (save, findAll, findBy) | ✅ Done | ✅ 6 tests |
+| **Core** | @Entity detection | ✅ Done | ✅ Via tests |
+| **Core** | Auto-generated ID (@GeneratedValue) | ✅ Done | ✅ Integrated |
+| **Core** | Basic CRUD (save, findAll, findBy) | ✅ Done | ✅ Tests |
 | **Core** | Field caching (O(1) lookup) | ✅ Done | ✅ Verified |
-| **Relationships** | @OneToOne cascade save | ✅ Done | ✅ 4 tests |
-| **Relationships** | @OneToMany cascade save | ✅ Done | ✅ 4 tests |
-| **Relationships** | @ManyToMany join table | ✅ Done | ✅ 4 tests |
-| **Relationships** | Bidirectional relationships | ✅ Done | ✅ Verified |
-| **Queries** | Query predicates (EQ, IN, BETWEEN) | ✅ Done | ✅ 5 tests |
-| **Queries** | Dynamic query methods (ByteBuddy) | ⏳ In Progress | 🔴 RED - Writing tests |
-| **Queries** | SIMD String Matching | ⏳ In Progress | 🔴 RED - Needs implementation |
-| **Type Mapping** | @Enumerated (STRING/ORDINAL) | ✅ Done | ✅ 4 tests |
-| **Type Mapping** | @Transient fields | ✅ Done | ✅ 4 tests |
-| **Constraints** | @Column (length, nullable, unique) | ✅ Done | ✅ 4 tests |
-| **Lifecycle** | @PrePersist callback | ✅ Done | ✅ 4 tests |
-| **Lifecycle** | @PostLoad callback | ✅ Done | ✅ 4 tests |
-| **Lifecycle** | @PreUpdate callback | ✅ Done | ✅ 4 tests |
-| **Advanced** | Hash join (factory.join()) | ✅ Done | ✅ Integrated |
+| **Relationships** | @OneToOne | ✅ Done | ✅ Tests |
+| **Queries** | Query predicates (EQ, IN, BETWEEN, GT, LT, etc.) | ✅ Done | ✅ 50+ tests |
+| **Queries** | String operators (Like, Contains, StartsWith, etc.) | ✅ Done | ✅ Tests |
+| **Queries** | Boolean operators (IsTrue, IsFalse) | ✅ Done | ✅ Tests |
+| **Queries** | Null operators (IsNull, IsNotNull) | ✅ Done | ✅ Tests |
+| **Queries** | Logical operators (And, Or) | ✅ Done | ✅ Tests |
+| **Type Mapping** | Primitive types (int, long, String) | ✅ Done | ✅ Tests |
+| **Advanced** | Hash join | ✅ Done | ✅ Available |
 | **Advanced** | MemrisException | ✅ Done | ✅ Integrated |
 
-**Total Test Count:** 35 tests, all passing ✅
+**Total Test Count:** 148 tests, 147 passing ✅
 
-## Feature Requirements
+## Annotations
 
-### Implemented Features
+Memris uses **custom annotations** (not Jakarta/JPA):
 
-**Core Infrastructure:**
-- Entity detection via `jakarta.persistence.Entity`
-- Integer ID generation per entity type
-- Field caching with O(1) lookup via `Map<Class<?>, Map<String, Field>>`
-- Exception handling with specialized `MemrisException`
+### Core Annotations
 
-**Relationships:**
-- `@OneToOne`: Nested entity persistence with foreign key
-- `@OneToMany`: Collection persistence with FK propagation
-- `@ManyToMany`: Auto join table creation (`EntityA_EntityB_join`)
-- Bidirectional support with convention-based FK propagation
+**@Entity** (`io.memris.spring.Entity`)
+- Marks a class as a persistable entity
+- Used by TableGenerator to create table metadata
 
-**Type Mapping:**
-- Primitive types: int, long, String (full support)
-- `@Enumerated(STRING)`: Stores enum name as String
-- `@Enumerated(ORDINAL)`: Stores enum ordinal as int
-- `@Transient`: Field exclusion from schema
+**@Index** (`io.memris.spring.Index`)
+- Marks a field for indexing
+- Supports HASH or BTREE index types
+- Improves query performance for indexed fields
 
-**Lifecycle Callbacks:**
-- `@PrePersist`: Invoked before save
-- `@PostLoad`: Invoked after materialization
-- `@PreUpdate`: Invoked on update
+**@GeneratedValue** (`io.memris.spring.GeneratedValue`)
+- Marks an ID field for automatic generation
+- Strategy: AUTO, IDENTITY, UUID, CUSTOM
+- Used with `@Id` (Jakarta) in tests, but custom `@Entity` in main code
 
-**Query Support:**
-- Equality: `findByName(String)`
-- Combined: `findByNameAndAge(String, int)`
-- Comparisons: `findByAgeGreaterThan(int)`
-- String matching: `findByNameContaining(String)`
-- IN clause: `findByStatusIn(List<String>)`
+**@OneToOne** (`io.memris.spring.OneToOne`)
+- Marks a one-to-one relationship
+- Supports cascade operations
 
-### Complex Cases (High Difficulty)
+**GenerationType** (`io.memris.spring.GenerationType`)
+- `AUTO` - Automatic strategy selection
+- `IDENTITY` - Database identity (auto-increment)
+- `UUID` - UUID generation
+- `CUSTOM` - Custom IdGenerator implementation
 
-These features require significant implementation effort and architectural decisions.
+### Usage Example
 
-**1. Inheritance Hierarchies** (⚠️ HIGH)
-- SINGLE_TABLE, JOINED, TABLE_PER_CLASS strategies
-- Discriminator columns, polymorphic queries
-- Subclass schema inference per strategy
+```java
+import io.memris.spring.Entity;
+import io.memris.spring.Index;
+import io.memris.spring.GeneratedValue;
+import io.memris.spring.GenerationType;
 
-**2. Composite Keys (@IdClass / @EmbeddedId)** (⚠️ HIGH)
-- Multi-column primary keys
-- Key class equals/hashCode contracts
-- Foreign keys to composite PKs
+@Entity
+public class User {
+    @Index(type = Index.Type.HASH)
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+    
+    @Index(type = Index.Type.HASH)
+    private String email;
+    
+    private String name;
+    private int age;
+}
+```
 
-**3. Circular Entity Dependencies** (⚠️ HIGH)
-- Dependency graph analysis (topological sort)
-- Phase-based save: generate IDs → insert entities → update FKs
-- Cycle detection with error/warning
+## Query Method Support
 
-**4. Self-Referential Trees** (⚠️ HIGH)
-- Recursive materialization for parent/child relationships
-- Tree traversal queries (ancestors, descendants)
-- Path calculation for breadcrumbs
+### Supported Query Patterns
 
-**5. Cascade Delete / Orphan Removal** (⚠️ HIGH)
-- Deletion propagation through entity graph
-- Orphan detection on save
-- Bulk delete optimization
+**Basic Queries:**
+```java
+// Equality
+List<User> findByName(String name);
+User findByEmail(String email);
 
-**6. Optimistic Locking (@Version)** (⚠️ HIGH)
-- Version field increment on update
-- WHERE clause with version predicate
-- OptimisticLockException with retry logic
+// Multiple conditions (AND)
+List<User> findByNameAndAge(String name, int age);
 
-**7. Schema Migration** (⚠️ HIGH)
-- Column name mapping with backward compatibility
-- Migration script execution
-- Schema version tracking
+// Comparison operators
+List<User> findByAgeGreaterThan(int age);
+List<User> findByAgeGreaterThanEqual(int age);
+List<User> findByAgeLessThan(int age);
+List<User> findByAgeLessThanEqual(int age);
+List<User> findByAgeBetween(int min, int max);
 
-**8. Soft Deletes (@Where)** (⚠️ HIGH)
-- Global query filter mechanism
-- Automatic WHERE clause injection
-- UNDELETE support
+// String operators
+List<User> findByNameLike(String pattern);
+List<User> findByNameStartingWith(String prefix);
+List<User> findByNameEndingWith(String suffix);
+List<User> findByNameContaining(String substring);
+List<User> findByNameIgnoreCase(String name);
 
-### Medium Difficulty Cases
+// Null checks
+List<User> findByNameIsNull();
+List<User> findByNameIsNotNull();
 
-**1. @Embeddable Types** (Medium)
-- Flatten fields into parent table
-- @AttributeOverride for column name mapping
-- Null embeddable handling
+// Boolean checks
+List<User> findByActiveTrue();
+List<User> findByActiveFalse();
 
-**2. @Temporal Dates** (Medium - Pending)
-- LocalDateTime support
-- Temporal annotation handling
+// Collection operators
+List<User> findByStatusIn(List<String> statuses);
 
-**3. Named Queries (@NamedQuery)** (Medium)
-- JPQL parser (subset)
-- Parameter binding
-- Result type mapping
+// Count and exists
+long countByActiveTrue();
+boolean existsByEmail(String email);
+```
 
-**4. @SecondaryTable** (Medium)
-- Entity spanning multiple tables
-- Cross-table read executor
-- @Column(table = "...") mapping
+**Logical Operators:**
+```java
+// AND (implicit)
+List<User> findByNameAndAge(String name, int age);
 
-**5. @Formula Computed Columns** (Medium)
-- Derived values from SQL expressions
-- Read-only handling
-- SELECT clause injection
+// OR
+List<User> findByNameOrEmail(String name, String email);
+```
+
+**Return Types:**
+- `List<T>` - Multiple results
+- `Optional<T>` - Single optional result
+- `long` - Count
+- `boolean` - Existence check
 
 ## Architecture & Implementation
 
 ### Query Planning Pipeline
 
 ```
-QueryPlanner.parse(method) → LogicalQuery
+QueryMethodLexer.tokenize(methodName) → List<QueryMethodToken>
         ↓
-QueryCompiler.compile(logical) → CompiledQuery
+QueryPlanner.plan(tokens, entityClass) → LogicalQuery
         ↓
-RepositoryRuntime.execute(queryId, args)
+CompiledQuery (pre-compiled with column indices)
+        ↓
+HeapRuntimeKernel.execute(compiledQuery, table)
+        ↓
+GeneratedTable.scan*() methods
 ```
 
 **Key Components:**
-- `LogicalQuery`: Parsed query with ReturnKind, Condition[], Operator
-- `CompiledQuery`: Pre-compiled with resolved column indices
-- `QueryPlanner`: Parses findById, findByXxx, countByXxx, existsById, findAll
-- `QueryCompiler`: Resolves propertyPath → columnIndex
 
-### Runtime Engine
+**QueryMethodLexer** (`io.memris.spring.plan.QueryMethodLexer`)
+- Tokenizes query method names
+- Extracts prefix (find/count/exists/delete)
+- Identifies operators (GreaterThan, Between, Like, etc.)
+- Handles combinators (And, Or)
+- Detects built-ins (findAll, count, deleteAll)
 
-```
-RepositoryRuntime
-├── table: FfmTable<T>
-├── factory: MemrisRepositoryFactory
-├── compiledQueries: CompiledQuery[]  // indexed by queryId
-├── columnNames: String[]               // dense array
-├── typeCodes: byte[]                   // dense array
-├── converters: TypeConverter<?,?>[]    // nullable
-└── setters: MethodHandle[]             // dense array
+**QueryPlanner** (`io.memris.spring.plan.QueryPlanner`)
+- Creates LogicalQuery from tokens
+- Validates property paths against entity metadata
+- Resolves operators to Predicate types
+- Uses BuiltInResolver for built-in methods
 
-Typed Entrypoints:
-├── list0(queryId) → List<T>
-├── list1(queryId, arg0) → List<T>
-├── optional1(queryId, arg0) → Optional<T>
-├── exists1(queryId, arg0) → boolean
-├── count0(queryId) → long
-└── count1(queryId, arg0) → long
-```
+**BuiltInResolver** (`io.memris.spring.plan.BuiltInResolver`)
+- Signature-based built-in method resolution
+- Handles findById, save, delete, findAll, count, existsById
+- Deterministic tie-breaking for ambiguous matches
 
-**Key Methods:**
-- `getTableValue(columnIndex, row)`: TypeCode-based switch dispatch
-- `scanTableByColumnIndex()`: Column index-based scanning
-- `executeQuery()`: QueryId-based plan execution
-- `materializeOne(row)`: Dense array-based materialization
+**HeapRuntimeKernel** (`io.memris.spring.runtime.HeapRuntimeKernel`)
+- Zero-reflection query execution
+- TypeCode switch dispatch
+- Delegates to GeneratedTable scan methods
 
-### Code Generation
+**TableGenerator** (`io.memris.storage.heap.TableGenerator`)
+- ByteBuddy bytecode generation
+- Creates table classes extending AbstractTable
+- Generates typed columns (PageColumnInt, PageColumnLong, PageColumnString)
+- Creates ID indexes (LongIdIndex, StringIdIndex)
 
-```
-RepositoryScaffolder
-├── Extracts EntityMetadata
-├── Plans queries (QueryPlanner + QueryCompiler)
-├── Builds RepositoryRuntime
-└── Calls RepositoryEmitter
+### Generated Table Structure
 
-RepositoryEmitter (ByteBuddy)
-├── Generates class with field: RepositoryRuntime rt
-├── Generates constructor: (RepositoryRuntime rt)
-└── Generates query methods:
-    findByXxx(args) → rt.listN(queryId, args)  // queryId is constant!
+```java
+public final class UserTable extends AbstractTable implements GeneratedTable {
+    // Column fields
+    public final PageColumnLong idColumn;
+    public final PageColumnString emailColumn;
+    public final PageColumnString nameColumn;
+    public final PageColumnInt ageColumn;
+    
+    // ID index
+    public LongIdIndex idIndex;
+    
+    // GeneratedTable interface methods
+    @Override
+    public int[] scanEqualsLong(int columnIndex, long value) { ... }
+    
+    @Override
+    public long lookupById(long id) { ... }
+    
+    @Override
+    public long insertFrom(Object[] values) { ... }
+}
 ```
 
 **Design Principles:**
 - **Zero Reflection Hot Path**: Compile-time parsing, runtime array access
-- **Dense Arrays Over Maps**: O(1) access vs O(log n) map lookups
-- **QueryId Dispatch**: Constant queryId for zero-allocation dispatch
+- **Dense Arrays Over Maps**: O(1) access via column indices
 - **TypeCode Switch**: Java 21 pattern matching for type dispatch
+- **Table Generation**: Generate storage tables, not repository classes
 
 *For detailed architecture diagrams and package structure, see [ARCHITECTURE.md](ARCHITECTURE.md)*
 
-## TDD Progress
-
-### RED Phase - Failing Tests Written
-
-| Test File | Purpose | Status |
-|----------|---------|--------|
-| `RepositoryRuntimeIntegrationTest.java` | Tests actual query execution with FfmTable | 🔴 RED - needs table initialization |
-| `RepositoryScaffolderTest.java` | Tests for scaffolding infrastructure | 🔴 RED - needs metadata setup |
-| `RepositoryRuntimeTest.java` | Tests for runtime structure | ✅ GREEN - structure verified |
-
-### GREEN Phase - Core Infrastructure Implemented
-
-**Query Planning Layer:** ✅ Complete
-- LogicalQuery, CompiledQuery, QueryPlanner, QueryCompiler
-- Parses: findById, findByXxx, countByXxx, existsById, findAll
-
-**Runtime Engine:** ✅ Complete
-- RepositoryRuntime with dense arrays
-- Typed entrypoints (list0, list1, optional1, exists1, count0, count1)
-- TypeCode-based switch dispatch
-
-**Code Generation:** ✅ Complete
-- RepositoryScaffolder for metadata extraction
-- RepositoryEmitter with ByteBuddy
-- Constant queryId generation
-
-### REFACTOR Phase - Cleanup Needed
-
-**Immediate Tasks:**
-1. Complete test data setup for integration tests
-2. Verify IN operator implementation
-3. Optimize intersect() with sorted array merge
-4. Remove old RepositoryBytecodeGenerator code
-
-**Technical Debt:**
-1. Maven build environment validation
-2. FfmTable column-indexed API verification
-3. Test infrastructure completion
-4. Legacy code removal
-
-### Architecture Validation
-
-All architectural components are implemented and aligned:
-- ✅ Class Diagram: QueryPlanner, QueryCompiler, CompiledQuery, RepositoryRuntime
-- ✅ Activity Diagram: Metadata extraction → Query planning → Runtime creation
-- ✅ Sequence Diagram: QueryId dispatch → Table scan → Materialization
-
 ## Roadmap
 
-### Phase 1 — Kernel + indexes ✅ COMPLETE
-- Table + row layout
+### Phase 1 — Core Storage ✅ COMPLETE
+- Table + row layout with primitive arrays
 - Hash index + range index
 - Filter execution with index selection
-- SIMD vector scans with Panama Vector API
+- Heap-based columnar storage
 
 ### Phase 2 — Joins ✅ COMPLETE
-- Hash join (factory.join())
-- Index nested loop join
-- Adjacency join store for 1:N and M:N
-- Foreign key propagation
+- Hash join (HashJoin.java)
+- Foreign key support
+- Relationship handling
 
-### Phase 3 — Planner + Code Generation ⏳ IN PROGRESS
-- Query planning (QueryPlanner, QueryCompiler) ✅
-- Runtime engine (RepositoryRuntime) ✅
-- Code generation (RepositoryScaffolder, RepositoryEmitter) ✅
-- Test infrastructure 🔴 IN PROGRESS
-- IN, BETWEEN, LIKE operators ⏳ PENDING
+### Phase 3 — Query Planning ✅ COMPLETE
+- QueryMethodLexer tokenization ✅
+- QueryPlanner logical query creation ✅
+- BuiltInResolver for built-ins ✅
+- HeapRuntimeKernel execution ✅
+- All operators implemented ✅
 
 ### Phase 4 — Advanced Query Features ⏳ FUTURE
-- Sorting and paging support
-- OrderBy clause parsing
-- Top/First limit clauses
+- Sorting support (OrderBy)
+- Paging/limit support (Top/First)
 - Query optimization with cost model
 
 ### Phase 5 — Complex Entity Features ⏳ FUTURE
-- Inheritance hierarchies (SINGLE_TABLE, JOINED, TABLE_PER_CLASS)
-- Composite keys (@IdClass, @EmbeddedId)
+- Inheritance hierarchies
+- Composite keys
 - Cascade delete / orphan removal
-- Optimistic locking (@Version)
+- Optimistic locking
 
 ### Phase 6 — Enterprise Features ⏳ FUTURE
-- MVCC snapshots
-- Schema migration
-- Soft deletes (@Where)
-- Named queries (@NamedQuery)
+- Transaction support
+- Schema evolution
+- Named queries
 
 ## Performance Optimizations
 
 ### Implemented Optimizations
 
 **1. Field Caching (O(1) lookup)** ✅
-- `Map<Class<?>, Map<String, Field>> fieldCache`
-- `computeIfAbsent` for O(1) access
-- Impact: ~2-5x faster materialize() for large result sets
+- Direct field access via MethodHandles
+- Compile-time extraction
+- Impact: ~2-5x faster materialization
 
 **2. Zero-Reflection Hot Path** ✅
 - Compile-time query planning
-- Direct array access (columnNames[], typeCodes[], setters[])
-- Constant queryId dispatch
+- Direct array access (columnNames[], typeCodes[])
+- No Class.forName() or Method.invoke()
 
 **3. Dense Arrays Over Maps** ✅
 - `String[] columnNames` vs `Map<String, Integer>`
@@ -322,27 +288,12 @@ All architectural components are implemented and aligned:
 **4. TypeCode Switch** ✅
 - Java 21 pattern matching
 - Zero-allocation type dispatch
-- `switch (typeCode) { case TYPE_INT → table.getInt(...) }`
+- `switch (typeCode) { case TYPE_INT → ... }`
 
-### In-Progress Optimizations
-
-**1. SIMD String Matching** ⏳
-- Target: `findByNameContaining()` optimization
-- Use `jdk.incubator.vector.IntVector` for batch comparison
-- Expected Impact: 2-4x faster for large string datasets
-
-**2. ByteBuddy Dynamic Query Generation** ⏳
-- Target: User-defined repository interfaces
-- Zero-overhead dynamic queries (compiled to bytecode)
-- Parses: `findByProcessorNameAndAgeGreaterThan`
-
-## Open Questions
-
-1. **Lazy vs Eager Loading**: How to handle @OneToMany lazy loading?
-2. **Transaction Boundaries**: How to implement transaction isolation?
-3. **Query Caching**: Named query result caching strategy?
-4. **Schema Evolution**: Backward compatibility during entity changes?
-5. **Concurrency**: Multi-threaded access patterns?
+**5. ByteBuddy Table Generation** ✅
+- Generates optimized table classes at runtime
+- Pre-compiled MethodHandles for column access
+- Two strategies: MethodHandle (~5ns) and Bytecode (~1ns)
 
 ## Design Principles
 
@@ -360,9 +311,9 @@ All architectural components are implemented and aligned:
 
 **GOOD - static, no allocation:**
 ```java
-for (int i = 0; i < list.size(); i++) {
-    T e = list.get(i);
-    // process e
+for (int i = 0; i < size; i++) {
+    int value = column.get(i);
+    // process value
 }
 ```
 
@@ -373,15 +324,13 @@ return list.stream().filter(e -> condition).toList();
 
 ### Memris Extensions
 
-1. **Annotation-driven** - Standard Jakarta/JPA annotations
+1. **Annotation-driven** - Custom annotations for entities
 2. **Zero-config** - Auto-schema inference from annotations
 3. **In-memory first** - No SQL dialect complexity
-4. **Composable** - Factory pattern for repositories
+4. **Composable** - Factory pattern for table generation
 
 ## References
 
-- [Jakarta Persistence 3.1 Specification](https://jakarta.ee/specifications/persistence/3.1/)
-- [HikariCP Design Philosophy](https://github.com/brettwooldridge/HikariCP)
 - [ARCHITECTURE.md](ARCHITECTURE.md) - Detailed architecture documentation
 - [DEVELOPMENT.md](DEVELOPMENT.md) - Build commands and development guidelines
-- [REFERENCE.md](REFERENCE.md) - Query method reference
+- [QUERY.md](QUERY.md) - Query method reference

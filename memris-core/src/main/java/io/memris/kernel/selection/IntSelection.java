@@ -1,5 +1,9 @@
 package io.memris.kernel.selection;
 
+import io.memris.kernel.MutableSelectionVector;
+import io.memris.kernel.SelectionVector;
+import io.memris.kernel.SelectionVectorFactory;
+
 import java.util.Arrays;
 import java.util.NoSuchElementException;
 
@@ -74,7 +78,6 @@ public final class IntSelection implements MutableSelectionVector {
         };
     }
 
-    @Override
     public SelectionVector filter(io.memris.kernel.Predicate predicate, SelectionVectorFactory factory) {
         throw new UnsupportedOperationException(
             "SelectionVector.filter() is not supported. " +

@@ -21,30 +21,29 @@ mvn.cmd -q -e -pl memris-core test -Dtest=ClassName
 
 # Run single test method
 mvn.cmd -q -e -pl memris-core test -Dtest=ClassName#methodName
-
-# Run benchmarks (requires manual java invocation with preview flags)
-# Throughput benchmark
-java --enable-preview --add-modules jdk.incubator.vector -cp memris-core/target/classes io.memris.benchmarks.BenchmarkRunner
-
-# JMH microbenchmarks (latency-focused)
-mvn.cmd clean compile
-java --enable-preview --add-modules jdk.incubator.vector -cp memris-core/target/classes:jmh-benchmarks.jar io.memris.benchmarks.MemrisBenchmarks
 ```
 
 ### Java Runtime Requirements
 
 - **Java Version**: 21 (required)
 - **Preview Features**: `--enable-preview`
-- **Modules**: `jdk.incubator.vector` (SIMD), `java.base` (FFM)
 - **Native Access**: `--enable-native-access=ALL-UNNAMED`
+- **Storage**: 100% heap-based (primitive arrays, no FFM/MemorySegment)
 
 ## Project Overview
 
 **Memris** is a blazingly fast, multi-threaded, in-memory storage engine for Java 21 with:
-- SIMD vectorized execution using Panama Vector API
-- FFM (Foreign Function & Memory) MemorySegment-based storage
-- Spring Data JPA repository integration via ByteBuddy dynamic bytecode generation
+- Heap-based columnar storage using primitive arrays (int[], long[], String[])
+- ByteBuddy dynamic bytecode generation for table classes
+- Zero-reflection hot paths with compile-time MethodHandle extraction
 - O(1) design principle: no O(n) operations allowed in hot paths
+- Spring Data-compatible query method parsing
+
+**Architecture Notes:**
+- Generates **TABLE** classes via ByteBuddy, not repository classes
+- Storage is 100% Java heap (no FFM, no MemorySegment, no off-heap)
+- SIMD flags configured but not actively used (plain loops with JIT auto-vectorization)
+- Custom annotations (`@Entity`, `@Index`, etc.) instead of Jakarta/JPA
 
 ## Critical Design Principles
 
@@ -59,7 +58,7 @@ java --enable-preview --add-modules jdk.incubator.vector -cp memris-core/target/
 
 ### Zero Reflection in Hot Paths
 - Use ByteBuddy bytecode generation with pre-compiled MethodHandles
-- No reflective field access in generated repository implementations
+- No reflective field access in generated table implementations
 - Compile-time type safety through bytecode generation
 
 ## Code Style Guidelines
@@ -95,19 +94,22 @@ public interface IntEnumerator extends Iterator<Integer> {
 - Never use `switch (type.getName())` or string comparisons
 
 ```java
-// GOOD - Java 21 pattern matching switch
-FfmColumn<?> column = switch (type) {
-    case int.class, Integer.class -> new FfmIntColumn(spec.name(), arena, capacity);
-    case long.class, Long.class -> new FfmLongColumn(spec.name(), arena, capacity);
-    case boolean.class, Boolean.class -> new FfmBooleanColumn(spec.name(), arena, capacity);
-    case byte.class, Byte.class -> new FfmByteColumn(spec.name(), arena, capacity);
-    case short.class, Short.class -> new FfmShortColumn(spec.name(), arena, capacity);
-    case float.class, Float.class -> new FfmFloatColumn(spec.name(), arena, capacity);
-    case double.class, Double.class -> new FfmDoubleColumn(spec.name(), arena, capacity);
-    case char.class, Character.class -> new FfmCharColumn(spec.name(), arena, capacity);
-    case String.class -> new FfmStringColumnImpl(spec.name(), arena, capacity);
+// GOOD - Java 21 pattern matching switch with TypeCodes
+byte typeCode = switch (type) {
+    case int.class, Integer.class -> TypeCodes.TYPE_INT;
+    case long.class, Long.class -> TypeCodes.TYPE_LONG;
+    case boolean.class, Boolean.class -> TypeCodes.TYPE_BOOLEAN;
+    case byte.class, Byte.class -> TypeCodes.TYPE_BYTE;
+    case short.class, Short.class -> TypeCodes.TYPE_SHORT;
+    case float.class, Float.class -> TypeCodes.TYPE_FLOAT;
+    case double.class, Double.class -> TypeCodes.TYPE_DOUBLE;
+    case char.class, Character.class -> TypeCodes.TYPE_CHAR;
+    case String.class -> TypeCodes.TYPE_STRING;
     default -> throw new IllegalArgumentException("Unsupported type: " + type);
 };
+
+// GOOD - Using TypeCodes.forClass()
+byte typeCode = TypeCodes.forClass(type);
 
 // BAD - string-based switch (slower, no type safety)
 switch (type.getName()) {
@@ -126,14 +128,14 @@ if (type == int.class) {
 
 | Element | Convention | Example |
 |---------|------------|---------|
-| Classes | PascalCase | `FfmIntColumn`, `RowIdSet` |
+| Classes | PascalCase | `PageColumnInt`, `RowIdSet` |
 | Interfaces | PascalCase | `SelectionVector`, `IntEnumerator` |
 | Records | PascalCase | `Predicate.Comparison` |
 | Methods | camelCase | `scanEquals()`, `enumerator()` |
 | Constants | UPPER_SNAKE_CASE | `OFFSET_BITS`, `DEFAULT_CAPACITY` |
 | Variables | camelCase | `rowIndex`, `bitSet` |
 | Packages | lowercase | `io.memris.kernel.selection` |
-| Test classes | ClassNameTest | `FfmIntColumnTest` |
+| Test classes | ClassNameTest | `PageColumnIntTest` |
 
 ## Class Design Guidelines
 
@@ -175,33 +177,46 @@ public void add(int rowIndex) {
 
 ```java
 // JDK imports first (alphabetical)
-import java.lang.foreign.*;
 import java.util.*;
+import java.util.concurrent.*;
 
 // Third-party imports
-import jdk.incubator.vector.*;
+import net.bytebuddy.*;
 
 // Project imports (absolute)
 import io.memris.kernel.*;
 import io.memris.kernel.selection.*;
+import io.memris.storage.heap.*;
 ```
 
-## Vector API Usage
+## TypeCodes Usage
 
-- Use `SPECIES_PREFERRED` for portability
-- Use `VectorMask.toLong()` for packed lane extraction
-- Handle tail loop with `loopBound()`
-- Use `fromMemorySegment()` for FFM integration
+**TypeCodes** is a final class with static byte constants (NOT an enum):
 
 ```java
-IntVector vector = IntVector.fromMemorySegment(SPECIES, segment,
-    (long) i * ValueLayout.JAVA_INT.byteSize(), ByteOrder.nativeOrder());
-VectorMask<Integer> mask = vector.eq(value);
-long lanes = mask.toLong();
-while (lanes != 0L) {
-    int lane = Long.numberOfTrailingZeros(lanes);
-    // ...
-    lanes &= (lanes - 1);
+public final class TypeCodes {
+    public static final byte TYPE_INT = 0;
+    public static final byte TYPE_LONG = 1;
+    public static final byte TYPE_BOOLEAN = 2;
+    // ... etc
+}
+```
+
+**Benefits:**
+- Constants inlined by JIT (zero overhead)
+- Switch compiles to tableswitch (O(1) jump table)
+- No enum allocation overhead
+
+**Usage:**
+```java
+// Lookup type code
+byte typeCode = TypeCodes.forClass(int.class);  // Returns TYPE_INT
+
+// Switch on type code
+switch (typeCode) {
+    case TypeCodes.TYPE_LONG -> handleLong();
+    case TypeCodes.TYPE_INT -> handleInt();
+    case TypeCodes.TYPE_STRING -> handleString();
 }
 ```
 
@@ -213,29 +228,27 @@ while (lanes != 0L) {
 - Test class naming: `ClassNameTest`
 - **Use AssertJ idiomatic assertions** - 1 test, 1 assertion, fluent chaining
 - Test O(1) guarantees explicitly
-- Test SIMD paths with large datasets
 - **All tests must verify behavior through assertions, not print statements**
 
 ```java
 // GOOD - AssertJ idiomatic (1 test, 1 assertion)
-assertThat(productRepo.findByPriceBetween(min, max))
+assertThat(table.scanEqualsInt(0, 42))
     .hasSize(2)
-    .extracting("name")
-    .containsExactlyInAnyOrder("SmartPhone X Pro", "ProBook Laptop 15");
+    .containsExactly(5, 10);
 
-assertThat(customerRepo.findById(123))
+assertThat(index.get(123L))
     .isNotNull()
-    .extracting("fullName")
-    .isEqualTo("John Doe");
+    .extracting("page")
+    .isEqualTo(0);
 
 // BAD - Multiple scattered assertions
-List<Product> results = productRepo.findByPriceBetween(min, max);
-assertEquals(2, results.size());
-assertEquals("SmartPhone X Pro", results.get(0).name);
+int[] results = table.scanEqualsInt(0, 42);
+assertEquals(2, results.length);
+assertEquals(5, results[0]);
 
 // BAD - Print statements don't verify behavior
-List<Product> results = productRepo.findByPriceBetween(min, max);
-System.out.println("Found " + results.size() + " products");  // NOT A TEST!
+int[] results = table.scanEqualsInt(0, 42);
+System.out.println("Found " + results.length + " matches");  // NOT A TEST!
 ```
 
 ## Documentation Standards
@@ -247,17 +260,17 @@ System.out.println("Found " + results.size() + " products");  // NOT A TEST!
 
 ## Performance Validation
 
-- Run benchmarks after performance-sensitive changes
-- Use `BenchmarkRunner` for quick sanity checks
-- Target: 10M rows scan < 50ms
-- Target: 1% selectivity filter < 10ms
+- Target: Table scan of 1M rows < 10ms
+- Target: Hash index lookup O(1) < 1μs
+- Target: Range index lookup O(log n) < 10μs
+- Use JMH for microbenchmarks when needed
 
 ## Forbidden Patterns
 
-- Boxing primitives (`Integer`, `Long`, `Boolean`)
+- Boxing primitives (`Integer`, `Long`, `Boolean`) in hot paths
 - `Iterator`/`Iterable` in hot paths
-- `Collection.contains()` for lookups
-- Linear scans without SIMD vectorization
+- `Collection.contains()` for lookups (use HashIndex)
+- Linear scans without early termination
 - O(n) operations without justification
 - Throwing generic `Exception`
 - Mutable collections in public APIs
@@ -293,13 +306,16 @@ When implementing join tables (@OneToMany, @ManyToMany):
 
 | File | Purpose |
 |------|---------|
-| `MemrisRepositoryFactory.java` | Main factory, manages tables and repositories |
-| `RepositoryBytecodeGenerator.java` | ByteBuddy-based repository generation |
-| `QueryMethodParser.java` | JPA query method parsing |
-| `FfmTable.java` | Columnar storage with SIMD scans |
+| `TableGenerator.java` | ByteBuddy table class generation |
+| `HeapRuntimeKernel.java` | Zero-reflection query execution |
+| `QueryMethodLexer.java` | Query method tokenization |
+| `QueryPlanner.java` | Logical query creation |
+| `BuiltInResolver.java` | Built-in operation resolution |
+| `GeneratedTable.java` | Low-level table interface |
+| `TypeCodes.java` | Type code constants (final class) |
 
 ---
 
 *For detailed architecture and package structure, see [ARCHITECTURE.md](ARCHITECTURE.md)*
 *For Spring Data integration details, see [SPRING_DATA.md](SPRING_DATA.md)*
-*For query method reference, see [REFERENCE.md](REFERENCE.md)*
+*For query method reference, see [QUERY.md](QUERY.md)*

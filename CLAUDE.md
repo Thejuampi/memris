@@ -10,7 +10,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **CLAUDE.md** (this file) - First, for quick context
 - **docs/DEVELOPMENT.md** - When building, testing, or writing code
 - **docs/ARCHITECTURE.md** - When modifying system structure or understanding components
-- **docs/REFERENCE.md** - When working with queries or troubleshooting issues
+- **docs/QUERY.md** - When working with queries or troubleshooting issues
 - **docs/SPRING_DATA.md** - When implementing Spring Data features
 
 **Read only what you need, when you need it.**
@@ -40,42 +40,40 @@ mvn.cmd -q -e -pl memris-core test -Dtest=ClassName#methodName
 
 - **Java Version**: 21 (required)
 - **Preview Features**: `--enable-preview`
-- **Modules**: `jdk.incubator.vector` (SIMD), `java.base` (FFM)
 - **Native Access**: `--enable-native-access=ALL-UNNAMED`
+- **Storage**: 100% heap-based (no FFM/MemorySegment)
 
 ---
 
 ## Architecture Overview
 
-Memris is a columnar in-memory storage engine with **zero reflection in hot paths**. The key architectural split is:
+Memris is a **heap-based**, columnar in-memory storage engine with **zero reflection in hot paths**. The key architectural split is:
 
 ### Build-Time (once per entity type)
 ```
-MetadataExtractor → EntityMetadata → QueryPlanner → QueryCompiler → RepositoryEmitter
+TableMetadata → TableGenerator → GeneratedTable (ByteBuddy)
 ```
-- Scans entity class, builds MethodHandles, extracts TypeConverters
-- Compiles query methods into `CompiledQuery` objects with resolved column indices
-- Generates bytecode via ByteBuddy
+- Scans entity class, creates TableMetadata with field info
+- Generates table class extending AbstractTable via ByteBuddy
+- Pre-compiles MethodHandles for column access
 
 ### Runtime (hot path - zero reflection)
 ```
-UserRepositoryImpl → RepositoryRuntime (queryId dispatch) → FfmTable (column-indexed access)
+HeapRuntimeKernel → GeneratedTable (column-indexed access)
 ```
-- Uses constant `queryId` (int) for method dispatch
-- Dense arrays: `String[] columnNames`, `byte[] typeCodes`, `MethodHandle[] setters`
-- TypeCode switch dispatch, no maps/string lookups
+- Uses TypeCode switch for type dispatch
+- Dense arrays: column indices → PageColumn* access
+- Direct scan methods: scanEqualsLong(), scanBetweenInt(), etc.
 
 ### Layer Responsibilities
 
 | Layer | Purpose |
 |-------|---------|
-| **Domain** | No dependencies - core interfaces |
-| **Parser** | Lexer → Tokens (QueryMethodLexer) |
-| **Compiler** | LogicalQuery → CompiledQuery (QueryCompiler) |
-| **Metadata** | Entity → Structure (EntityMetadata) |
-| **Runtime** | Query Execution (RepositoryRuntime) |
-| **Emitter** | ByteBuddy Generation (RepositoryEmitter) |
-| **Factory** | Orchestration & CRUD (MemrisRepositoryFactory) |
+| **Parser** | Tokenizes query method names (QueryMethodLexer) |
+| **Planner** | Creates LogicalQuery from tokens (QueryPlanner) |
+| **Runtime** | Query execution (HeapRuntimeKernel) |
+| **Storage** | Heap-based table storage (TableGenerator, PageColumn*) |
+| **Index** | Hash and range indexes (HashIndex, RangeIndex) |
 
 ---
 
@@ -88,12 +86,12 @@ All hot path operations must be O(1). Use `BitSet` for dense sets, direct array 
 Never use boxed types in hot paths. Use `IntEnumerator`/`LongEnumerator` instead of `Iterator<Integer>`.
 
 ### 3. Java 21 Type Switches (CRITICAL)
-Always use pattern matching switch with class literals:
+Always use pattern matching switch with class literals and TypeCodes:
 ```java
-FfmColumn<?> column = switch (type) {
-    case int.class, Integer.class -> new FfmIntColumn(...);
-    case long.class, Long.class -> new FfmLongColumn(...);
-    case String.class -> new FfmStringColumnImpl(...);
+byte typeCode = switch (type) {
+    case int.class, Integer.class -> TypeCodes.TYPE_INT;
+    case long.class, Long.class -> TypeCodes.TYPE_LONG;
+    case String.class -> TypeCodes.TYPE_STRING;
     default -> throw new IllegalArgumentException("Unsupported type: " + type);
 };
 ```
@@ -101,7 +99,18 @@ FfmColumn<?> column = switch (type) {
 ### 4. Zero Reflection Hot Path
 - Pre-compile MethodHandles at build time
 - Use index-based array access, never maps or string lookups
-- ByteBuddy bytecode generation with `queryId` dispatch
+- ByteBuddy table generation with TypeCode dispatch
+
+### 5. TypeCodes (NOT TypeCode Enum)
+TypeCodes is a **final class with static byte constants** (NOT an enum):
+```java
+public final class TypeCodes {
+    public static final byte TYPE_INT = 0;
+    public static final byte TYPE_LONG = 1;
+    public static final byte TYPE_STRING = 8;
+    // ...
+}
+```
 
 ---
 
@@ -109,12 +118,17 @@ FfmColumn<?> column = switch (type) {
 
 | Package | Purpose |
 |---------|---------|
-| `io.memris.storage.ffm` | Storage layer (FfmTable, FfmColumn, MemorySegments) |
-| `io.memris.kernel` | Selection pipeline, predicates, plan nodes |
-| `io.memris.kernel.selection` | SelectionVector implementations (IntSelection, BitsetSelection) |
-| `io.memris.spring` | Spring Data integration (factory, runtime) |
-| `io.memris.spring.plan` | Query planning (Lexer, Planner, Compiler) |
-| `io.memris.spring.generated` | ByteBuddy-generated repository implementations |
+| `io.memris.storage` | Core storage interfaces (Table, GeneratedTable, Selection) |
+| `io.memris.storage.heap` | Heap-based implementation (TableGenerator, PageColumn*, AbstractTable) |
+| `io.memris.kernel` | Selection vectors, predicates, plan nodes, executor |
+| `io.memris.kernel.selection` | SelectionVector implementations (IntSelection) |
+| `io.memris.index` | HashIndex, RangeIndex, LongIdIndex, StringIdIndex |
+| `io.memris.spring` | Custom annotations, TypeCodes, BuiltInResolver |
+| `io.memris.spring.plan` | Query planning (QueryMethodLexer, QueryPlanner, CompiledQuery, OpCode) |
+| `io.memris.spring.runtime` | Query execution (HeapRuntimeKernel, EntityMaterializer, EntityExtractor) |
+| `io.memris.spring.scaffold` | Repository scaffolding (RepositoryMethodIntrospector) |
+
+**Note:** ByteBuddy generates table classes in `io.memris.storage.generated` package (created at runtime).
 
 ---
 
@@ -122,14 +136,32 @@ FfmColumn<?> column = switch (type) {
 
 | File | Purpose |
 |------|---------|
-| `MemrisRepositoryFactory.java` | Entry point - manages tables, indexes, repositories |
-| `RepositoryBytecodeGenerator.java` | ByteBuddy bytecode generation for repositories |
+| `TableGenerator.java` | ByteBuddy table class generation |
+| `HeapRuntimeKernel.java` | Zero-reflection query execution engine |
 | `QueryMethodLexer.java` | Tokenizes query method names (findByLastname → tokens) |
 | `QueryPlanner.java` | Creates LogicalQuery from tokens |
-| `QueryCompiler.java` | Compiles LogicalQuery to CompiledQuery with column indices |
-| `RepositoryRuntime.java` | Zero-reflection query execution with queryId dispatch |
-| `FfmTable.java` | Columnar storage with SIMD scans |
-| `BuiltInResolver.java` | Built-in operator keyword resolution (GreaterThan, Between, etc.) |
+| `CompiledQuery.java` | Pre-compiled query with resolved column indices |
+| `BuiltInResolver.java` | Built-in operation resolution (findById, save, delete, etc.) |
+| `TypeCodes.java` | Type code constants (final class with static bytes) |
+| `GeneratedTable.java` | Low-level table interface with scan methods |
+| `AbstractTable.java` | Base class for generated tables |
+| `PageColumnInt.java` | int[] column with scan operations |
+| `PageColumnLong.java` | long[] column with scan operations |
+| `PageColumnString.java` | String[] column with scan operations |
+
+---
+
+## Custom Annotations (NOT Jakarta/JPA)
+
+Memris uses **custom annotations** (not Jakarta/JPA):
+
+- `@Entity` (io.memris.spring.Entity) - Marks entity classes
+- `@Index` (io.memris.spring.Index) - Marks fields for indexing
+- `@GeneratedValue` (io.memris.spring.GeneratedValue) - Auto ID generation
+- `@OneToOne` (io.memris.spring.OneToOne) - Relationship marker
+- `GenerationType` - ID generation strategies (AUTO, IDENTITY, UUID, CUSTOM)
+
+**Note:** Test entities may use Jakarta annotations, but main code uses custom annotations.
 
 ---
 
@@ -156,4 +188,4 @@ findByLastnameIgnoreCase    → EQ lastname (case-insensitive)
 Return types determine execution path:
 - `List<T>` / `T` / `Optional<T>` / `long` (count) / `boolean` (exists)
 
-For complete operator reference, see **[docs/REFERENCE.md](docs/REFERENCE.md)**.
+For complete operator reference, see **[docs/QUERY.md](docs/QUERY.md)**.

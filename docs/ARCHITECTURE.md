@@ -1,499 +1,317 @@
-# Memris Architecture Documentation
+# Memris Architecture
 
-## Overview & Design Principles
+Heap-based, zero-reflection, columnar in-memory storage engine for Java 21.
 
-Memris is a blazingly fast, multi-threaded, in-memory storage engine for Java 21 with Spring Data JPA repository integration via dynamic bytecode generation.
+## Overview
 
-**Key Design Principles:**
-1. **O(1) First** - No O(n) operations allowed in hot paths
-2. **Zero Reflection Hot Path** - No reflection in runtime query execution
-3. **No Maps/String Lookups Hot Path** - Runtime MUST use index-based access only
-4. **Primitive-Only APIs** - No boxed types in hot paths
-5. **Compile Once, Reuse Forever** - All compilation happens at repository creation time
-6. **Generic Pattern Matching** - No per-repository hardcoding
+Memris is a high-performance in-memory storage engine with the following principles:
 
----
+- **Heap-based storage**: 100% Java heap using primitive arrays and object pools
+- **Zero reflection hot paths**: Compile-time metadata extraction, runtime queryId dispatch
+- **ByteBuddy table generation**: Generates optimized table classes at build time
+- **Primitive-only APIs**: Direct array access, no boxing in hot paths
+- **O(1) design**: Direct index access, hash-based lookups
+
+**Key Design Decisions:**
+- Tables are generated via ByteBuddy, not repositories
+- TypeCodes are static constants (byte), not enum ordinals
+- HeapRuntimeKernel executes queries, not RepositoryRuntime
+- Custom annotations (not Jakarta/JPA) mark entities and indexes
 
 ## High-Level Architecture
 
-```plantuml
-@startuml Memris Architecture
-skinparam monochrome true
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                         Query Pipeline                               │
+│                                                                      │
+│  Repository Method → QueryMethodLexer → QueryPlanner → CompiledQuery │
+│       │                                                      │       │
+│       │                                                      │       │
+│       ▼                                                      ▼       │
+│  [QueryMethod]                                  [HeapRuntimeKernel]  │
+│                                          │                           │
+│                                          │ Zero-reflection dispatch  │
+│                                          ▼                           │
+│                                    [GeneratedTable]                  │
+│                                          │                           │
+│                                          │ Column-indexed access     │
+│                                          ▼                           │
+│                            [PageColumnInt/Long/String]               │
+└─────────────────────────────────────────────────────────────────────┘
 
-[User Code] as UC
-[Repository Interface] as RI
-[MemrisRepositoryFactory] as Factory
-
-package "Build-Time Components" {
-  [MetadataExtractor] as ME
-  [EntityMetadata] as EM
-  [QueryPlanner] as QP
-  [QueryCompiler] as QC
-  [RepositoryScaffolder] as RS
-  [RepositoryEmitter] as RE
-
-  ME -right-> EM
-  QC -right-> QP
-  RS -down-> RE
-}
-
-package "Runtime Engine" {
-  [RepositoryRuntime] as RT
-  [CompiledQuery[]] as CQ
-  [Dense Arrays] as DA
-  [FfmTable] as FT
-  [Indexes] as IX
-}
-
-package "Generated Repository" {
-  [UserRepositoryImpl] as Impl
-}
-
-UC -down-> RI
-RI -down-> Factory
-Factory -right-> ME
-Factory -right-> RS
-
-RS -right-> RT
-RE -right-> Impl
-
-Impl -right-> RT : queryId dispatch
-
-RT -down-> CQ : Array lookup (O1)
-RT -down-> DA : Pre-compiled metadata
-RT -down-> FT : Column-indexed access
-RT -down-> IX : Index queries
-
-DA -right-> RT : String[] columnNames\nbyte[] typeCodes\nMethodHandle[] setters
-
-FT -right-> [SIMD Vectors] : Vector scans
-
-note right of Factory
-  Factory Responsibilities:
-  • Arena lifecycle management
-  • FfmTable creation per entity
-  • Index creation and management
-  • Join table management
-  • Repository instantiation
-end note
-
-note left of RT
-  RepositoryRuntime:
-  Zero reflection hot path
-  • list0/1/2(queryId, args)
-  • optional1(queryId, arg)
-  • exists1(queryId, arg)
-  • count0/1/2(queryId, args)
-  • TypeCode switch dispatch
-  • Dense array access
-  • MethodHandle materialization
-end note
-
-note bottom of FT
-  FfmTable Storage:
-  • Column-indexed API
-    getInt(columnId, row)
-    getString(columnId, row)
-    ... all primitives
-  • SIMD vector scans
-    (int/long columns)
-  • Off-heap MemorySegments
-end note
-
-@enduml
+┌─────────────────────────────────────────────────────────────────────┐
+│                       Table Generation                               │
+│                                                                      │
+│  Entity Class + Annotations → TableMetadata                          │
+│         │                                                            │
+│         │ Build-time (once per entity)                               │
+│         ▼                                                            │
+│  TableGenerator.generate() → PersonTable.class (ByteBuddy)           │
+│         │                                                            │
+│         │ Implements GeneratedTable interface                        │
+│         ▼                                                            │
+│  Generated columns: PageColumnLong, PageColumnInt, PageColumnString  │
+│  ID index: LongIdIndex or StringIdIndex                              │
+└─────────────────────────────────────────────────────────────────────┘
 ```
 
----
+## Package Structure
 
-## Layer Responsibilities (SRP)
+| Package | Purpose | Key Classes |
+|---------|---------|-------------|
+| `io.memris.kernel` | Core execution primitives | `SelectionVector`, `Predicate`, `PlanNode`, `Executor`, `HashJoin` |
+| `io.memris.storage` | Storage interfaces | `GeneratedTable`, `Table`, `Selection` |
+| `io.memris.storage.heap` | Heap-based implementation | `TableGenerator`, `AbstractTable`, `PageColumn*`, `*IdIndex` |
+| `io.memris.index` | Index implementations | `HashIndex`, `RangeIndex`, `LongIdIndex`, `StringIdIndex` |
+| `io.memris.spring` | Custom annotations & types | `@Entity`, `@Index`, `@GeneratedValue`, `TypeCodes` |
+| `io.memris.spring.plan` | Query parsing & planning | `QueryMethodLexer`, `QueryPlanner`, `CompiledQuery`, `OpCode` |
+| `io.memris.spring.runtime` | Query execution | `HeapRuntimeKernel`, `EntityMaterializer`, `EntityExtractor` |
+| `io.memris.spring.scaffold` | Repository scaffolding | `RepositoryMethodIntrospector` |
 
-Memris follows strict Single Responsibility Principle with 7 distinct layers:
+## Layer Responsibilities
 
-### Layer 1: Domain Layer (No dependencies on other layers)
-
-**Package:** `io.memris.spring.domain`
-
-**Components:**
-- `EntityStructure` - Record: pre-processed entity metadata
-- `FieldMapping` - Record: field to column mapping
-- `RelationshipType` - Enum: ONE_TO_ONE, MANY_TO_ONE, etc.
-- `QueryToken` - Record: lexer token
-- `QueryTokenType` - Enum: token types
-
-**Responsibilities:**
-- Define immutable data structures (records)
-- No behavior, just data
-- No dependencies on other layers
-- Used by parser, compiler, and runtime layers
-
-### Layer 2: Parser Layer (Domain → Tokens)
-
-**Package:** `io.memris.spring.plan`
-
-**Components:**
-- `QueryMethodLexer` - ONLY tokenizes method names
-- `QueryMethodToken` - Token record
-- `QueryMethodTokenType` - Token type enum
-- `QueryPlanner` - ONLY converts tokens to LogicalQuery
-
-**Responsibilities:**
-- **QueryMethodLexer**: String → List<QueryMethodToken>
-  - Input: Method name string (e.g., "findByDepartmentNameIgnoreCase")
-  - Output: List of tokens (PROPERTY_PATH, OPERATOR, etc.)
-  - Does NOT validate against entity structure
-  - Does NOT create LogicalQuery
-  - Pure lexical analysis
-
-- **QueryPlanner**: List<QueryMethodToken> → LogicalQuery
-  - Input: List of tokens + entity class
-  - Output: LogicalQuery with conditions/operators
-  - Validates tokens against entity structure
-  - Creates semantic query representation
-  - Handles combinators (AND/OR), IgnoreCase, OrderBy
-
-**SRP Boundaries:**
-- Lexer: "What words are in this string?"
-- Planner: "What does this sequence of tokens mean?"
-
-### Layer 3: Compiler Layer (LogicalQuery → CompiledQuery)
-
-**Package:** `io.memris.spring.plan`
-
-**Components:**
-- `QueryCompiler` - ONLY compiles LogicalQuery to CompiledQuery
-- `CompiledQuery` - Record: executable query
-- `LogicalQuery` - Record: semantic query
-
-**Responsibilities:**
-- **QueryCompiler**: LogicalQuery → CompiledQuery
-  - Input: LogicalQuery with property paths (e.g., "department.address.city")
-  - Output: CompiledQuery with column indices (e.g., columnIndex=5)
-  - Resolves property paths to column indices using EntityMetadata
-  - No query execution, just compilation
-  - Happens once per query method during repository creation
-
-### Layer 4: Metadata Layer (Entity → Structure)
-
-**Package:** `io.memris.spring.metadata`
-
-**Components:**
-- `EntityMetadata` - Record: complete entity structure
-- `FieldMapping` - Record: field to column mapping
-- `MetadataExtractor` - Extracts entity structure via reflection
-- `TypeCode` - Enum: type constants
-
-**Responsibilities:**
-- **MetadataExtractor**: Class<?> → EntityMetadata
-  - Input: Entity class
-  - Output: EntityMetadata with all field mappings
-  - Uses reflection once per entity class (not in hot path)
-  - Caches results for reuse
-  - Extracts: field names, types, column names, type codes, MethodHandles
-
-### Layer 5: Runtime Layer (Query Execution)
-
-**Package:** `io.memris.spring.runtime`
-
-**Components:**
-- `RepositoryRuntime` - Executes compiled queries
-- `QueryExecutor` - Executes single query (extract from Runtime)
-- `EntityMaterializer` - Materializes entities from rows (extract from Runtime)
-
-**Responsibilities:**
-- **RepositoryRuntime**: Query execution engine
-  - Executes compiled queries against FfmTable
-  - Returns results (List, Optional, long, boolean)
-  - Materializes entities using MethodHandles
-  - Zero reflection in hot path
-  - Uses dense arrays for O(1) access: columnNames[], typeCodes[], converters[], setters[]
-  - Query method recognition: tokenized via QueryMethodLexer (prefixes: find, read, query, get, count, exists)
-  - CRUD method recognition: by signature (save, deleteById, etc.)
-
-### Layer 6: Emitter Layer (ByteBuddy Code Generation)
-
-**Package:** `io.memris.spring.scaffold`
-
-**Components:**
-- `RepositoryEmitter` - Generates bytecode via ByteBuddy
-- `RepositoryMethodImplementation` - Strategy interface for method generation
-- `QueryMethodImpl` - Query method bytecode generation
-- `CrudMethodImpl` - CRUD method bytecode generation
-- `GeneratedClassNamer` - Generates unique class names
-
-**Responsibilities:**
-- **RepositoryEmitter**: ByteBuddy bytecode generation
-  - Input: Repository interface + compiled queries + factory reference
-  - Output: Generated repository class instance
-  - Generates ALL methods (query + CRUD)
-  - Delegates query methods to RepositoryRuntime via typed entrypoints
-  - Delegates CRUD methods to CrudOperationExecutor via MethodDelegation
-  - Uses WRAPPER classloading strategy to avoid "already loaded" errors
-
-- **RepositoryMethodImplementation**: Strategy interface
-  - Defines contract for implementing repository methods
-  - Context provides: factory, table, entityClass, compiledQueries
-
-### Layer 7: Factory Layer (Orchestration & CRUD Operations)
-
+### Layer 1: Domain Layer
 **Package:** `io.memris.spring`
 
-**Components:**
-- `MemrisRepositoryFactory` - Facade/entry point ONLY
-- `TableManager` - Manages table creation/retrieval
-- `CrudOperationExecutor` - Executes CRUD operations
-- `RepositoryScaffolder` - Orchestrates repository creation
+Custom annotations for entity marking:
+- `@Entity` - Marks a class as an entity
+- `@Index` - Marks field for indexing (HASH/BTREE)
+- `@GeneratedValue` - Auto ID generation with strategy
+- `@OneToOne` - Relationship marker
 
-**Responsibilities:**
+**Note:** These are NOT Jakarta/JPA annotations. Memris uses its own annotation system.
 
-#### MemrisRepositoryFactory (Facade)
-- Entry point for users
-- Delegates to specialized components
-- Manages lifecycle (Arena, close)
-- Does NOT implement business logic
-- Provides configuration options (sorting, etc.)
+### Layer 2: Parser Layer
+**Package:** `io.memris.spring.plan`
 
-#### TableManager
-- Creates tables for entities (buildTable, buildNestedEntityTables)
-- Creates join tables (buildJoinTables)
-- Caches tables for reuse
-- Manages table lookup
+**QueryMethodLexer** (`QueryMethodLexer.java:213`)
+- Tokenizes query method names (findByLastname → tokens)
+- Handles operators: GreaterThan, Between, IgnoreCase, etc.
+- Built-in detection: findAll, count, deleteAll
 
-#### CrudOperationExecutor
-- Implements: save(), saveAll(), delete(), deleteAll(), deleteAllById(), findAll()
-- Called by generated repository methods via MethodDelegation
-- Manipulates FfmTable directly
-- Handles ID generation
+**Key Files:**
+- `QueryMethodLexer.java` - Main tokenizer
+- `QueryMethodToken.java` - Token type
+- `QueryMethodTokenType.java` - Token type enum
 
-#### RepositoryScaffolder
-- Orchestrates repository creation
-- Coordinates: metadata extraction → planning → compilation → runtime → emission
-- Returns final repository instance
-- Pure coordination, no business logic
+### Layer 3: Compiler/Planner Layer
+**Package:** `io.memris.spring.plan`
 
----
+**QueryPlanner** (`QueryPlanner.java`)
+- Creates `LogicalQuery` from tokens
+- Resolves built-in operations via `BuiltInResolver`
+- Validates properties against entity metadata
 
-## Build-Time vs Runtime Pipelines
+**CompiledQuery** (`CompiledQuery.java`)
+- Pre-compiled query with resolved column indices
+- Ready for execution by HeapRuntimeKernel
 
-**CRITICAL:** Compilation happens ONCE at repository creation time. Runtime NEVER runs lexer/planner/compiler.
+**BuiltInResolver** (`BuiltInResolver.java:57`)
+- Signature-based built-in method resolution
+- Deterministic tie-breaking for ambiguous matches
+- Handles save, findById, delete, etc.
 
-### Build-Time Pipeline (Once per repository)
+**Key Files:**
+- `QueryPlanner.java` - Main planner
+- `CompiledQuery.java` - Compiled query representation
+- `LogicalQuery.java` - Intermediate query representation
+- `OpCode.java` - Operation codes (FIND, SAVE, DELETE, etc.)
+- `BuiltInResolver.java` - Built-in method resolution
 
-```plantuml
-@startuml
-package "Build-Time (Repository Creation)" {
-    rectangle "Methods" {
-        method "findById(Long)" as m1
-        method "findByName(String)" as m2
-        method "save(T)" as m3
-    }
+### Layer 4: Runtime Layer
+**Package:** `io.memris.spring.runtime`
 
-    [QueryMethodLexer] as Lexer
-    [QueryPlanner] as Planner
-    [QueryCompiler] as Compiler
-    [RepositoryEmitter] as Emitter
+**HeapRuntimeKernel** (`HeapRuntimeKernel.java:9`)
+- Zero-reflection query execution
+- TypeCode switch dispatch
+- Delegates to GeneratedTable methods
 
-    package "Compiled Artifacts" {
-        [CompiledQuery[]] as CQArray
-        [RepositoryPlan<T>] as Plan
-    }
+**EntityMaterializer** (`EntityMaterializer.java`)
+- Converts table rows to entity objects
+- Uses MethodHandles for field access
 
-    m1 --> Lexer : tokenize(methodName)
-    m2 --> Lexer : tokenize(methodName)
-    m3 --> Lexer : recognized by signature (not tokenized)
+**EntityExtractor** (`EntityExtractor.java`)
+- Extracts field values from entities
+- Used for insert/update operations
 
-    Lexer --> Planner : List<Token>
-    Planner --> Compiler : LogicalQuery
+**Key Files:**
+- `HeapRuntimeKernel.java` - Main execution engine
+- `EntityMaterializer.java` - Entity creation
+- `EntityExtractor.java` - Entity decomposition
 
-    Compiler --> CQArray : CompiledQuery per query method
+### Layer 5: Storage Layer
+**Package:** `io.memris.storage.heap`
 
-    CQArray --> Plan : RepositoryPlan
-    Plan --> Emitter : emit bytecode
+**TableGenerator** (`TableGenerator.java:31`)
+- ByteBuddy bytecode generation
+- Creates table classes extending `AbstractTable`
+- Generates typed columns and ID indexes
 
-    note right of Plan
-      RepositoryPlan contains:
-      - CompiledQuery[] queries
-      - EntityMaterializer<T>
-      - EntityExtractor<T>
-      - RuntimeKernel with column arrays
-    end note
+**GeneratedTable Interface** (`GeneratedTable.java:15`)
+- Low-level table interface
+- Typed scans: `scanEqualsLong()`, `scanBetweenInt()`
+- Typed reads: `readLong()`, `readInt()`, `readString()`
+- Primary key index: `lookupById()`, `removeById()`
 
-    note right of m3
-      CRUD methods recognized
-      by signature, NOT
-      tokenized through lexer
-      (save, deleteById, etc.)
-    end note
-}
-@enduml
-```
+**PageColumn Implementations**
+- `PageColumnInt` - int[] column with SIMD-capable scans
+- `PageColumnLong` - long[] column
+- `PageColumnString` - String[] column
 
-### Runtime Pipeline (Per invocation)
+**ID Indexes**
+- `LongIdIndex` - Long-based primary key index
+- `StringIdIndex` - String-based primary key index
 
-```plantuml
-@startuml
-actor User
+**Key Files:**
+- `TableGenerator.java` - ByteBuddy generation
+- `AbstractTable.java` - Base class for tables
+- `GeneratedTable.java` - Table interface
+- `PageColumn*.java` - Column implementations
+- `*IdIndex.java` - ID indexes
 
-package "Generated Repository" {
-    method "findById(Long id)" as findById
-    method "save(T entity)" as save
-}
+### Layer 6: Index Layer
+**Package:** `io.memris.index`
 
-package "RuntimeKernel" {
-    [RepositoryRuntime] as Runtime
-    [FfmTable] as Table
-}
+**HashIndex** - Hash-based equality lookups (O(1))
+**RangeIndex** - ConcurrentSkipListMap for ranges (O(log n))
 
-package "Storage" {
-    [IntColumn] as IntCol
-    [StringColumn] as StrCol
-}
+**Key Files:**
+- `HashIndex.java` - Hash index
+- `RangeIndex.java` - Range index
 
-User -> findById : call
-findById -> Runtime : optional1(Q_FIND_BY_ID, id)
-activate Runtime
-
-Runtime -> Runtime : cq = compiledQueries[queryId]
-Runtime -> IntCol : scanEquals(columnIdx, value)
-activate IntCol
-IntCol --> Runtime : SelectionVector
-deactivate IntCol
-
-Runtime -> Runtime : materialize(entity, rowIndex)
-Runtime --> findById : Optional<T>
-deactivate Runtime
-
-findById --> User : return
-
-note right of findById
-  Generated method is
-  a thin wrapper:
-  return runtime.optional1(
-    Q_FIND_BY_ID, id);
-end note
-
-note right of Runtime
-  NO lexer/planner/compiler
-  NO string-based column lookups
-  NO reflection
-  Direct array access only
-end note
-@enduml
-```
-
-### Runtime Hard Requirements
-
-**MUST NOT:**
-- Call `FfmTable.getX(String columnName, ...)` - uses Map lookup
-- Call `FfmTable.column(String columnName)` - uses Map lookup
-- Use reflection for field access
-- Parse method names at runtime
-
-**MUST:**
-- Use `columns[columnIndex]` - array access
-- Use pre-resolved column indices from CompiledCondition
-- Use MethodHandles pre-compiled at build time
-- Dispatch by queryId (integer)
-
----
-
-## Performance Characteristics
-
-### O(1) Guarantees
-
-| Layer | Operation | Complexity | Notes |
-|-------|-----------|------------|-------|
-| **Parser** | Method name tokenization | O(n) | Build-time only, n = method name length |
-| **Planner** | Token → LogicalQuery | O(m) | Build-time only, m = token count |
-| **Compiler** | Property path resolution | O(f) | Build-time only, f = field count |
-| **Runtime** | Query execution lookup | O(1) | Array access by queryId |
-| **Runtime** | Column access | O(1) | Direct array index |
-| **Runtime** | Entity materialization | O(r * f) | r = row count, f = field count |
-
-### Hot Path Analysis
-
-**Query Execution Hot Path:**
-```
-repo.findByDepartmentAndStatus("Sales", "active")
-        │
-        ▼ (generated stub)
-RepositoryRuntime.list2(queryId=0, "Sales", "active")
-        │
-        ├─→ compiledQueries[0] → O(1) array lookup
-        ├─→ executeQuery() → SIMD scan with O(n/VECTOR_WIDTH)
-        └─→ materialize() → O(result_size * field_count)
-```
-
-**No Reflection in Hot Path:**
-- ✅ No `Method.invoke()` calls
-- ✅ No `Field.get()` / `Field.set()` calls
-- ✅ No string-based property lookups
-- ✅ Pre-compiled MethodHandles for field access
-- ✅ Direct array access for metadata
-
-### Hot Path (Execution) Characteristics
-
-- No string allocations
-- No reflection
-- Direct array access
-- SIMD vector scans (where applicable)
-
----
-
-## Key Design Decisions
+## Critical Design Principles
 
 ### 1. O(1) First, O(log n) Second, O(n) Forbidden
+All hot path operations are O(1):
+- Direct array access via column indices
+- Hash-based ID lookups
+- BitSet for dense row sets
+- TypeCode switch dispatch (tableswitch bytecode)
 
-**Decision:** All hot path operations must be O(1)
+### 2. Primitive-Only APIs
+Never use boxed types in hot paths:
+- `int[]` instead of `List<Integer>`
+- `IntEnumerator` instead of `Iterator<Integer>`
+- `long` row references instead of objects
 
-**Rationale:**
-- String lookups are O(n)
-- Array access is O(1)
-- MethodHandles faster than reflection
-- Pre-compile everything at build time
+### 3. TypeCodes (Static Constants)
+Type switching uses static byte constants:
 
-### 2. Unified Compilation Strategy
+```java
+public final class TypeCodes {
+    public static final byte TYPE_INT = 0;
+    public static final byte TYPE_LONG = 1;
+    public static final byte TYPE_STRING = 8;
+    // ...
+}
+```
 
-**Decision:** All methods (query + CRUD) become CompiledQuery with assigned queryIds
-
-**Rationale:**
-- Query methods: Lexer → Planner → Compiler (pattern-based)
-- CRUD methods: Direct Compiler invocation (signature-based)
-- Unified runtime dispatch via queryId integer
-- No per-repository hardcoding; patterns are generic across all repositories
-
-### 3. ReturnKind Enum
-
-**Decision:** ReturnKind describes both operation type and return type
-
-**Rationale:**
-- No separate OperationType enum needed
-- Return type determines runtime method dispatch
-- Simple and explicit
+JVM inlines these constants and compiles switch to tableswitch (direct jump).
 
 ### 4. Zero Reflection Hot Path
+- MethodHandles extracted at build time
+- Column indices resolved at compile time
+- queryId-based dispatch (int lookup, not string)
+- No `Class.forName()`, no `Method.invoke()` in hot path
 
-**Decision:** Pre-compile everything at build time, use integer indices at runtime
+## Build-Time vs Runtime
 
-**Rationale:**
-- String lookups are O(n)
-- Array access is O(1)
-- MethodHandles faster than reflection
-- Hot path has zero reflection overhead
+### Build-Time (Once Per Entity Type)
+```
+@Entity class Person { ... }  
+    ↓
+TableMetadata (name, fields, ID type)
+    ↓
+TableGenerator.generate(metadata)
+    ↓
+PersonTable.class (ByteBuddy generated)
+    ↓
+Loads with: PersonTable table = new PersonTable(pageSize, maxPages)
+```
 
-### 5. Strategy Pattern for Method Generation
+**What Gets Generated:**
+- Class extending `AbstractTable`
+- Fields: `idColumn`, `nameColumn`, `ageColumn`, etc.
+- ID index field: `idIndex` (LongIdIndex or StringIdIndex)
+- Methods implementing `GeneratedTable` interface
 
-**Decision:** RepositoryMethodImplementation interface with concrete implementations
+### Runtime (Hot Path)
+```
+repository.findByAgeGreaterThan(18)
+    ↓
+QueryMethodLexer.tokenize("findByAgeGreaterThan")
+    ↓
+[OPERATION: FIND_BY, PROPERTY: age, OPERATOR: GREATER_THAN, VALUE: 18]
+    ↓
+QueryPlanner.plan() → CompiledQuery
+    ↓
+HeapRuntimeKernel.executeCondition(compiledQuery, table)
+    ↓
+table.scanGreaterThanLong(columnIndex, 18, limit)
+    ↓
+return int[] rowIndices
+    ↓
+EntityMaterializer.materialize(rows) → List<Person>
+```
 
-**Rationale:**
-- Open/Closed Principle: easy to add new method types
-- Each implementation is independently testable
-- Clear delegation targets (RepositoryRuntime vs CrudOperationExecutor)
+## ByteBuddy Table Generation
 
----
+Unlike typical Spring Data implementations that generate repository classes, Memris generates **storage table classes**:
 
-## References
+**Generated Class Structure:**
+```java
+public final class PersonTable extends AbstractTable implements GeneratedTable {
+    // Column fields
+    public final PageColumnLong idColumn;
+    public final PageColumnString nameColumn;
+    public final PageColumnInt ageColumn;
+    
+    // ID index
+    public LongIdIndex idIndex;
+    
+    // Constructor
+    public PersonTable(int pageSize, int maxPages) {
+        super("Person", pageSize, maxPages);
+        // Initialize columns and index
+    }
+    
+    // GeneratedTable interface methods
+    @Override
+    public int[] scanEqualsLong(int columnIndex, long value) { ... }
+    
+    @Override
+    public long lookupById(long id) { ... }
+    
+    @Override
+    public long insertFrom(Object[] values) { ... }
+}
+```
 
-- **Storage Deep Dive:** [design/storage.md](design/storage.md)
-- **Selection Pipeline:** [design/selection.md](design/selection.md)
-- **Query Parsing:** [design/query-parsing.md](design/query-parsing.md)
-- **User Guidelines:** [../CLAUDE.md](../CLAUDE.md)
+**Why Tables Instead of Repositories?**
+- Repositories = high-level interface (Spring Data concern)
+- Tables = low-level storage (Memris concern)
+- Clean separation: Memris handles storage, caller handles repository pattern
+- Better testability: Can test storage layer independently
+
+## Important Files Reference
+
+| File | Line | Purpose |
+|------|------|---------|
+| `TableGenerator.java` | 31 | ByteBuddy table generation |
+| `HeapRuntimeKernel.java` | 9 | Query execution engine |
+| `TypeCodes.java` | 16 | Type code constants |
+| `BuiltInResolver.java` | 57 | Built-in method resolution |
+| `QueryMethodLexer.java` | 213 | Method name tokenization |
+| `QueryPlanner.java` | 1 | Query planning |
+| `GeneratedTable.java` | 15 | Table interface |
+| `AbstractTable.java` | 26 | Base table class |
+| `PageColumnInt.java` | 16 | int column storage |
+| `PageColumnLong.java` | 16 | long column storage |
+| `PageColumnString.java` | 16 | String column storage |
+
+## Notes
+
+- **No FFM/Foreign Memory**: All storage uses Java heap (int[], long[], String[])
+- **No SIMD yet**: Flags configured but not actively used (plain loops)
+- **Custom annotations**: Uses `@Entity`, `@Index`, etc. (not Jakarta/JPA)
+- **No Repository generation**: Generates tables, caller implements repository pattern

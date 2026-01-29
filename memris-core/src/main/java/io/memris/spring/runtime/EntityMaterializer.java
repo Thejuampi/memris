@@ -36,5 +36,5 @@ public interface EntityMaterializer<T> {
      * @param rowIndex the row index to materialize
      * @return the materialized entity
      */
-    T materialize(RuntimeKernel kernel, int rowIndex);
+    T materialize(HeapRuntimeKernel kernel, int rowIndex);
 }

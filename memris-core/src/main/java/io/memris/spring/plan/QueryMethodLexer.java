@@ -212,16 +212,36 @@ public final class QueryMethodLexer {
 
     public static List<QueryMethodToken> tokenize(Class<?> entityClass, String methodName) {
         if (methodName == null || methodName.isBlank()) {
-            throw new IllegalArgumentException("methodName required");
+            throw new IllegalArgumentException("methodname required");
         }
 
-        // NOTE: Built-in method detection is now handled by QueryPlanner using MethodKey.
-        // The lexer only handles derived query tokenization.
-        // This is because built-in detection requires signature matching (name + parameter types)
-        // which needs the full Method object, not just the method name string.
+        // Check for parameterless built-ins first
+        // These are common operations that can be detected by name alone
+        OpCode builtIn = getParameterlessBuiltIn(methodName);
+        if (builtIn != null) {
+            return List.of(new QueryMethodToken(QueryMethodTokenType.OPERATION, builtIn.name(), 0, methodName.length(), false));
+        }
 
         // Derived query parsing (findByXxx, countByXxx, deleteByXxx, etc.)
         return tokenizeDerived(entityClass, methodName);
+    }
+    
+    /**
+     * Check if a method name is a parameterless built-in operation.
+     * <p>
+     * These operations have no parameters and can be detected by name alone:
+     * findAll(), count(), deleteAll()
+     *
+     * @param methodName the method name to check
+     * @return the OpCode if it's a parameterless built-in, null otherwise
+     */
+    private static OpCode getParameterlessBuiltIn(String methodName) {
+        return switch (methodName) {
+            case "findAll" -> OpCode.FIND_ALL;
+            case "count" -> OpCode.COUNT_ALL;
+            case "deleteAll" -> OpCode.DELETE_ALL;
+            default -> null;
+        };
     }
 
     /**

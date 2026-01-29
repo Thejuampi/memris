@@ -5,8 +5,8 @@ This document provides a complete query operator reference for Memris.
 ## Quick Reference: Query Operators
 
 **Status Legend:**
-- ✅ Implemented - Parsed by QueryPlanner (zero-reflection runtime)
-- ⚠️ Partial - Parsed by QueryMethodParser (not in QueryPlanner)
+- ✅ Implemented - Full support via QueryPlanner (zero-reflection runtime)
+- ⚠️ Partial - Tokenized but execution not complete
 - ❌ Not Implemented
 
 ### Comparison Operators
@@ -23,42 +23,42 @@ This document provides a complete query operator reference for Memris.
 ### String Operators
 | Operator | JPA Pattern | Status |
 |----------|-------------|--------|
-| LIKE | `findByXxxLike` | ⚠️ |
-| NOT_LIKE | `findByXxxNotLike` | ⚠️ |
-| STARTING_WITH | `findByXxxStartingWith`<br>`findByXxxStartsWith` | ⚠️ |
-| ENDING_WITH | `findByXxxEndingWith`<br>`findByXxxEndsWith` | ⚠️ |
-| CONTAINING | `findByXxxContaining`<br>`findByXxxContains` | ⚠️ |
+| LIKE | `findByXxxLike` | ✅ |
+| NOT_LIKE | `findByXxxNotLike` | ✅ |
+| STARTING_WITH | `findByXxxStartingWith`<br>`findByXxxStartsWith` | ✅ |
+| ENDING_WITH | `findByXxxEndingWith`<br>`findByXxxEndsWith` | ✅ |
+| CONTAINING | `findByXxxContaining`<br>`findByXxxContains` | ✅ |
 | IGNORE_CASE | `findByXxxIgnoreCase`<br>`findByXxxAndYyyAllIgnoreCase` | ✅ |
 
 ### Boolean Operators
 | Operator | JPA Pattern | Status |
 |----------|-------------|--------|
-| IS_TRUE | `findByXxxTrue`<br>`findByXxxIsTrue` | ⚠️ |
-| IS_FALSE | `findByXxxFalse`<br>`findByXxxIsFalse` | ⚠️ |
+| IS_TRUE | `findByXxxTrue`<br>`findByXxxIsTrue` | ✅ |
+| IS_FALSE | `findByXxxFalse`<br>`findByXxxIsFalse` | ✅ |
 
 ### Null Operators
 | Operator | JPA Pattern | Status |
 |----------|-------------|--------|
-| IS_NULL | `findByXxxIsNull`<br>`findByXxxNull` | ⚠️ |
-| IS_NOT_NULL | `findByXxxIsNotNull`<br>`findByXxxNotNull` | ⚠️ |
+| IS_NULL | `findByXxxIsNull`<br>`findByXxxNull` | ✅ |
+| IS_NOT_NULL | `findByXxxIsNotNull`<br>`findByXxxNotNull` | ✅ |
 
 ### Collection Operators
 | Operator | JPA Pattern | Status |
 |----------|-------------|--------|
-| IN | `findByXxxIn` | ⚠️ |
-| NOT_IN | `findByXxxNotIn` | ⚠️ |
+| IN | `findByXxxIn` | ✅ |
+| NOT_IN | `findByXxxNotIn` | ✅ |
 
 ### Date/Time Operators
 | Operator | JPA Pattern | Status |
 |----------|-------------|--------|
-| AFTER | `findByXxxAfter` | ⚠️ |
-| BEFORE | `findByXxxBefore` | ⚠️ |
+| AFTER | `findByXxxAfter` | ✅ |
+| BEFORE | `findByXxxBefore` | ✅ |
 
 ### Logical Operators
 | Operator | JPA Pattern | Status |
 |----------|-------------|--------|
 | AND | `findByXxxAndYyy` | ✅ |
-| OR | `findByXxxOrYyy` | ⚠️ |
+| OR | `findByXxxOrYyy` | ✅ |
 
 ### Query Modifiers
 | Modifier | JPA Pattern | Status |
@@ -182,6 +182,69 @@ List<User> unique = all.stream()
     .distinct()
     .toList();
 ```
+
+## Query Parsing Flow
+
+Query methods are processed through a pipeline of components:
+
+```
+Repository Method Name
+    │
+    ▼
+QueryMethodLexer.tokenize()
+    │
+    ├─── Prefix extraction (find/query/get/count/exists/delete)
+    ├─── Built-in detection (findAll, count, deleteAll)
+    ├─── Property path resolution
+    ├─── Operator parsing (GreaterThan, Between, Like, etc.)
+    ├─── Combinator handling (And, Or)
+    └─── OrderBy parsing
+    │
+    ▼
+List<QueryMethodToken>
+    │
+    ▼
+QueryPlanner.plan()
+    │
+    ├─── Check BuiltInResolver for built-ins (findById, save, etc.)
+    ├─── Build LogicalQuery structure
+    ├─── Resolve property paths to column indices
+    └─── Validate against entity metadata
+    │
+    ▼
+CompiledQuery
+    │
+    ▼
+HeapRuntimeKernel.execute()
+    │
+    ▼
+GeneratedTable.scan*()
+```
+
+### Key Components
+
+**QueryMethodLexer** (`io.memris.spring.plan.QueryMethodLexer`)
+- Tokenizes method names into structured tokens
+- Handles 20+ operators and combinators
+- Supports nested properties (account.email)
+- Built-in detection for parameterless methods (findAll, count, deleteAll)
+
+**QueryPlanner** (`io.memris.spring.plan.QueryPlanner`)
+- Converts tokens into executable LogicalQuery
+- Validates property existence against entity class
+- Resolves operators to Predicate types
+
+**BuiltInResolver** (`io.memris.spring.plan.BuiltInResolver`)
+- Signature-based built-in method resolution
+- Matches methods like `findById(ID)`, `save(T)`, `delete(T)`
+- Deterministic tie-breaking using inheritance distance
+- Handles wildcard matching for entity types
+
+**Key Files:**
+- `QueryMethodLexer.java:213` - Main tokenization entry point
+- `QueryPlanner.java:1` - Query planning logic
+- `BuiltInResolver.java:57` - Built-in resolution logic
+- `CompiledQuery.java` - Compiled query structure
 
 ## Architecture
 
