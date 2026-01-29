@@ -27,6 +27,11 @@
         <assertj.version>3.24.2</assertj.version>
         <bytebuddy.version>1.18.4</bytebuddy.version>
         <lombok.version>1.18.36</lombok.version>
+        
+        <!-- Code Quality Tools -->
+        <spotbugs.version>4.8.3.1</spotbugs.version>
+        <checkstyle.version>3.3.1</checkstyle.version>
+        <pmd.version>3.21.2</pmd.version>
     </properties>
 
     <modules>
@@ -138,6 +143,73 @@
                     <groupId>org.codehaus.mojo</groupId>
                     <artifactId>jmh-maven-plugin</artifactId>
                     <version>1.37</version>
+                </plugin>
+
+                <!-- SpotBugs - Static Analysis for Bug Detection -->
+                <plugin>
+                    <groupId>com.github.spotbugs</groupId>
+                    <artifactId>spotbugs-maven-plugin</artifactId>
+                    <version>${spotbugs.version}</version>
+                    <configuration>
+                        <effort>Max</effort>
+                        <threshold>Medium</threshold>
+                        <xmlOutput>true</xmlOutput>
+                        <htmlOutput>true</htmlOutput>
+                        <spotbugsXmlOutputDirectory>${project.build.directory}/spotbugs</spotbugsXmlOutputDirectory>
+                        <excludeFilterFile>${project.parent.basedir}/spotbugs-exclude.xml</excludeFilterFile>
+                    </configuration>
+                    <executions>
+                        <execution>
+                            <goals>
+                                <goal>check</goal>
+                            </goals>
+                        </execution>
+                    </executions>
+                </plugin>
+
+                <!-- Checkstyle - Code Style Linter (120 char lines) -->
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-checkstyle-plugin</artifactId>
+                    <version>${checkstyle.version}</version>
+                    <configuration>
+                        <configLocation>${project.parent.basedir}/checkstyle.xml</configLocation>
+                        <consoleOutput>true</consoleOutput>
+                        <failsOnError>true</failsOnError>
+                        <linkXRef>false</linkXRef>
+                    </configuration>
+                    <executions>
+                        <execution>
+                            <id>validate</id>
+                            <phase>validate</phase>
+                            <goals>
+                                <goal>check</goal>
+                            </goals>
+                        </execution>
+                    </executions>
+                </plugin>
+
+                <!-- PMD - Code Quality Analysis -->
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-pmd-plugin</artifactId>
+                    <version>${pmd.version}</version>
+                    <configuration>
+                        <rulesets>
+                            <ruleset>${project.parent.basedir}/pmd-rules.xml</ruleset>
+                        </rulesets>
+                        <printFailingErrors>true</printFailingErrors>
+                        <failOnViolation>true</failOnViolation>
+                        <targetJdk>${java.version}</targetJdk>
+                    </configuration>
+                    <executions>
+                        <execution>
+                            <goals>
+                                <goal>check</goal>
+                                <goal>cpd-check</goal>
+                            </goals>
+                        </execution>
+                    </executions>
                 </plugin>
             </plugins>
         </pluginManagement>

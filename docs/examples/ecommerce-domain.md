@@ -297,17 +297,20 @@ void generateOrderNumber() {
 ## Usage Example
 
 ```java
-// Create factory and repositories
-MemrisRepositoryFactory factory = new MemrisRepositoryFactory();
-ProductRepository productRepo = factory.createRepository(Product.class, ProductRepository.class);
-OrderRepository orderRepo = factory.createRepository(Order.class, OrderRepository.class);
+// Generate tables (build-time via TableGenerator)
+GeneratedTable productTable = TableGenerator.generate(productMetadata)
+    .getConstructor(int.class, int.class)
+    .newInstance(1024, 100);
+GeneratedTable orderTable = TableGenerator.generate(orderMetadata)
+    .getConstructor(int.class, int.class)
+    .newInstance(1024, 100);
 
 // Save entities
-productRepo.save(laptop);
-orderRepo.save(order);
+productTable.insertFrom(new Object[]{1L, "PRO-LP-001", "Laptop", 999.99});
+orderTable.insertFrom(new Object[]{1L, 1L, 999.99, "SHIPPED"});
 
-// Dynamic queries - no implementation needed!
-Product p = productRepo.findBySku("PRO-LP-001");
-List<Order> orders = orderRepo.findByStatus(OrderStatus.SHIPPED);
-List<Product> affordable = productRepo.findByPriceLessThan(new BigDecimal("500"));
+// Query using GeneratedTable methods
+long productRef = productTable.lookupByIdString("PRO-LP-001");
+int[] shippedOrders = orderTable.scanEqualsString(3, "SHIPPED");
+int[] affordableProducts = productTable.scanLessThanDouble(3, 500.0);
 ```

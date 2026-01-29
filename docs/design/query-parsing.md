@@ -5,22 +5,7 @@
 ## Overview
 This document captures the design decisions made while implementing JPA Query Method parsing for Memris, ensuring compliance with Spring Data JPA specifications.
 
-## Important Distinction: Memris Methods vs JPA Query Methods
-
-### Memris Convenience Methods (Memris-specific)
-These are **NOT** JPA standard - they are Memris-specific convenience methods:
-
-```java
-// These are Memris-specific, NOT JPA standard
-repo.findBy("status", "active");              // EQ comparison
-repo.findBy("amount", 1000L, true, false);    // GT comparison
-repo.findByNot("status", "inactive");         // NEQ comparison
-repo.findByIn("category", List.of("A", "B")); // IN comparison
-repo.findByBetween("amount", 100L, 500L);     // BETWEEN
-repo.findById(1);                             // Find by primary key
-```
-
-### JPA Query Methods (Spring Data standard)
+## JPA Query Methods (Spring Data standard)
 These follow the Spring Data JPA specification - method names derive queries:
 
 ```java
@@ -225,9 +210,8 @@ Examples:
 
 | File | Purpose |
 |------|---------|
-| `QueryMethodParser.java` | Main parser with JPA-compliant operator detection |
-| `MemrisRepository.java` | Generic repository interface with convenience methods |
-| `MemrisRepositoryFactory.java` | Factory that handles dynamic proxy invocation |
+| `QueryMethodLexer.java` | Tokenizes query method names into structured tokens |
+| `QueryPlanner.java` | Creates LogicalQuery from tokens |
 | `Predicate.java` | Core predicate types (extended with NOT_IN) |
 
 ## Test Coverage

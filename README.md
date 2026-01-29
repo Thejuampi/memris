@@ -1,57 +1,126 @@
 # Memris
 
-**Memris** = "Memory" + "Iris" — an in-memory storage engine that can *see* through the heap instantly. Like iris (the eye), it provides vision/insight into your data. Like iris (a flower), it blooms fast.
+**Memris** = "Memory" + "Iris" — a heap-based, zero-reflection in-memory storage engine for Java 21. Like iris (the eye), it provides vision/insight into your data. Like iris (a flower), it blooms fast.
 
 > "Iris suggests looking through data/vision. It sounds like an engine that can 'see' through the heap instantly."
 
 ## What is Memris?
 
-**Memris** is a blazingly fast, multi-threaded, in-memory storage engine for Java 21 with SIMD vectorized execution and Spring Data integration.
+**Memris** is a blazingly fast, multi-threaded, in-memory storage engine for Java 21 with Spring Data-compatible query methods.
 
-Built on modern Java APIs (Panama Vector API and Foreign Function & Memory), Memris delivers columnar storage performance with familiar Spring Data JPA repository patterns. Zero reflection in hot paths, O(1) design principles, and primitive-only APIs ensure maximum throughput.
+Built on 100% Java heap storage with ByteBuddy bytecode generation, Memris delivers columnar storage performance with familiar Spring Data JPA query patterns. Zero reflection in hot paths, O(1) design principles, and primitive-only APIs ensure maximum throughput.
 
 **Key highlights:**
-- Java 21 with SIMD vectorized execution using Panama Vector API
-- FFM MemorySegment-based storage for zero-copy operations
-- Spring Data JPA repository integration with ByteBuddy bytecode generation
-- Zero reflection in hot paths with compile-time query derivation
+- **100% Heap-Based**: Uses primitive arrays (int[], long[], String[]) - no FFM/MemorySegment
+- **ByteBuddy Table Generation**: Generates optimized table classes at build time
+- **Spring Data-Compatible**: Use familiar JPA query method patterns
+- **Zero Reflection**: Compile-time query derivation with type-safe dispatch
+- **Custom Annotations**: `@Entity`, `@Index`, `@GeneratedValue` (not Jakarta/JPA)
 
 ## Quick Start
 
 ```java
-// Simple repository interface
-public interface UserRepository extends MemrisRepository<User, Long> {
-    List<User> findByLastname(String lastname);
+// Define your entity
+@Entity
+public class User {
+    @Index(type = Index.Type.HASH)
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+    
+    @Index(type = Index.Type.HASH)
+    private String email;
+    
+    private String name;
+    private int age;
 }
 
+// Generate table (build-time)
+TableMetadata metadata = new TableMetadata("User", "com.example.User", 
+    List.of(
+        new FieldMetadata("id", TypeCodes.TYPE_LONG, true, true),
+        new FieldMetadata("email", TypeCodes.TYPE_STRING, false, false),
+        new FieldMetadata("name", TypeCodes.TYPE_STRING, false, false),
+        new FieldMetadata("age", TypeCodes.TYPE_INT, false, false)
+    ));
+
+GeneratedTable table = TableGenerator.generate(metadata)
+    .getConstructor(int.class, int.class)
+    .newInstance(1024, 100);
+
 // Usage
-userRepository.save(user);
-List<User> users = userRepository.findByLastname("Smith");
+table.insertFrom(new Object[]{1L, "john@example.com", "John", 30});
+int[] results = table.scanEqualsString(1, "john@example.com");
 ```
 
 ## Why Memris?
 
-- **Blazing Fast**: 10M rows in 15ms (14.3 GB/s throughput)
-- **Spring Data Compatible**: Use familiar JPA repository patterns
-- **Type-Safe**: Compile-time query derivation with zero runtime overhead
-- **Modern Java**: Built on Java 21 with Panama Vector API and FFM
+- **Blazing Fast**: O(1) operations with primitive arrays
+- **Zero Reflection**: Compile-time bytecode generation
+- **Type-Safe**: Static type checking with no runtime overhead
+- **Spring Data Compatible**: Familiar query method patterns
+- **Modern Java**: Built on Java 21 with pattern matching switches
+
+## Architecture
+
+### Build-Time (Once per Entity)
+```
+Entity Class → TableMetadata → TableGenerator → GeneratedTable Class
+```
+
+### Runtime (Hot Path)
+```
+Query Method → QueryMethodLexer → QueryPlanner → HeapRuntimeKernel 
+    → GeneratedTable.scan*() → Results
+```
+
+### Storage Layer
+- **PageColumnInt**: int[] with SIMD-capable scans
+- **PageColumnLong**: long[] with hash index lookups  
+- **PageColumnString**: String[] with range queries
+- **AbstractTable**: Base class for generated tables
+
+### Query Pipeline
+- **QueryMethodLexer**: Tokenizes method names (findByAgeGreaterThan)
+- **QueryPlanner**: Creates LogicalQuery with conditions
+- **BuiltInResolver**: Handles built-in methods (findById, save, etc.)
+- **HeapRuntimeKernel**: Executes with TypeCode dispatch
 
 ## Performance
 
-*See [Architecture](docs/ARCHITECTURE.md#performance-characteristics) for detailed benchmarks*
+- **Table Scans**: O(n) with early termination
+- **Hash Lookups**: O(1) via LongIdIndex/StringIdIndex
+- **Range Queries**: O(log n) via ConcurrentSkipListMap
+- **Zero Boxing**: Primitive-only APIs
+- **TypeCode Dispatch**: tableswitch bytecode for type routing
 
-## Learn More
+## Documentation
 
-### Documentation
-- **[Architecture](docs/ARCHITECTURE.md)** - System design, query pipeline, and layer separation
-- **[Development Guide](docs/DEVELOPMENT.md)** - Build commands, coding guidelines, and testing
-- **[Spring Data Integration](docs/SPRING_DATA.md)** - Feature requirements and implementation status
-- **[Query Reference](docs/REFERENCE.md)** - Complete query method specification and troubleshooting
+- [ARCHITECTURE.md](docs/ARCHITECTURE.md) - Detailed architecture documentation
+- [DEVELOPMENT.md](docs/DEVELOPMENT.md) - Development guidelines and code style
+- [QUERY.md](docs/QUERY.md) - Query method reference and operators
+- [SPRING_DATA.md](docs/SPRING_DATA.md) - Spring Data integration details
 
-### Project Info
-- **[Build Commands](docs/DEVELOPMENT.md#getting-started)** - Maven build and test commands
-- **[Contributing](docs/DEVELOPMENT.md#git-commit-requirements)** - Contribution guidelines
+## Building
+
+```bash
+# Full clean build
+mvn.cmd clean compile
+
+# Run tests
+mvn.cmd -q -e -pl memris-core test
+
+# Run code quality checks
+mvn.cmd spotbugs:check
+mvn.cmd checkstyle:check
+mvn.cmd pmd:check
+```
+
+## Requirements
+
+- Java 21 (with --enable-preview)
+- Maven 3.8+
+- Windows/Linux/Mac
 
 ## License
 
-MIT
+[License information]

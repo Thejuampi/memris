@@ -108,10 +108,11 @@ Join tables are hardcoded with `int.class` columns for storing entity references
 
 3. **Clean up resources:**
    ```java
-   try (MemrisRepositoryFactory factory = new MemrisRepositoryFactory()) {
-       // Auto-closes Arena
-       UserRepository repo = factory.createRepository(UserRepository.class, User.class);
-   }
+   // Tables are heap-based, no manual resource cleanup needed
+   // GeneratedTable instances are garbage collected normally
+   UserTable table = new UserTable(pageSize, maxPages);
+   // Use table...
+   // No explicit close() needed
    ```
 
 ## Entity Annotation Issues
@@ -182,9 +183,9 @@ The codebase contains two parallel query parsing systems:
    - Parses: EQ, NE, GT, LT, GTE, LTE, BETWEEN, IGNORE_CASE
    - Does NOT parse: IN, LIKE, STARTING_WITH, ENDING_WITH, CONTAINING, OR, ORDER_BY, DISTINCT
 
-2. **QueryMethodParser** (older implementation): Full JPA specification coverage
+2. **QueryMethodLexer + QueryPlanner**: Full JPA specification coverage
    - Parses all 24+ JPA operators including IN, LIKE, ORDER BY, etc.
-   - Used by MemrisRepositoryFactory main path
+   - Used by HeapRuntimeKernel for query execution
 
 ### Current Blockers
 

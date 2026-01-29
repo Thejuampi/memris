@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<FindBugsFilter xmlns="https://github.com/spotbugs/filter/3.0.0"
+                 xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                 xsi:schemaLocation="https://github.com/spotbugs/filter/3.0.0 https://raw.githubusercontent.com/spotbugs/spotbugs/3.1.0/spotbugs/etc/findbugsfilter.xsd">
+
+    <!-- Exclude generated code -->
+    <Match>
+        <Class name="~.*\$.*" />
+    </Match>
+    <Match>
+        <Class name="~io\.memris\.storage\.generated\..*" />
+    </Match>
+
+    <!-- Exclude test classes -->
+    <Match>
+        <Class name="~.*\..*Test" />
+    </Match>
+    <Match>
+        <Class name="~.*\..*Test\$.*" />
+    </Match>
+
+    <!-- ByteBuddy generated classes -->
+    <Match>
+        <Class name="~.*Table\$ByteBuddy.*" />
+    </Match>
+
+    <!-- Common false positives for this codebase -->
+    
+    <!-- EI_EXPOSE_REP: May expose internal representation by returning reference to mutable object -->
+    <!-- This is intentional for performance - we use mutable objects in hot paths -->
+    <Match>
+        <Bug pattern="EI_EXPOSE_REP" />
+        <Confidence value="2" /><!-- Low confidence -->
+    </Match>
+
+    <!-- EI_EXPOSE_REP2: May expose internal representation by incorporating reference to mutable object -->
+    <Match>
+        <Bug pattern="EI_EXPOSE_REP2" />
+        <Confidence value="2" /><!-- Low confidence -->
+    </Match>
+
+    <!-- MS_EXPOSE_REP: Public static method may expose internal representation by returning reference to mutable object -->
+    <Match>
+        <Bug pattern="MS_EXPOSE_REP" />
+    </Match>
+
+    <!-- CT_CONSTRUCTOR_THROW: Constructor may throw exception -->
+    <!-- This is acceptable for validation -->
+    <Match>
+        <Bug pattern="CT_CONSTRUCTOR_THROW" />
+        <Confidence value="2" />
+    </Match>
+
+    <!-- URF_UNREAD_FIELD: Unread field -->
+    <!-- Many fields are accessed via reflection/MethodHandles -->
+    <Match>
+        <Bug pattern="URF_UNREAD_FIELD" />
+    </Match>
+
+    <!-- UPM_UNCALLED_PRIVATE_METHOD: Private method is never called -->
+    <!-- May be used via reflection -->
+    <Match>
+        <Bug pattern="UPM_UNCALLED_PRIVATE_METHOD" />
+    </Match>
+
+    <!-- NM_CLASS_NAMING_CONVENTION: Class names should start with uppercase -->
+    <!-- Record components may cause false positives -->
+    <Match>
+        <Bug pattern="NM_CLASS_NAMING_CONVENTION" />
+    </Match>
+
+    <!-- DM_CONVERT_CASE: Call to method that converts to lower/upper case without locale -->
+    <!-- We often use toLowerCase() for ASCII identifiers -->
+    <Match>
+        <Bug pattern="DM_CONVERT_CASE" />
+        <Confidence value="2" />
+    </Match>
+
+    <!-- DM_DEFAULT_ENCODING: Reliance on default encoding -->
+    <!-- Acceptable for internal strings -->
+    <Match>
+        <Bug pattern="DM_DEFAULT_ENCODING" />
+        <Confidence value="2" />
+    </Match>
+
+    <!-- ST_WRITE_TO_STATIC_FROM_INSTANCE_METHOD: Write to static field from instance method -->
+    <!-- Common in lazy initialization and caching -->
+    <Match>
+        <Bug pattern="ST_WRITE_TO_STATIC_FROM_INSTANCE_METHOD" />
+        <Confidence value="2" />
+    </Match>
+
+</FindBugsFilter>

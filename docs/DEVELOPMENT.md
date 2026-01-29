@@ -274,7 +274,6 @@ System.out.println("Found " + results.length + " matches");  // NOT A TEST!
 - O(n) operations without justification
 - Throwing generic `Exception`
 - Mutable collections in public APIs
-- Generic query methods (`findBy(String field, Object value)`) - Use type-safe derived query methods instead
 
 ## Git Commit Requirements (CRITICAL)
 
