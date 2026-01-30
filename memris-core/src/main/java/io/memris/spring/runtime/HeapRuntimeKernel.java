@@ -43,7 +43,7 @@ public final class HeapRuntimeKernel {
         if (typeCode == io.memris.spring.TypeCodes.TYPE_LONG) {
             return executeLongCondition(columnIndex, operator, (Long) value);
         } else if (typeCode == io.memris.spring.TypeCodes.TYPE_INT) {
-            return executeIntCondition(columnIndex, operator, (Integer) value);
+            return executeIntCondition(columnIndex, operator, value);
         } else if (typeCode == io.memris.spring.TypeCodes.TYPE_STRING) {
             return executeStringCondition(columnIndex, operator, (String) value, cc.ignoreCase());
         } else {
@@ -64,7 +64,7 @@ public final class HeapRuntimeKernel {
             case LT -> createSelection(table.scanBetweenLong(colIdx, Long.MIN_VALUE, longValue - 1));
             case GTE -> createSelection(table.scanBetweenLong(colIdx, longValue, Long.MAX_VALUE));
             case LTE -> createSelection(table.scanBetweenLong(colIdx, Long.MIN_VALUE, longValue));
-            case BETWEEN -> throw new UnsupportedOperationException("BETWEEN not yet implemented");
+            case BETWEEN -> throw new UnsupportedOperationException("BETWEEN not yet implemented for long");
             case IN -> {
                 if (value instanceof long[] arr) {
                     yield createSelection(table.scanInLong(colIdx, arr));
@@ -90,18 +90,35 @@ public final class HeapRuntimeKernel {
         };
     }
 
-    private Selection executeIntCondition(int colIdx, LogicalQuery.Operator op, Integer value) {
+    private Selection executeIntCondition(int colIdx, LogicalQuery.Operator op, Object value) {
         return switch (op) {
-            case EQ -> createSelection(table.scanEqualsInt(colIdx, value));
+            case EQ -> createSelection(table.scanEqualsInt(colIdx, (Integer) value));
             case NE -> {
                 int[] all = table.scanAll();
-                int[] matches = table.scanEqualsInt(colIdx, value);
+                int[] matches = table.scanEqualsInt(colIdx, (Integer) value);
                 yield subtractSelections(all, matches);
             }
-            case IN -> createSelection(table.scanInInt(colIdx, new int[]{value}));
+            case GT -> {
+                int intValue = (Integer) value;
+                yield createSelection(table.scanBetweenInt(colIdx, intValue + 1, Integer.MAX_VALUE));
+            }
+            case LT -> {
+                int intValue = (Integer) value;
+                yield createSelection(table.scanBetweenInt(colIdx, Integer.MIN_VALUE, intValue - 1));
+            }
+            case GTE -> {
+                int intValue = (Integer) value;
+                yield createSelection(table.scanBetweenInt(colIdx, intValue, Integer.MAX_VALUE));
+            }
+            case LTE -> {
+                int intValue = (Integer) value;
+                yield createSelection(table.scanBetweenInt(colIdx, Integer.MIN_VALUE, intValue));
+            }
+            case BETWEEN -> throw new UnsupportedOperationException("BETWEEN not yet implemented for int");
+            case IN -> createSelection(table.scanInInt(colIdx, new int[]{(Integer) value}));
             case NOT_IN -> {
                 int[] all = table.scanAll();
-                int[] inSet = table.scanInInt(colIdx, new int[]{value});
+                int[] inSet = table.scanInInt(colIdx, new int[]{(Integer) value});
                 yield subtractSelections(all, inSet);
             }
             default -> throw new UnsupportedOperationException("Operator: " + op);
@@ -112,6 +129,8 @@ public final class HeapRuntimeKernel {
         return switch (op) {
             case EQ -> createSelection(table.scanEqualsString(colIdx, value));
             case IGNORE_CASE_EQ -> createSelection(table.scanEqualsStringIgnoreCase(colIdx, value));
+            case CONTAINING, STARTING_WITH, ENDING_WITH ->
+                throw new UnsupportedOperationException("String pattern operators (CONTAINING, STARTING_WITH, ENDING_WITH) not yet implemented");
             case IN -> createSelection(table.scanInString(colIdx, new String[]{value}));
             case NOT_IN -> {
                 int[] all = table.scanAll();

@@ -569,13 +569,23 @@ public final class QueryMethodLexer {
     private static int findNextTokenStart(String input, int start) {
         int earliest = input.length();
 
-        // Check for combinators
-        int andIdx = input.indexOf("And", start);
-        int orIdx = input.indexOf("Or", start);
+        // Check for OrderBy first (before checking for "Or")
         int orderByIdx = input.indexOf("OrderBy", start);
-        int combinatorIdx = findMinIndex(andIdx, orIdx, orderByIdx);
-        if (combinatorIdx != -1) {
-            earliest = combinatorIdx;
+        if (orderByIdx != -1) {
+            earliest = orderByIdx;
+        }
+
+        // Check for "And" combinator - only valid if followed by uppercase or end
+        int andIdx = findCombinatorIndex(input, start, "And");
+        if (andIdx != -1 && andIdx < earliest) {
+            earliest = andIdx;
+        }
+
+        // Check for "Or" combinator - only valid if followed by uppercase or end
+        // This prevents "Order" from matching "Or" in the middle
+        int orIdx = findCombinatorIndex(input, start, "Or");
+        if (orIdx != -1 && orIdx < earliest) {
+            earliest = orIdx;
         }
 
         // Check for operators
@@ -587,6 +597,27 @@ public final class QueryMethodLexer {
         }
 
         return earliest;
+    }
+
+    /**
+     * Find the index of a combinator ("And" or "Or") only if it's valid.
+     * A combinator is valid only if followed by an uppercase letter or end of string.
+     * This prevents "Order" from matching "Or" or "Anderson" from matching "And".
+     */
+    private static int findCombinatorIndex(String input, int start, String combinator) {
+        int idx = input.indexOf(combinator, start);
+        if (idx == -1) {
+            return -1;
+        }
+
+        int afterCombinator = idx + combinator.length();
+        // Valid if at end of string or followed by uppercase letter
+        if (afterCombinator >= input.length() || Character.isUpperCase(input.charAt(afterCombinator))) {
+            return idx;
+        }
+
+        // Not a valid combinator - find next occurrence
+        return findCombinatorIndex(input, idx + 1, combinator);
     }
 
     private static int findMinIndex(int... idxs) {
@@ -602,9 +633,25 @@ public final class QueryMethodLexer {
     }
 
     private static String findTokenAtStart(String input, int start) {
-        if (input.startsWith("And", start)) return "And";
-        if (input.startsWith("Or", start)) return "Or";
+        // Check for OrderBy first (must be before "Or" check)
         if (input.startsWith("OrderBy", start)) return "OrderBy";
+        
+        // Check for "And" - only if followed by uppercase or end of string
+        if (input.startsWith("And", start)) {
+            int afterAnd = start + 3;
+            if (afterAnd >= input.length() || Character.isUpperCase(input.charAt(afterAnd))) {
+                return "And";
+            }
+        }
+        
+        // Check for "Or" - only if followed by uppercase or end of string
+        // This prevents "Order" from being split as "Or" + "der"
+        if (input.startsWith("Or", start)) {
+            int afterOr = start + 2;
+            if (afterOr >= input.length() || Character.isUpperCase(input.charAt(afterOr))) {
+                return "Or";
+            }
+        }
 
         for (String operator : OPERATORS) {
             if (input.startsWith(operator, start)) return operator;

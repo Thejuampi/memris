@@ -475,7 +475,7 @@ public final class MemrisRepositoryFactory implements AutoCloseable {
         );
 
         // 10. Create RepositoryRuntime
-        io.memris.spring.runtime.RepositoryRuntime<T> runtime = new io.memris.spring.runtime.RepositoryRuntime<>(plan, this);
+        io.memris.spring.runtime.RepositoryRuntime<T> runtime = new io.memris.spring.runtime.RepositoryRuntime<>(plan, this, metadata);
 
         // 11. Generate repository implementation using ByteBuddy
         io.memris.spring.scaffold.RepositoryEmitter emitter = new io.memris.spring.scaffold.RepositoryEmitter();

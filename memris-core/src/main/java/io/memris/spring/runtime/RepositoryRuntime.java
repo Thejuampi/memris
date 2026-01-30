@@ -136,9 +136,10 @@ public final class RepositoryRuntime<T> {
                 .orElse(0);
             Object[] values = new Object[maxColumnPos + 1];
 
+            // First pass: populate all values
             for (io.memris.spring.EntityMetadata.FieldMapping field : metadata.fields()) {
                 if (field.columnPosition() < 0) {
-                    continue;
+                    continue; // Skip collection fields
                 }
 
                 MethodHandle getter = metadata.fieldGetters().get(field.name());
@@ -146,13 +147,9 @@ public final class RepositoryRuntime<T> {
                     continue;
                 }
 
-                Object value;
-                if (field.name().equals(idFieldName) && isNew) {
-                    value = id;
-                } else {
-                    value = getter.invoke(entity);
-                }
+                Object value = getter.invoke(entity);
 
+                // Apply converter if present
                 TypeConverter<?, ?> converter = metadata.converters().get(field.name());
                 if (converter != null && value != null) {
                     @SuppressWarnings("unchecked")
@@ -163,9 +160,15 @@ public final class RepositoryRuntime<T> {
                 values[field.columnPosition()] = value;
             }
 
+            // Ensure ID column (position 0) is a Long
             Object idValue = values[0];
-            if (idValue == null && id instanceof Number) {
-                values[0] = ((Number) id).longValue();
+            if (idValue == null) {
+                throw new IllegalStateException("ID value is null after generation");
+            }
+            if (idValue instanceof Number) {
+                values[0] = ((Number) idValue).longValue();
+            } else {
+                throw new IllegalStateException("ID value is not a Number: " + idValue.getClass());
             }
 
             table.insertFrom(values);
@@ -250,7 +253,7 @@ public final class RepositoryRuntime<T> {
         return results;
     }
 
-    private List<T> executeFind(CompiledQuery query, Object[] args) {
+    private Object executeFind(CompiledQuery query, Object[] args) {
         Selection selection = executeConditions(query, args);
 
         List<T> results = new ArrayList<>();
@@ -261,7 +264,7 @@ public final class RepositoryRuntime<T> {
         }
 
         return switch (query.returnKind()) {
-            case ONE_OPTIONAL -> results.isEmpty() ? List.of() : List.of(results.get(0));
+            case ONE_OPTIONAL -> results.isEmpty() ? Optional.empty() : Optional.of(results.get(0));
             case MANY_LIST -> results;
             default -> throw new IllegalStateException("Unexpected return kind for FIND: " + query.returnKind());
         };

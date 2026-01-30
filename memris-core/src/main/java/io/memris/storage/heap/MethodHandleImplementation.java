@@ -171,7 +171,7 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
         public static byte intercept(@Argument(0) int columnIndex, @This Object obj) throws Exception {
             Field typeCodesField = obj.getClass().getDeclaredField("TYPE_CODES");
             typeCodesField.setAccessible(true);
-            byte[] typeCodes = (byte[]) typeCodesField.get(null);
+            byte[] typeCodes = (byte[]) typeCodesField.get(obj); // Get instance field, not static
             if (columnIndex < 0 || columnIndex >= typeCodes.length) {
                 throw new IndexOutOfBoundsException("Column index out of range: " + columnIndex);
             }

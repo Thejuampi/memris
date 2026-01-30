@@ -31,6 +31,9 @@ public final class MemrisArena implements AutoCloseable {
     private final Map<Class<?>, Map<String, Object>> indexes = new HashMap<>();
     private final Map<Class<?>, AtomicLong> numericIdCounters = new HashMap<>();
     private final Map<Class<?>, Object> repositories = new HashMap<>();
+    
+    // Mapping from entity class to repository interface class
+    private final Map<Class<?>, Class<?>> entityToRepositoryMap = new HashMap<>();
 
     MemrisArena(long arenaId, MemrisRepositoryFactory factory) {
         this.arenaId = arenaId;
@@ -60,11 +63,35 @@ public final class MemrisArena implements AutoCloseable {
         if (repositories.containsKey(repositoryInterface)) {
             return (R) repositories.get(repositoryInterface);
         }
-        
+
         // Create repository through factory's emitter, but scoped to this arena
         R repository = (R) RepositoryEmitter.createRepository(repositoryInterface, this);
         repositories.put(repositoryInterface, repository);
+
+        // Also map entity class to repository interface for lookup by entity class
+        Class<T> entityClass = extractEntityClass(repositoryInterface);
+        entityToRepositoryMap.put(entityClass, repositoryInterface);
+
         return repository;
+    }
+
+    /**
+     * Extract entity class from repository interface.
+     */
+    @SuppressWarnings("unchecked")
+    private <T> Class<T> extractEntityClass(Class<? extends MemrisRepository<T>> repositoryInterface) {
+        for (java.lang.reflect.Type iface : repositoryInterface.getGenericInterfaces()) {
+            if (iface instanceof java.lang.reflect.ParameterizedType pt) {
+                java.lang.reflect.Type rawType = pt.getRawType();
+                if (rawType instanceof Class<?> clazz && MemrisRepository.class.isAssignableFrom(clazz)) {
+                    java.lang.reflect.Type[] typeArgs = pt.getActualTypeArguments();
+                    if (typeArgs.length > 0 && typeArgs[0] instanceof Class<?>) {
+                        return (Class<T>) typeArgs[0];
+                    }
+                }
+            }
+        }
+        throw new IllegalArgumentException("Cannot extract entity class from " + repositoryInterface.getName());
     }
 
     /**
@@ -78,7 +105,13 @@ public final class MemrisArena implements AutoCloseable {
      */
     @SuppressWarnings("unchecked")
     public <T> MemrisRepository<T> getRepository(Class<T> entityClass) {
-        return (MemrisRepository<T>) repositories.get(entityClass);
+        // Look up the repository interface for this entity class
+        Class<?> repositoryInterface = entityToRepositoryMap.get(entityClass);
+        if (repositoryInterface == null) {
+            return null;
+        }
+        // Get the repository instance using the interface class
+        return (MemrisRepository<T>) repositories.get(repositoryInterface);
     }
 
     /**

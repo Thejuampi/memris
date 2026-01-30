@@ -55,6 +55,32 @@ public final class MetadataExtractor {
                 ));
             }
             
+            // Build MethodHandles for field access (for public fields)
+            Map<String, MethodHandle> fieldGetters = new HashMap<>();
+            Map<String, MethodHandle> fieldSetters = new HashMap<>();
+            
+            try {
+                java.lang.invoke.MethodHandles.Lookup lookup = java.lang.invoke.MethodHandles.publicLookup();
+                
+                for (var field : entityClass.getDeclaredFields()) {
+                    if (java.lang.reflect.Modifier.isStatic(field.getModifiers())) {
+                        continue;
+                    }
+                    
+                    // Create getter handle for public fields
+                    if (java.lang.reflect.Modifier.isPublic(field.getModifiers())) {
+                        MethodHandle getter = lookup.unreflectGetter(field);
+                        fieldGetters.put(field.getName(), getter);
+                        
+                        MethodHandle setter = lookup.unreflectSetter(field);
+                        fieldSetters.put(field.getName(), setter);
+                    }
+                }
+            } catch (Exception e) {
+                // If we can't create MethodHandles, continue with empty maps
+                // (entity materialization will fall back to reflection)
+            }
+            
             return new EntityMetadata<>(
                 entityClass,
                 constructor,
@@ -63,7 +89,7 @@ public final class MetadataExtractor {
                 Set.of(),
                 Map.of(),
                 null, null, null,
-                Map.of(), Map.of(),
+                fieldGetters, fieldSetters,
                 entityClass.isRecord()
             );
         } catch (Exception e) {

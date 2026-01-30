@@ -39,25 +39,114 @@ public final class RepositoryEmitter {
     @SuppressWarnings("unchecked")
     public static <T, R extends MemrisRepository<T>> R createRepository(Class<R> repositoryInterface, 
                                                                         io.memris.spring.MemrisArena arena) {
-        // For now, create a basic runtime and emitter
-        // TODO: Build proper RepositoryPlan with arena-scoped table
         RepositoryEmitter emitter = new RepositoryEmitter();
         
-        // Extract entity class and create a minimal runtime
+        // Extract entity class and create/get table
         Class<T> entityClass = extractEntityClass(repositoryInterface);
         io.memris.storage.GeneratedTable table = arena.getOrCreateTable(entityClass);
         
-        io.memris.spring.runtime.RepositoryPlan<T> plan = io.memris.spring.runtime.RepositoryPlan.<T>builder()
-                .entityClass(entityClass)
-                .table(table)
-                .kernel(new io.memris.spring.runtime.HeapRuntimeKernel(table))
-                .queries(new io.memris.spring.plan.CompiledQuery[0])
-                .build();
+        // Extract entity metadata
+        io.memris.spring.EntityMetadata<T> metadata = 
+            io.memris.spring.MetadataExtractor.extractEntityMetadata(entityClass);
         
+        // Extract and compile query methods
+        java.lang.reflect.Method[] methods = 
+            RepositoryMethodIntrospector.extractQueryMethods(repositoryInterface);
+        io.memris.spring.plan.CompiledQuery[] compiledQueries = 
+            new io.memris.spring.plan.CompiledQuery[methods.length];
+        
+        io.memris.spring.plan.QueryCompiler compiler = new io.memris.spring.plan.QueryCompiler(metadata);
+        
+        for (int i = 0; i < methods.length; i++) {
+            java.lang.reflect.Method method = methods[i];
+            io.memris.spring.plan.LogicalQuery logicalQuery = io.memris.spring.plan.QueryPlanner.parse(method, entityClass, metadata.idColumnName());
+            compiledQueries[i] = compiler.compile(logicalQuery);
+        }
+        
+        // Extract column metadata for RepositoryPlan
+        String[] columnNames = extractColumnNames(metadata);
+        byte[] typeCodes = extractTypeCodes(metadata);
+        io.memris.spring.converter.TypeConverter<?, ?>[] converters = extractConverters(metadata);
+        java.lang.invoke.MethodHandle[] setters = extractSetters(metadata);
+        
+        // Create entity constructor handle
+        java.lang.invoke.MethodHandle entityConstructor;
+        try {
+            entityConstructor = java.lang.invoke.MethodHandles.lookup()
+                    .unreflectConstructor(metadata.entityConstructor());
+        } catch (IllegalAccessException e) {
+            throw new RuntimeException("Failed to get entity constructor", e);
+        }
+        
+        // Build RepositoryPlan with compiled queries
+        io.memris.spring.runtime.RepositoryPlan<T> plan = 
+            io.memris.spring.runtime.RepositoryPlan.fromGeneratedTable(
+                table,
+                entityClass,
+                metadata.idColumnName(),
+                compiledQueries,
+                entityConstructor,
+                columnNames,
+                typeCodes,
+                converters,
+                setters
+        );
+        
+        // Create RepositoryRuntime
         io.memris.spring.runtime.RepositoryRuntime<T> runtime = 
-                new io.memris.spring.runtime.RepositoryRuntime<>(plan, null);
+                new io.memris.spring.runtime.RepositoryRuntime<>(plan, null, metadata);
         
         return emitter.emitAndInstantiate(repositoryInterface, runtime);
+    }
+    
+    /**
+     * Extract column names from entity metadata.
+     */
+    private static String[] extractColumnNames(io.memris.spring.EntityMetadata<?> metadata) {
+        return metadata.fields().stream()
+                .filter(fm -> fm.columnPosition() >= 0)
+                .sorted(java.util.Comparator.comparingInt(io.memris.spring.EntityMetadata.FieldMapping::columnPosition))
+                .map(io.memris.spring.EntityMetadata.FieldMapping::columnName)
+                .toArray(String[]::new);
+    }
+    
+    /**
+     * Extract type codes from entity metadata.
+     */
+    private static byte[] extractTypeCodes(io.memris.spring.EntityMetadata<?> metadata) {
+        var fields = metadata.fields().stream()
+                .filter(fm -> fm.columnPosition() >= 0)
+                .sorted(java.util.Comparator.comparingInt(io.memris.spring.EntityMetadata.FieldMapping::columnPosition))
+                .toList();
+        byte[] typeCodes = new byte[fields.size()];
+        for (int i = 0; i < fields.size(); i++) {
+            Byte tc = fields.get(i).typeCode();
+            typeCodes[i] = tc != null ? tc.byteValue() : io.memris.spring.TypeCodes.TYPE_LONG;
+        }
+        return typeCodes;
+    }
+    
+    /**
+     * Extract converters from entity metadata.
+     */
+    private static io.memris.spring.converter.TypeConverter<?, ?>[] extractConverters(
+            io.memris.spring.EntityMetadata<?> metadata) {
+        return metadata.fields().stream()
+                .filter(fm -> fm.columnPosition() >= 0)
+                .sorted(java.util.Comparator.comparingInt(io.memris.spring.EntityMetadata.FieldMapping::columnPosition))
+                .map(fm -> metadata.converters().getOrDefault(fm.name(), null))
+                .toArray(io.memris.spring.converter.TypeConverter[]::new);
+    }
+    
+    /**
+     * Extract setter MethodHandles from entity metadata.
+     */
+    private static java.lang.invoke.MethodHandle[] extractSetters(io.memris.spring.EntityMetadata<?> metadata) {
+        return metadata.fields().stream()
+                .filter(fm -> fm.columnPosition() >= 0)
+                .sorted(java.util.Comparator.comparingInt(io.memris.spring.EntityMetadata.FieldMapping::columnPosition))
+                .map(fm -> metadata.fieldSetters().get(fm.name()))
+                .toArray(java.lang.invoke.MethodHandle[]::new);
     }
     
     @SuppressWarnings("unchecked")
