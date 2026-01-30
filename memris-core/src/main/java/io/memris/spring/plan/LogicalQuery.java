@@ -22,6 +22,7 @@ public record LogicalQuery(
         OpCode opCode,
         ReturnKind returnKind,
         Condition[] conditions,
+        Join[] joins,
         OrderBy orderBy,
         int parameterCount
 ) {
@@ -31,16 +32,29 @@ public record LogicalQuery(
             ReturnKind returnKind,
             Condition[] conditions,
             OrderBy orderBy) {
-        return new LogicalQuery(opCode, returnKind, conditions, orderBy, conditions.length);
+        return new LogicalQuery(opCode, returnKind, conditions, new Join[0], orderBy, conditions.length);
     }
 
     public static LogicalQuery of(
             OpCode opCode,
             ReturnKind returnKind,
             Condition[] conditions,
+            Join[] joins,
             OrderBy orderBy,
             int parameterCount) {
-        return new LogicalQuery(opCode, returnKind, conditions, orderBy, parameterCount);
+        return new LogicalQuery(opCode, returnKind, conditions, joins, orderBy, parameterCount);
+    }
+
+    /**
+     * Create a simple query without joins.
+     */
+    public static LogicalQuery of(
+            OpCode opCode,
+            ReturnKind returnKind,
+            Condition[] conditions,
+            OrderBy orderBy,
+            int parameterCount) {
+        return new LogicalQuery(opCode, returnKind, conditions, new Join[0], orderBy, parameterCount);
     }
 
     /**
@@ -54,7 +68,7 @@ public record LogicalQuery(
      * @return a LogicalQuery for the CRUD operation
      */
     public static LogicalQuery crud(OpCode opCode, ReturnKind returnKind, int parameterCount) {
-        return new LogicalQuery(opCode, returnKind, new Condition[0], null, parameterCount);
+        return new LogicalQuery(opCode, returnKind, new Condition[0], new Join[0], null, parameterCount);
     }
 
     /**
@@ -76,6 +90,7 @@ public record LogicalQuery(
                 && opCode == that.opCode
                 && returnKind == that.returnKind
                 && java.util.Arrays.equals(conditions, that.conditions)
+                && java.util.Arrays.equals(joins, that.joins)
                 && java.util.Objects.equals(orderBy, that.orderBy);
     }
 
@@ -83,6 +98,7 @@ public record LogicalQuery(
     public int hashCode() {
         int result = java.util.Objects.hash(opCode, returnKind, orderBy, parameterCount);
         result = 31 * result + java.util.Arrays.hashCode(conditions);
+        result = 31 * result + java.util.Arrays.hashCode(joins);
         return result;
     }
 
@@ -217,6 +233,40 @@ public record LogicalQuery(
 
         public static OrderBy desc(String propertyPath) {
             return new OrderBy(propertyPath, false);
+        }
+    }
+
+    /**
+     * Join specification for cross-table queries.
+     * <p>
+     * Represents a relationship join that needs to be resolved at query time.
+     * The join connects the primary entity to a related entity via foreign key.
+     * <p>
+     * Example: Order.customer -> Customer
+     * - propertyPath: "customer"
+     * - targetEntity: Customer.class
+     * - joinType: INNER
+     */
+    public record Join(
+            String propertyPath,      // The relationship property name (e.g., "customer")
+            Class<?> targetEntity,    // The target entity class (e.g., Customer.class)
+            String joinColumn,        // Foreign key column name (e.g., "customer_id")
+            String referencedColumn,  // Referenced column in target (e.g., "id")
+            JoinType joinType         // INNER, LEFT, RIGHT, FULL
+    ) {
+        public enum JoinType {
+            INNER,   // Only matching rows from both tables
+            LEFT,    // All rows from left table, matching from right
+            RIGHT,   // Matching from left, all from right table
+            FULL     // All rows from both tables
+        }
+
+        public static Join inner(String propertyPath, Class<?> targetEntity, String joinColumn) {
+            return new Join(propertyPath, targetEntity, joinColumn, "id", JoinType.INNER);
+        }
+
+        public static Join left(String propertyPath, Class<?> targetEntity, String joinColumn) {
+            return new Join(propertyPath, targetEntity, joinColumn, "id", JoinType.LEFT);
         }
     }
 }

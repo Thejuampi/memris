@@ -1,9 +1,12 @@
 package io.memris.spring;
 
+import io.memris.spring.EntityMetadata.FieldMapping;
+import io.memris.spring.EntityMetadata.FieldMapping.RelationshipType;
 import jakarta.persistence.Id;
 
 import java.lang.invoke.MethodHandle;
 import java.lang.reflect.Constructor;
+import java.lang.reflect.Field;
 import java.util.*;
 
 /**
@@ -19,9 +22,6 @@ public final class MetadataExtractor {
      * @return the entity metadata
      */
     public static <T> EntityMetadata<T> extractEntityMetadata(Class<T> entityClass) {
-        // TODO: Implement full metadata extraction
-        // For now, return minimal metadata to allow compilation
-        
         try {
             Constructor<T> constructor = entityClass.getDeclaredConstructor();
             
@@ -36,23 +36,39 @@ public final class MetadataExtractor {
                 }
             }
             
-            // Build field mappings
-            List<EntityMetadata.FieldMapping> fields = new ArrayList<>();
+            // Build field mappings with relationship support
+            List<FieldMapping> fields = new ArrayList<>();
+            Set<String> foreignKeyColumns = new HashSet<>();
             int colPos = 0;
+            
             for (var field : entityClass.getDeclaredFields()) {
                 if (java.lang.reflect.Modifier.isStatic(field.getModifiers())) {
                     continue;
                 }
                 
-                Byte typeCode = TypeCodes.forClassOrDefault(field.getType(), TypeCodes.TYPE_LONG);
-                fields.add(new EntityMetadata.FieldMapping(
-                    field.getName(),
-                    field.getName(),
-                    field.getType(),
-                    field.getType(),
-                    colPos++,
-                    typeCode
-                ));
+                // Check for relationship annotations
+                ManyToOne manyToOne = field.getAnnotation(ManyToOne.class);
+                JoinColumn joinColumn = field.getAnnotation(JoinColumn.class);
+                
+                if (manyToOne != null) {
+                    // This is a relationship field
+                    FieldMapping relationshipMapping = createRelationshipMapping(
+                        field, manyToOne, joinColumn, colPos, foreignKeyColumns
+                    );
+                    fields.add(relationshipMapping);
+                    colPos++;
+                } else {
+                    // Regular field
+                    Byte typeCode = TypeCodes.forClassOrDefault(field.getType(), TypeCodes.TYPE_LONG);
+                    fields.add(new FieldMapping(
+                        field.getName(),
+                        field.getName(),
+                        field.getType(),
+                        field.getType(),
+                        colPos++,
+                        typeCode
+                    ));
+                }
             }
             
             // Build MethodHandles for field access (for public fields)
@@ -86,7 +102,7 @@ public final class MetadataExtractor {
                 constructor,
                 idColumnName,
                 fields,
-                Set.of(),
+                foreignKeyColumns,
                 Map.of(),
                 null, null, null,
                 fieldGetters, fieldSetters,
@@ -95,5 +111,55 @@ public final class MetadataExtractor {
         } catch (Exception e) {
             throw new RuntimeException("Failed to extract metadata for " + entityClass.getName(), e);
         }
+    }
+    
+    /**
+     * Create a FieldMapping for a relationship field.
+     */
+    private static FieldMapping createRelationshipMapping(
+        Field field,
+        ManyToOne manyToOne,
+        JoinColumn joinColumn,
+        int colPos,
+        Set<String> foreignKeyColumns
+    ) {
+        // Determine target entity class
+        Class<?> targetEntity = manyToOne.targetEntity();
+        if (targetEntity == void.class) {
+            // Use field type as target entity
+            targetEntity = field.getType();
+        }
+        
+        // Determine foreign key column name
+        String fkColumnName;
+        if (joinColumn != null && !joinColumn.name().isEmpty()) {
+            fkColumnName = joinColumn.name();
+        } else {
+            // Default: {fieldName}_{referencedColumnName}
+            String refColumn = (joinColumn != null) ? joinColumn.referencedColumnName() : "id";
+            fkColumnName = field.getName() + "_" + refColumn;
+        }
+        
+        // Add to foreign key columns set
+        foreignKeyColumns.add(fkColumnName);
+        
+        // For now, store relationship as Long (foreign key ID)
+        // In the future, could support storing the actual entity reference
+        Byte typeCode = TypeCodes.TYPE_LONG;
+        
+        return new FieldMapping(
+            field.getName(),           // property name
+            fkColumnName,              // column name (the FK column)
+            field.getType(),           // Java type (the entity class)
+            Long.class,                // Storage type (the ID type)
+            colPos,
+            typeCode,
+            true,                      // isRelationship
+            RelationshipType.MANY_TO_ONE,
+            targetEntity,
+            null,                      // joinTable (not used for @ManyToOne)
+            false,                     // isCollection
+            false                      // isEmbedded
+        );
     }
 }
