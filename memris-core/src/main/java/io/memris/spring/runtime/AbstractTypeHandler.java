@@ -94,7 +94,17 @@ public abstract class AbstractTypeHandler<T> implements TypeHandler<T> {
      * Default implementation scans all and filters nulls.
      */
     protected Selection executeIsNull(GeneratedTable table, int columnIndex) {
-        throw new UnsupportedOperationException("IS_NULL not yet implemented for " + getJavaType().getSimpleName());
+        int[] rows = table.scanAll();
+        int[] nullRows = new int[rows.length];
+        int count = 0;
+        for (int row : rows) {
+            if (!table.isPresent(columnIndex, row)) {
+                nullRows[count++] = row;
+            }
+        }
+        int[] trimmed = new int[count];
+        System.arraycopy(nullRows, 0, trimmed, 0, count);
+        return createSelection(table, trimmed);
     }
     
     /**

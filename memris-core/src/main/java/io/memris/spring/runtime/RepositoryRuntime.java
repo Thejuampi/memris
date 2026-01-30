@@ -127,6 +127,8 @@ public final class RepositoryRuntime<T> {
                 return null;
             case DELETE_QUERY:
                 return executeDeleteQuery(query, args);
+            case DELETE_ALL_BY_ID:
+                return executeDeleteAllById(args);
             default:
                 throw new UnsupportedOperationException("OpCode not implemented: " + query.opCode());
         }
@@ -367,7 +369,40 @@ public final class RepositoryRuntime<T> {
 
     private void executeDeleteOne(Object[] args) {
         T entity = (T) args[0];
-        throw new UnsupportedOperationException("DELETE_ONE not yet implemented");
+        if (entity == null) {
+            throw new IllegalArgumentException("Cannot delete null entity");
+        }
+
+        Object id;
+        try {
+            MethodHandle idGetter = metadata.fieldGetters().get(metadata.idColumnName());
+            if (idGetter == null) {
+                throw new IllegalStateException("No ID getter found for field: " + metadata.idColumnName());
+            }
+            id = idGetter.invoke(entity);
+        } catch (Throwable e) {
+            throw new RuntimeException("Failed to extract ID from entity", e);
+        }
+
+        if (id == null) {
+            throw new IllegalArgumentException("Cannot delete entity with null ID");
+        }
+
+        GeneratedTable table = plan.table();
+        long packedRef;
+        if (id instanceof Long longId) {
+            packedRef = table.lookupById(longId);
+        } else if (id instanceof String stringId) {
+            packedRef = table.lookupByIdString(stringId);
+        } else if (id instanceof Integer intId) {
+            packedRef = table.lookupById(intId.longValue());
+        } else {
+            throw new IllegalArgumentException("Unsupported ID type: " + id.getClass());
+        }
+
+        if (packedRef >= 0) {
+            table.tombstone(packedRef);
+        }
     }
 
     private void executeDeleteAll() {
@@ -396,6 +431,32 @@ public final class RepositoryRuntime<T> {
         if (packedRef >= 0) {
             table.tombstone(packedRef);
         }
+    }
+
+    private long executeDeleteAllById(Object[] args) {
+        @SuppressWarnings("unchecked")
+        Iterable<Object> ids = (Iterable<Object>) args[0];
+        GeneratedTable table = plan.table();
+
+        long count = 0;
+        for (Object id : ids) {
+            long packedRef;
+            if (id instanceof Long longId) {
+                packedRef = table.lookupById(longId);
+            } else if (id instanceof String stringId) {
+                packedRef = table.lookupByIdString(stringId);
+            } else if (id instanceof Integer intId) {
+                packedRef = table.lookupById(intId.longValue());
+            } else {
+                throw new IllegalArgumentException("Unsupported ID type: " + id.getClass());
+            }
+
+            if (packedRef >= 0) {
+                table.tombstone(packedRef);
+                count++;
+            }
+        }
+        return count;
     }
 
     private long executeDeleteQuery(CompiledQuery query, Object[] args) {

@@ -40,6 +40,13 @@ public final class LongIdIndex {
         return rag != null ? rag.rowId() : null;
     }
 
+    /**
+     * Get RowId and generation together for validation.
+     */
+    public RowIdAndGeneration getWithGeneration(long key) {
+        return index.get(key);
+    }
+
     public void put(long key, RowId rowId, long generation) {
         index.put(key, new RowIdAndGeneration(rowId, generation));
     }

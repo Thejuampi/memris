@@ -141,6 +141,21 @@ public class StringTypeHandler extends AbstractTypeHandler<String> {
         return subtractSelections(table, all, containing);
     }
     
+    @Override
+    protected Selection executeIsNull(GeneratedTable table, int columnIndex) {
+        int[] rows = table.scanAll();
+        int[] nullRows = new int[rows.length];
+        int count = 0;
+        for (int row : rows) {
+            if (!table.isPresent(columnIndex, row)) {
+                nullRows[count++] = row;
+            }
+        }
+        int[] trimmed = new int[count];
+        System.arraycopy(nullRows, 0, trimmed, 0, count);
+        return createSelection(table, trimmed);
+    }
+    
     /**
      * Execute pattern matching with STARTING_WITH operator.
      * Not yet implemented.

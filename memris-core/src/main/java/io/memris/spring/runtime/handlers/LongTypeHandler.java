@@ -85,4 +85,19 @@ public class LongTypeHandler extends AbstractTypeHandler<Long> {
     public Selection executeIn(GeneratedTable table, int columnIndex, long[] values) {
         return createSelection(table, table.scanInLong(columnIndex, values));
     }
+    
+    @Override
+    protected Selection executeIsNull(GeneratedTable table, int columnIndex) {
+        int[] rows = table.scanAll();
+        int[] nullRows = new int[rows.length];
+        int count = 0;
+        for (int row : rows) {
+            if (!table.isPresent(columnIndex, row)) {
+                nullRows[count++] = row;
+            }
+        }
+        int[] trimmed = new int[count];
+        System.arraycopy(nullRows, 0, trimmed, 0, count);
+        return createSelection(table, trimmed);
+    }
 }
