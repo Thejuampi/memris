@@ -61,6 +61,14 @@ public interface Selection {
      */
     Selection intersect(Selection other);
 
+    /**
+     * Create difference of two selections (this - other).
+     * <p>
+     * Returns elements in this selection that are not in other.
+     * O(n*m) nested loop.
+     */
+    Selection subtract(Selection other);
+
     // ===== UTILS: PACKED REF OPERATIONS =====
 
     /**

@@ -84,4 +84,31 @@ public final class SelectionImpl implements Selection {
         
         return new SelectionImpl(result);
     }
+
+    @Override
+    public Selection subtract(Selection other) {
+        long[] otherRefs = other.toRefArray();
+        
+        ArrayList<Long> difference = new ArrayList<>();
+        
+        for (long r : refs) {
+            boolean found = false;
+            for (long o : otherRefs) {
+                if (r == o) {
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) {
+                difference.add(r);
+            }
+        }
+        
+        long[] result = new long[difference.size()];
+        for (int i = 0; i < result.length; i++) {
+            result[i] = difference.get(i);
+        }
+        
+        return new SelectionImpl(result);
+    }
 }
