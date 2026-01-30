@@ -446,6 +446,11 @@ public final class MemrisRepositoryFactory implements AutoCloseable {
             compiledQueries[i] = compiler.compile(logicalQuery);
         }
 
+        java.util.Map<Class<?>, io.memris.storage.GeneratedTable> tablesByEntity = buildJoinTables(metadata, null);
+        java.util.Map<Class<?>, io.memris.spring.runtime.HeapRuntimeKernel> kernelsByEntity = buildJoinKernels(tablesByEntity);
+        java.util.Map<Class<?>, io.memris.spring.runtime.EntityMaterializer<?>> materializersByEntity = buildJoinMaterializers(tablesByEntity);
+        compiledQueries = wireJoinRuntime(compiledQueries, metadata, tablesByEntity, kernelsByEntity, materializersByEntity);
+
         // 7. Extract column metadata for RepositoryPlan
         String[] columnNames = extractColumnNames(metadata);
         byte[] typeCodes = extractTypeCodes(metadata);
@@ -471,7 +476,10 @@ public final class MemrisRepositoryFactory implements AutoCloseable {
                 columnNames,
                 typeCodes,
                 converters,
-                setters
+                setters,
+                tablesByEntity,
+                kernelsByEntity,
+                materializersByEntity
         );
 
         // 10. Create RepositoryRuntime
@@ -480,6 +488,89 @@ public final class MemrisRepositoryFactory implements AutoCloseable {
         // 11. Generate repository implementation using ByteBuddy
         io.memris.spring.scaffold.RepositoryEmitter emitter = new io.memris.spring.scaffold.RepositoryEmitter();
         return emitter.emitAndInstantiate(repositoryInterface, runtime);
+    }
+
+    private <T> java.util.Map<Class<?>, io.memris.storage.GeneratedTable> buildJoinTables(
+        io.memris.spring.EntityMetadata<T> metadata,
+        MemrisArena arena
+    ) {
+        java.util.Map<Class<?>, io.memris.storage.GeneratedTable> tablesByEntity = new java.util.HashMap<>();
+        tablesByEntity.put(metadata.entityClass(), arena != null ? arena.getOrCreateTable(metadata.entityClass()) :
+            tables.computeIfAbsent(metadata.entityClass(), ec -> buildTableForEntity(ec, null)));
+
+        for (io.memris.spring.EntityMetadata.FieldMapping field : metadata.fields()) {
+            if (!field.isRelationship() || field.targetEntity() == null) {
+                continue;
+            }
+            Class<?> target = field.targetEntity();
+            io.memris.storage.GeneratedTable table = arena != null
+                ? arena.getOrCreateTable(target)
+                : tables.computeIfAbsent(target, ec -> buildTableForEntity(ec, null));
+            tablesByEntity.putIfAbsent(target, table);
+        }
+        return java.util.Map.copyOf(tablesByEntity);
+    }
+
+    private java.util.Map<Class<?>, io.memris.spring.runtime.HeapRuntimeKernel> buildJoinKernels(
+        java.util.Map<Class<?>, io.memris.storage.GeneratedTable> tablesByEntity
+    ) {
+        java.util.Map<Class<?>, io.memris.spring.runtime.HeapRuntimeKernel> kernels = new java.util.HashMap<>();
+        for (var entry : tablesByEntity.entrySet()) {
+            kernels.put(entry.getKey(), new io.memris.spring.runtime.HeapRuntimeKernel(entry.getValue()));
+        }
+        return java.util.Map.copyOf(kernels);
+    }
+
+    private java.util.Map<Class<?>, io.memris.spring.runtime.EntityMaterializer<?>> buildJoinMaterializers(
+        java.util.Map<Class<?>, io.memris.storage.GeneratedTable> tablesByEntity
+    ) {
+        java.util.Map<Class<?>, io.memris.spring.runtime.EntityMaterializer<?>> materializers = new java.util.HashMap<>();
+        io.memris.spring.runtime.EntityMaterializerGenerator generator = new io.memris.spring.runtime.EntityMaterializerGenerator();
+        for (Class<?> entityClass : tablesByEntity.keySet()) {
+            io.memris.spring.EntityMetadata<?> entityMetadata = io.memris.spring.MetadataExtractor.extractEntityMetadata(entityClass);
+            materializers.put(entityClass, generator.generate(entityMetadata));
+        }
+        return java.util.Map.copyOf(materializers);
+    }
+
+    private <T> io.memris.spring.plan.CompiledQuery[] wireJoinRuntime(
+        io.memris.spring.plan.CompiledQuery[] compiledQueries,
+        io.memris.spring.EntityMetadata<T> metadata,
+        java.util.Map<Class<?>, io.memris.storage.GeneratedTable> tablesByEntity,
+        java.util.Map<Class<?>, io.memris.spring.runtime.HeapRuntimeKernel> kernelsByEntity,
+        java.util.Map<Class<?>, io.memris.spring.runtime.EntityMaterializer<?>> materializersByEntity
+    ) {
+        io.memris.spring.plan.CompiledQuery[] wired = new io.memris.spring.plan.CompiledQuery[compiledQueries.length];
+        for (int i = 0; i < compiledQueries.length; i++) {
+            var query = compiledQueries[i];
+            var joins = query.joins();
+            if (joins == null || joins.length == 0) {
+                wired[i] = query;
+                continue;
+            }
+            io.memris.spring.plan.CompiledQuery.CompiledJoin[] updated = new io.memris.spring.plan.CompiledQuery.CompiledJoin[joins.length];
+            for (int j = 0; j < joins.length; j++) {
+                var join = joins[j];
+                var targetTable = tablesByEntity.get(join.targetEntity());
+                var targetKernel = kernelsByEntity.get(join.targetEntity());
+                var targetMaterializer = materializersByEntity.get(join.targetEntity());
+                io.memris.spring.runtime.JoinExecutor executor = new io.memris.spring.runtime.JoinExecutorImpl(
+                    join.sourceColumnIndex(),
+                    join.targetColumnIndex(),
+                    join.fkTypeCode(),
+                    join.joinType()
+                );
+                java.lang.invoke.MethodHandle setter = metadata.fieldSetters().get(join.relationshipFieldName());
+                io.memris.spring.runtime.JoinMaterializer materializer = new io.memris.spring.runtime.JoinMaterializerImpl(
+                    join.sourceColumnIndex(),
+                    join.fkTypeCode(),
+                    setter
+                );
+                updated[j] = join.withRuntime(targetTable, targetKernel, targetMaterializer, executor, materializer);
+            }
+            wired[i] = query.withJoins(updated);
+        }
+        return wired;
     }
 
     /**
@@ -515,7 +606,7 @@ public final class MemrisRepositoryFactory implements AutoCloseable {
             }
 
             fields.add(new io.memris.storage.heap.FieldMetadata(
-                    fm.name(),
+                    fm.columnName(),
                     typeCode,
                     isId,
                     isId

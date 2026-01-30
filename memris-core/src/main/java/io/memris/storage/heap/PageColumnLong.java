@@ -16,6 +16,7 @@ package io.memris.storage.heap;
 public final class PageColumnLong {
 
     private final long[] data;
+    private final byte[] present;
     private volatile int published;
     private final int capacity;
 
@@ -29,6 +30,7 @@ public final class PageColumnLong {
             throw new IllegalArgumentException("capacity must be positive: " + capacity);
         }
         this.data = new long[capacity];
+        this.present = new byte[capacity];
         this.published = 0;
         this.capacity = capacity;
     }
@@ -52,8 +54,20 @@ public final class PageColumnLong {
         if (offset < 0 || offset >= capacity) {
             throw new IndexOutOfBoundsException("offset out of range: " + offset);
         }
-        // Safe to read even if unpublished - returns 0
+        if (present[offset] == 0) {
+            return 0L;
+        }
         return data[offset];
+    }
+
+    /**
+     * Check presence at offset.
+     */
+    public boolean isPresent(int offset) {
+        if (offset < 0 || offset >= capacity) {
+            throw new IndexOutOfBoundsException("offset out of range: " + offset);
+        }
+        return present[offset] != 0;
     }
 
     /**
@@ -67,6 +81,17 @@ public final class PageColumnLong {
             throw new IndexOutOfBoundsException("offset out of range: " + offset);
         }
         data[offset] = value;
+        present[offset] = 1;
+    }
+
+    /**
+     * Set null at offset.
+     */
+    public void setNull(int offset) {
+        if (offset < 0 || offset >= capacity) {
+            throw new IndexOutOfBoundsException("offset out of range: " + offset);
+        }
+        present[offset] = 0;
     }
 
     /**
@@ -101,7 +126,7 @@ public final class PageColumnLong {
         int found = 0;
 
         for (int i = 0; i < count; i++) {
-            if (data[i] == target) {
+            if (present[i] != 0 && data[i] == target) {
                 results[found++] = i;
             }
         }
@@ -127,7 +152,7 @@ public final class PageColumnLong {
         int found = 0;
 
         for (int i = 0; i < count; i++) {
-            if (data[i] > target) {
+            if (present[i] != 0 && data[i] > target) {
                 results[found++] = i;
             }
         }
@@ -150,7 +175,7 @@ public final class PageColumnLong {
 
         for (int i = 0; i < count; i++) {
             long value = data[i];
-            if (value >= lower && value <= upper) {
+            if (present[i] != 0 && value >= lower && value <= upper) {
                 results[found++] = i;
             }
         }
@@ -168,18 +193,19 @@ public final class PageColumnLong {
     public int[] scanIn(long[] targets, int limit) {
         int count = Math.min(published, limit);
 
-        // Create a hash set for O(1) lookup
-        java.util.HashSet<Long> targetSet = new java.util.HashSet<>();
-        for (long t : targets) {
-            targetSet.add(t);
-        }
-
         int[] results = new int[count];
         int found = 0;
 
         for (int i = 0; i < count; i++) {
-            if (targetSet.contains(data[i])) {
-                results[found++] = i;
+            if (present[i] == 0) {
+                continue;
+            }
+            long value = data[i];
+            for (long target : targets) {
+                if (value == target) {
+                    results[found++] = i;
+                    break;
+                }
             }
         }
 

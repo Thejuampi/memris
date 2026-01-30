@@ -88,6 +88,9 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
         
         builder = builder.method(net.bytebuddy.matcher.ElementMatchers.named("readString"))
                 .intercept(MethodDelegation.to(interceptor));
+
+        builder = builder.method(net.bytebuddy.matcher.ElementMatchers.named("isPresent"))
+                .intercept(MethodDelegation.to(new PresentInterceptor(columnFields)));
         
         return builder;
     }
@@ -208,6 +211,40 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
                 return ((PageColumnInt) column).get(rowIndex);
             } else if (typeCode == io.memris.spring.TypeCodes.TYPE_STRING) {
                 return ((PageColumnString) column).get(rowIndex);
+            } else {
+                throw new IllegalStateException("Unknown type code: " + typeCode);
+            }
+        }
+    }
+
+    public static class PresentInterceptor {
+        private final List<ColumnFieldInfo> columnFields;
+        private final MethodHandles.Lookup lookup = MethodHandles.lookup();
+
+        public PresentInterceptor(List<ColumnFieldInfo> columnFields) {
+            this.columnFields = columnFields;
+        }
+
+        @RuntimeType
+        public boolean intercept(@Argument(0) int columnIndex,
+                                 @Argument(1) int rowIndex,
+                                 @This Object obj) throws Throwable {
+            if (columnIndex < 0 || columnIndex >= columnFields.size()) {
+                throw new IndexOutOfBoundsException("Column index out of range: " + columnIndex);
+            }
+
+            ColumnFieldInfo fieldInfo = columnFields.get(columnIndex);
+            Field field = obj.getClass().getDeclaredField(fieldInfo.fieldName());
+            MethodHandle getter = lookup.unreflectGetter(field);
+            Object column = getter.invoke(obj);
+
+            byte typeCode = fieldInfo.typeCode();
+            if (typeCode == io.memris.spring.TypeCodes.TYPE_LONG) {
+                return ((PageColumnLong) column).isPresent(rowIndex);
+            } else if (typeCode == io.memris.spring.TypeCodes.TYPE_INT) {
+                return ((PageColumnInt) column).isPresent(rowIndex);
+            } else if (typeCode == io.memris.spring.TypeCodes.TYPE_STRING) {
+                return ((PageColumnString) column).isPresent(rowIndex);
             } else {
                 throw new IllegalStateException("Unknown type code: " + typeCode);
             }
@@ -362,6 +399,10 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
                 // TypeCodes enum ordinals: TYPE_INT=0, TYPE_LONG=1, TYPE_STRING=8
                 if (typeCode == io.memris.spring.TypeCodes.TYPE_LONG) {
                     PageColumnLong col = (PageColumnLong) column;
+                    if (value == null) {
+                        col.setNull(rowIndex);
+                        continue;
+                    }
                     long longValue;
                     if (value instanceof Long) longValue = (Long) value;
                     else if (value instanceof Integer) longValue = ((Integer) value).longValue();
@@ -370,6 +411,10 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
                     col.set(rowIndex, longValue);
                 } else if (typeCode == io.memris.spring.TypeCodes.TYPE_INT) {
                     PageColumnInt col = (PageColumnInt) column;
+                    if (value == null) {
+                        col.setNull(rowIndex);
+                        continue;
+                    }
                     int intValue;
                     if (value instanceof Integer) intValue = (Integer) value;
                     else if (value instanceof Long) intValue = ((Long) value).intValue();
@@ -378,7 +423,11 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
                     col.set(rowIndex, intValue);
                 } else if (typeCode == io.memris.spring.TypeCodes.TYPE_STRING) {
                     PageColumnString col = (PageColumnString) column;
-                    col.set(rowIndex, value != null ? value.toString() : null);
+                    if (value == null) {
+                        col.setNull(rowIndex);
+                    } else {
+                        col.set(rowIndex, value.toString());
+                    }
                 }
             }
             

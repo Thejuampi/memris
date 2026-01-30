@@ -134,4 +134,9 @@ public interface GeneratedTable {
      * Read String value from row index.
      */
     String readString(int columnIndex, int rowIndex);
+
+    /**
+     * Check if value is present (non-null) at row index.
+     */
+    boolean isPresent(int columnIndex, int rowIndex);
 }

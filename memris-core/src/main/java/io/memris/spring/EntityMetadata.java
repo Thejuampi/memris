@@ -140,6 +140,7 @@ public class EntityMetadata<T> {
         RelationshipType relationshipType, // ONE_TO_ONE, MANY_TO_ONE, etc.
         Class<?> targetEntity,    // Target entity class
         String joinTable,         // Join table name (for @ManyToMany)
+        String referencedColumnName, // Referenced column on target entity (e.g., "id")
         boolean isCollection,     // Is this a collection field?
         boolean isEmbedded        // Is this @Embedded?
     ) {
@@ -153,6 +154,7 @@ public class EntityMetadata<T> {
                 relationshipType = RelationshipType.NONE;
                 targetEntity = null;
                 joinTable = null;
+                referencedColumnName = null;
                 isCollection = false;
             }
         }
@@ -167,7 +169,7 @@ public class EntityMetadata<T> {
             byte typeCode
         ) {
             this(name, columnName, javaType, storageType, columnPosition, typeCode,
-                 false, RelationshipType.NONE, null, null, false, false);
+                 false, RelationshipType.NONE, null, null, null, false, false);
         }
     }
 }

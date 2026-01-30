@@ -16,6 +16,7 @@ package io.memris.storage.heap;
 public final class PageColumnString {
 
     private final String[] data;
+    private final byte[] present;
     private volatile int published;
     private final int capacity;
 
@@ -29,6 +30,7 @@ public final class PageColumnString {
             throw new IllegalArgumentException("capacity must be positive: " + capacity);
         }
         this.data = new String[capacity];
+        this.present = new byte[capacity];
         this.published = 0;
         this.capacity = capacity;
     }
@@ -52,8 +54,20 @@ public final class PageColumnString {
         if (offset < 0 || offset >= capacity) {
             throw new IndexOutOfBoundsException("offset out of range: " + offset);
         }
-        // Safe to read even if unpublished - returns null
+        if (present[offset] == 0) {
+            return null;
+        }
         return data[offset];
+    }
+
+    /**
+     * Check presence at offset.
+     */
+    public boolean isPresent(int offset) {
+        if (offset < 0 || offset >= capacity) {
+            throw new IndexOutOfBoundsException("offset out of range: " + offset);
+        }
+        return present[offset] != 0;
     }
 
     /**
@@ -67,6 +81,18 @@ public final class PageColumnString {
             throw new IndexOutOfBoundsException("offset out of range: " + offset);
         }
         data[offset] = value;
+        present[offset] = 1;
+    }
+
+    /**
+     * Set null at offset.
+     */
+    public void setNull(int offset) {
+        if (offset < 0 || offset >= capacity) {
+            throw new IndexOutOfBoundsException("offset out of range: " + offset);
+        }
+        data[offset] = null;
+        present[offset] = 0;
     }
 
     /**
@@ -105,7 +131,7 @@ public final class PageColumnString {
         int found = 0;
 
         for (int i = 0; i < count; i++) {
-            if (target.equals(data[i])) {
+            if (present[i] != 0 && target.equals(data[i])) {
                 results[found++] = i;
             }
         }
@@ -131,6 +157,9 @@ public final class PageColumnString {
 
         String lowerTarget = target.toLowerCase();
         for (int i = 0; i < count; i++) {
+            if (present[i] == 0) {
+                continue;
+            }
             String value = data[i];
             if (value != null && value.toLowerCase().equals(lowerTarget)) {
                 results[found++] = i;
@@ -150,18 +179,19 @@ public final class PageColumnString {
     public int[] scanIn(String[] targets, int limit) {
         int count = Math.min(published, limit);
 
-        // Create a hash set for O(1) lookup
-        java.util.HashSet<String> targetSet = new java.util.HashSet<>();
-        for (String t : targets) {
-            targetSet.add(t);
-        }
-
         int[] results = new int[count];
         int found = 0;
 
         for (int i = 0; i < count; i++) {
-            if (targetSet.contains(data[i])) {
-                results[found++] = i;
+            if (present[i] == 0) {
+                continue;
+            }
+            String value = data[i];
+            for (String target : targets) {
+                if (target != null && target.equals(value)) {
+                    results[found++] = i;
+                    break;
+                }
             }
         }
 
@@ -177,7 +207,7 @@ public final class PageColumnString {
         int found = 0;
 
         for (int i = 0; i < count; i++) {
-            if (data[i] == null) {
+            if (present[i] == 0) {
                 results[found++] = i;
             }
         }

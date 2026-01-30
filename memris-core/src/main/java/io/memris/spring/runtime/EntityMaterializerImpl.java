@@ -66,6 +66,16 @@ public class EntityMaterializerImpl<T> implements EntityMaterializer<T> {
             // Read and set each field
             for (FieldMapping field : fields) {
                 int colIdx = field.columnPosition();
+                if (field.isRelationship()) {
+                    continue;
+                }
+                if (!field.javaType().isPrimitive() && !table.isPresent(colIdx, rowIndex)) {
+                    MethodHandle setter = fieldSetters.get(field.name());
+                    if (setter != null) {
+                        setter.invoke(entity, (Object) null);
+                    }
+                    continue;
+                }
                 byte typeCode = field.typeCode();
                 Object value;
 

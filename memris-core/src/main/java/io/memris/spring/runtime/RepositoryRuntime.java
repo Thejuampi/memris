@@ -30,6 +30,7 @@ public final class RepositoryRuntime<T> {
     private final MemrisRepositoryFactory factory;
     private final EntityMaterializer<T> materializer;
     private final EntityMetadata<T> metadata;
+    private final java.util.Map<Class<?>, EntityMetadata<?>> relatedMetadata;
     private static long idCounter = 1L;
 
     /**
@@ -46,7 +47,27 @@ public final class RepositoryRuntime<T> {
         this.plan = plan;
         this.factory = factory;
         this.metadata = metadata;
-        this.materializer = metadata != null ? new EntityMaterializerImpl<>(metadata) : null;
+        if (metadata != null && plan.materializersByEntity() != null) {
+            @SuppressWarnings("unchecked")
+            EntityMaterializer<T> materializer = (EntityMaterializer<T>) plan.materializersByEntity().get(metadata.entityClass());
+            this.materializer = materializer != null ? materializer : new EntityMaterializerImpl<>(metadata);
+        } else {
+            this.materializer = metadata != null ? new EntityMaterializerImpl<>(metadata) : null;
+        }
+        this.relatedMetadata = buildRelatedMetadata(metadata);
+    }
+
+    private static java.util.Map<Class<?>, EntityMetadata<?>> buildRelatedMetadata(EntityMetadata<?> metadata) {
+        if (metadata == null) {
+            return java.util.Map.of();
+        }
+        java.util.Map<Class<?>, EntityMetadata<?>> related = new java.util.HashMap<>();
+        for (io.memris.spring.EntityMetadata.FieldMapping field : metadata.fields()) {
+            if (field.isRelationship() && field.targetEntity() != null) {
+                related.putIfAbsent(field.targetEntity(), io.memris.spring.MetadataExtractor.extractEntityMetadata(field.targetEntity()));
+            }
+        }
+        return java.util.Map.copyOf(related);
     }
 
     /**
@@ -149,6 +170,12 @@ public final class RepositoryRuntime<T> {
 
                 Object value = getter.invoke(entity);
 
+                if (field.isRelationship()) {
+                    value = resolveRelationshipId(field, value);
+                    values[field.columnPosition()] = value;
+                    continue;
+                }
+
                 // Apply converter if present
                 TypeConverter<?, ?> converter = metadata.converters().get(field.name());
                 if (converter != null && value != null) {
@@ -176,6 +203,42 @@ public final class RepositoryRuntime<T> {
         } catch (Throwable e) {
             throw new RuntimeException("Failed to save entity", e);
         }
+    }
+
+    private Object resolveRelationshipId(io.memris.spring.EntityMetadata.FieldMapping field, Object relatedEntity) throws Throwable {
+        if (relatedEntity == null) {
+            return null;
+        }
+        EntityMetadata<?> targetMetadata = relatedMetadata.get(field.targetEntity());
+        if (targetMetadata == null) {
+            throw new IllegalStateException("No metadata for related entity: " + field.targetEntity());
+        }
+
+        String idFieldName = targetMetadata.idColumnName();
+        MethodHandle idGetter = targetMetadata.fieldGetters().get(idFieldName);
+        if (idGetter == null) {
+            throw new IllegalStateException("No ID getter for related entity: " + field.targetEntity().getName());
+        }
+
+        Object idValue = idGetter.invoke(relatedEntity);
+        if (idValue == null) {
+            return null;
+        }
+
+        Class<?> storageType = field.storageType();
+        if (storageType == Long.class || storageType == long.class) {
+            return ((Number) idValue).longValue();
+        }
+        if (storageType == Integer.class || storageType == int.class) {
+            return ((Number) idValue).intValue();
+        }
+        if (storageType == Short.class || storageType == short.class) {
+            return ((Number) idValue).shortValue();
+        }
+        if (storageType == Byte.class || storageType == byte.class) {
+            return ((Number) idValue).byteValue();
+        }
+        return idValue;
     }
 
     private boolean isZeroId(Object id) {
@@ -260,7 +323,9 @@ public final class RepositoryRuntime<T> {
         long[] refs = selection.toRefArray();
         for (long ref : refs) {
             int rowIndex = io.memris.storage.Selection.index(ref);
-            results.add(materializer.materialize(plan.kernel(), rowIndex));
+            T entity = materializer.materialize(plan.kernel(), rowIndex);
+            hydrateJoins(entity, rowIndex, query);
+            results.add(entity);
         }
 
         return switch (query.returnKind()) {
@@ -355,7 +420,7 @@ public final class RepositoryRuntime<T> {
             for (int i = 0; i < allRows.length; i++) {
                 packed[i] = io.memris.storage.Selection.pack(allRows[i], plan.table().currentGeneration());
             }
-            return new io.memris.storage.SelectionImpl(packed);
+            return applyJoins(query, args, new io.memris.storage.SelectionImpl(packed));
         }
 
         Selection result = plan.kernel().executeCondition(conditions[0], args);
@@ -365,7 +430,53 @@ public final class RepositoryRuntime<T> {
             result = result.intersect(next);
         }
 
-        return result;
+        return applyJoins(query, args, result);
+    }
+
+    private Selection applyJoins(CompiledQuery query, Object[] args, Selection baseSelection) {
+        CompiledQuery.CompiledJoin[] joins = query.joins();
+        if (joins == null || joins.length == 0) {
+            return baseSelection;
+        }
+
+        Selection current = baseSelection;
+        for (CompiledQuery.CompiledJoin join : joins) {
+            Selection targetSelection = evaluateJoinPredicates(join, args);
+            current = join.executor().filterJoin(plan.table(), join.targetTable(), current, targetSelection);
+        }
+        return current;
+    }
+
+    private Selection evaluateJoinPredicates(CompiledQuery.CompiledJoin join, Object[] args) {
+        CompiledQuery.CompiledJoinPredicate[] predicates = join.predicates();
+        if (predicates == null || predicates.length == 0) {
+            return null;
+        }
+
+        Selection selection = null;
+        for (CompiledQuery.CompiledJoinPredicate predicate : predicates) {
+            CompiledQuery.CompiledCondition compiled = CompiledQuery.CompiledCondition.of(
+                predicate.columnIndex(),
+                predicate.operator(),
+                predicate.argumentIndex(),
+                predicate.ignoreCase()
+            );
+            Selection next = join.targetKernel().executeCondition(compiled, args);
+            selection = (selection == null) ? next : selection.intersect(next);
+        }
+
+        return selection;
+    }
+
+    private void hydrateJoins(T entity, int rowIndex, CompiledQuery query) {
+        CompiledQuery.CompiledJoin[] joins = query.joins();
+        if (joins == null || joins.length == 0) {
+            return;
+        }
+
+        for (CompiledQuery.CompiledJoin join : joins) {
+            join.materializer().hydrate(entity, rowIndex, plan.table(), join.targetTable(), join.targetKernel(), join.targetMaterializer());
+        }
     }
 
     public RepositoryPlan<T> plan() {

@@ -71,6 +71,16 @@ public class StringTypeHandler extends AbstractTypeHandler<String> {
         throw new UnsupportedOperationException(
             "BETWEEN not supported for String type");
     }
+
+    @Override
+    public Selection executeCondition(GeneratedTable table, int columnIndex,
+                                      io.memris.spring.plan.LogicalQuery.Operator operator, String value, boolean ignoreCase) {
+        return switch (operator) {
+            case CONTAINING -> executeContaining(table, columnIndex, value, ignoreCase);
+            case NOT_CONTAINING -> executeNotContaining(table, columnIndex, value, ignoreCase);
+            default -> super.executeCondition(table, columnIndex, operator, value, ignoreCase);
+        };
+    }
     
     @Override
     protected Selection executeIn(GeneratedTable table, int columnIndex, String value) {
@@ -98,7 +108,37 @@ public class StringTypeHandler extends AbstractTypeHandler<String> {
      * Not yet implemented.
      */
     public Selection executeContaining(GeneratedTable table, int columnIndex, String substring, boolean ignoreCase) {
-        throw new UnsupportedOperationException("CONTAINING operator not yet implemented for String");
+        if (substring == null) {
+            return createSelection(table, new int[0]);
+        }
+        int[] rows = table.scanAll();
+        int[] matches = new int[rows.length];
+        int count = 0;
+        if (ignoreCase) {
+            String needle = substring.toLowerCase();
+            for (int row : rows) {
+                String value = table.readString(columnIndex, row);
+                if (value != null && value.toLowerCase().contains(needle)) {
+                    matches[count++] = row;
+                }
+            }
+        } else {
+            for (int row : rows) {
+                String value = table.readString(columnIndex, row);
+                if (value != null && value.contains(substring)) {
+                    matches[count++] = row;
+                }
+            }
+        }
+        int[] trimmed = new int[count];
+        System.arraycopy(matches, 0, trimmed, 0, count);
+        return createSelection(table, trimmed);
+    }
+
+    public Selection executeNotContaining(GeneratedTable table, int columnIndex, String substring, boolean ignoreCase) {
+        int[] all = table.scanAll();
+        Selection containing = executeContaining(table, columnIndex, substring, ignoreCase);
+        return subtractSelections(table, all, containing);
     }
     
     /**

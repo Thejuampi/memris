@@ -23,6 +23,8 @@ public record CompiledQuery(
         LogicalQuery.ReturnKind returnKind,
         /** Pre-compiled conditions with resolved column indices */
         CompiledCondition[] conditions,
+        /** Pre-compiled joins */
+        CompiledJoin[] joins,
         /** Number of method parameters */
         int arity
 ) {
@@ -39,7 +41,20 @@ public record CompiledQuery(
             OpCode opCode,
             LogicalQuery.ReturnKind returnKind,
             CompiledCondition[] conditions) {
-        return new CompiledQuery(opCode, returnKind, conditions, conditions.length);
+        return new CompiledQuery(opCode, returnKind, conditions, new CompiledJoin[0], conditions.length);
+    }
+
+    public static CompiledQuery of(
+            OpCode opCode,
+            LogicalQuery.ReturnKind returnKind,
+            CompiledCondition[] conditions,
+            CompiledJoin[] joins,
+            int arity) {
+        return new CompiledQuery(opCode, returnKind, conditions, joins, arity);
+    }
+
+    public CompiledQuery withJoins(CompiledJoin[] joins) {
+        return new CompiledQuery(opCode, returnKind, conditions, joins, arity);
     }
 
     /**
@@ -84,5 +99,52 @@ public record CompiledQuery(
         public boolean ignoreCase() {
             return ignoreCase;
         }
+    }
+
+    /**
+     * Pre-compiled join metadata.
+     */
+    public record CompiledJoin(
+            String joinPath,
+            Class<?> sourceEntity,
+            Class<?> targetEntity,
+            int sourceColumnIndex,
+            int targetColumnIndex,
+            byte fkTypeCode,
+            LogicalQuery.Join.JoinType joinType,
+            String relationshipFieldName,
+            CompiledJoinPredicate[] predicates,
+            io.memris.storage.GeneratedTable targetTable,
+            io.memris.spring.runtime.HeapRuntimeKernel targetKernel,
+            io.memris.spring.runtime.EntityMaterializer<?> targetMaterializer,
+            io.memris.spring.runtime.JoinExecutor executor,
+            io.memris.spring.runtime.JoinMaterializer materializer
+    ) {
+        public CompiledJoin {
+            if (joinPath == null || joinPath.isBlank()) {
+                throw new IllegalArgumentException("joinPath required");
+            }
+        }
+
+        public CompiledJoin withRuntime(io.memris.storage.GeneratedTable targetTable,
+                                        io.memris.spring.runtime.HeapRuntimeKernel targetKernel,
+                                        io.memris.spring.runtime.EntityMaterializer<?> targetMaterializer,
+                                        io.memris.spring.runtime.JoinExecutor executor,
+                                        io.memris.spring.runtime.JoinMaterializer materializer) {
+            return new CompiledJoin(joinPath, sourceEntity, targetEntity, sourceColumnIndex, targetColumnIndex, fkTypeCode,
+                    joinType, relationshipFieldName, predicates, targetTable, targetKernel, targetMaterializer, executor, materializer);
+        }
+    }
+
+    /**
+     * Pre-compiled predicate that applies to a joined target entity.
+     */
+    public record CompiledJoinPredicate(
+            String joinPath,
+            int columnIndex,
+            LogicalQuery.Operator operator,
+            int argumentIndex,
+            boolean ignoreCase
+    ) {
     }
 }

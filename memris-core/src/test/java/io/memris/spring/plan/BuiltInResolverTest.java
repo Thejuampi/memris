@@ -7,7 +7,6 @@ import java.lang.reflect.Method;
 import java.util.List;
 import java.util.Map;
 
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import io.memris.spring.scaffold.RepositoryMethodIntrospector.MethodKey;
@@ -62,15 +61,20 @@ class BuiltInResolverTest {
     }
 
     // ==================== Test 2: Tie explodes ====================
-    // Note: Testing true ambiguity requires duplicate MethodKey entries, which Map doesn't allow.
-    // For now, this test documents that the resolver WOULD throw on ties.
-    // A proper test would require a custom Map implementation that allows duplicates.
 
     @Test
-    @Disabled("Requires custom Map to test duplicate MethodKey scenarios")
     void throwsOnAmbiguousTies() {
-        // TODO: Implement with custom Map that allows duplicate keys
-        // For now, the resolver is designed to throw on ties (same specificity score)
+        // String implements both Comparable and Serializable, creating equal specificity matches.
+        Map<MethodKey, OpCode> builtIns = Map.of(
+            new MethodKey("process", List.of(Comparable.class)), OpCode.FIND_ALL,
+            new MethodKey("process", List.of(java.io.Serializable.class)), OpCode.FIND_BY_ID
+        );
+
+        Method method = getMethod(TestRepo.class, "process", String.class);
+
+        assertThatThrownBy(() -> BuiltInResolver.resolveBuiltInOpCode(method, builtIns))
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining("Ambiguous built-in match");
     }
 
     // ==================== Test 3: Most-specific wins ====================

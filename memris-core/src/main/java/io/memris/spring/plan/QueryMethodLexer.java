@@ -172,7 +172,9 @@ public final class QueryMethodLexer {
                 // Relationship / traversal support: check annotations on FIELD (not on type)
                 boolean isRelationship =
                         field.isAnnotationPresent(ManyToOne.class) ||
-                        field.isAnnotationPresent(OneToOne.class);
+                        field.isAnnotationPresent(OneToOne.class) ||
+                        field.isAnnotationPresent(io.memris.spring.ManyToOne.class) ||
+                        field.isAnnotationPresent(io.memris.spring.OneToOne.class);
 
                 // Embedded/value-object traversal support
                 boolean isEmbedded =
@@ -180,7 +182,8 @@ public final class QueryMethodLexer {
                         fieldType.isAnnotationPresent(Embeddable.class);
 
                 // Entity traversal support (type-level annotation)
-                boolean isEntityType = fieldType.isAnnotationPresent(Entity.class);
+                boolean isEntityType = fieldType.isAnnotationPresent(Entity.class)
+                        || fieldType.isAnnotationPresent(io.memris.spring.Entity.class);
 
                 if (isRelationship || isEmbedded || isEntityType) {
                     relatedTypes.put(fieldName.toLowerCase(), fieldType.getName());

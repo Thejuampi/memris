@@ -83,6 +83,10 @@ public final class HeapRuntimeKernel {
         int columnIndex = cc.columnIndex();
         LogicalQuery.Operator operator = cc.operator();
         Object value = args[cc.argumentIndex()];
+
+        if (operator == LogicalQuery.Operator.BETWEEN) {
+            return executeBetween(columnIndex, cc.argumentIndex(), args);
+        }
         
         byte typeCode = table.typeCodeAt(columnIndex);
         TypeHandler handler = handlerRegistry.getHandler(typeCode);
@@ -97,5 +101,36 @@ public final class HeapRuntimeKernel {
         Object convertedValue = value != null ? handler.convertValue(value) : null;
         
         return handler.executeCondition(table, columnIndex, operator, convertedValue, cc.ignoreCase());
+    }
+
+    private Selection executeBetween(int columnIndex, int argIndex, Object[] args) {
+        if (argIndex + 1 >= args.length) {
+            throw new IllegalArgumentException("BETWEEN requires two arguments");
+        }
+        Object minObj = args[argIndex];
+        Object maxObj = args[argIndex + 1];
+        byte typeCode = table.typeCodeAt(columnIndex);
+        return switch (typeCode) {
+            case io.memris.spring.TypeCodes.TYPE_LONG -> {
+                long min = ((Number) minObj).longValue();
+                long max = ((Number) maxObj).longValue();
+                yield createSelection(table, table.scanBetweenLong(columnIndex, min, max));
+            }
+            case io.memris.spring.TypeCodes.TYPE_INT -> {
+                int min = ((Number) minObj).intValue();
+                int max = ((Number) maxObj).intValue();
+                yield createSelection(table, table.scanBetweenInt(columnIndex, min, max));
+            }
+            default -> throw new UnsupportedOperationException("BETWEEN not supported for type code: " + typeCode);
+        };
+    }
+
+    private Selection createSelection(GeneratedTable table, int[] indices) {
+        long[] packed = new long[indices.length];
+        long gen = table.currentGeneration();
+        for (int i = 0; i < indices.length; i++) {
+            packed[i] = io.memris.storage.Selection.pack(indices[i], gen);
+        }
+        return new io.memris.storage.SelectionImpl(packed);
     }
 }
