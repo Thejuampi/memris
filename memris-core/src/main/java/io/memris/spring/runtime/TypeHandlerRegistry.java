@@ -1,9 +1,13 @@
 package io.memris.spring.runtime;
 
 import io.memris.spring.runtime.handlers.BooleanTypeHandler;
+import io.memris.spring.runtime.handlers.ByteTypeHandler;
+import io.memris.spring.runtime.handlers.CharTypeHandler;
 import io.memris.spring.runtime.handlers.DoubleTypeHandler;
+import io.memris.spring.runtime.handlers.FloatTypeHandler;
 import io.memris.spring.runtime.handlers.IntTypeHandler;
 import io.memris.spring.runtime.handlers.LongTypeHandler;
+import io.memris.spring.runtime.handlers.ShortTypeHandler;
 import io.memris.spring.runtime.handlers.StringTypeHandler;
 
 import java.util.HashMap;
@@ -71,6 +75,10 @@ public class TypeHandlerRegistry {
         registerHandler(new StringTypeHandler());
         registerHandler(new BooleanTypeHandler());
         registerHandler(new DoubleTypeHandler());
+        registerHandler(new ByteTypeHandler());
+        registerHandler(new ShortTypeHandler());
+        registerHandler(new CharTypeHandler());
+        registerHandler(new FloatTypeHandler());
     }
     
     /**
