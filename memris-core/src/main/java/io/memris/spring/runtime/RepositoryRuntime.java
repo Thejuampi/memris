@@ -99,6 +99,7 @@ public final class RepositoryRuntime<T> {
     }
 
     private Object executeCompiledQuery(CompiledQuery query, Object[] args) {
+        Object[] queryArgs = null;
         switch (query.opCode()) {
             case SAVE_ONE:
                 return executeSaveOne(args);
@@ -109,13 +110,16 @@ public final class RepositoryRuntime<T> {
             case FIND_ALL:
                 return executeFindAll();
             case FIND:
-                return executeFind(query, args);
+                queryArgs = buildQueryArgs(query, args);
+                return executeFind(query, queryArgs);
             case COUNT:
-                return executeCount(query, args);
+                queryArgs = buildQueryArgs(query, args);
+                return executeCount(query, queryArgs);
             case COUNT_ALL:
                 return executeCountAll();
             case EXISTS:
-                return executeExists(query, args);
+                queryArgs = buildQueryArgs(query, args);
+                return executeExists(query, queryArgs);
             case EXISTS_BY_ID:
                 return executeExistsById(args);
             case DELETE_ONE:
@@ -128,12 +132,40 @@ public final class RepositoryRuntime<T> {
                 executeDeleteById(args);
                 return null;
             case DELETE_QUERY:
-                return executeDeleteQuery(query, args);
+                queryArgs = buildQueryArgs(query, args);
+                return executeDeleteQuery(query, queryArgs);
             case DELETE_ALL_BY_ID:
                 return executeDeleteAllById(args);
             default:
                 throw new UnsupportedOperationException("OpCode not implemented: " + query.opCode());
         }
+    }
+
+    private Object[] buildQueryArgs(CompiledQuery query, Object[] args) {
+        int[] paramIndices = query.parameterIndices();
+        Object[] boundValues = query.boundValues();
+        int slotCount = 0;
+        if (paramIndices != null) {
+            slotCount = Math.max(slotCount, paramIndices.length);
+        }
+        if (boundValues != null) {
+            slotCount = Math.max(slotCount, boundValues.length);
+        }
+        if (slotCount == 0) {
+            return args != null ? args : new Object[0];
+        }
+        Object[] resolved = new Object[slotCount];
+        for (int i = 0; i < slotCount; i++) {
+            int methodIndex = (paramIndices != null && i < paramIndices.length) ? paramIndices[i] : -1;
+            if (methodIndex >= 0) {
+                resolved[i] = args[methodIndex];
+                continue;
+            }
+            if (boundValues != null && i < boundValues.length) {
+                resolved[i] = boundValues[i];
+            }
+        }
+        return resolved;
     }
 
     private T executeSaveOne(Object[] args) {
@@ -609,7 +641,10 @@ public final class RepositoryRuntime<T> {
         }
 
         LogicalQuery.Operator operator = condition.operator();
-        Object value = args[condition.argumentIndex()];
+        Object value = null;
+        if (operator != LogicalQuery.Operator.IS_NULL && operator != LogicalQuery.Operator.NOT_NULL) {
+            value = args[condition.argumentIndex()];
+        }
 
         if (operator == LogicalQuery.Operator.IN) {
             Selection selection = selectWithIndexForIn(fieldName, value);
