@@ -285,6 +285,9 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
         
         @RuntimeType
         public int[] intercept(@Argument(0) int columnIndex, @Argument(1) Long value, @This Object obj) throws Throwable {
+            if (columnIndex < 0 || columnIndex >= columnFields.size()) {
+                throw new IndexOutOfBoundsException("Column index out of range: " + columnIndex);
+            }
             ColumnFieldInfo fieldInfo = columnFields.get(columnIndex);
             Field field = obj.getClass().getDeclaredField(fieldInfo.fieldName());
             MethodHandle getter = lookup.unreflectGetter(field);
@@ -327,6 +330,9 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
         
         @RuntimeType
         public int[] intercept(@Argument(0) int columnIndex, @Argument(1) Integer value, @This Object obj) throws Throwable {
+            if (columnIndex < 0 || columnIndex >= columnFields.size()) {
+                throw new IndexOutOfBoundsException("Column index out of range: " + columnIndex);
+            }
             ColumnFieldInfo fieldInfo = columnFields.get(columnIndex);
             Field field = obj.getClass().getDeclaredField(fieldInfo.fieldName());
             MethodHandle getter = lookup.unreflectGetter(field);
@@ -411,15 +417,18 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
         
         @RuntimeType
         public int[] intercept(@Argument(0) int columnIndex, @Argument(1) String value, @This Object obj) throws Throwable {
+            if (columnIndex < 0 || columnIndex >= columnFields.size()) {
+                throw new IndexOutOfBoundsException("Column index out of range: " + columnIndex);
+            }
             ColumnFieldInfo fieldInfo = columnFields.get(columnIndex);
             Field field = obj.getClass().getDeclaredField(fieldInfo.fieldName());
             MethodHandle getter = lookup.unreflectGetter(field);
             PageColumnString column = (PageColumnString) getter.invoke(obj);
-            
+
             java.lang.reflect.Method allocatedMethod = AbstractTable.class.getDeclaredMethod("allocatedCount");
             allocatedMethod.setAccessible(true);
             int limit = (int) (long) allocatedMethod.invoke(obj);
-            
+
             int[] results = column.scanEqualsIgnoreCase(value, limit);
             return filterTombstoned(results, obj);
         }
@@ -452,7 +461,10 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
         }
         
         @RuntimeType
-        public int[] intercept(@Argument(0) int columnIndex, @Argument(1) Long min, @Argument(2) Long max, @This Object obj) throws Throwable {
+        public int[] intercept(@Argument(0) int columnIndex, @Argument(1) Long lower, @Argument(2) Long upper, @This Object obj) throws Throwable {
+            if (columnIndex < 0 || columnIndex >= columnFields.size()) {
+                throw new IndexOutOfBoundsException("Column index out of range: " + columnIndex);
+            }
             ColumnFieldInfo fieldInfo = columnFields.get(columnIndex);
             Field field = obj.getClass().getDeclaredField(fieldInfo.fieldName());
             MethodHandle getter = lookup.unreflectGetter(field);
@@ -462,7 +474,7 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
             allocatedMethod.setAccessible(true);
             int limit = (int) (long) allocatedMethod.invoke(obj);
             
-            int[] results = column.scanBetween(min, max, limit);
+            int[] results = column.scanBetween(lower, upper, limit);
             return filterTombstoned(results, obj);
         }
         
@@ -494,7 +506,10 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
         }
         
         @RuntimeType
-        public int[] intercept(@Argument(0) int columnIndex, @Argument(1) Integer min, @Argument(2) Integer max, @This Object obj) throws Throwable {
+        public int[] intercept(@Argument(0) int columnIndex, @Argument(1) Integer lower, @Argument(2) Integer upper, @This Object obj) throws Throwable {
+            if (columnIndex < 0 || columnIndex >= columnFields.size()) {
+                throw new IndexOutOfBoundsException("Column index out of range: " + columnIndex);
+            }
             ColumnFieldInfo fieldInfo = columnFields.get(columnIndex);
             Field field = obj.getClass().getDeclaredField(fieldInfo.fieldName());
             MethodHandle getter = lookup.unreflectGetter(field);
@@ -504,7 +519,7 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
             allocatedMethod.setAccessible(true);
             int limit = (int) (long) allocatedMethod.invoke(obj);
             
-            int[] results = column.scanBetween(min, max, limit);
+            int[] results = column.scanBetween(lower, upper, limit);
             return filterTombstoned(results, obj);
         }
         
@@ -537,6 +552,9 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
         
         @RuntimeType
         public int[] intercept(@Argument(0) int columnIndex, @Argument(1) long[] values, @This Object obj) throws Throwable {
+            if (columnIndex < 0 || columnIndex >= columnFields.size()) {
+                throw new IndexOutOfBoundsException("Column index out of range: " + columnIndex);
+            }
             ColumnFieldInfo fieldInfo = columnFields.get(columnIndex);
             Field field = obj.getClass().getDeclaredField(fieldInfo.fieldName());
             MethodHandle getter = lookup.unreflectGetter(field);
