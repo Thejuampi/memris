@@ -157,13 +157,6 @@ public final class RowIdBitSet implements MutableRowIdSet {
         return (int) value;
     }
 
-    private static final class State {
-        private final long[] words;
-        private final int size;
-
-        private State(long[] words, int size) {
-            this.words = words;
-            this.size = size;
-        }
+    private record State(long[] words, int size) {
     }
 }

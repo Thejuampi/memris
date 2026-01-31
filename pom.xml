@@ -284,6 +284,21 @@
                                 <targetJdk>${java.version}</targetJdk>
                             </configuration>
                         </execution>
+                        <execution>
+                            <id>pmd-suppresswarnings</id>
+                            <phase>verify</phase>
+                            <goals>
+                                <goal>check</goal>
+                            </goals>
+                            <configuration combine.self="override">
+                                <rulesets>
+                                    <ruleset>${maven.multiModuleProjectDirectory}/pmd-suppresswarnings.xml</ruleset>
+                                </rulesets>
+                                <printFailingErrors>true</printFailingErrors>
+                                <failOnViolation>false</failOnViolation>
+                                <targetJdk>${java.version}</targetJdk>
+                            </configuration>
+                        </execution>
                     </executions>
                 </plugin>
             </plugins>

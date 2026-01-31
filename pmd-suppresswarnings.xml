@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ruleset name="Memris SuppressWarnings Review"
+         xmlns="http://pmd.sourceforge.net/ruleset/2.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://pmd.sourceforge.net/ruleset/2.0.0 https://pmd.sourceforge.io/ruleset_2_0_0.xsd">
+
+    <description>
+        PMD rules for reviewing @SuppressWarnings annotations in Memris project.
+        These rules help identify suppressions that may be unnecessary.
+
+        Usage: mvn pmd:check -Dpmd.rulesets=pmd-suppresswarnings.xml
+    </description>
+
+    <!-- Custom XPath rule to detect all @SuppressWarnings annotations -->
+    <rule name="ReviewSuppressWarnings"
+          language="java"
+          message="Review @SuppressWarnings annotation at {1}. Verify it is still needed by compiling without it."
+          class="net.sourceforge.pmd.lang.rule.XPathRule"
+          externalInfoUrl="">
+        <description>
+            Identifies all @SuppressWarnings annotations for manual review.
+            Developers should verify each suppression is still necessary by
+            temporarily removing it and checking if compiler warnings appear.
+
+            Common suppressions to review:
+            - "unchecked" - Generic type casts
+            - "rawtypes" - Raw type usage
+            - "unused" - Unused parameters/variables
+            - "deprecation" - Deprecated API usage
+
+            To verify if a suppression is needed:
+            1. Remove the @SuppressWarnings annotation
+            2. Compile the code
+            3. If no warnings appear, the suppression is unnecessary and can be removed
+
+            Usage: mvn -pl memris-core pmd:check -Dpmd.rulesets=pmd-suppresswarnings.xml
+        </description>
+        <priority>4</priority>
+        <properties>
+            <property name="xpath">
+                <value>
+                    //Annotation/Name[@SimpleName='SuppressWarnings']/..
+                </value>
+            </property>
+        </properties>
+        <example>
+            <![CDATA[
+// BAD - Suppressing warnings unnecessarily
+@SuppressWarnings("unchecked")
+List<String> list = new ArrayList<>();
+
+// GOOD - Only suppress when actually needed
+@SuppressWarnings("unchecked")  // Needed for unchecked cast
+List<String> list = (List<String>) object;
+            ]]>
+        </example>
+    </rule>
+
+</ruleset>

@@ -8,6 +8,7 @@ import jakarta.persistence.OneToOne;
 
 import java.lang.reflect.Field;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -152,27 +153,24 @@ public final class QueryMethodLexer {
 
     private static final ConcurrentMap<Class<?>, EntityMetadata> ENTITY_METADATA_CACHE = new ConcurrentHashMap<>();
 
-    private static final class EntityMetadata {
-        final Map<String, Field> fields; // key: lower-case field name
-        final Map<String, String> relatedEntityTypes; // key: lower-case field name -> fqcn
-
-        EntityMetadata(Map<String, Field> fields, Map<String, String> relatedEntityTypes) {
-            this.fields = fields;
-            this.relatedEntityTypes = relatedEntityTypes;
-        }
+    /**
+     * @param fields             key: lower-case field name
+     * @param relatedEntityTypes key: lower-case field name -> fqcn
+     */
+    private record EntityMetadata(Map<String, Field> fields, Map<String, String> relatedEntityTypes) {
 
         Field getField(String name) {
-            return fields.get(name.toLowerCase());
-        }
+                return fields.get(name.toLowerCase());
+            }
 
-        boolean hasField(String name) {
-            return fields.containsKey(name.toLowerCase());
-        }
+            boolean hasField(String name) {
+                return fields.containsKey(name.toLowerCase());
+            }
 
-        String getRelatedEntityType(String fieldName) {
-            return relatedEntityTypes.get(fieldName.toLowerCase());
+            String getRelatedEntityType(String fieldName) {
+                return relatedEntityTypes.get(fieldName.toLowerCase());
+            }
         }
-    }
 
     private static EntityMetadata extractEntityMetadata(Class<?> entityClass) {
         return ENTITY_METADATA_CACHE.computeIfAbsent(entityClass, clazz -> {
@@ -221,9 +219,7 @@ public final class QueryMethodLexer {
 
         while (current != null && current != Object.class) {
             Field[] declared = current.getDeclaredFields();
-            for (Field f : declared) {
-                fields.add(f);
-            }
+            Collections.addAll(fields, declared);
             current = current.getSuperclass();
         }
 

@@ -121,7 +121,7 @@ public final class MetadataExtractor {
                 } else {
                     // Regular field
                     TypeConverter<?, ?> converter = TypeConverterRegistry.getInstance().getConverter(field.getType());
-                    Class<?> storageType = converter != null ? converter.getStorageType() : field.getType();
+                    Class<?> storageType = converter != null ? converter.storageType() : field.getType();
                     byte typeCode = resolveTypeCode(field.getType(), storageType);
                     if (converter != null) {
                         converters.put(field.getName(), converter);
@@ -479,7 +479,7 @@ public final class MetadataExtractor {
     private static Class<?> resolveStorageType(Class<?> fieldType) {
         TypeConverter<?, ?> converter = TypeConverterRegistry.getInstance().getConverter(fieldType);
         if (converter != null) {
-            return converter.getStorageType();
+            return converter.storageType();
         }
         return fieldType;
     }

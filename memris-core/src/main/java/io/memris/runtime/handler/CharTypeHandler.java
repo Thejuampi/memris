@@ -39,30 +39,30 @@ public class CharTypeHandler extends AbstractTypeHandler<Character> {
     
     @Override
     protected Selection executeEquals(GeneratedTable table, int columnIndex, Character value, boolean ignoreCase) {
-        return createSelection(table, table.scanEqualsInt(columnIndex, (int) value.charValue()));
+        return createSelection(table, table.scanEqualsInt(columnIndex, value.charValue()));
     }
     
     @Override
     protected Selection executeGreaterThan(GeneratedTable table, int columnIndex, Character value) {
-        int charCode = (int) value.charValue();
+        int charCode = value.charValue();
         return createSelection(table, table.scanBetweenInt(columnIndex, charCode + 1, Character.MAX_VALUE));
     }
     
     @Override
     protected Selection executeGreaterThanOrEqual(GeneratedTable table, int columnIndex, Character value) {
-        int charCode = (int) value.charValue();
+        int charCode = value.charValue();
         return createSelection(table, table.scanBetweenInt(columnIndex, charCode, Character.MAX_VALUE));
     }
     
     @Override
     protected Selection executeLessThan(GeneratedTable table, int columnIndex, Character value) {
-        int charCode = (int) value.charValue();
+        int charCode = value.charValue();
         return createSelection(table, table.scanBetweenInt(columnIndex, Character.MIN_VALUE, charCode - 1));
     }
     
     @Override
     protected Selection executeLessThanOrEqual(GeneratedTable table, int columnIndex, Character value) {
-        int charCode = (int) value.charValue();
+        int charCode = value.charValue();
         return createSelection(table, table.scanBetweenInt(columnIndex, Character.MIN_VALUE, charCode));
     }
     
@@ -76,7 +76,7 @@ public class CharTypeHandler extends AbstractTypeHandler<Character> {
      * Execute between with explicit range.
      */
     public Selection executeBetweenRange(GeneratedTable table, int columnIndex, char min, char max) {
-        return createSelection(table, table.scanBetweenInt(columnIndex, (int) min, (int) max));
+        return createSelection(table, table.scanBetweenInt(columnIndex, min, max));
     }
     
     @Override
@@ -90,7 +90,7 @@ public class CharTypeHandler extends AbstractTypeHandler<Character> {
     public Selection executeIn(GeneratedTable table, int columnIndex, char[] values) {
         int[] intValues = new int[values.length];
         for (int i = 0; i < values.length; i++) {
-            intValues[i] = (int) values[i];
+            intValues[i] = values[i];
         }
         return createSelection(table, table.scanInInt(columnIndex, intValues));
     }

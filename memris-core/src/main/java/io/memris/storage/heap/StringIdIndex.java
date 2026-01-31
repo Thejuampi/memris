@@ -67,5 +67,5 @@ public final class StringIdIndex {
         index.clear();
     }
 
-    public static final record RowIdAndGeneration(RowId rowId, long generation) {}
+    public record RowIdAndGeneration(RowId rowId, long generation) {}
 }

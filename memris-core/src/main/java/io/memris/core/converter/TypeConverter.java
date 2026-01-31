@@ -12,12 +12,12 @@ public interface TypeConverter<J, S> {
     /**
      * Get the Java type this converter handles.
      */
-    Class<J> getJavaType();
+    Class<J> javaType();
 
     /**
      * Get the storage type this converter uses.
      */
-    Class<S> getStorageType();
+    Class<S> storageType();
 
     /**
      * Convert Java entity value to storage value for persistence.

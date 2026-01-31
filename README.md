@@ -79,7 +79,7 @@ import io.memris.repository.MemrisRepositoryFactory;
 import io.memris.core.MemrisArena;
 
 public class Main {
-    public static void main(String[] args) throws Exception {
+    static void main(String[] args) throws Exception {
         MemrisRepositoryFactory factory = new MemrisRepositoryFactory();
         MemrisArena arena = factory.createArena();
         

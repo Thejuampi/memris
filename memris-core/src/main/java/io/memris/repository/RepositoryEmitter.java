@@ -52,7 +52,6 @@ public final class RepositoryEmitter {
      * @param <R>                 the repository interface type
      * @return an instance of the generated repository implementation
      */
-    @SuppressWarnings("unchecked")
     public static <T, R extends MemrisRepository<T>> R createRepository(Class<R> repositoryInterface,
             MemrisArena arena) {
         RepositoryEmitter emitter = new RepositoryEmitter();
@@ -451,7 +450,6 @@ public final class RepositoryEmitter {
      * @param <R>                 the repository interface type
      * @return an instance of the generated repository implementation
      */
-    @SuppressWarnings("unchecked")
     public <T, R extends MemrisRepository<T>> R emitAndInstantiate(Class<R> repositoryInterface,
             RepositoryRuntime<T> runtime) {
         try {

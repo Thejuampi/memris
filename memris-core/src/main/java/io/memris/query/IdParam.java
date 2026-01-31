@@ -1,5 +1,7 @@
 package io.memris.query;
 
+import io.memris.repository.RepositoryMethodIntrospector;
+
 /**
  * Marker type for ID parameters in built-in method matching.
  * <p>
@@ -13,7 +15,7 @@ package io.memris.query;
  * This has zero runtime overhead - it's only used during method introspection
  * at repository creation time (build-time, not hot-path).
  *
- * @see MethodKey
+ * @see RepositoryMethodIntrospector.MethodKey
  * @see QueryPlanner
  */
 public final class IdParam {
@@ -41,10 +43,7 @@ public final class IdParam {
             return false;
         }
         // Arrays are batch operations
-        if (type.isArray()) {
-            return false;
-        }
+        return !type.isArray();
         // Everything else (Long, UUID, String, value objects) is valid
-        return true;
     }
 }

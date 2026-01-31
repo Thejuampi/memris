@@ -75,7 +75,7 @@ public final class TypeConverterRegistry {
 
     @SuppressWarnings("unchecked")
     public <J, S> void register(TypeConverter<J, S> converter) {
-        converters.put(converter.getJavaType(), converter);
+        converters.put(converter.javaType(), converter);
     }
 
     @SuppressWarnings("unchecked")
@@ -113,78 +113,45 @@ public final class TypeConverterRegistry {
 
     // Default converters
 
-    private static final class IdentityConverter<J, S> implements TypeConverter<J, S> {
-        private final Class<J> javaType;
-        private final Class<S> storageType;
-
-        IdentityConverter(Class<J> javaType, Class<S> storageType) {
-            this.javaType = javaType;
-            this.storageType = storageType;
-        }
+    private record IdentityConverter<J, S>(Class<J> javaType, Class<S> storageType) implements TypeConverter<J, S> {
 
         @Override
-        public Class<J> getJavaType() {
-            return javaType;
+            @SuppressWarnings("unchecked")
+            public S toStorage(J javaValue) {
+                return (S) javaValue;
+            }
+
+            @Override
+            @SuppressWarnings("unchecked")
+            public J fromStorage(S storageValue) {
+                return (J) storageValue;
+            }
         }
+
+    private record BoxedToPrimitiveConverter<J, S>(Class<J> javaType,
+                                                   Class<S> storageType) implements TypeConverter<J, S> {
 
         @Override
-        public Class<S> getStorageType() {
-            return storageType;
-        }
+            @SuppressWarnings("unchecked")
+            public S toStorage(J javaValue) {
+                return (S) javaValue;
+            }
 
-        @Override
-        @SuppressWarnings("unchecked")
-        public S toStorage(J javaValue) {
-            return (S) javaValue;
+            @Override
+            @SuppressWarnings("unchecked")
+            public J fromStorage(S storageValue) {
+                return (J) storageValue;
+            }
         }
-
-        @Override
-        @SuppressWarnings("unchecked")
-        public J fromStorage(S storageValue) {
-            return (J) storageValue;
-        }
-    }
-
-    private static final class BoxedToPrimitiveConverter<J, S> implements TypeConverter<J, S> {
-        private final Class<J> javaType;
-        private final Class<S> storageType;
-
-        BoxedToPrimitiveConverter(Class<J> javaType, Class<S> storageType) {
-            this.javaType = javaType;
-            this.storageType = storageType;
-        }
-
-        @Override
-        public Class<J> getJavaType() {
-            return javaType;
-        }
-
-        @Override
-        public Class<S> getStorageType() {
-            return storageType;
-        }
-
-        @Override
-        @SuppressWarnings("unchecked")
-        public S toStorage(J javaValue) {
-            return (S) javaValue;
-        }
-
-        @Override
-        @SuppressWarnings("unchecked")
-        public J fromStorage(S storageValue) {
-            return (J) storageValue;
-        }
-    }
 
     private static final class UUIDConverter implements TypeConverter<UUID, String> {
         @Override
-        public Class<UUID> getJavaType() {
+        public Class<UUID> javaType() {
             return UUID.class;
         }
 
         @Override
-        public Class<String> getStorageType() {
+        public Class<String> storageType() {
             return String.class;
         }
 
@@ -201,12 +168,12 @@ public final class TypeConverterRegistry {
 
     private static final class BigDecimalConverter implements TypeConverter<BigDecimal, String> {
         @Override
-        public Class<BigDecimal> getJavaType() {
+        public Class<BigDecimal> javaType() {
             return BigDecimal.class;
         }
 
         @Override
-        public Class<String> getStorageType() {
+        public Class<String> storageType() {
             return String.class;
         }
 
@@ -223,12 +190,12 @@ public final class TypeConverterRegistry {
 
     private static final class BigIntegerConverter implements TypeConverter<BigInteger, String> {
         @Override
-        public Class<BigInteger> getJavaType() {
+        public Class<BigInteger> javaType() {
             return BigInteger.class;
         }
 
         @Override
-        public Class<String> getStorageType() {
+        public Class<String> storageType() {
             return String.class;
         }
 
@@ -245,12 +212,12 @@ public final class TypeConverterRegistry {
 
     private static final class LocalDateLongConverter implements TypeConverter<LocalDate, Long> {
         @Override
-        public Class<LocalDate> getJavaType() {
+        public Class<LocalDate> javaType() {
             return LocalDate.class;
         }
 
         @Override
-        public Class<Long> getStorageType() {
+        public Class<Long> storageType() {
             return long.class;
         }
 
@@ -267,12 +234,12 @@ public final class TypeConverterRegistry {
 
     private static final class LocalDateTimeLongConverter implements TypeConverter<LocalDateTime, Long> {
         @Override
-        public Class<LocalDateTime> getJavaType() {
+        public Class<LocalDateTime> javaType() {
             return LocalDateTime.class;
         }
 
         @Override
-        public Class<Long> getStorageType() {
+        public Class<Long> storageType() {
             return long.class;
         }
 
@@ -290,12 +257,12 @@ public final class TypeConverterRegistry {
 
     private static final class LocalTimeConverter implements TypeConverter<LocalTime, String> {
         @Override
-        public Class<LocalTime> getJavaType() {
+        public Class<LocalTime> javaType() {
             return LocalTime.class;
         }
 
         @Override
-        public Class<String> getStorageType() {
+        public Class<String> storageType() {
             return String.class;
         }
 
@@ -312,12 +279,12 @@ public final class TypeConverterRegistry {
 
     private static final class InstantLongConverter implements TypeConverter<Instant, Long> {
         @Override
-        public Class<Instant> getJavaType() {
+        public Class<Instant> javaType() {
             return Instant.class;
         }
 
         @Override
-        public Class<Long> getStorageType() {
+        public Class<Long> storageType() {
             return long.class;
         }
 
@@ -334,12 +301,12 @@ public final class TypeConverterRegistry {
 
     private static final class DateLongConverter implements TypeConverter<Date, Long> {
         @Override
-        public Class<Date> getJavaType() {
+        public Class<Date> javaType() {
             return Date.class;
         }
 
         @Override
-        public Class<Long> getStorageType() {
+        public Class<Long> storageType() {
             return long.class;
         }
 
@@ -356,12 +323,12 @@ public final class TypeConverterRegistry {
 
     private static final class SqlDateConverter implements TypeConverter<java.sql.Date, String> {
         @Override
-        public Class<java.sql.Date> getJavaType() {
+        public Class<java.sql.Date> javaType() {
             return java.sql.Date.class;
         }
 
         @Override
-        public Class<String> getStorageType() {
+        public Class<String> storageType() {
             return String.class;
         }
 
@@ -379,12 +346,12 @@ public final class TypeConverterRegistry {
 
     private static final class SqlTimestampConverter implements TypeConverter<java.sql.Timestamp, String> {
         @Override
-        public Class<java.sql.Timestamp> getJavaType() {
+        public Class<java.sql.Timestamp> javaType() {
             return java.sql.Timestamp.class;
         }
 
         @Override
-        public Class<String> getStorageType() {
+        public Class<String> storageType() {
             return String.class;
         }
 

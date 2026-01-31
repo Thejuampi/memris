@@ -2326,7 +2326,7 @@ public final class RepositoryRuntime<T> {
 
     private void hydrateJoins(T entity, int rowIndex, CompiledQuery query) {
         CompiledQuery.CompiledJoin[] joins = query.joins();
-        if (joins == null || joins.length == 0) {
+        if (joins == null) {
             return;
         }
 

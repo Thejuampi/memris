@@ -1,15 +1,12 @@
 package io.memris.kernel;
 
-public final class RowIdSetFactory {
+public record RowIdSetFactory(int bitSetThreshold) {
     private static final int DEFAULT_BITSET_THRESHOLD = 4096;
 
-    private final int bitSetThreshold;
-
-    public RowIdSetFactory(int bitSetThreshold) {
+    public RowIdSetFactory {
         if (bitSetThreshold <= 0) {
             throw new IllegalArgumentException("bitSetThreshold must be positive");
         }
-        this.bitSetThreshold = bitSetThreshold;
     }
 
     public static RowIdSetFactory defaultFactory() {
@@ -33,9 +30,5 @@ public final class RowIdSetFactory {
             return bitSet;
         }
         return set;
-    }
-
-    public int bitSetThreshold() {
-        return bitSetThreshold;
     }
 }

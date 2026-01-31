@@ -13,7 +13,7 @@ package io.memris.core;
  * <p>
  * All configuration is immutable once built.
  *
- * @see MemrisRepositoryFactory
+ * @see io.memris.repository.MemrisRepositoryFactory
  */
 public final class MemrisConfiguration {
 

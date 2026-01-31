@@ -125,13 +125,6 @@ public final class RowIdArraySet implements MutableRowIdSet {
         };
     }
 
-    private static final class State {
-        private final long[] values;
-        private final int size;
-
-        private State(long[] values, int size) {
-            this.values = values;
-            this.size = size;
-        }
+    private record State(long[] values, int size) {
     }
 }

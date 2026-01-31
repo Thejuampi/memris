@@ -4,7 +4,9 @@ import io.memris.core.EntityMetadata;
 import io.memris.core.EntityMetadata.FieldMapping;
 import io.memris.core.TypeCodes;
 import io.memris.core.converter.TypeConverter;
+import io.memris.storage.GeneratedTable;
 import net.bytebuddy.ByteBuddy;
+import net.bytebuddy.description.method.MethodDescription;
 import net.bytebuddy.description.modifier.FieldManifestation;
 import net.bytebuddy.description.modifier.TypeManifestation;
 import net.bytebuddy.description.modifier.Visibility;
@@ -128,395 +130,389 @@ public final class EntityMaterializerGenerator {
         }
     }
 
-    private static final class MaterializeAppender implements ByteCodeAppender {
-        private final Class<?> entityClass;
-        private final List<FieldInfo> fields;
-        private MaterializeAppender(Class<?> entityClass, List<FieldInfo> fields) {
-            this.entityClass = entityClass;
-            this.fields = fields;
-        }
+    private record MaterializeAppender(Class<?> entityClass, List<FieldInfo> fields) implements ByteCodeAppender {
 
         @Override
-        public Size apply(MethodVisitor mv, Implementation.Context context, net.bytebuddy.description.method.MethodDescription method) {
-            String entityInternal = Type.getInternalName(entityClass);
-            String materializerInternal = context.getInstrumentedType().getInternalName();
-            String tableInternal = Type.getInternalName(io.memris.storage.GeneratedTable.class);
-            String kernelInternal = Type.getInternalName(HeapRuntimeKernel.class);
-            int entityVar = 3;
-            int tableVar = 4;
-            int intVar = 5;
-            int longVar = 6;
-            int doubleVar = 8;
-            int floatVar = 10;
-            int objVar = 11;
+            public Size apply(MethodVisitor mv, Implementation.Context context, MethodDescription method) {
+                String entityInternal = Type.getInternalName(entityClass);
+                String materializerInternal = context.getInstrumentedType().getInternalName();
+                String tableInternal = Type.getInternalName(GeneratedTable.class);
+                String kernelInternal = Type.getInternalName(HeapRuntimeKernel.class);
+                int entityVar = 3;
+                int tableVar = 4;
+                int intVar = 5;
+                int longVar = 6;
+                int doubleVar = 8;
+                int floatVar = 10;
+                int objVar = 11;
 
-            mv.visitTypeInsn(Opcodes.NEW, entityInternal);
-            mv.visitInsn(Opcodes.DUP);
-            mv.visitMethodInsn(Opcodes.INVOKESPECIAL, entityInternal, "<init>", "()V", false);
-            mv.visitVarInsn(Opcodes.ASTORE, entityVar);
+                mv.visitTypeInsn(Opcodes.NEW, entityInternal);
+                mv.visitInsn(Opcodes.DUP);
+                mv.visitMethodInsn(Opcodes.INVOKESPECIAL, entityInternal, "<init>", "()V", false);
+                mv.visitVarInsn(Opcodes.ASTORE, entityVar);
 
-            mv.visitVarInsn(Opcodes.ALOAD, 1);
-            mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, kernelInternal, "table", "()Lio/memris/storage/GeneratedTable;", false);
-            mv.visitVarInsn(Opcodes.ASTORE, tableVar);
+                mv.visitVarInsn(Opcodes.ALOAD, 1);
+                mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, kernelInternal, "table", "()Lio/memris/storage/GeneratedTable;", false);
+                mv.visitVarInsn(Opcodes.ASTORE, tableVar);
 
-            for (FieldInfo info : fields) {
-                emitFieldWrite(mv, info, entityInternal, materializerInternal, tableInternal, entityVar, tableVar,
-                    intVar, longVar, doubleVar, floatVar, objVar);
+                for (FieldInfo info : fields) {
+                    emitFieldWrite(mv, info, entityInternal, materializerInternal, tableInternal, entityVar, tableVar,
+                            intVar, longVar, doubleVar, floatVar, objVar);
+                }
+
+                mv.visitVarInsn(Opcodes.ALOAD, entityVar);
+                mv.visitInsn(Opcodes.ARETURN);
+
+                return new Size(8, objVar + 1);
             }
 
-            mv.visitVarInsn(Opcodes.ALOAD, entityVar);
-            mv.visitInsn(Opcodes.ARETURN);
+            private void emitFieldWrite(MethodVisitor mv,
+                                        FieldInfo info,
+                                        String entityInternal,
+                                        String materializerInternal,
+                                        String tableInternal,
+                                        int entityVar,
+                                        int tableVar,
+                                        int intVar,
+                                        int longVar,
+                                        int doubleVar,
+                                        int floatVar,
+                                        int objVar) {
+                FieldMapping mapping = info.mapping;
+                Field field = info.field;
+                Class<?> fieldType = field.getType();
+                int colIdx = mapping.columnPosition();
 
-            return new Size(8, objVar + 1);
-        }
+                if (info.converter != null) {
+                    emitStorageAsObject(mv, mapping.typeCode(), tableInternal, tableVar, colIdx, objVar, intVar, longVar);
 
-        private void emitFieldWrite(MethodVisitor mv,
-                                    FieldInfo info,
-                                    String entityInternal,
-                                    String materializerInternal,
-                                    String tableInternal,
-                                    int entityVar,
-                                    int tableVar,
-                                    int intVar,
-                                    int longVar,
-                                    int doubleVar,
-                                    int floatVar,
-                                    int objVar) {
-            FieldMapping mapping = info.mapping;
-            Field field = info.field;
-            Class<?> fieldType = field.getType();
-            int colIdx = mapping.columnPosition();
+                    mv.visitVarInsn(Opcodes.ALOAD, 0);
+                    mv.visitFieldInsn(Opcodes.GETFIELD, materializerInternal, converterFieldName(info.converterIndex), "Lio/memris/core/converter/TypeConverter;");
+                    mv.visitVarInsn(Opcodes.ALOAD, objVar);
+                    mv.visitMethodInsn(Opcodes.INVOKESTATIC,
+                            Type.getInternalName(EntityMaterializerGenerator.class),
+                            "convertOrNull",
+                            "(Lio/memris/core/converter/TypeConverter;Ljava/lang/Object;)Ljava/lang/Object;",
+                            false);
+                    mv.visitVarInsn(Opcodes.ASTORE, objVar);
 
-            if (info.converter != null) {
-                emitStorageAsObject(mv, mapping.typeCode(), tableInternal, tableVar, colIdx, objVar, intVar, longVar);
+                    mv.visitVarInsn(Opcodes.ALOAD, entityVar);
+                    emitCastOrUnbox(mv, fieldType, objVar);
+                    mv.visitFieldInsn(Opcodes.PUTFIELD, entityInternal, field.getName(), Type.getDescriptor(fieldType));
+                    return;
+                }
 
-                mv.visitVarInsn(Opcodes.ALOAD, 0);
-                mv.visitFieldInsn(Opcodes.GETFIELD, materializerInternal, converterFieldName(info.converterIndex), "Lio/memris/core/converter/TypeConverter;");
-                mv.visitVarInsn(Opcodes.ALOAD, objVar);
+                if (!fieldType.isPrimitive() && mapping.typeCode() != TypeCodes.TYPE_STRING) {
+                    emitReadBoxed(mv, mapping.typeCode(), tableVar, colIdx, objVar);
+                    mv.visitVarInsn(Opcodes.ALOAD, entityVar);
+                    emitCastOrUnbox(mv, fieldType, objVar);
+                    mv.visitFieldInsn(Opcodes.PUTFIELD, entityInternal, field.getName(), Type.getDescriptor(fieldType));
+                    return;
+                }
+
+                emitStorageToLocal(mv, mapping.typeCode(), tableInternal, tableVar, colIdx, fieldType,
+                        intVar, longVar, doubleVar, floatVar, objVar);
+                mv.visitVarInsn(Opcodes.ALOAD, entityVar);
+                emitLoadForField(mv, mapping.typeCode(), fieldType, intVar, longVar, doubleVar, floatVar, objVar);
+                mv.visitFieldInsn(Opcodes.PUTFIELD, entityInternal, field.getName(), Type.getDescriptor(fieldType));
+            }
+
+            private void emitReadBoxed(MethodVisitor mv, byte typeCode, int tableVar, int colIdx, int objVar) {
+                String owner = Type.getInternalName(EntityMaterializerGenerator.class);
+                String methodName = switch (typeCode) {
+                    case TypeCodes.TYPE_LONG -> "readBoxedLong";
+                    case TypeCodes.TYPE_INT -> "readBoxedInt";
+                    case TypeCodes.TYPE_BOOLEAN -> "readBoxedBoolean";
+                    case TypeCodes.TYPE_BYTE -> "readBoxedByte";
+                    case TypeCodes.TYPE_SHORT -> "readBoxedShort";
+                    case TypeCodes.TYPE_CHAR -> "readBoxedChar";
+                    case TypeCodes.TYPE_FLOAT -> "readBoxedFloat";
+                    case TypeCodes.TYPE_DOUBLE -> "readBoxedDouble";
+                    default -> throw new IllegalStateException("Unsupported boxed type code: " + typeCode);
+                };
+                mv.visitVarInsn(Opcodes.ALOAD, tableVar);
+                pushInt(mv, colIdx);
+                mv.visitVarInsn(Opcodes.ILOAD, 2);
                 mv.visitMethodInsn(Opcodes.INVOKESTATIC,
-                    Type.getInternalName(EntityMaterializerGenerator.class),
-                    "convertOrNull",
-                    "(Lio/memris/core/converter/TypeConverter;Ljava/lang/Object;)Ljava/lang/Object;",
-                    false);
+                        owner,
+                        methodName,
+                        "(Lio/memris/storage/GeneratedTable;II)Ljava/lang/Object;",
+                        false);
                 mv.visitVarInsn(Opcodes.ASTORE, objVar);
-
-                mv.visitVarInsn(Opcodes.ALOAD, entityVar);
-                emitCastOrUnbox(mv, fieldType, objVar);
-                mv.visitFieldInsn(Opcodes.PUTFIELD, entityInternal, field.getName(), Type.getDescriptor(fieldType));
-                return;
             }
 
-            if (!fieldType.isPrimitive() && mapping.typeCode() != TypeCodes.TYPE_STRING) {
-                emitReadBoxed(mv, mapping.typeCode(), tableVar, colIdx, objVar);
-                mv.visitVarInsn(Opcodes.ALOAD, entityVar);
-                emitCastOrUnbox(mv, fieldType, objVar);
-                mv.visitFieldInsn(Opcodes.PUTFIELD, entityInternal, field.getName(), Type.getDescriptor(fieldType));
-                return;
-            }
-
-            emitStorageToLocal(mv, mapping.typeCode(), tableInternal, tableVar, colIdx, fieldType,
-                intVar, longVar, doubleVar, floatVar, objVar);
-            mv.visitVarInsn(Opcodes.ALOAD, entityVar);
-            emitLoadForField(mv, mapping.typeCode(), fieldType, intVar, longVar, doubleVar, floatVar, objVar);
-            mv.visitFieldInsn(Opcodes.PUTFIELD, entityInternal, field.getName(), Type.getDescriptor(fieldType));
-        }
-
-        private void emitReadBoxed(MethodVisitor mv, byte typeCode, int tableVar, int colIdx, int objVar) {
-            String owner = Type.getInternalName(EntityMaterializerGenerator.class);
-            String methodName = switch (typeCode) {
-                case TypeCodes.TYPE_LONG -> "readBoxedLong";
-                case TypeCodes.TYPE_INT -> "readBoxedInt";
-                case TypeCodes.TYPE_BOOLEAN -> "readBoxedBoolean";
-                case TypeCodes.TYPE_BYTE -> "readBoxedByte";
-                case TypeCodes.TYPE_SHORT -> "readBoxedShort";
-                case TypeCodes.TYPE_CHAR -> "readBoxedChar";
-                case TypeCodes.TYPE_FLOAT -> "readBoxedFloat";
-                case TypeCodes.TYPE_DOUBLE -> "readBoxedDouble";
-                default -> throw new IllegalStateException("Unsupported boxed type code: " + typeCode);
-            };
-            mv.visitVarInsn(Opcodes.ALOAD, tableVar);
-            pushInt(mv, colIdx);
-            mv.visitVarInsn(Opcodes.ILOAD, 2);
-            mv.visitMethodInsn(Opcodes.INVOKESTATIC,
-                owner,
-                methodName,
-                "(Lio/memris/storage/GeneratedTable;II)Ljava/lang/Object;",
-                false);
-            mv.visitVarInsn(Opcodes.ASTORE, objVar);
-        }
-
-        private void emitStorageToLocal(MethodVisitor mv, byte typeCode, String tableInternal, int tableVar, int colIdx, Class<?> fieldType,
-                                        int intVar, int longVar, int doubleVar, int floatVar, int objVar) {
-            switch (typeCode) {
-                case TypeCodes.TYPE_LONG -> {
-                    emitReadLong(mv, tableInternal, tableVar, colIdx, longVar);
-                    if (!fieldType.isPrimitive()) {
-                        mv.visitVarInsn(Opcodes.LLOAD, longVar);
-                        mv.visitMethodInsn(Opcodes.INVOKESTATIC, "java/lang/Long", "valueOf", "(J)Ljava/lang/Long;", false);
+            private void emitStorageToLocal(MethodVisitor mv, byte typeCode, String tableInternal, int tableVar, int colIdx, Class<?> fieldType,
+                                            int intVar, int longVar, int doubleVar, int floatVar, int objVar) {
+                switch (typeCode) {
+                    case TypeCodes.TYPE_LONG -> {
+                        emitReadLong(mv, tableInternal, tableVar, colIdx, longVar);
+                        if (!fieldType.isPrimitive()) {
+                            mv.visitVarInsn(Opcodes.LLOAD, longVar);
+                            mv.visitMethodInsn(Opcodes.INVOKESTATIC, "java/lang/Long", "valueOf", "(J)Ljava/lang/Long;", false);
+                            mv.visitVarInsn(Opcodes.ASTORE, objVar);
+                        }
+                    }
+                    case TypeCodes.TYPE_INT -> {
+                        emitReadInt(mv, tableInternal, tableVar, colIdx, intVar);
+                        if (!fieldType.isPrimitive()) {
+                            mv.visitVarInsn(Opcodes.ILOAD, intVar);
+                            mv.visitMethodInsn(Opcodes.INVOKESTATIC, "java/lang/Integer", "valueOf", "(I)Ljava/lang/Integer;", false);
+                            mv.visitVarInsn(Opcodes.ASTORE, objVar);
+                        }
+                    }
+                    case TypeCodes.TYPE_STRING -> {
+                        emitReadString(mv, tableInternal, tableVar, colIdx);
                         mv.visitVarInsn(Opcodes.ASTORE, objVar);
                     }
+                    case TypeCodes.TYPE_BOOLEAN -> {
+                        emitReadInt(mv, tableInternal, tableVar, colIdx, intVar);
+                        Label isFalse = new Label();
+                        Label end = new Label();
+                        mv.visitVarInsn(Opcodes.ILOAD, intVar);
+                        mv.visitJumpInsn(Opcodes.IFEQ, isFalse);
+                        mv.visitInsn(Opcodes.ICONST_1);
+                        mv.visitJumpInsn(Opcodes.GOTO, end);
+                        mv.visitLabel(isFalse);
+                        mv.visitInsn(Opcodes.ICONST_0);
+                        mv.visitLabel(end);
+                        mv.visitVarInsn(Opcodes.ISTORE, intVar);
+                        if (!fieldType.isPrimitive()) {
+                            mv.visitVarInsn(Opcodes.ILOAD, intVar);
+                            mv.visitMethodInsn(Opcodes.INVOKESTATIC, "java/lang/Boolean", "valueOf", "(Z)Ljava/lang/Boolean;", false);
+                            mv.visitVarInsn(Opcodes.ASTORE, objVar);
+                        }
+                    }
+                    case TypeCodes.TYPE_BYTE -> {
+                        emitReadInt(mv, tableInternal, tableVar, colIdx, intVar);
+                        mv.visitVarInsn(Opcodes.ILOAD, intVar);
+                        mv.visitInsn(Opcodes.I2B);
+                        mv.visitVarInsn(Opcodes.ISTORE, intVar);
+                        if (!fieldType.isPrimitive()) {
+                            mv.visitVarInsn(Opcodes.ILOAD, intVar);
+                            mv.visitMethodInsn(Opcodes.INVOKESTATIC, "java/lang/Byte", "valueOf", "(B)Ljava/lang/Byte;", false);
+                            mv.visitVarInsn(Opcodes.ASTORE, objVar);
+                        }
+                    }
+                    case TypeCodes.TYPE_SHORT -> {
+                        emitReadInt(mv, tableInternal, tableVar, colIdx, intVar);
+                        mv.visitVarInsn(Opcodes.ILOAD, intVar);
+                        mv.visitInsn(Opcodes.I2S);
+                        mv.visitVarInsn(Opcodes.ISTORE, intVar);
+                        if (!fieldType.isPrimitive()) {
+                            mv.visitVarInsn(Opcodes.ILOAD, intVar);
+                            mv.visitMethodInsn(Opcodes.INVOKESTATIC, "java/lang/Short", "valueOf", "(S)Ljava/lang/Short;", false);
+                            mv.visitVarInsn(Opcodes.ASTORE, objVar);
+                        }
+                    }
+                    case TypeCodes.TYPE_CHAR -> {
+                        emitReadInt(mv, tableInternal, tableVar, colIdx, intVar);
+                        mv.visitVarInsn(Opcodes.ILOAD, intVar);
+                        mv.visitInsn(Opcodes.I2C);
+                        mv.visitVarInsn(Opcodes.ISTORE, intVar);
+                        if (!fieldType.isPrimitive()) {
+                            mv.visitVarInsn(Opcodes.ILOAD, intVar);
+                            mv.visitMethodInsn(Opcodes.INVOKESTATIC, "java/lang/Character", "valueOf", "(C)Ljava/lang/Character;", false);
+                            mv.visitVarInsn(Opcodes.ASTORE, objVar);
+                        }
+                    }
+                    case TypeCodes.TYPE_FLOAT -> {
+                        emitReadInt(mv, tableInternal, tableVar, colIdx, intVar);
+                        mv.visitVarInsn(Opcodes.ILOAD, intVar);
+                        mv.visitMethodInsn(Opcodes.INVOKESTATIC, "java/lang/Float", "intBitsToFloat", "(I)F", false);
+                        mv.visitVarInsn(Opcodes.FSTORE, floatVar);
+                        if (!fieldType.isPrimitive()) {
+                            mv.visitVarInsn(Opcodes.FLOAD, floatVar);
+                            mv.visitMethodInsn(Opcodes.INVOKESTATIC, "java/lang/Float", "valueOf", "(F)Ljava/lang/Float;", false);
+                            mv.visitVarInsn(Opcodes.ASTORE, objVar);
+                        }
+                    }
+                    case TypeCodes.TYPE_DOUBLE -> {
+                        emitReadLong(mv, tableInternal, tableVar, colIdx, longVar);
+                        mv.visitVarInsn(Opcodes.LLOAD, longVar);
+                        mv.visitMethodInsn(Opcodes.INVOKESTATIC, "java/lang/Double", "longBitsToDouble", "(J)D", false);
+                        mv.visitVarInsn(Opcodes.DSTORE, doubleVar);
+                        if (!fieldType.isPrimitive()) {
+                            mv.visitVarInsn(Opcodes.DLOAD, doubleVar);
+                            mv.visitMethodInsn(Opcodes.INVOKESTATIC, "java/lang/Double", "valueOf", "(D)Ljava/lang/Double;", false);
+                            mv.visitVarInsn(Opcodes.ASTORE, objVar);
+                        }
+                    }
+                    default -> throw new IllegalStateException("Unknown type code: " + typeCode);
                 }
-                case TypeCodes.TYPE_INT -> {
-                    emitReadInt(mv, tableInternal, tableVar, colIdx, intVar);
-                    if (!fieldType.isPrimitive()) {
+            }
+
+            private void emitLoadForField(MethodVisitor mv, byte typeCode, Class<?> fieldType,
+                                          int intVar, int longVar, int doubleVar, int floatVar, int objVar) {
+                if (!fieldType.isPrimitive()) {
+                    mv.visitVarInsn(Opcodes.ALOAD, objVar);
+                    return;
+                }
+                switch (typeCode) {
+                    case TypeCodes.TYPE_LONG -> mv.visitVarInsn(Opcodes.LLOAD, longVar);
+                    case TypeCodes.TYPE_DOUBLE -> mv.visitVarInsn(Opcodes.DLOAD, doubleVar);
+                    case TypeCodes.TYPE_FLOAT -> mv.visitVarInsn(Opcodes.FLOAD, floatVar);
+                    default -> mv.visitVarInsn(Opcodes.ILOAD, intVar);
+                }
+            }
+
+            private void emitStorageAsObject(MethodVisitor mv, byte typeCode, String tableInternal, int tableVar, int colIdx,
+                                             int objVar, int intVar, int longVar) {
+                switch (typeCode) {
+
+                    case TypeCodes.TYPE_DOUBLE -> {
+                        emitReadLong(mv, tableInternal, tableVar, colIdx, longVar);
+                        mv.visitVarInsn(Opcodes.LLOAD, longVar);
+                        mv.visitMethodInsn(Opcodes.INVOKESTATIC, "java/lang/Double", "longBitsToDouble", "(J)D", false);
+                        mv.visitMethodInsn(Opcodes.INVOKESTATIC, "java/lang/Double", "valueOf", "(D)Ljava/lang/Double;", false);
+                        mv.visitVarInsn(Opcodes.ASTORE, objVar);
+                    }
+                    case TypeCodes.TYPE_LONG,
+                         TypeCodes.TYPE_INSTANT,
+                         TypeCodes.TYPE_LOCAL_DATE,
+                         TypeCodes.TYPE_LOCAL_DATE_TIME,
+                         TypeCodes.TYPE_DATE -> {
+                        mv.visitVarInsn(Opcodes.ALOAD, tableVar);
+                        pushInt(mv, colIdx);
+                        mv.visitVarInsn(Opcodes.ILOAD, 2);
+                        mv.visitMethodInsn(Opcodes.INVOKESTATIC,
+                                Type.getInternalName(EntityMaterializerGenerator.class),
+                                "readBoxedLong",
+                                "(Lio/memris/storage/GeneratedTable;II)Ljava/lang/Object;",
+                                false);
+                        mv.visitVarInsn(Opcodes.ASTORE, objVar);
+                    }
+                    case TypeCodes.TYPE_INT -> {
+                        emitReadInt(mv, tableInternal, tableVar, colIdx, intVar);
                         mv.visitVarInsn(Opcodes.ILOAD, intVar);
                         mv.visitMethodInsn(Opcodes.INVOKESTATIC, "java/lang/Integer", "valueOf", "(I)Ljava/lang/Integer;", false);
                         mv.visitVarInsn(Opcodes.ASTORE, objVar);
                     }
-                }
-                case TypeCodes.TYPE_STRING -> {
-                    emitReadString(mv, tableInternal, tableVar, colIdx);
-                    mv.visitVarInsn(Opcodes.ASTORE, objVar);
-                }
-                case TypeCodes.TYPE_BOOLEAN -> {
-                    emitReadInt(mv, tableInternal, tableVar, colIdx, intVar);
-                    Label isFalse = new Label();
-                    Label end = new Label();
-                    mv.visitVarInsn(Opcodes.ILOAD, intVar);
-                    mv.visitJumpInsn(Opcodes.IFEQ, isFalse);
-                    mv.visitInsn(Opcodes.ICONST_1);
-                    mv.visitJumpInsn(Opcodes.GOTO, end);
-                    mv.visitLabel(isFalse);
-                    mv.visitInsn(Opcodes.ICONST_0);
-                    mv.visitLabel(end);
-                    mv.visitVarInsn(Opcodes.ISTORE, intVar);
-                    if (!fieldType.isPrimitive()) {
+                    case TypeCodes.TYPE_STRING,
+                         TypeCodes.TYPE_BIG_DECIMAL,
+                         TypeCodes.TYPE_BIG_INTEGER -> {
+                        emitReadString(mv, tableInternal, tableVar, colIdx);
+                        mv.visitVarInsn(Opcodes.ASTORE, objVar);
+                    }
+                    case TypeCodes.TYPE_BOOLEAN -> {
+                        emitReadInt(mv, tableInternal, tableVar, colIdx, intVar);
                         mv.visitVarInsn(Opcodes.ILOAD, intVar);
                         mv.visitMethodInsn(Opcodes.INVOKESTATIC, "java/lang/Boolean", "valueOf", "(Z)Ljava/lang/Boolean;", false);
                         mv.visitVarInsn(Opcodes.ASTORE, objVar);
                     }
-                }
-                case TypeCodes.TYPE_BYTE -> {
-                    emitReadInt(mv, tableInternal, tableVar, colIdx, intVar);
-                    mv.visitVarInsn(Opcodes.ILOAD, intVar);
-                    mv.visitInsn(Opcodes.I2B);
-                    mv.visitVarInsn(Opcodes.ISTORE, intVar);
-                    if (!fieldType.isPrimitive()) {
+                    case TypeCodes.TYPE_BYTE -> {
+                        emitReadInt(mv, tableInternal, tableVar, colIdx, intVar);
                         mv.visitVarInsn(Opcodes.ILOAD, intVar);
+                        mv.visitInsn(Opcodes.I2B);
                         mv.visitMethodInsn(Opcodes.INVOKESTATIC, "java/lang/Byte", "valueOf", "(B)Ljava/lang/Byte;", false);
                         mv.visitVarInsn(Opcodes.ASTORE, objVar);
                     }
-                }
-                case TypeCodes.TYPE_SHORT -> {
-                    emitReadInt(mv, tableInternal, tableVar, colIdx, intVar);
-                    mv.visitVarInsn(Opcodes.ILOAD, intVar);
-                    mv.visitInsn(Opcodes.I2S);
-                    mv.visitVarInsn(Opcodes.ISTORE, intVar);
-                    if (!fieldType.isPrimitive()) {
+                    case TypeCodes.TYPE_SHORT -> {
+                        emitReadInt(mv, tableInternal, tableVar, colIdx, intVar);
                         mv.visitVarInsn(Opcodes.ILOAD, intVar);
+                        mv.visitInsn(Opcodes.I2S);
                         mv.visitMethodInsn(Opcodes.INVOKESTATIC, "java/lang/Short", "valueOf", "(S)Ljava/lang/Short;", false);
                         mv.visitVarInsn(Opcodes.ASTORE, objVar);
                     }
-                }
-                case TypeCodes.TYPE_CHAR -> {
-                    emitReadInt(mv, tableInternal, tableVar, colIdx, intVar);
-                    mv.visitVarInsn(Opcodes.ILOAD, intVar);
-                    mv.visitInsn(Opcodes.I2C);
-                    mv.visitVarInsn(Opcodes.ISTORE, intVar);
-                    if (!fieldType.isPrimitive()) {
+                    case TypeCodes.TYPE_CHAR -> {
+                        emitReadInt(mv, tableInternal, tableVar, colIdx, intVar);
                         mv.visitVarInsn(Opcodes.ILOAD, intVar);
+                        mv.visitInsn(Opcodes.I2C);
                         mv.visitMethodInsn(Opcodes.INVOKESTATIC, "java/lang/Character", "valueOf", "(C)Ljava/lang/Character;", false);
                         mv.visitVarInsn(Opcodes.ASTORE, objVar);
                     }
-                }
-                case TypeCodes.TYPE_FLOAT -> {
-                    emitReadInt(mv, tableInternal, tableVar, colIdx, intVar);
-                    mv.visitVarInsn(Opcodes.ILOAD, intVar);
-                    mv.visitMethodInsn(Opcodes.INVOKESTATIC, "java/lang/Float", "intBitsToFloat", "(I)F", false);
-                    mv.visitVarInsn(Opcodes.FSTORE, floatVar);
-                    if (!fieldType.isPrimitive()) {
-                        mv.visitVarInsn(Opcodes.FLOAD, floatVar);
+                    case TypeCodes.TYPE_FLOAT -> {
+                        emitReadInt(mv, tableInternal, tableVar, colIdx, intVar);
+                        mv.visitVarInsn(Opcodes.ILOAD, intVar);
+                        mv.visitMethodInsn(Opcodes.INVOKESTATIC, "java/lang/Float", "intBitsToFloat", "(I)F", false);
                         mv.visitMethodInsn(Opcodes.INVOKESTATIC, "java/lang/Float", "valueOf", "(F)Ljava/lang/Float;", false);
                         mv.visitVarInsn(Opcodes.ASTORE, objVar);
                     }
+
+                    default -> throw new IllegalStateException("Unknown type code: " + typeCode);
                 }
-                case TypeCodes.TYPE_DOUBLE -> {
-                    emitReadLong(mv, tableInternal, tableVar, colIdx, longVar);
-                    mv.visitVarInsn(Opcodes.LLOAD, longVar);
-                    mv.visitMethodInsn(Opcodes.INVOKESTATIC, "java/lang/Double", "longBitsToDouble", "(J)D", false);
-                    mv.visitVarInsn(Opcodes.DSTORE, doubleVar);
-                    if (!fieldType.isPrimitive()) {
-                        mv.visitVarInsn(Opcodes.DLOAD, doubleVar);
-                        mv.visitMethodInsn(Opcodes.INVOKESTATIC, "java/lang/Double", "valueOf", "(D)Ljava/lang/Double;", false);
-                        mv.visitVarInsn(Opcodes.ASTORE, objVar);
-                    }
+            }
+
+            private void emitCastOrUnbox(MethodVisitor mv, Class<?> fieldType, int valueVar) {
+                if (!fieldType.isPrimitive()) {
+                    mv.visitVarInsn(Opcodes.ALOAD, valueVar);
+                    mv.visitTypeInsn(Opcodes.CHECKCAST, Type.getInternalName(fieldType));
+                    return;
                 }
-                default -> throw new IllegalStateException("Unknown type code: " + typeCode);
+                if (fieldType == int.class) {
+                    mv.visitVarInsn(Opcodes.ALOAD, valueVar);
+                    mv.visitTypeInsn(Opcodes.CHECKCAST, "java/lang/Integer");
+                    mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, "java/lang/Integer", "intValue", "()I", false);
+                } else if (fieldType == long.class) {
+                    mv.visitVarInsn(Opcodes.ALOAD, valueVar);
+                    mv.visitTypeInsn(Opcodes.CHECKCAST, "java/lang/Long");
+                    mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, "java/lang/Long", "longValue", "()J", false);
+                } else if (fieldType == boolean.class) {
+                    mv.visitVarInsn(Opcodes.ALOAD, valueVar);
+                    mv.visitTypeInsn(Opcodes.CHECKCAST, "java/lang/Boolean");
+                    mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, "java/lang/Boolean", "booleanValue", "()Z", false);
+                } else if (fieldType == byte.class) {
+                    mv.visitVarInsn(Opcodes.ALOAD, valueVar);
+                    mv.visitTypeInsn(Opcodes.CHECKCAST, "java/lang/Byte");
+                    mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, "java/lang/Byte", "byteValue", "()B", false);
+                } else if (fieldType == short.class) {
+                    mv.visitVarInsn(Opcodes.ALOAD, valueVar);
+                    mv.visitTypeInsn(Opcodes.CHECKCAST, "java/lang/Short");
+                    mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, "java/lang/Short", "shortValue", "()S", false);
+                } else if (fieldType == char.class) {
+                    mv.visitVarInsn(Opcodes.ALOAD, valueVar);
+                    mv.visitTypeInsn(Opcodes.CHECKCAST, "java/lang/Character");
+                    mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, "java/lang/Character", "charValue", "()C", false);
+                } else if (fieldType == float.class) {
+                    mv.visitVarInsn(Opcodes.ALOAD, valueVar);
+                    mv.visitTypeInsn(Opcodes.CHECKCAST, "java/lang/Float");
+                    mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, "java/lang/Float", "floatValue", "()F", false);
+                } else if (fieldType == double.class) {
+                    mv.visitVarInsn(Opcodes.ALOAD, valueVar);
+                    mv.visitTypeInsn(Opcodes.CHECKCAST, "java/lang/Double");
+                    mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, "java/lang/Double", "doubleValue", "()D", false);
+                } else {
+                    mv.visitVarInsn(Opcodes.ALOAD, valueVar);
+                    mv.visitTypeInsn(Opcodes.CHECKCAST, Type.getInternalName(fieldType));
+                }
+            }
+
+            private void emitReadInt(MethodVisitor mv, String tableInternal, int tableVar, int colIdx, int valueVar) {
+                mv.visitVarInsn(Opcodes.ALOAD, tableVar);
+                pushInt(mv, colIdx);
+                mv.visitVarInsn(Opcodes.ILOAD, 2);
+                mv.visitMethodInsn(Opcodes.INVOKEINTERFACE, tableInternal, "readInt", "(II)I", true);
+                mv.visitVarInsn(Opcodes.ISTORE, valueVar);
+            }
+
+            private void emitReadLong(MethodVisitor mv, String tableInternal, int tableVar, int colIdx, int valueVar) {
+                mv.visitVarInsn(Opcodes.ALOAD, tableVar);
+                pushInt(mv, colIdx);
+                mv.visitVarInsn(Opcodes.ILOAD, 2);
+                mv.visitMethodInsn(Opcodes.INVOKEINTERFACE, tableInternal, "readLong", "(II)J", true);
+                mv.visitVarInsn(Opcodes.LSTORE, valueVar);
+            }
+
+            private void emitReadString(MethodVisitor mv, String tableInternal, int tableVar, int colIdx) {
+                mv.visitVarInsn(Opcodes.ALOAD, tableVar);
+                pushInt(mv, colIdx);
+                mv.visitVarInsn(Opcodes.ILOAD, 2);
+                mv.visitMethodInsn(Opcodes.INVOKEINTERFACE, tableInternal, "readString", "(II)Ljava/lang/String;", true);
+            }
+
+            private void pushInt(MethodVisitor mv, int value) {
+                if (value == -1) {
+                    mv.visitInsn(Opcodes.ICONST_M1);
+                } else if (value >= 0 && value <= 5) {
+                    mv.visitInsn(Opcodes.ICONST_0 + value);
+                } else if (value >= Byte.MIN_VALUE && value <= Byte.MAX_VALUE) {
+                    mv.visitIntInsn(Opcodes.BIPUSH, value);
+                } else if (value >= Short.MIN_VALUE && value <= Short.MAX_VALUE) {
+                    mv.visitIntInsn(Opcodes.SIPUSH, value);
+                } else {
+                    mv.visitLdcInsn(value);
+                }
             }
         }
-
-        private void emitLoadForField(MethodVisitor mv, byte typeCode, Class<?> fieldType,
-                                      int intVar, int longVar, int doubleVar, int floatVar, int objVar) {
-            if (!fieldType.isPrimitive()) {
-                mv.visitVarInsn(Opcodes.ALOAD, objVar);
-                return;
-            }
-            switch (typeCode) {
-                case TypeCodes.TYPE_LONG -> mv.visitVarInsn(Opcodes.LLOAD, longVar);
-                case TypeCodes.TYPE_DOUBLE -> mv.visitVarInsn(Opcodes.DLOAD, doubleVar);
-                case TypeCodes.TYPE_FLOAT -> mv.visitVarInsn(Opcodes.FLOAD, floatVar);
-                default -> mv.visitVarInsn(Opcodes.ILOAD, intVar);
-            }
-        }
-
-        private void emitStorageAsObject(MethodVisitor mv, byte typeCode, String tableInternal, int tableVar, int colIdx,
-                                         int objVar, int intVar, int longVar) {
-            switch (typeCode) {
-
-                case TypeCodes.TYPE_DOUBLE -> {
-                    emitReadLong(mv, tableInternal, tableVar, colIdx, longVar);
-                    mv.visitVarInsn(Opcodes.LLOAD, longVar);
-                    mv.visitMethodInsn(Opcodes.INVOKESTATIC, "java/lang/Double", "longBitsToDouble", "(J)D", false);
-                    mv.visitMethodInsn(Opcodes.INVOKESTATIC, "java/lang/Double", "valueOf", "(D)Ljava/lang/Double;", false);
-                    mv.visitVarInsn(Opcodes.ASTORE, objVar);
-                }
-                case TypeCodes.TYPE_LONG,
-                    TypeCodes.TYPE_INSTANT,
-                    TypeCodes.TYPE_LOCAL_DATE,
-                    TypeCodes.TYPE_LOCAL_DATE_TIME,
-                    TypeCodes.TYPE_DATE -> {
-                    mv.visitVarInsn(Opcodes.ALOAD, tableVar);
-                    pushInt(mv, colIdx);
-                    mv.visitVarInsn(Opcodes.ILOAD, 2);
-                    mv.visitMethodInsn(Opcodes.INVOKESTATIC,
-                        Type.getInternalName(EntityMaterializerGenerator.class),
-                        "readBoxedLong",
-                        "(Lio/memris/storage/GeneratedTable;II)Ljava/lang/Object;",
-                        false);
-                    mv.visitVarInsn(Opcodes.ASTORE, objVar);
-                }
-                case TypeCodes.TYPE_INT -> {
-                    emitReadInt(mv, tableInternal, tableVar, colIdx, intVar);
-                    mv.visitVarInsn(Opcodes.ILOAD, intVar);
-                    mv.visitMethodInsn(Opcodes.INVOKESTATIC, "java/lang/Integer", "valueOf", "(I)Ljava/lang/Integer;", false);
-                    mv.visitVarInsn(Opcodes.ASTORE, objVar);
-                }
-                case TypeCodes.TYPE_STRING,
-                    TypeCodes.TYPE_BIG_DECIMAL,
-                    TypeCodes.TYPE_BIG_INTEGER -> {
-                    emitReadString(mv, tableInternal, tableVar, colIdx);
-                    mv.visitVarInsn(Opcodes.ASTORE, objVar);
-                }
-                case TypeCodes.TYPE_BOOLEAN -> {
-                    emitReadInt(mv, tableInternal, tableVar, colIdx, intVar);
-                    mv.visitVarInsn(Opcodes.ILOAD, intVar);
-                    mv.visitMethodInsn(Opcodes.INVOKESTATIC, "java/lang/Boolean", "valueOf", "(Z)Ljava/lang/Boolean;", false);
-                    mv.visitVarInsn(Opcodes.ASTORE, objVar);
-                }
-                case TypeCodes.TYPE_BYTE -> {
-                    emitReadInt(mv, tableInternal, tableVar, colIdx, intVar);
-                    mv.visitVarInsn(Opcodes.ILOAD, intVar);
-                    mv.visitInsn(Opcodes.I2B);
-                    mv.visitMethodInsn(Opcodes.INVOKESTATIC, "java/lang/Byte", "valueOf", "(B)Ljava/lang/Byte;", false);
-                    mv.visitVarInsn(Opcodes.ASTORE, objVar);
-                }
-                case TypeCodes.TYPE_SHORT -> {
-                    emitReadInt(mv, tableInternal, tableVar, colIdx, intVar);
-                    mv.visitVarInsn(Opcodes.ILOAD, intVar);
-                    mv.visitInsn(Opcodes.I2S);
-                    mv.visitMethodInsn(Opcodes.INVOKESTATIC, "java/lang/Short", "valueOf", "(S)Ljava/lang/Short;", false);
-                    mv.visitVarInsn(Opcodes.ASTORE, objVar);
-                }
-                case TypeCodes.TYPE_CHAR -> {
-                    emitReadInt(mv, tableInternal, tableVar, colIdx, intVar);
-                    mv.visitVarInsn(Opcodes.ILOAD, intVar);
-                    mv.visitInsn(Opcodes.I2C);
-                    mv.visitMethodInsn(Opcodes.INVOKESTATIC, "java/lang/Character", "valueOf", "(C)Ljava/lang/Character;", false);
-                    mv.visitVarInsn(Opcodes.ASTORE, objVar);
-                }
-                case TypeCodes.TYPE_FLOAT -> {
-                    emitReadInt(mv, tableInternal, tableVar, colIdx, intVar);
-                    mv.visitVarInsn(Opcodes.ILOAD, intVar);
-                    mv.visitMethodInsn(Opcodes.INVOKESTATIC, "java/lang/Float", "intBitsToFloat", "(I)F", false);
-                    mv.visitMethodInsn(Opcodes.INVOKESTATIC, "java/lang/Float", "valueOf", "(F)Ljava/lang/Float;", false);
-                    mv.visitVarInsn(Opcodes.ASTORE, objVar);
-                }
-
-                default -> throw new IllegalStateException("Unknown type code: " + typeCode);
-            }
-        }
-
-        private void emitCastOrUnbox(MethodVisitor mv, Class<?> fieldType, int valueVar) {
-            if (!fieldType.isPrimitive()) {
-                mv.visitVarInsn(Opcodes.ALOAD, valueVar);
-                mv.visitTypeInsn(Opcodes.CHECKCAST, Type.getInternalName(fieldType));
-                return;
-            }
-            if (fieldType == int.class) {
-                mv.visitVarInsn(Opcodes.ALOAD, valueVar);
-                mv.visitTypeInsn(Opcodes.CHECKCAST, "java/lang/Integer");
-                mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, "java/lang/Integer", "intValue", "()I", false);
-            } else if (fieldType == long.class) {
-                mv.visitVarInsn(Opcodes.ALOAD, valueVar);
-                mv.visitTypeInsn(Opcodes.CHECKCAST, "java/lang/Long");
-                mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, "java/lang/Long", "longValue", "()J", false);
-            } else if (fieldType == boolean.class) {
-                mv.visitVarInsn(Opcodes.ALOAD, valueVar);
-                mv.visitTypeInsn(Opcodes.CHECKCAST, "java/lang/Boolean");
-                mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, "java/lang/Boolean", "booleanValue", "()Z", false);
-            } else if (fieldType == byte.class) {
-                mv.visitVarInsn(Opcodes.ALOAD, valueVar);
-                mv.visitTypeInsn(Opcodes.CHECKCAST, "java/lang/Byte");
-                mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, "java/lang/Byte", "byteValue", "()B", false);
-            } else if (fieldType == short.class) {
-                mv.visitVarInsn(Opcodes.ALOAD, valueVar);
-                mv.visitTypeInsn(Opcodes.CHECKCAST, "java/lang/Short");
-                mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, "java/lang/Short", "shortValue", "()S", false);
-            } else if (fieldType == char.class) {
-                mv.visitVarInsn(Opcodes.ALOAD, valueVar);
-                mv.visitTypeInsn(Opcodes.CHECKCAST, "java/lang/Character");
-                mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, "java/lang/Character", "charValue", "()C", false);
-            } else if (fieldType == float.class) {
-                mv.visitVarInsn(Opcodes.ALOAD, valueVar);
-                mv.visitTypeInsn(Opcodes.CHECKCAST, "java/lang/Float");
-                mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, "java/lang/Float", "floatValue", "()F", false);
-            } else if (fieldType == double.class) {
-                mv.visitVarInsn(Opcodes.ALOAD, valueVar);
-                mv.visitTypeInsn(Opcodes.CHECKCAST, "java/lang/Double");
-                mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, "java/lang/Double", "doubleValue", "()D", false);
-            } else {
-                mv.visitVarInsn(Opcodes.ALOAD, valueVar);
-                mv.visitTypeInsn(Opcodes.CHECKCAST, Type.getInternalName(fieldType));
-            }
-        }
-
-        private void emitReadInt(MethodVisitor mv, String tableInternal, int tableVar, int colIdx, int valueVar) {
-            mv.visitVarInsn(Opcodes.ALOAD, tableVar);
-            pushInt(mv, colIdx);
-            mv.visitVarInsn(Opcodes.ILOAD, 2);
-            mv.visitMethodInsn(Opcodes.INVOKEINTERFACE, tableInternal, "readInt", "(II)I", true);
-            mv.visitVarInsn(Opcodes.ISTORE, valueVar);
-        }
-
-        private void emitReadLong(MethodVisitor mv, String tableInternal, int tableVar, int colIdx, int valueVar) {
-            mv.visitVarInsn(Opcodes.ALOAD, tableVar);
-            pushInt(mv, colIdx);
-            mv.visitVarInsn(Opcodes.ILOAD, 2);
-            mv.visitMethodInsn(Opcodes.INVOKEINTERFACE, tableInternal, "readLong", "(II)J", true);
-            mv.visitVarInsn(Opcodes.LSTORE, valueVar);
-        }
-
-        private void emitReadString(MethodVisitor mv, String tableInternal, int tableVar, int colIdx) {
-            mv.visitVarInsn(Opcodes.ALOAD, tableVar);
-            pushInt(mv, colIdx);
-            mv.visitVarInsn(Opcodes.ILOAD, 2);
-            mv.visitMethodInsn(Opcodes.INVOKEINTERFACE, tableInternal, "readString", "(II)Ljava/lang/String;", true);
-        }
-
-        private void pushInt(MethodVisitor mv, int value) {
-            if (value == -1) {
-                mv.visitInsn(Opcodes.ICONST_M1);
-            } else if (value >= 0 && value <= 5) {
-                mv.visitInsn(Opcodes.ICONST_0 + value);
-            } else if (value >= Byte.MIN_VALUE && value <= Byte.MAX_VALUE) {
-                mv.visitIntInsn(Opcodes.BIPUSH, value);
-            } else if (value >= Short.MIN_VALUE && value <= Short.MAX_VALUE) {
-                mv.visitIntInsn(Opcodes.SIPUSH, value);
-            } else {
-                mv.visitLdcInsn(value);
-            }
-        }
-    }
 
     public static Object convertOrNull(TypeConverter<?, ?> converter, Object value) {
         if (value == null) {

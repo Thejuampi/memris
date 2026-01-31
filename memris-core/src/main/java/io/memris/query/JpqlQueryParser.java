@@ -91,13 +91,13 @@ public final class JpqlQueryParser {
                     arity);
         }
 
-        if (statement instanceof JpqlAst.Delete deleteAst) {
-            validateEntity(deleteAst.entityName(), entityClass);
+        if (statement instanceof JpqlAst.Delete(String name, String alias, JpqlAst.Expression where1)) {
+            validateEntity(name, entityClass);
             ensureModifying(method);
 
             BindingContext bindingContext = new BindingContext(method);
-            Map<String, String> aliasMap = Map.of(deleteAst.rootAlias(), "");
-            List<LogicalQuery.Condition> flattened = flattenConditions(deleteAst.where(), aliasMap, bindingContext);
+            Map<String, String> aliasMap = Map.of(alias, "");
+            List<LogicalQuery.Condition> flattened = flattenConditions(where1, aliasMap, bindingContext);
 
             LogicalQuery.ReturnKind returnKind = resolveModifyingReturnKind(method);
             LogicalQuery.Condition[] conditions = flattened.toArray(new LogicalQuery.Condition[0]);
@@ -120,20 +120,22 @@ public final class JpqlQueryParser {
                     arity);
         }
 
-        if (statement instanceof JpqlAst.Update updateAst) {
-            validateEntity(updateAst.entityName(), entityClass);
+        if (statement instanceof JpqlAst.Update(
+                String entityName, String rootAlias, List<JpqlAst.Assignment> assignments1, JpqlAst.Expression where
+        )) {
+            validateEntity(entityName, entityClass);
             ensureModifying(method);
-            if (updateAst.assignments() == null || updateAst.assignments().isEmpty()) {
+            if (assignments1 == null || assignments1.isEmpty()) {
                 throw new IllegalArgumentException("@Query update requires SET assignments: " + method.getName());
             }
 
             BindingContext bindingContext = new BindingContext(method);
-            Map<String, String> aliasMap = Map.of(updateAst.rootAlias(), "");
-            List<LogicalQuery.Condition> flattened = flattenConditions(updateAst.where(), aliasMap, bindingContext);
+            Map<String, String> aliasMap = Map.of(rootAlias, "");
+            List<LogicalQuery.Condition> flattened = flattenConditions(where, aliasMap, bindingContext);
 
-            List<LogicalQuery.UpdateAssignment> assignments = new ArrayList<>(updateAst.assignments().size());
+            List<LogicalQuery.UpdateAssignment> assignments = new ArrayList<>(assignments1.size());
             EntityMetadata<?> metadata = MetadataExtractor.extractEntityMetadata(entityClass);
-            for (JpqlAst.Assignment assignment : updateAst.assignments()) {
+            for (JpqlAst.Assignment assignment : assignments1) {
                 String path = resolvePath(assignment.path(), aliasMap);
                 if (path.contains(".")) {
                     throw new IllegalArgumentException(
@@ -514,46 +516,46 @@ public final class JpqlQueryParser {
     }
 
     private static JpqlAst.Expression normalize(JpqlAst.Expression expression) {
-        if (expression instanceof JpqlAst.Not not) {
-            return negate(not.expression());
+        if (expression instanceof JpqlAst.Not(JpqlAst.Expression expression1)) {
+            return negate(expression1);
         }
-        if (expression instanceof JpqlAst.And and) {
-            return new JpqlAst.And(normalize(and.left()), normalize(and.right()));
+        if (expression instanceof JpqlAst.And(JpqlAst.Expression left1, JpqlAst.Expression right1)) {
+            return new JpqlAst.And(normalize(left1), normalize(right1));
         }
-        if (expression instanceof JpqlAst.Or or) {
-            return new JpqlAst.Or(normalize(or.left()), normalize(or.right()));
+        if (expression instanceof JpqlAst.Or(JpqlAst.Expression left, JpqlAst.Expression right)) {
+            return new JpqlAst.Or(normalize(left), normalize(right));
         }
         return expression;
     }
 
     private static JpqlAst.Expression negate(JpqlAst.Expression expression) {
-        if (expression instanceof JpqlAst.Not not) {
-            return normalize(not.expression());
+        if (expression instanceof JpqlAst.Not(JpqlAst.Expression expression1)) {
+            return normalize(expression1);
         }
-        if (expression instanceof JpqlAst.And and) {
-            return new JpqlAst.Or(negate(and.left()), negate(and.right()));
+        if (expression instanceof JpqlAst.And(JpqlAst.Expression left1, JpqlAst.Expression right1)) {
+            return new JpqlAst.Or(negate(left1), negate(right1));
         }
-        if (expression instanceof JpqlAst.Or or) {
-            return new JpqlAst.And(negate(or.left()), negate(or.right()));
+        if (expression instanceof JpqlAst.Or(JpqlAst.Expression left, JpqlAst.Expression right)) {
+            return new JpqlAst.And(negate(left), negate(right));
         }
-        if (expression instanceof JpqlAst.PredicateExpr predicateExpr) {
-            return new JpqlAst.PredicateExpr(negatePredicate(predicateExpr.predicate()));
+        if (expression instanceof JpqlAst.PredicateExpr(JpqlAst.Predicate predicate)) {
+            return new JpqlAst.PredicateExpr(negatePredicate(predicate));
         }
         throw new IllegalArgumentException("Unsupported NOT expression");
     }
 
     private static JpqlAst.Predicate negatePredicate(JpqlAst.Predicate predicate) {
-        if (predicate instanceof JpqlAst.IsNull isNull) {
-            return new JpqlAst.IsNull(isNull.path(), !isNull.negated());
+        if (predicate instanceof JpqlAst.IsNull(String path2, boolean negated2)) {
+            return new JpqlAst.IsNull(path2, !negated2);
         }
-        if (predicate instanceof JpqlAst.In in) {
-            return new JpqlAst.In(in.path(), in.values(), !in.negated());
+        if (predicate instanceof JpqlAst.In(String path1, List<JpqlAst.Value> values, boolean negated1)) {
+            return new JpqlAst.In(path1, values, !negated1);
         }
         if (predicate instanceof JpqlAst.Between) {
             throw new UnsupportedOperationException("NOT BETWEEN is not supported");
         }
-        if (predicate instanceof JpqlAst.Comparison comparison) {
-            JpqlAst.ComparisonOp negated = switch (comparison.op()) {
+        if (predicate instanceof JpqlAst.Comparison(String path, JpqlAst.ComparisonOp op, JpqlAst.Value value)) {
+            JpqlAst.ComparisonOp negated = switch (op) {
                 case EQ -> JpqlAst.ComparisonOp.NE;
                 case NE -> JpqlAst.ComparisonOp.EQ;
                 case GT -> JpqlAst.ComparisonOp.LTE;
@@ -565,7 +567,7 @@ public final class JpqlQueryParser {
                 case NOT_LIKE -> JpqlAst.ComparisonOp.LIKE;
                 case NOT_ILIKE -> JpqlAst.ComparisonOp.ILIKE;
             };
-            return new JpqlAst.Comparison(comparison.path(), negated, comparison.value());
+            return new JpqlAst.Comparison(path, negated, value);
         }
         throw new IllegalArgumentException("Unsupported predicate negation");
     }
@@ -573,13 +575,13 @@ public final class JpqlQueryParser {
     private static List<List<ConditionSpec>> toDnf(JpqlAst.Expression expression,
             Map<String, String> aliasMap,
             BindingContext bindingContext) {
-        if (expression instanceof JpqlAst.PredicateExpr predicateExpr) {
-            ConditionSpec spec = toConditionSpec(predicateExpr.predicate(), aliasMap, bindingContext);
+        if (expression instanceof JpqlAst.PredicateExpr(JpqlAst.Predicate predicate)) {
+            ConditionSpec spec = toConditionSpec(predicate, aliasMap, bindingContext);
             return List.of(List.of(spec));
         }
-        if (expression instanceof JpqlAst.And and) {
-            List<List<ConditionSpec>> left = toDnf(and.left(), aliasMap, bindingContext);
-            List<List<ConditionSpec>> right = toDnf(and.right(), aliasMap, bindingContext);
+        if (expression instanceof JpqlAst.And(JpqlAst.Expression left2, JpqlAst.Expression right2)) {
+            List<List<ConditionSpec>> left = toDnf(left2, aliasMap, bindingContext);
+            List<List<ConditionSpec>> right = toDnf(right2, aliasMap, bindingContext);
             List<List<ConditionSpec>> merged = new ArrayList<>();
             for (List<ConditionSpec> l : left) {
                 for (List<ConditionSpec> r : right) {
@@ -591,9 +593,9 @@ public final class JpqlQueryParser {
             }
             return merged;
         }
-        if (expression instanceof JpqlAst.Or or) {
-            List<List<ConditionSpec>> left = toDnf(or.left(), aliasMap, bindingContext);
-            List<List<ConditionSpec>> right = toDnf(or.right(), aliasMap, bindingContext);
+        if (expression instanceof JpqlAst.Or(JpqlAst.Expression left1, JpqlAst.Expression right1)) {
+            List<List<ConditionSpec>> left = toDnf(left1, aliasMap, bindingContext);
+            List<List<ConditionSpec>> right = toDnf(right1, aliasMap, bindingContext);
             List<List<ConditionSpec>> merged = new ArrayList<>(left.size() + right.size());
             merged.addAll(left);
             merged.addAll(right);
@@ -605,27 +607,27 @@ public final class JpqlQueryParser {
     private static ConditionSpec toConditionSpec(JpqlAst.Predicate predicate,
             Map<String, String> aliasMap,
             BindingContext bindingContext) {
-        if (predicate instanceof JpqlAst.IsNull isNull) {
-            LogicalQuery.Operator op = isNull.negated() ? LogicalQuery.Operator.NOT_NULL
+        if (predicate instanceof JpqlAst.IsNull(String path4, boolean negated1)) {
+            LogicalQuery.Operator op = negated1 ? LogicalQuery.Operator.NOT_NULL
                     : LogicalQuery.Operator.IS_NULL;
-            String path = resolvePath(isNull.path(), aliasMap);
+            String path = resolvePath(path4, aliasMap);
             return new ConditionSpec(path, op, bindingContext.bindLiteral(null), false, LogicalQuery.Combinator.AND);
         }
-        if (predicate instanceof JpqlAst.In in) {
-            String path = resolvePath(in.path(), aliasMap);
-            LogicalQuery.Operator op = in.negated() ? LogicalQuery.Operator.NOT_IN : LogicalQuery.Operator.IN;
-            int argIndex = bindingContext.bindInValues(in.values());
+        if (predicate instanceof JpqlAst.In(String path3, List<JpqlAst.Value> values, boolean negated)) {
+            String path = resolvePath(path3, aliasMap);
+            LogicalQuery.Operator op = negated ? LogicalQuery.Operator.NOT_IN : LogicalQuery.Operator.IN;
+            int argIndex = bindingContext.bindInValues(values);
             return new ConditionSpec(path, op, argIndex, false, LogicalQuery.Combinator.AND);
         }
-        if (predicate instanceof JpqlAst.Between between) {
-            String path = resolvePath(between.path(), aliasMap);
-            int argIndex = bindingContext.bindBetween(between.lower(), between.upper());
+        if (predicate instanceof JpqlAst.Between(String path2, JpqlAst.Value lower, JpqlAst.Value upper)) {
+            String path = resolvePath(path2, aliasMap);
+            int argIndex = bindingContext.bindBetween(lower, upper);
             return new ConditionSpec(path, LogicalQuery.Operator.BETWEEN, argIndex, false, LogicalQuery.Combinator.AND);
         }
-        if (predicate instanceof JpqlAst.Comparison comparison) {
-            String path = resolvePath(comparison.path(), aliasMap);
-            ComparisonMapping mapping = mapComparison(comparison.op());
-            int argIndex = bindingContext.bindValue(comparison.value());
+        if (predicate instanceof JpqlAst.Comparison(String path1, JpqlAst.ComparisonOp op, JpqlAst.Value value)) {
+            String path = resolvePath(path1, aliasMap);
+            ComparisonMapping mapping = mapComparison(op);
+            int argIndex = bindingContext.bindValue(value);
             return new ConditionSpec(path, mapping.operator, argIndex, mapping.ignoreCase, LogicalQuery.Combinator.AND);
         }
         throw new IllegalArgumentException("Unsupported predicate");
@@ -715,8 +717,8 @@ public final class JpqlQueryParser {
             if (value instanceof JpqlAst.Parameter param) {
                 return bindParameter(param);
             }
-            if (value instanceof JpqlAst.Literal literal) {
-                return bindLiteral(literal.value());
+            if (value instanceof JpqlAst.Literal(Object value1)) {
+                return bindLiteral(value1);
             }
             throw new IllegalArgumentException("Unsupported value in predicate");
         }
@@ -736,8 +738,8 @@ public final class JpqlQueryParser {
             }
             List<Object> literalValues = new ArrayList<>(values.size());
             for (JpqlAst.Value value : values) {
-                if (value instanceof JpqlAst.Literal literal) {
-                    literalValues.add(literal.value());
+                if (value instanceof JpqlAst.Literal(Object value1)) {
+                    literalValues.add(value1);
                 } else {
                     throw new IllegalArgumentException("IN list must use a single parameter or literal list");
                 }

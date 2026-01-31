@@ -258,7 +258,6 @@ public final class MemrisRepositoryFactory implements AutoCloseable {
      * @param <R>                 the repository interface type
      * @return an instantiated repository implementation
      */
-    @SuppressWarnings("unchecked")
     public <T, R extends MemrisRepository<T>> R createJPARepository(Class<R> repositoryInterface) {
         // 1. Extract entity class from repository interface
         Class<T> entityClass = extractEntityClass(repositoryInterface);
