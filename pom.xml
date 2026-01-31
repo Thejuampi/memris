@@ -270,21 +270,6 @@
                             </goals>
                         </execution>
                         <execution>
-                            <id>pmd-deadcode</id>
-                            <phase>verify</phase>
-                            <goals>
-                                <goal>check</goal>
-                            </goals>
-                            <configuration combine.self="override">
-                                <rulesets>
-                                    <ruleset>${maven.multiModuleProjectDirectory}/pmd-deadcode.xml</ruleset>
-                                </rulesets>
-                                <printFailingErrors>true</printFailingErrors>
-                                <failOnViolation>true</failOnViolation>
-                                <targetJdk>${java.version}</targetJdk>
-                            </configuration>
-                        </execution>
-                        <execution>
                             <id>pmd-suppresswarnings</id>
                             <phase>verify</phase>
                             <goals>

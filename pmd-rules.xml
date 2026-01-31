@@ -30,6 +30,9 @@
         <exclude name="UseUnderscoresInNumericLiterals" /><!-- 1024 vs 1_024 - either is fine -->
     </rule>
 
+    <!-- Import Management -->
+    <rule ref="category/java/codestyle.xml/UnnecessaryImport" />
+
     <!-- Design -->
     <rule ref="category/java/design.xml">
         <exclude name="AvoidCatchingGenericException" /><!-- Sometimes necessary -->

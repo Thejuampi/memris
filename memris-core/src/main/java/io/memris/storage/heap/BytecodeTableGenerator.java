@@ -18,7 +18,6 @@ import net.bytebuddy.implementation.bind.annotation.This;
 import net.bytebuddy.jar.asm.Opcodes;
 
 import java.lang.reflect.Field;
-import java.lang.reflect.Modifier;
 import java.util.ArrayList;
 import java.util.List;
 

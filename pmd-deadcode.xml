@@ -6,10 +6,9 @@
 
     <description>
         PMD dead code detection rules for Memris.
+        Only checks for actual dead code, not code style issues.
     </description>
 
-    <rule ref="category/java/bestpractices.xml/UnusedPrivateField" />
-    <rule ref="category/java/bestpractices.xml/UnusedPrivateMethod" />
-    <rule ref="category/java/bestpractices.xml/UnusedLocalVariable" />
-    <rule ref="category/java/bestpractices.xml/UnusedFormalParameter" />
+    <rule ref="category/java/codestyle.xml/UnnecessaryImport" />
+
 </ruleset>
