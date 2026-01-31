@@ -122,7 +122,7 @@ public final class EntitySaverGenerator {
         // Define save() method
         builder = builder.defineMethod("save", Object.class, Visibility.PUBLIC)
                 .withParameters(Object.class, io.memris.storage.GeneratedTable.class, Long.class)
-                .intercept(new Implementation.Simple(new SaveAppender(entityClass, fields, converterFields, idField)));
+                .intercept(new Implementation.Simple(new SaveAppender(entityClass, fields, idField)));
 
         // Define extractId() method
         builder = builder.defineMethod("extractId", Long.class, Visibility.PUBLIC)
@@ -360,13 +360,11 @@ public final class EntitySaverGenerator {
     private static final class SaveAppender implements ByteCodeAppender {
         private final Class<?> entityClass;
         private final List<FieldInfo> fields;
-        private final List<FieldInfo> converterFields;
         private final FieldInfo idField;
 
-        SaveAppender(Class<?> entityClass, List<FieldInfo> fields, List<FieldInfo> converterFields, FieldInfo idField) {
+        SaveAppender(Class<?> entityClass, List<FieldInfo> fields, FieldInfo idField) {
             this.entityClass = entityClass;
             this.fields = fields;
-            this.converterFields = converterFields;
             this.idField = idField;
         }
 
@@ -376,8 +374,6 @@ public final class EntitySaverGenerator {
             String entityInternal = Type.getInternalName(entityClass);
             String saverInternal = context.getInstrumentedType().getInternalName();
             String tableInternal = Type.getInternalName(io.memris.storage.GeneratedTable.class);
-            String converterInternal = Type.getInternalName(TypeConverter.class);
-
             // Variables:
             // 1 = entity (Object)
             // 2 = table (GeneratedTable)
@@ -386,8 +382,6 @@ public final class EntitySaverGenerator {
             // 5 = entity (casted)
             int valuesVar = 4;
             int entityVar = 5;
-            int intVar = 6;
-            int longVar = 7;
             int objVar = 9;
 
             // Cast entity parameter to actual type
@@ -416,8 +410,8 @@ public final class EntitySaverGenerator {
             // (starting at index 1)
             for (int i = 0; i < fields.size(); i++) {
                 FieldInfo info = fields.get(i);
-                emitFieldToArray(mv, info, i + 1, saverInternal, entityInternal, converterInternal,
-                        entityVar, valuesVar, intVar, longVar, objVar);
+                emitFieldToArray(mv, info, i + 1, saverInternal, entityInternal,
+                        entityVar, valuesVar, objVar);
             }
 
             // Call table.insertFrom(values)
@@ -435,8 +429,8 @@ public final class EntitySaverGenerator {
         }
 
         private void emitFieldToArray(MethodVisitor mv, FieldInfo info, int arrayIndex,
-                String saverInternal, String entityInternal, String converterInternal,
-                int entityVar, int valuesVar, int intVar, int longVar, int objVar) {
+                String saverInternal, String entityInternal,
+                int entityVar, int valuesVar, int objVar) {
             Field field = info.field;
             Class<?> fieldType = field.getType();
 

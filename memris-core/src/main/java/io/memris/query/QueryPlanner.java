@@ -254,7 +254,7 @@ public final class QueryPlanner {
 
         if (builtInOp != null) {
             // no nice: better to keep it all generic with below code.
-            return planBuiltIn(methodName, builtInOp, paramTypes.length);
+            return planBuiltIn(builtInOp, paramTypes.length);
         }
 
         // Otherwise: derived query parsing
@@ -270,7 +270,7 @@ public final class QueryPlanner {
 
         // Tokenize using context-aware lexer
         List<QueryMethodToken> tokens = QueryMethodLexer.tokenize(entityClass, parseName);
-        LogicalQuery.ReturnKind returnKind = determineReturnKind(parseName, returnType, paramTypes.length);
+        LogicalQuery.ReturnKind returnKind = determineReturnKind(parseName, returnType);
         List<LogicalQuery.Condition> conditions = new ArrayList<>();
         LogicalQuery.OrderBy[] orderBy = null;
 
@@ -535,7 +535,7 @@ public final class QueryPlanner {
      * QueryMethodLexer.classifyOperation)
      * to support both query and CRUD operations dynamically.
      */
-    private static LogicalQuery.ReturnKind determineReturnKind(String methodName, Class<?> returnType, int paramCount) {
+    private static LogicalQuery.ReturnKind determineReturnKind(String methodName, Class<?> returnType) {
         String prefix = extractPrefix(methodName);
         String remaining = methodName.substring(prefix.length());
         boolean hasBy = remaining.startsWith("By");
@@ -622,10 +622,10 @@ public final class QueryPlanner {
         String remaining = methodName.substring(prefix.length());
 
         if (remaining.startsWith("Top")) {
-            return parseLimitAfterPrefix(methodName, prefix, remaining, 3);
+            return parseLimitAfterPrefix(prefix, remaining, 3);
         }
         if (remaining.startsWith("First")) {
-            return parseLimitAfterPrefix(methodName, prefix, remaining, 5);
+            return parseLimitAfterPrefix(prefix, remaining, 5);
         }
         return new LimitParseResult(0, methodName);
     }
@@ -639,8 +639,7 @@ public final class QueryPlanner {
         return new DistinctParseResult(false, methodName);
     }
 
-    private static LimitParseResult parseLimitAfterPrefix(String methodName, String prefix, String remaining,
-            int keywordLength) {
+    private static LimitParseResult parseLimitAfterPrefix(String prefix, String remaining, int keywordLength) {
         int idx = keywordLength;
         int startDigits = idx;
         while (idx < remaining.length() && Character.isDigit(remaining.charAt(idx))) {
@@ -686,7 +685,7 @@ public final class QueryPlanner {
      * Reserved operations (if any) are defined for future Spring Data compatibility
      * and throw "not yet implemented" at runtime.
      */
-    private static LogicalQuery planBuiltIn(String methodName, OpCode op, int arity) {
+    private static LogicalQuery planBuiltIn(OpCode op, int arity) {
         return switch (op) {
             // Built-in query operations
             case FIND_BY_ID -> LogicalQuery.of(

@@ -173,7 +173,7 @@ class RowLevelConcurrencyTest {
                     for (int i = 0; i < iterationsPerThread; i++) {
                         Optional<TestEntity> found = repo.findById(saved.getId());
                         if (found.isPresent()) {
-                            TestEntity read = found.get();
+                            TestEntity read = found.orElseThrow();
                             // Validate: name and value should be from the same writer
                             String name = read.getName();
                             int value = read.getValue();
@@ -277,7 +277,7 @@ class RowLevelConcurrencyTest {
                 Optional<TestEntity> found = repo.findById(id);
                 assertTrue(found.isPresent(), "Entity " + id + " should exist");
 
-                TestEntity entity = found.get();
+                TestEntity entity = found.orElseThrow();
                 String name = entity.getName();
                 int value = entity.getValue();
 
@@ -397,8 +397,9 @@ class RowLevelConcurrencyTest {
         // New entity should be findable with correct data
         Optional<TestEntity> found = repo.findById(newSaved.getId());
         assertTrue(found.isPresent(), "New entity should be found");
-        assertEquals("new", found.get().getName());
-        assertEquals(200, found.get().getValue());
+        TestEntity foundEntity = found.orElseThrow();
+        assertEquals("new", foundEntity.getName());
+        assertEquals(200, foundEntity.getValue());
 
         // Old reference should still not work
         Optional<TestEntity> stillDeleted = repo.findById(originalId);

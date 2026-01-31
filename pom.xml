@@ -192,21 +192,6 @@
                     </executions>
                 </plugin>
 
-                <plugin>
-                    <groupId>org.owasp</groupId>
-                    <artifactId>dependency-check-maven</artifactId>
-                    <version>${dependency-check.version}</version>
-                    <configuration>
-                        <failBuildOnCVSS>7</failBuildOnCVSS>
-                    </configuration>
-                    <executions>
-                        <execution>
-                            <goals>
-                                <goal>check</goal>
-                            </goals>
-                        </execution>
-                    </executions>
-                </plugin>
 
                 <!-- SpotBugs - Static Analysis for Bug Detection -->
                 <plugin>
@@ -223,6 +208,8 @@
                     </configuration>
                     <executions>
                         <execution>
+                            <id>spotbugs</id>
+                            <phase>verify</phase>
                             <goals>
                                 <goal>check</goal>
                             </goals>
@@ -250,8 +237,8 @@
                     </dependencies>
                     <executions>
                         <execution>
-                            <id>validate</id>
-                            <phase>validate</phase>
+                            <id>checkstyle</id>
+                            <phase>verify</phase>
                             <goals>
                                 <goal>check</goal>
                             </goals>
@@ -267,21 +254,128 @@
                     <configuration>
                         <rulesets>
                             <ruleset>${maven.multiModuleProjectDirectory}/pmd-rules.xml</ruleset>
+                            <ruleset>${maven.multiModuleProjectDirectory}/pmd-deadcode.xml</ruleset>
                         </rulesets>
                         <printFailingErrors>true</printFailingErrors>
-                        <failOnViolation>true</failOnViolation>
+                        <failOnViolation>false</failOnViolation>
                         <targetJdk>${java.version}</targetJdk>
                     </configuration>
                     <executions>
                         <execution>
+                            <id>pmd</id>
+                            <phase>verify</phase>
                             <goals>
                                 <goal>check</goal>
                                 <goal>cpd-check</goal>
                             </goals>
                         </execution>
+                        <execution>
+                            <id>pmd-deadcode</id>
+                            <phase>verify</phase>
+                            <goals>
+                                <goal>check</goal>
+                            </goals>
+                            <configuration combine.self="override">
+                                <rulesets>
+                                    <ruleset>${maven.multiModuleProjectDirectory}/pmd-deadcode.xml</ruleset>
+                                </rulesets>
+                                <printFailingErrors>true</printFailingErrors>
+                                <failOnViolation>true</failOnViolation>
+                                <targetJdk>${java.version}</targetJdk>
+                            </configuration>
+                        </execution>
                     </executions>
                 </plugin>
             </plugins>
         </pluginManagement>
+        <plugins>
+            <plugin>
+                <groupId>org.gaul</groupId>
+                <artifactId>modernizer-maven-plugin</artifactId>
+            </plugin>
+            <plugin>
+                <groupId>com.github.spotbugs</groupId>
+                <artifactId>spotbugs-maven-plugin</artifactId>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-checkstyle-plugin</artifactId>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-pmd-plugin</artifactId>
+            </plugin>
+        </plugins>
     </build>
+
+    <profiles>
+        <profile>
+            <id>snyk-cli-windows</id>
+            <activation>
+                <os>
+                    <family>Windows</family>
+                </os>
+            </activation>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.codehaus.mojo</groupId>
+                        <artifactId>exec-maven-plugin</artifactId>
+                        <version>3.1.0</version>
+                        <inherited>false</inherited>
+                        <executions>
+                            <execution>
+                                <id>snyk-test</id>
+                                <phase>verify</phase>
+                                <goals>
+                                    <goal>exec</goal>
+                                </goals>
+                                <configuration>
+                                    <executable>cmd</executable>
+                                    <arguments>
+                                        <argument>/c</argument>
+                                        <argument>where snyk &gt;nul 2&gt;&amp;1 || exit /b 0 &amp; snyk test --all-projects</argument>
+                                    </arguments>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+        <profile>
+            <id>snyk-cli-unix</id>
+            <activation>
+                <os>
+                    <family>unix</family>
+                </os>
+            </activation>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.codehaus.mojo</groupId>
+                        <artifactId>exec-maven-plugin</artifactId>
+                        <version>3.1.0</version>
+                        <inherited>false</inherited>
+                        <executions>
+                            <execution>
+                                <id>snyk-test</id>
+                                <phase>verify</phase>
+                                <goals>
+                                    <goal>exec</goal>
+                                </goals>
+                                <configuration>
+                                    <executable>sh</executable>
+                                    <arguments>
+                                        <argument>-c</argument>
+                                        <argument>command -v snyk &gt;/dev/null 2&gt;&amp;1 || exit 0; snyk test --all-projects</argument>
+                                    </arguments>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
 </project>

@@ -63,7 +63,7 @@ class ColumnIndexPrecomputeTest {
         long duration = System.nanoTime() - startTime;
         
         assertThat(found).isPresent();
-        assertThat(found.get().sku).isEqualTo("SKU-50");
+        assertThat(found.orElseThrow().sku).isEqualTo("SKU-50");
         // Should be fast due to precomputed mappings
         assertThat(duration).isLessThan(50_000_000L); // 50ms threshold
     }

@@ -71,7 +71,7 @@ public final class EntityMaterializerGenerator {
 
         builder = builder.defineMethod("materialize", entityClass, Visibility.PUBLIC)
             .withParameters(HeapRuntimeKernel.class, int.class)
-            .intercept(new Implementation.Simple(new MaterializeAppender(entityClass, fields, converterFields)));
+            .intercept(new Implementation.Simple(new MaterializeAppender(entityClass, fields)));
 
         try (DynamicType.Unloaded<?> unloaded = builder.make()) {
             Class<?> implClass = unloaded.load(entityClass.getClassLoader()).getLoaded();
@@ -131,12 +131,9 @@ public final class EntityMaterializerGenerator {
     private static final class MaterializeAppender implements ByteCodeAppender {
         private final Class<?> entityClass;
         private final List<FieldInfo> fields;
-        private final List<FieldInfo> converterFields;
-
-        private MaterializeAppender(Class<?> entityClass, List<FieldInfo> fields, List<FieldInfo> converterFields) {
+        private MaterializeAppender(Class<?> entityClass, List<FieldInfo> fields) {
             this.entityClass = entityClass;
             this.fields = fields;
-            this.converterFields = converterFields;
         }
 
         @Override
@@ -145,8 +142,6 @@ public final class EntityMaterializerGenerator {
             String materializerInternal = context.getInstrumentedType().getInternalName();
             String tableInternal = Type.getInternalName(io.memris.storage.GeneratedTable.class);
             String kernelInternal = Type.getInternalName(HeapRuntimeKernel.class);
-            String converterInternal = Type.getInternalName(TypeConverter.class);
-
             int entityVar = 3;
             int tableVar = 4;
             int intVar = 5;
@@ -165,7 +160,7 @@ public final class EntityMaterializerGenerator {
             mv.visitVarInsn(Opcodes.ASTORE, tableVar);
 
             for (FieldInfo info : fields) {
-                emitFieldWrite(mv, info, entityInternal, materializerInternal, tableInternal, converterInternal, entityVar, tableVar,
+                emitFieldWrite(mv, info, entityInternal, materializerInternal, tableInternal, entityVar, tableVar,
                     intVar, longVar, doubleVar, floatVar, objVar);
             }
 
@@ -180,7 +175,6 @@ public final class EntityMaterializerGenerator {
                                     String entityInternal,
                                     String materializerInternal,
                                     String tableInternal,
-                                    String converterInternal,
                                     int entityVar,
                                     int tableVar,
                                     int intVar,
@@ -194,7 +188,7 @@ public final class EntityMaterializerGenerator {
             int colIdx = mapping.columnPosition();
 
             if (info.converter != null) {
-                emitStorageAsObject(mv, mapping.typeCode(), tableInternal, tableVar, colIdx, objVar, intVar, longVar, doubleVar, floatVar);
+                emitStorageAsObject(mv, mapping.typeCode(), tableInternal, tableVar, colIdx, objVar, intVar, longVar);
 
                 mv.visitVarInsn(Opcodes.ALOAD, 0);
                 mv.visitFieldInsn(Opcodes.GETFIELD, materializerInternal, converterFieldName(info.converterIndex), "Lio/memris/core/converter/TypeConverter;");
@@ -213,7 +207,7 @@ public final class EntityMaterializerGenerator {
             }
 
             if (!fieldType.isPrimitive() && mapping.typeCode() != TypeCodes.TYPE_STRING) {
-                emitReadBoxed(mv, mapping.typeCode(), tableInternal, tableVar, colIdx, objVar, intVar, longVar, doubleVar, floatVar);
+                emitReadBoxed(mv, mapping.typeCode(), tableVar, colIdx, objVar);
                 mv.visitVarInsn(Opcodes.ALOAD, entityVar);
                 emitCastOrUnbox(mv, fieldType, objVar);
                 mv.visitFieldInsn(Opcodes.PUTFIELD, entityInternal, field.getName(), Type.getDescriptor(fieldType));
@@ -227,8 +221,7 @@ public final class EntityMaterializerGenerator {
             mv.visitFieldInsn(Opcodes.PUTFIELD, entityInternal, field.getName(), Type.getDescriptor(fieldType));
         }
 
-        private void emitReadBoxed(MethodVisitor mv, byte typeCode, String tableInternal, int tableVar, int colIdx,
-                                   int objVar, int intVar, int longVar, int doubleVar, int floatVar) {
+        private void emitReadBoxed(MethodVisitor mv, byte typeCode, int tableVar, int colIdx, int objVar) {
             String owner = Type.getInternalName(EntityMaterializerGenerator.class);
             String methodName = switch (typeCode) {
                 case TypeCodes.TYPE_LONG -> "readBoxedLong";
@@ -367,7 +360,7 @@ public final class EntityMaterializerGenerator {
         }
 
         private void emitStorageAsObject(MethodVisitor mv, byte typeCode, String tableInternal, int tableVar, int colIdx,
-                                         int objVar, int intVar, int longVar, int doubleVar, int floatVar) {
+                                         int objVar, int intVar, int longVar) {
             switch (typeCode) {
 
                 case TypeCodes.TYPE_DOUBLE -> {

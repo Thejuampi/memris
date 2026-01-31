@@ -3,19 +3,6 @@ package io.memris.core;
 import io.memris.repository.MemrisRepositoryFactory;
 import io.memris.core.MemrisArena;
 import io.memris.repository.MemrisRepository;
-import io.memris.core.Entity;
-import io.memris.core.GeneratedValue;
-import io.memris.core.GenerationType;
-import io.memris.core.Index;
-
-import io.memris.core.Entity;
-import io.memris.core.GeneratedValue;
-import io.memris.core.GenerationType;
-import io.memris.core.Index;
-
-import io.memris.repository.MemrisRepositoryFactory;
-import io.memris.core.MemrisArena;
-import io.memris.repository.MemrisRepository;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -66,8 +53,9 @@ class ECommerceRealWorldTest {
         // Then
         assertThat(saved.id).isNotNull();
         assertThat(found).isPresent();
-        assertThat(found.get().email).isEqualTo("john.doe@example.com");
-        assertThat(found.get().name).isEqualTo("John Doe");
+        Customer foundCustomer = found.orElseThrow();
+        assertThat(foundCustomer.email).isEqualTo("john.doe@example.com");
+        assertThat(foundCustomer.name).isEqualTo("John Doe");
     }
 
     @Test
@@ -112,10 +100,11 @@ class ECommerceRealWorldTest {
         // Then
         assertThat(saved.id).isNotNull();
         assertThat(found).isPresent();
-        assertThat(found.get().sku).isEqualTo("LAPTOP-001");
-        assertThat(found.get().name).isEqualTo("Gaming Laptop");
-        assertThat(found.get().price).isEqualTo(129999);
-        assertThat(found.get().getPriceDollars()).isEqualTo(1299.99);
+        Product foundProduct = found.orElseThrow();
+        assertThat(foundProduct.sku).isEqualTo("LAPTOP-001");
+        assertThat(foundProduct.name).isEqualTo("Gaming Laptop");
+        assertThat(foundProduct.price).isEqualTo(129999);
+        assertThat(foundProduct.getPriceDollars()).isEqualTo(1299.99);
     }
 
     @Test
@@ -180,8 +169,9 @@ class ECommerceRealWorldTest {
 
         // Then
         assertThat(foundOrder).isPresent();
-        assertThat(foundOrder.get().customerId).isEqualTo(savedCustomer.id);
-        assertThat(foundOrder.get().status).isEqualTo("PENDING");
+        Order foundOrderEntity = foundOrder.orElseThrow();
+        assertThat(foundOrderEntity.customerId).isEqualTo(savedCustomer.id);
+        assertThat(foundOrderEntity.status).isEqualTo("PENDING");
         assertThat(orderItems).hasSize(2);
     }
 

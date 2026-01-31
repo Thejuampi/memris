@@ -2,22 +2,23 @@ package io.memris.kernel;
 
 import java.util.Arrays;
 import java.util.NoSuchElementException;
+import java.util.concurrent.atomic.AtomicReference;
 
 public final class RowIdArraySet implements MutableRowIdSet {
     private static final int DEFAULT_CAPACITY = 16;
 
-    private long[] values;
-    private int size;
+    private final AtomicReference<State> state;
 
     public RowIdArraySet() {
-        this.values = new long[DEFAULT_CAPACITY];
+        this.state = new AtomicReference<>(new State(new long[DEFAULT_CAPACITY], 0));
     }
 
     public RowIdArraySet(int initialCapacity) {
         if (initialCapacity < 0) {
             throw new IllegalArgumentException("initialCapacity must be non-negative");
         }
-        this.values = new long[Math.max(DEFAULT_CAPACITY, initialCapacity)];
+        int capacity = Math.max(DEFAULT_CAPACITY, initialCapacity);
+        this.state = new AtomicReference<>(new State(new long[capacity], 0));
     }
 
     @Override
@@ -25,8 +26,24 @@ public final class RowIdArraySet implements MutableRowIdSet {
         if (rowId == null) {
             throw new IllegalArgumentException("rowId required");
         }
-        ensureCapacity(size + 1);
-        values[size++] = rowId.value();
+        long value = rowId.value();
+        while (true) {
+            State current = state.get();
+            int size = current.size;
+            int capacity = current.values.length;
+            long[] nextValues;
+            if (size >= capacity) {
+                int newCapacity = Math.max(capacity * 2, size + 1);
+                nextValues = Arrays.copyOf(current.values, newCapacity);
+            } else {
+                nextValues = Arrays.copyOf(current.values, capacity);
+            }
+            nextValues[size] = value;
+            State next = new State(nextValues, size + 1);
+            if (state.compareAndSet(current, next)) {
+                return;
+            }
+        }
     }
 
     @Override
@@ -35,12 +52,26 @@ public final class RowIdArraySet implements MutableRowIdSet {
             return;
         }
         long target = rowId.value();
-        for (int i = 0; i < size; i++) {
-            if (values[i] == target) {
-                int last = size - 1;
-                values[i] = values[last];
-                values[last] = 0L;
-                size--;
+        while (true) {
+            State current = state.get();
+            int size = current.size;
+            long[] values = current.values;
+            int index = -1;
+            for (int i = 0; i < size; i++) {
+                if (values[i] == target) {
+                    index = i;
+                    break;
+                }
+            }
+            if (index < 0) {
+                return;
+            }
+            long[] nextValues = Arrays.copyOf(values, values.length);
+            int last = size - 1;
+            nextValues[index] = nextValues[last];
+            nextValues[last] = 0L;
+            State next = new State(nextValues, size - 1);
+            if (state.compareAndSet(current, next)) {
                 return;
             }
         }
@@ -48,7 +79,7 @@ public final class RowIdArraySet implements MutableRowIdSet {
 
     @Override
     public int size() {
-        return size;
+        return state.get().size;
     }
 
     @Override
@@ -57,7 +88,9 @@ public final class RowIdArraySet implements MutableRowIdSet {
             return false;
         }
         long target = rowId.value();
-        for (int i = 0; i < size; i++) {
+        State current = state.get();
+        long[] values = current.values;
+        for (int i = 0; i < current.size; i++) {
             if (values[i] == target) {
                 return true;
             }
@@ -67,17 +100,19 @@ public final class RowIdArraySet implements MutableRowIdSet {
 
     @Override
     public long[] toLongArray() {
-        return Arrays.copyOf(values, size);
+        State current = state.get();
+        return Arrays.copyOf(current.values, current.size);
     }
 
     @Override
     public LongEnumerator enumerator() {
+        State snapshot = state.get();
         return new LongEnumerator() {
             private int index;
 
             @Override
             public boolean hasNext() {
-                return index < size;
+                return index < snapshot.size;
             }
 
             @Override
@@ -85,16 +120,18 @@ public final class RowIdArraySet implements MutableRowIdSet {
                 if (!hasNext()) {
                     throw new NoSuchElementException();
                 }
-                return values[index++];
+                return snapshot.values[index++];
             }
         };
     }
 
-    private void ensureCapacity(int desired) {
-        if (desired <= values.length) {
-            return;
+    private static final class State {
+        private final long[] values;
+        private final int size;
+
+        private State(long[] values, int size) {
+            this.values = values;
+            this.size = size;
         }
-        int newCapacity = Math.max(values.length * 2, desired);
-        values = Arrays.copyOf(values, newCapacity);
     }
 }

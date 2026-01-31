@@ -13,9 +13,9 @@ import java.util.concurrent.atomic.AtomicLong;
  * <p>
  * Multiple arenas can coexist in the same factory, enabling:
  * <ul>
- *   <li>Multi-tenant applications (one arena per tenant)</li>
- *   <li>Test isolation (fresh arena per test)</li>
- *   <li>Parallel processing (different arenas in different threads)</li>
+ * <li>Multi-tenant applications (one arena per tenant)</li>
+ * <li>Test isolation (fresh arena per test)</li>
+ * <li>Parallel processing (different arenas in different threads)</li>
  * </ul>
  * <p>
  * Each arena is completely isolated - data saved in one arena is not visible
@@ -27,13 +27,13 @@ public final class MemrisArena implements AutoCloseable {
 
     private final long arenaId;
     private final MemrisRepositoryFactory factory;
-    
+
     // Arena-scoped state
     private final Map<Class<?>, io.memris.storage.GeneratedTable> tables = new HashMap<>();
     private final Map<Class<?>, Map<String, Object>> indexes = new HashMap<>();
     private final Map<Class<?>, AtomicLong> numericIdCounters = new HashMap<>();
     private final Map<Class<?>, Object> repositories = new HashMap<>();
-    
+
     // Mapping from entity class to repository interface class
     private final Map<Class<?>, Class<?>> entityToRepositoryMap = new HashMap<>();
 
@@ -55,8 +55,8 @@ public final class MemrisArena implements AutoCloseable {
      * If the repository already exists in this arena, returns the cached instance.
      *
      * @param repositoryInterface the repository interface
-     * @param <T> the entity type
-     * @param <R> the repository interface type
+     * @param <T>                 the entity type
+     * @param <R>                 the repository interface type
      * @return the repository instance
      */
     @SuppressWarnings("unchecked")
@@ -67,7 +67,7 @@ public final class MemrisArena implements AutoCloseable {
         }
 
         // Create repository through factory's emitter, but scoped to this arena
-        R repository = (R) RepositoryEmitter.createRepository(repositoryInterface, this, factory.getConfiguration());
+        R repository = (R) RepositoryEmitter.createRepository(repositoryInterface, this);
         repositories.put(repositoryInterface, repository);
 
         // Also map entity class to repository interface for lookup by entity class
@@ -102,7 +102,7 @@ public final class MemrisArena implements AutoCloseable {
      * Returns null if no repository has been created for this entity type.
      *
      * @param entityClass the entity class
-     * @param <T> the entity type
+     * @param <T>         the entity type
      * @return the repository instance, or null if not found
      */
     @SuppressWarnings("unchecked")
@@ -122,13 +122,11 @@ public final class MemrisArena implements AutoCloseable {
      * Uses the factory's table builder but caches the result per-arena.
      *
      * @param entityClass the entity class
-     * @param <T> the entity type
+     * @param <T>         the entity type
      * @return the generated table
      */
     public <T> io.memris.storage.GeneratedTable getOrCreateTable(Class<T> entityClass) {
-        return tables.computeIfAbsent(entityClass, ec -> 
-            factory.buildTableForEntity(ec, this)
-        );
+        return tables.computeIfAbsent(entityClass, ec -> factory.buildTableForEntity(ec, this));
     }
 
     /**

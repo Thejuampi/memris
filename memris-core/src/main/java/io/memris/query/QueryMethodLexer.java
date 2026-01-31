@@ -401,7 +401,6 @@ public final class QueryMethodLexer {
                 String tokenValue = input.substring(pos, tokenEnd);
                 if (!tokenValue.isEmpty()) {
                     QueryMethodToken token = createToken(
-                            input,
                             pos,
                             tokenEnd,
                             tokenValue,
@@ -428,7 +427,6 @@ public final class QueryMethodLexer {
     }
 
     private static QueryMethodToken createToken(
-            String input,
             int start,
             int end,
             String value,
@@ -807,17 +805,4 @@ public final class QueryMethodLexer {
         }
     }
 
-    private static QueryMethodTokenType mapPrefixToType(String prefix) {
-        // This method is kept for backward compatibility but is no longer used.
-        // The classifyOperation method now handles all operation classification.
-        // Built-in methods are matched by exact name before this is called.
-        return switch (prefix.toLowerCase()) {
-            case "find", "read", "query", "get" -> QueryMethodTokenType.FIND_BY;
-            case "count" -> QueryMethodTokenType.COUNT_BY;
-            case "exists" -> QueryMethodTokenType.EXISTS_BY;
-            case "delete" -> QueryMethodTokenType.DELETE;
-            // Note: "save" built-ins are matched by exact name before reaching here
-            default -> throw new IllegalArgumentException("Unknown prefix: " + prefix);
-        };
-    }
 }

@@ -325,16 +325,16 @@ When implementing join tables (@OneToMany, @ManyToMany):
 ### Current Concurrency Model
 
 - **Multi-reader**: Thread-safe concurrent queries
-- **Single-writer**: External synchronization required for concurrent saves
-- **Read-write**: No coordination, potential inconsistency
-- **Isolation**: Best-effort (no MVCC, no transactions)
+- **Multi-writer**: Thread-safe row writes coordinated by per-row seqlock
+- **Read-write**: Best-effort isolation (seqlock for rows, no MVCC)
+- **Isolation**: Best-effort (no transactions)
 
 ### When to Use External Synchronization
 
-Use external synchronization (synchronized, locks) when:
-1. Multiple threads save entities concurrently
-2. Multiple threads delete entities concurrently
-3. Read-write coordination is required
+Use external synchronization only when you need strict index/row atomicity across multiple operations:
+1. You require read-your-writes guarantees across index queries
+2. You need strict consistency across multiple writes in a batch
+3. You want deterministic ordering between concurrent writers
 
 ### Best Practices
 
@@ -345,8 +345,7 @@ Use external synchronization (synchronized, locks) when:
 
 ### Current Limitations
 
-- Column writes not atomic (readers see torn state)
-- Index updates can race with column writes
+- Index updates are eventually consistent with row writes
 - No MVCC or snapshot isolation
 - No optimistic locking support for full transactions
 

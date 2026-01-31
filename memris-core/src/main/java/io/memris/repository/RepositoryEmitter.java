@@ -1,8 +1,16 @@
 package io.memris.repository;
 
-import io.memris.core.MemrisConfiguration;
-import io.memris.repository.MemrisRepository;
-import io.memris.runtime.RepositoryRuntime;
+import io.memris.core.MemrisArena;
+import io.memris.core.EntityMetadata;
+import io.memris.core.EntityMetadata.FieldMapping;
+import io.memris.core.MetadataExtractor;
+import io.memris.core.TypeCodes;
+import io.memris.core.converter.TypeConverter;
+import io.memris.storage.GeneratedTable;
+import io.memris.storage.SimpleTable;
+import io.memris.storage.SimpleTable.ColumnSpec;
+import io.memris.query.*;
+import io.memris.runtime.*;
 import net.bytebuddy.ByteBuddy;
 import net.bytebuddy.description.modifier.TypeManifestation;
 import net.bytebuddy.description.modifier.Visibility;
@@ -10,8 +18,12 @@ import net.bytebuddy.dynamic.DynamicType;
 import net.bytebuddy.implementation.MethodDelegation;
 import net.bytebuddy.matcher.ElementMatchers;
 
+import java.lang.invoke.MethodHandle;
+import java.lang.invoke.MethodHandles;
 import java.lang.reflect.Method;
-import java.util.Arrays;
+import java.lang.reflect.ParameterizedType;
+import java.lang.reflect.Type;
+import java.util.*;
 
 /**
  * Generates repository implementations using ByteBuddy.
@@ -22,22 +34,11 @@ import java.util.Arrays;
 public final class RepositoryEmitter {
 
     private final ByteBuddy byteBuddy;
-    private final MemrisConfiguration configuration;
 
     /**
      * Creates a RepositoryEmitter with default configuration.
      */
     public RepositoryEmitter() {
-        this(MemrisConfiguration.builder().build());
-    }
-
-    /**
-     * Creates a RepositoryEmitter with the specified configuration.
-     *
-     * @param configuration the configuration to use
-     */
-    public RepositoryEmitter(MemrisConfiguration configuration) {
-        this.configuration = configuration;
         this.byteBuddy = new ByteBuddy();
     }
 
@@ -47,65 +48,63 @@ public final class RepositoryEmitter {
      *
      * @param repositoryInterface the repository interface class
      * @param arena               the arena for scoping
-     * @param configuration       the configuration to use
      * @param <T>                 the entity type
      * @param <R>                 the repository interface type
      * @return an instance of the generated repository implementation
      */
     @SuppressWarnings("unchecked")
     public static <T, R extends MemrisRepository<T>> R createRepository(Class<R> repositoryInterface,
-            io.memris.core.MemrisArena arena,
-            MemrisConfiguration configuration) {
-        RepositoryEmitter emitter = new RepositoryEmitter(configuration);
+            MemrisArena arena) {
+        RepositoryEmitter emitter = new RepositoryEmitter();
 
         // Extract entity class and create/get table
         Class<T> entityClass = extractEntityClass(repositoryInterface);
-        io.memris.storage.GeneratedTable table = arena.getOrCreateTable(entityClass);
+        GeneratedTable table = arena.getOrCreateTable(entityClass);
 
         // Extract entity metadata
-        io.memris.core.EntityMetadata<T> metadata = io.memris.core.MetadataExtractor.extractEntityMetadata(entityClass);
+        EntityMetadata<T> metadata = MetadataExtractor.extractEntityMetadata(entityClass);
 
         // Extract and compile query methods
-        java.lang.reflect.Method[] methods = RepositoryMethodIntrospector.extractQueryMethods(repositoryInterface);
-        io.memris.query.CompiledQuery[] compiledQueries = new io.memris.query.CompiledQuery[methods.length];
+        Method[] methods = RepositoryMethodIntrospector.extractQueryMethods(repositoryInterface);
+        CompiledQuery[] compiledQueries = new CompiledQuery[methods.length];
 
-        io.memris.query.QueryCompiler compiler = new io.memris.query.QueryCompiler(metadata);
+        QueryCompiler compiler = new QueryCompiler(metadata);
 
         for (int i = 0; i < methods.length; i++) {
-            java.lang.reflect.Method method = methods[i];
-            io.memris.query.LogicalQuery logicalQuery = io.memris.query.QueryPlanner.parse(method, entityClass,
+            Method method = methods[i];
+            LogicalQuery logicalQuery = QueryPlanner.parse(method, entityClass,
                     metadata.idColumnName());
             compiledQueries[i] = compiler.compile(logicalQuery);
         }
 
-        java.util.Map<Class<?>, io.memris.storage.GeneratedTable> tablesByEntity = buildJoinTables(metadata, arena);
-        java.util.Map<Class<?>, io.memris.runtime.HeapRuntimeKernel> kernelsByEntity = buildJoinKernels(tablesByEntity);
-        java.util.Map<Class<?>, io.memris.runtime.EntityMaterializer<?>> materializersByEntity = buildJoinMaterializers(
+        Map<Class<?>, GeneratedTable> tablesByEntity = buildJoinTables(metadata, arena);
+        Map<Class<?>, HeapRuntimeKernel> kernelsByEntity = buildJoinKernels(tablesByEntity);
+        Map<Class<?>, EntityMaterializer<?>> materializersByEntity = buildJoinMaterializers(
                 tablesByEntity);
-        java.util.Map<String, io.memris.storage.SimpleTable> joinTables = buildManyToManyJoinTables(metadata);
+        Map<String, SimpleTable> joinTables = buildManyToManyJoinTables(metadata);
         compiledQueries = wireJoinRuntime(compiledQueries, metadata, tablesByEntity, kernelsByEntity,
                 materializersByEntity, joinTables);
 
         // Extract column metadata for RepositoryPlan
         String[] columnNames = extractColumnNames(metadata);
         byte[] typeCodes = extractTypeCodes(metadata);
-        io.memris.core.converter.TypeConverter<?, ?>[] converters = extractConverters(metadata);
-        java.lang.invoke.MethodHandle[] setters = extractSetters(metadata);
+        TypeConverter<?, ?>[] converters = extractConverters(metadata);
+        MethodHandle[] setters = extractSetters(metadata);
 
         // Create entity constructor handle
-        java.lang.invoke.MethodHandle entityConstructor;
+        MethodHandle entityConstructor;
         try {
-            entityConstructor = java.lang.invoke.MethodHandles.lookup()
+            entityConstructor = MethodHandles.lookup()
                     .unreflectConstructor(metadata.entityConstructor());
         } catch (IllegalAccessException e) {
             throw new RuntimeException("Failed to get entity constructor", e);
         }
 
         // Generate EntitySaver for the entity
-        io.memris.runtime.EntitySaver<T> entitySaver = EntitySaverGenerator.generate(entityClass, metadata);
+        EntitySaver<T> entitySaver = EntitySaverGenerator.generate(entityClass, metadata);
 
         // Build RepositoryPlan with compiled queries
-        io.memris.runtime.RepositoryPlan<T> plan = io.memris.runtime.RepositoryPlan.fromGeneratedTable(
+        RepositoryPlan<T> plan = RepositoryPlan.fromGeneratedTable(
                 table,
                 entityClass,
                 metadata.idColumnName(),
@@ -122,26 +121,24 @@ public final class RepositoryEmitter {
                 entitySaver);
 
         // Create RepositoryRuntime
-        io.memris.runtime.RepositoryRuntime<T> runtime = new io.memris.runtime.RepositoryRuntime<>(plan, null,
-                metadata);
+        RepositoryRuntime<T> runtime = new RepositoryRuntime<>(plan, null, metadata);
 
         return emitter.emitAndInstantiate(repositoryInterface, runtime);
     }
 
-    private static <T> java.util.Map<Class<?>, io.memris.storage.GeneratedTable> buildJoinTables(
-            io.memris.core.EntityMetadata<T> metadata,
-            io.memris.core.MemrisArena arena) {
-        java.util.Map<Class<?>, io.memris.storage.GeneratedTable> tablesByEntity = new java.util.HashMap<>();
-        java.util.ArrayDeque<Class<?>> queue = new java.util.ArrayDeque<>();
+    private static <T> Map<Class<?>, GeneratedTable> buildJoinTables(
+            EntityMetadata<T> metadata,
+            MemrisArena arena) {
+        Map<Class<?>, GeneratedTable> tablesByEntity = new HashMap<>();
+        ArrayDeque<Class<?>> queue = new ArrayDeque<>();
 
         tablesByEntity.put(metadata.entityClass(), arena.getOrCreateTable(metadata.entityClass()));
         queue.add(metadata.entityClass());
 
         while (!queue.isEmpty()) {
             Class<?> current = queue.poll();
-            io.memris.core.EntityMetadata<?> currentMetadata = io.memris.core.MetadataExtractor
-                    .extractEntityMetadata(current);
-            for (io.memris.core.EntityMetadata.FieldMapping field : currentMetadata.fields()) {
+            EntityMetadata<?> currentMetadata = MetadataExtractor.extractEntityMetadata(current);
+            for (FieldMapping field : currentMetadata.fields()) {
                 if (!field.isRelationship() || field.targetEntity() == null) {
                     continue;
                 }
@@ -149,51 +146,48 @@ public final class RepositoryEmitter {
                 if (tablesByEntity.containsKey(target)) {
                     continue;
                 }
-                io.memris.storage.GeneratedTable table = arena.getOrCreateTable(target);
+                GeneratedTable table = arena.getOrCreateTable(target);
                 tablesByEntity.put(target, table);
                 queue.add(target);
             }
         }
-        return java.util.Map.copyOf(tablesByEntity);
+        return Map.copyOf(tablesByEntity);
     }
 
-    private static java.util.Map<Class<?>, io.memris.runtime.HeapRuntimeKernel> buildJoinKernels(
-            java.util.Map<Class<?>, io.memris.storage.GeneratedTable> tablesByEntity) {
-        java.util.Map<Class<?>, io.memris.runtime.HeapRuntimeKernel> kernels = new java.util.HashMap<>();
+    private static Map<Class<?>, HeapRuntimeKernel> buildJoinKernels(
+            Map<Class<?>, GeneratedTable> tablesByEntity) {
+        Map<Class<?>, HeapRuntimeKernel> kernels = new HashMap<>();
         for (var entry : tablesByEntity.entrySet()) {
-            kernels.put(entry.getKey(), new io.memris.runtime.HeapRuntimeKernel(entry.getValue()));
+            kernels.put(entry.getKey(), new HeapRuntimeKernel(entry.getValue()));
         }
-        return java.util.Map.copyOf(kernels);
+        return Map.copyOf(kernels);
     }
 
-    private static java.util.Map<Class<?>, io.memris.runtime.EntityMaterializer<?>> buildJoinMaterializers(
-            java.util.Map<Class<?>, io.memris.storage.GeneratedTable> tablesByEntity) {
-        java.util.Map<Class<?>, io.memris.runtime.EntityMaterializer<?>> materializers = new java.util.HashMap<>();
-        io.memris.runtime.EntityMaterializerGenerator generator = new io.memris.runtime.EntityMaterializerGenerator();
+    private static Map<Class<?>, EntityMaterializer<?>> buildJoinMaterializers(
+            Map<Class<?>, GeneratedTable> tablesByEntity) {
+        Map<Class<?>, EntityMaterializer<?>> materializers = new HashMap<>();
+        EntityMaterializerGenerator generator = new EntityMaterializerGenerator();
         for (Class<?> entityClass : tablesByEntity.keySet()) {
-            io.memris.core.EntityMetadata<?> entityMetadata = io.memris.core.MetadataExtractor
-                    .extractEntityMetadata(entityClass);
+            EntityMetadata<?> entityMetadata = MetadataExtractor.extractEntityMetadata(entityClass);
             materializers.put(entityClass, generator.generate(entityMetadata));
         }
-        return java.util.Map.copyOf(materializers);
+        return Map.copyOf(materializers);
     }
 
-    private static <T> java.util.Map<String, io.memris.storage.SimpleTable> buildManyToManyJoinTables(
-            io.memris.core.EntityMetadata<T> metadata) {
-        java.util.Map<String, io.memris.storage.SimpleTable> joinTables = new java.util.HashMap<>();
-        for (io.memris.core.EntityMetadata.FieldMapping field : metadata.fields()) {
-            if (!field.isRelationship() || field
-                    .relationshipType() != io.memris.core.EntityMetadata.FieldMapping.RelationshipType.MANY_TO_MANY) {
+    private static <T> Map<String, SimpleTable> buildManyToManyJoinTables(
+            EntityMetadata<T> metadata) {
+        Map<String, SimpleTable> joinTables = new HashMap<>();
+        for (FieldMapping field : metadata.fields()) {
+            if (!field.isRelationship() || field.relationshipType() != FieldMapping.RelationshipType.MANY_TO_MANY) {
                 continue;
             }
             if (field.joinTable() == null || field.joinTable().isBlank()) {
                 continue;
             }
 
-            io.memris.core.EntityMetadata<?> targetMetadata = io.memris.core.MetadataExtractor
-                    .extractEntityMetadata(field.targetEntity());
-            io.memris.core.EntityMetadata.FieldMapping sourceId = findIdField(metadata);
-            io.memris.core.EntityMetadata.FieldMapping targetId = findIdField(targetMetadata);
+            EntityMetadata<?> targetMetadata = MetadataExtractor.extractEntityMetadata(field.targetEntity());
+            FieldMapping sourceId = findIdField(metadata);
+            FieldMapping targetId = findIdField(targetMetadata);
 
             if (sourceId == null || targetId == null) {
                 continue;
@@ -212,18 +206,18 @@ public final class RepositoryEmitter {
             final String finalJoinColumn = joinColumn;
             final String finalInverseJoinColumn = inverseJoinColumn;
             joinTables.computeIfAbsent(field.joinTable(), name -> {
-                java.util.List<io.memris.storage.SimpleTable.ColumnSpec<?>> specs = java.util.List.of(
-                        new io.memris.storage.SimpleTable.ColumnSpec<>(finalJoinColumn, sourceId.javaType()),
-                        new io.memris.storage.SimpleTable.ColumnSpec<>(finalInverseJoinColumn, targetId.javaType()));
-                return new io.memris.storage.SimpleTable(name, specs);
+                List<ColumnSpec<?>> specs = List.of(
+                        new ColumnSpec<>(finalJoinColumn, sourceId.javaType()),
+                        new ColumnSpec<>(finalInverseJoinColumn, targetId.javaType()));
+                return new SimpleTable(name, specs);
             });
 
         }
-        return java.util.Map.copyOf(joinTables);
+        return Map.copyOf(joinTables);
     }
 
-    private static io.memris.core.EntityMetadata.FieldMapping findIdField(io.memris.core.EntityMetadata<?> metadata) {
-        for (io.memris.core.EntityMetadata.FieldMapping field : metadata.fields()) {
+    private static FieldMapping findIdField(EntityMetadata<?> metadata) {
+        for (FieldMapping field : metadata.fields()) {
             if (field.name().equals(metadata.idColumnName())) {
                 return field;
             }
@@ -231,14 +225,14 @@ public final class RepositoryEmitter {
         return null;
     }
 
-    private static <T> io.memris.query.CompiledQuery[] wireJoinRuntime(
-            io.memris.query.CompiledQuery[] compiledQueries,
-            io.memris.core.EntityMetadata<T> metadata,
-            java.util.Map<Class<?>, io.memris.storage.GeneratedTable> tablesByEntity,
-            java.util.Map<Class<?>, io.memris.runtime.HeapRuntimeKernel> kernelsByEntity,
-            java.util.Map<Class<?>, io.memris.runtime.EntityMaterializer<?>> materializersByEntity,
-            java.util.Map<String, io.memris.storage.SimpleTable> joinTables) {
-        io.memris.query.CompiledQuery[] wired = new io.memris.query.CompiledQuery[compiledQueries.length];
+    private static <T> CompiledQuery[] wireJoinRuntime(
+            CompiledQuery[] compiledQueries,
+            EntityMetadata<T> metadata,
+            Map<Class<?>, GeneratedTable> tablesByEntity,
+            Map<Class<?>, HeapRuntimeKernel> kernelsByEntity,
+            Map<Class<?>, EntityMaterializer<?>> materializersByEntity,
+            Map<String, SimpleTable> joinTables) {
+        CompiledQuery[] wired = new CompiledQuery[compiledQueries.length];
         for (int i = 0; i < compiledQueries.length; i++) {
             var query = compiledQueries[i];
             var joins = query.joins();
@@ -246,22 +240,18 @@ public final class RepositoryEmitter {
                 wired[i] = query;
                 continue;
             }
-            io.memris.query.CompiledQuery.CompiledJoin[] updated = new io.memris.query.CompiledQuery.CompiledJoin[joins.length];
+            CompiledQuery.CompiledJoin[] updated = new CompiledQuery.CompiledJoin[joins.length];
             for (int j = 0; j < joins.length; j++) {
                 var join = joins[j];
                 var targetTable = tablesByEntity.get(join.targetEntity());
                 var targetKernel = kernelsByEntity.get(join.targetEntity());
                 var targetMaterializer = materializersByEntity.get(join.targetEntity());
-                io.memris.core.EntityMetadata<?> targetMetadata = io.memris.core.MetadataExtractor
-                        .extractEntityMetadata(join.targetEntity());
-                java.lang.invoke.MethodHandle postLoadHandle = targetMetadata.postLoadHandle();
-                io.memris.core.EntityMetadata.FieldMapping fieldMapping = findFieldMapping(metadata,
-                        join.relationshipFieldName());
-                io.memris.runtime.JoinExecutor executor = buildJoinExecutor(metadata, targetMetadata, join,
-                        fieldMapping, joinTables);
-                java.lang.invoke.MethodHandle setter = metadata.fieldSetters().get(join.relationshipFieldName());
-                io.memris.runtime.JoinMaterializer materializer = buildJoinMaterializer(fieldMapping, join, setter,
-                        postLoadHandle);
+                EntityMetadata<?> targetMetadata = MetadataExtractor.extractEntityMetadata(join.targetEntity());
+                MethodHandle postLoadHandle = targetMetadata.postLoadHandle();
+                FieldMapping fieldMapping = findFieldMapping(metadata, join.relationshipFieldName());
+                JoinExecutor executor = buildJoinExecutor(metadata, targetMetadata, join, fieldMapping, joinTables);
+                MethodHandle setter = metadata.fieldSetters().get(join.relationshipFieldName());
+                JoinMaterializer materializer = buildJoinMaterializer(fieldMapping, join, setter, postLoadHandle);
                 updated[j] = join.withRuntime(targetTable, targetKernel, targetMaterializer, executor, materializer);
             }
             wired[i] = query.withJoins(updated);
@@ -269,26 +259,25 @@ public final class RepositoryEmitter {
         return wired;
     }
 
-    private static io.memris.runtime.JoinExecutor buildJoinExecutor(io.memris.core.EntityMetadata<?> metadata,
-            io.memris.core.EntityMetadata<?> targetMetadata,
-            io.memris.query.CompiledQuery.CompiledJoin join,
-            io.memris.core.EntityMetadata.FieldMapping fieldMapping,
-            java.util.Map<String, io.memris.storage.SimpleTable> joinTables) {
-        if (fieldMapping != null && fieldMapping
-                .relationshipType() == io.memris.core.EntityMetadata.FieldMapping.RelationshipType.MANY_TO_MANY) {
+    private static JoinExecutor buildJoinExecutor(EntityMetadata<?> metadata,
+            EntityMetadata<?> targetMetadata,
+            CompiledQuery.CompiledJoin join,
+            FieldMapping fieldMapping,
+            Map<String, SimpleTable> joinTables) {
+        if (fieldMapping != null && fieldMapping.relationshipType() == FieldMapping.RelationshipType.MANY_TO_MANY) {
             JoinTableInfo joinInfo = resolveJoinTableInfo(metadata, fieldMapping, joinTables);
             if (joinInfo == null) {
-                return new io.memris.runtime.JoinExecutorManyToMany(null, null, null,
+                return new JoinExecutorManyToMany(null, null, null,
                         join.sourceColumnIndex(), join.fkTypeCode(), join.targetColumnIndex(), join.fkTypeCode(),
                         join.joinType());
             }
-            io.memris.core.EntityMetadata.FieldMapping sourceId = findIdField(metadata);
-            io.memris.core.EntityMetadata.FieldMapping targetId = findIdField(targetMetadata);
+            FieldMapping sourceId = findIdField(metadata);
+            FieldMapping targetId = findIdField(targetMetadata);
             int sourceIdColumnIndex = metadata.resolveColumnPosition(metadata.idColumnName());
             int targetIdColumnIndex = targetMetadata.resolveColumnPosition(targetMetadata.idColumnName());
             byte sourceIdTypeCode = sourceId != null ? sourceId.typeCode() : join.fkTypeCode();
             byte targetIdTypeCode = targetId != null ? targetId.typeCode() : join.fkTypeCode();
-            return new io.memris.runtime.JoinExecutorManyToMany(
+            return new JoinExecutorManyToMany(
                     joinInfo.table,
                     joinInfo.joinColumn,
                     joinInfo.inverseJoinColumn,
@@ -298,7 +287,7 @@ public final class RepositoryEmitter {
                     targetIdTypeCode,
                     join.joinType());
         }
-        return new io.memris.runtime.JoinExecutorImpl(
+        return new JoinExecutorImpl(
                 join.sourceColumnIndex(),
                 join.targetColumnIndex(),
                 join.targetColumnIsId(),
@@ -306,18 +295,17 @@ public final class RepositoryEmitter {
                 join.joinType());
     }
 
-    private static io.memris.runtime.JoinMaterializer buildJoinMaterializer(
-            io.memris.core.EntityMetadata.FieldMapping fieldMapping,
-            io.memris.query.CompiledQuery.CompiledJoin join,
-            java.lang.invoke.MethodHandle setter,
-            java.lang.invoke.MethodHandle postLoadHandle) {
+    private static JoinMaterializer buildJoinMaterializer(
+            FieldMapping fieldMapping,
+            CompiledQuery.CompiledJoin join,
+            MethodHandle setter,
+            MethodHandle postLoadHandle) {
         if (fieldMapping != null && fieldMapping.isCollection()) {
-            if (fieldMapping
-                    .relationshipType() == io.memris.core.EntityMetadata.FieldMapping.RelationshipType.MANY_TO_MANY) {
-                return new io.memris.runtime.NoopJoinMaterializer();
+            if (fieldMapping.relationshipType() == FieldMapping.RelationshipType.MANY_TO_MANY) {
+                return new NoopJoinMaterializer();
             }
             Class<?> collectionType = fieldMapping.javaType();
-            return new io.memris.runtime.JoinCollectionMaterializer(
+            return new JoinCollectionMaterializer(
                     join.sourceColumnIndex(),
                     join.targetColumnIndex(),
                     join.fkTypeCode(),
@@ -325,7 +313,7 @@ public final class RepositoryEmitter {
                     postLoadHandle,
                     collectionType);
         }
-        return new io.memris.runtime.JoinMaterializerImpl(
+        return new JoinMaterializerImpl(
                 join.sourceColumnIndex(),
                 join.targetColumnIndex(),
                 join.targetColumnIsId(),
@@ -334,20 +322,16 @@ public final class RepositoryEmitter {
                 postLoadHandle);
     }
 
-    private record JoinTableInfo(String joinColumn, String inverseJoinColumn, io.memris.storage.SimpleTable table) {
-    }
-
-    private static JoinTableInfo resolveJoinTableInfo(io.memris.core.EntityMetadata<?> sourceMetadata,
-            io.memris.core.EntityMetadata.FieldMapping field,
-            java.util.Map<String, io.memris.storage.SimpleTable> joinTables) {
+    private static JoinTableInfo resolveJoinTableInfo(EntityMetadata<?> sourceMetadata,
+            FieldMapping field,
+            Map<String, SimpleTable> joinTables) {
         if (field.joinTable() != null && !field.joinTable().isBlank()) {
             return buildJoinTableInfo(field, sourceMetadata,
-                    io.memris.core.MetadataExtractor.extractEntityMetadata(field.targetEntity()), false, joinTables);
+                    MetadataExtractor.extractEntityMetadata(field.targetEntity()), false, joinTables);
         }
         if (field.mappedBy() != null && !field.mappedBy().isBlank()) {
-            io.memris.core.EntityMetadata<?> targetMetadata = io.memris.core.MetadataExtractor
-                    .extractEntityMetadata(field.targetEntity());
-            io.memris.core.EntityMetadata.FieldMapping ownerField = findFieldMapping(targetMetadata, field.mappedBy());
+            EntityMetadata<?> targetMetadata = MetadataExtractor.extractEntityMetadata(field.targetEntity());
+            FieldMapping ownerField = findFieldMapping(targetMetadata, field.mappedBy());
             if (ownerField == null || ownerField.joinTable() == null || ownerField.joinTable().isBlank()) {
                 return null;
             }
@@ -356,16 +340,16 @@ public final class RepositoryEmitter {
         return null;
     }
 
-    private static JoinTableInfo buildJoinTableInfo(io.memris.core.EntityMetadata.FieldMapping ownerField,
-            io.memris.core.EntityMetadata<?> ownerMetadata,
-            io.memris.core.EntityMetadata<?> inverseMetadata,
+    private static JoinTableInfo buildJoinTableInfo(FieldMapping ownerField,
+            EntityMetadata<?> ownerMetadata,
+            EntityMetadata<?> inverseMetadata,
             boolean inverseSide,
-            java.util.Map<String, io.memris.storage.SimpleTable> joinTables) {
+            Map<String, SimpleTable> joinTables) {
         String joinTableName = ownerField.joinTable();
         if (joinTableName == null || joinTableName.isBlank()) {
             return null;
         }
-        io.memris.storage.SimpleTable table = joinTables.get(joinTableName);
+        SimpleTable table = joinTables.get(joinTableName);
         if (table == null) {
             return null;
         }
@@ -399,9 +383,8 @@ public final class RepositoryEmitter {
         return new JoinTableInfo(joinColumn, inverseJoinColumn, table);
     }
 
-    private static io.memris.core.EntityMetadata.FieldMapping findFieldMapping(
-            io.memris.core.EntityMetadata<?> metadata, String fieldName) {
-        for (io.memris.core.EntityMetadata.FieldMapping field : metadata.fields()) {
+    private static FieldMapping findFieldMapping(EntityMetadata<?> metadata, String fieldName) {
+        for (FieldMapping field : metadata.fields()) {
             if (field.name().equals(fieldName)) {
                 return field;
             }
@@ -409,61 +392,48 @@ public final class RepositoryEmitter {
         return null;
     }
 
-    /**
-     * Extract column names from entity metadata.
-     */
-    private static String[] extractColumnNames(io.memris.core.EntityMetadata<?> metadata) {
+    private static String[] extractColumnNames(EntityMetadata<?> metadata) {
         return metadata.fields().stream()
                 .filter(fm -> fm.columnPosition() >= 0)
-                .sorted(java.util.Comparator.comparingInt(io.memris.core.EntityMetadata.FieldMapping::columnPosition))
-                .map(io.memris.core.EntityMetadata.FieldMapping::columnName)
+                .sorted(Comparator.comparingInt(FieldMapping::columnPosition))
+                .map(FieldMapping::columnName)
                 .toArray(String[]::new);
     }
 
-    /**
-     * Extract type codes from entity metadata.
-     */
-    private static byte[] extractTypeCodes(io.memris.core.EntityMetadata<?> metadata) {
+    private static byte[] extractTypeCodes(EntityMetadata<?> metadata) {
         var fields = metadata.fields().stream()
                 .filter(fm -> fm.columnPosition() >= 0)
-                .sorted(java.util.Comparator.comparingInt(io.memris.core.EntityMetadata.FieldMapping::columnPosition))
+                .sorted(Comparator.comparingInt(FieldMapping::columnPosition))
                 .toList();
         byte[] typeCodes = new byte[fields.size()];
         for (int i = 0; i < fields.size(); i++) {
             Byte tc = fields.get(i).typeCode();
-            typeCodes[i] = tc != null ? tc.byteValue() : io.memris.core.TypeCodes.TYPE_LONG;
+            typeCodes[i] = tc != null ? tc.byteValue() : TypeCodes.TYPE_LONG;
         }
         return typeCodes;
     }
 
-    /**
-     * Extract converters from entity metadata.
-     */
-    private static io.memris.core.converter.TypeConverter<?, ?>[] extractConverters(
-            io.memris.core.EntityMetadata<?> metadata) {
+    private static TypeConverter<?, ?>[] extractConverters(EntityMetadata<?> metadata) {
         return metadata.fields().stream()
                 .filter(fm -> fm.columnPosition() >= 0)
-                .sorted(java.util.Comparator.comparingInt(io.memris.core.EntityMetadata.FieldMapping::columnPosition))
+                .sorted(Comparator.comparingInt(FieldMapping::columnPosition))
                 .map(fm -> metadata.converters().getOrDefault(fm.name(), null))
-                .toArray(io.memris.core.converter.TypeConverter[]::new);
+                .toArray(TypeConverter[]::new);
     }
 
-    /**
-     * Extract setter MethodHandles from entity metadata.
-     */
-    private static java.lang.invoke.MethodHandle[] extractSetters(io.memris.core.EntityMetadata<?> metadata) {
+    private static MethodHandle[] extractSetters(EntityMetadata<?> metadata) {
         return metadata.fields().stream()
                 .filter(fm -> fm.columnPosition() >= 0)
-                .sorted(java.util.Comparator.comparingInt(io.memris.core.EntityMetadata.FieldMapping::columnPosition))
+                .sorted(Comparator.comparingInt(FieldMapping::columnPosition))
                 .map(fm -> metadata.fieldSetters().get(fm.name()))
-                .toArray(java.lang.invoke.MethodHandle[]::new);
+                .toArray(MethodHandle[]::new);
     }
 
     @SuppressWarnings("unchecked")
     private static <T> Class<T> extractEntityClass(Class<? extends MemrisRepository<?>> repositoryInterface) {
-        for (java.lang.reflect.Type iface : repositoryInterface.getGenericInterfaces()) {
-            if (iface instanceof java.lang.reflect.ParameterizedType pt) {
-                java.lang.reflect.Type[] typeArgs = pt.getActualTypeArguments();
+        for (Type iface : repositoryInterface.getGenericInterfaces()) {
+            if (iface instanceof ParameterizedType pt) {
+                Type[] typeArgs = pt.getActualTypeArguments();
                 if (typeArgs.length > 0 && typeArgs[0] instanceof Class<?>) {
                     return (Class<T>) typeArgs[0];
                 }
@@ -523,26 +493,6 @@ public final class RepositoryEmitter {
         }
     }
 
-    /**
-     * Method interceptor that delegates calls to RepositoryRuntime.
-     */
-    public static class RepositoryMethodInterceptor<T> {
-        private final RepositoryRuntime<T> runtime;
-        private final Method method;
-
-        public RepositoryMethodInterceptor(RepositoryRuntime<T> runtime, Method method) {
-            this.runtime = runtime;
-            this.method = method;
-        }
-
-        @net.bytebuddy.implementation.bind.annotation.RuntimeType
-        public Object intercept(
-                @net.bytebuddy.implementation.bind.annotation.AllArguments Object[] args) {
-            // Delegate to runtime based on method name and arguments
-            return runtime.executeMethod(method, args);
-        }
-    }
-
     public static class RepositoryMethodIndexInterceptor<T> {
         private final RepositoryRuntime<T> runtime;
         private final int methodIndex;
@@ -557,5 +507,8 @@ public final class RepositoryEmitter {
                 @net.bytebuddy.implementation.bind.annotation.AllArguments Object[] args) {
             return runtime.executeMethodIndex(methodIndex, args);
         }
+    }
+
+    private record JoinTableInfo(String joinColumn, String inverseJoinColumn, SimpleTable table) {
     }
 }

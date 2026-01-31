@@ -1,7 +1,5 @@
 package io.memris.core.converter;
 
-import io.memris.core.MemrisException;
-
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.time.Instant;
@@ -13,7 +11,8 @@ import java.util.Date;
 import java.util.UUID;
 
 /**
- * Registry for TypeConverters with support for client-registered custom converters.
+ * Registry for TypeConverters with support for client-registered custom
+ * converters.
  * Uses method handles for efficient reflection-free conversion.
  */
 public final class TypeConverterRegistry {
@@ -88,14 +87,22 @@ public final class TypeConverterRegistry {
         }
 
         // Try boxed to primitive lookup
-        if (javaType == Integer.class) return (TypeConverter<J, ?>) converters.get(int.class);
-        if (javaType == Long.class) return (TypeConverter<J, ?>) converters.get(long.class);
-        if (javaType == Boolean.class) return (TypeConverter<J, ?>) converters.get(boolean.class);
-        if (javaType == Byte.class) return (TypeConverter<J, ?>) converters.get(byte.class);
-        if (javaType == Short.class) return (TypeConverter<J, ?>) converters.get(short.class);
-        if (javaType == Float.class) return (TypeConverter<J, ?>) converters.get(float.class);
-        if (javaType == Double.class) return (TypeConverter<J, ?>) converters.get(double.class);
-        if (javaType == Character.class) return (TypeConverter<J, ?>) converters.get(char.class);
+        if (javaType == Integer.class)
+            return (TypeConverter<J, ?>) converters.get(int.class);
+        if (javaType == Long.class)
+            return (TypeConverter<J, ?>) converters.get(long.class);
+        if (javaType == Boolean.class)
+            return (TypeConverter<J, ?>) converters.get(boolean.class);
+        if (javaType == Byte.class)
+            return (TypeConverter<J, ?>) converters.get(byte.class);
+        if (javaType == Short.class)
+            return (TypeConverter<J, ?>) converters.get(short.class);
+        if (javaType == Float.class)
+            return (TypeConverter<J, ?>) converters.get(float.class);
+        if (javaType == Double.class)
+            return (TypeConverter<J, ?>) converters.get(double.class);
+        if (javaType == Character.class)
+            return (TypeConverter<J, ?>) converters.get(char.class);
 
         return null;
     }
@@ -116,18 +123,26 @@ public final class TypeConverterRegistry {
         }
 
         @Override
-        public Class<J> getJavaType() { return javaType; }
+        public Class<J> getJavaType() {
+            return javaType;
+        }
 
         @Override
-        public Class<S> getStorageType() { return storageType; }
+        public Class<S> getStorageType() {
+            return storageType;
+        }
 
         @Override
         @SuppressWarnings("unchecked")
-        public S toStorage(J javaValue) { return (S) javaValue; }
+        public S toStorage(J javaValue) {
+            return (S) javaValue;
+        }
 
         @Override
         @SuppressWarnings("unchecked")
-        public J fromStorage(S storageValue) { return (J) storageValue; }
+        public J fromStorage(S storageValue) {
+            return (J) storageValue;
+        }
     }
 
     private static final class BoxedToPrimitiveConverter<J, S> implements TypeConverter<J, S> {
@@ -140,80 +155,104 @@ public final class TypeConverterRegistry {
         }
 
         @Override
-        public Class<J> getJavaType() { return javaType; }
+        public Class<J> getJavaType() {
+            return javaType;
+        }
 
         @Override
-        public Class<S> getStorageType() { return storageType; }
+        public Class<S> getStorageType() {
+            return storageType;
+        }
 
         @Override
         @SuppressWarnings("unchecked")
-        public S toStorage(J javaValue) { return (S) javaValue; }
+        public S toStorage(J javaValue) {
+            return (S) javaValue;
+        }
 
         @Override
         @SuppressWarnings("unchecked")
-        public J fromStorage(S storageValue) { return (J) storageValue; }
+        public J fromStorage(S storageValue) {
+            return (J) storageValue;
+        }
     }
 
     private static final class UUIDConverter implements TypeConverter<UUID, String> {
         @Override
-        public Class<UUID> getJavaType() { return UUID.class; }
-
-        @Override
-        public Class<String> getStorageType() { return String.class; }
-
-        @Override
-        public String toStorage(UUID javaValue) { 
-            return javaValue == null ? null : javaValue.toString(); 
+        public Class<UUID> getJavaType() {
+            return UUID.class;
         }
 
         @Override
-        public UUID fromStorage(String storageValue) { 
-            return storageValue == null || storageValue.isEmpty() ? null : UUID.fromString(storageValue); 
+        public Class<String> getStorageType() {
+            return String.class;
+        }
+
+        @Override
+        public String toStorage(UUID javaValue) {
+            return javaValue == null ? null : javaValue.toString();
+        }
+
+        @Override
+        public UUID fromStorage(String storageValue) {
+            return storageValue == null || storageValue.isEmpty() ? null : UUID.fromString(storageValue);
         }
     }
 
     private static final class BigDecimalConverter implements TypeConverter<BigDecimal, String> {
         @Override
-        public Class<BigDecimal> getJavaType() { return BigDecimal.class; }
-
-        @Override
-        public Class<String> getStorageType() { return String.class; }
-
-        @Override
-        public String toStorage(BigDecimal javaValue) { 
-            return javaValue == null ? null : javaValue.toString(); 
+        public Class<BigDecimal> getJavaType() {
+            return BigDecimal.class;
         }
 
         @Override
-        public BigDecimal fromStorage(String storageValue) { 
-            return storageValue == null || storageValue.isEmpty() ? null : new BigDecimal(storageValue); 
+        public Class<String> getStorageType() {
+            return String.class;
+        }
+
+        @Override
+        public String toStorage(BigDecimal javaValue) {
+            return javaValue == null ? null : javaValue.toString();
+        }
+
+        @Override
+        public BigDecimal fromStorage(String storageValue) {
+            return storageValue == null || storageValue.isEmpty() ? null : new BigDecimal(storageValue);
         }
     }
 
     private static final class BigIntegerConverter implements TypeConverter<BigInteger, String> {
         @Override
-        public Class<BigInteger> getJavaType() { return BigInteger.class; }
-
-        @Override
-        public Class<String> getStorageType() { return String.class; }
-
-        @Override
-        public String toStorage(BigInteger javaValue) { 
-            return javaValue == null ? null : javaValue.toString(); 
+        public Class<BigInteger> getJavaType() {
+            return BigInteger.class;
         }
 
         @Override
-        public BigInteger fromStorage(String storageValue) { 
-            return storageValue == null || storageValue.isEmpty() ? null : new BigInteger(storageValue); 
+        public Class<String> getStorageType() {
+            return String.class;
+        }
+
+        @Override
+        public String toStorage(BigInteger javaValue) {
+            return javaValue == null ? null : javaValue.toString();
+        }
+
+        @Override
+        public BigInteger fromStorage(String storageValue) {
+            return storageValue == null || storageValue.isEmpty() ? null : new BigInteger(storageValue);
         }
     }
 
     private static final class LocalDateLongConverter implements TypeConverter<LocalDate, Long> {
         @Override
-        public Class<LocalDate> getJavaType() { return LocalDate.class; }
+        public Class<LocalDate> getJavaType() {
+            return LocalDate.class;
+        }
 
         @Override
-        public Class<Long> getStorageType() { return long.class; }
+        public Class<Long> getStorageType() {
+            return long.class;
+        }
 
         @Override
         public Long toStorage(LocalDate javaValue) {
@@ -228,10 +267,14 @@ public final class TypeConverterRegistry {
 
     private static final class LocalDateTimeLongConverter implements TypeConverter<LocalDateTime, Long> {
         @Override
-        public Class<LocalDateTime> getJavaType() { return LocalDateTime.class; }
+        public Class<LocalDateTime> getJavaType() {
+            return LocalDateTime.class;
+        }
 
         @Override
-        public Class<Long> getStorageType() { return long.class; }
+        public Class<Long> getStorageType() {
+            return long.class;
+        }
 
         @Override
         public Long toStorage(LocalDateTime javaValue) {
@@ -240,34 +283,43 @@ public final class TypeConverterRegistry {
 
         @Override
         public LocalDateTime fromStorage(Long storageValue) {
-            return storageValue == null ? null : LocalDateTime.ofInstant(Instant.ofEpochMilli(storageValue), ZoneOffset.UTC);
+            return storageValue == null ? null
+                    : LocalDateTime.ofInstant(Instant.ofEpochMilli(storageValue), ZoneOffset.UTC);
         }
     }
 
     private static final class LocalTimeConverter implements TypeConverter<LocalTime, String> {
         @Override
-        public Class<LocalTime> getJavaType() { return LocalTime.class; }
-
-        @Override
-        public Class<String> getStorageType() { return String.class; }
-
-        @Override
-        public String toStorage(LocalTime javaValue) { 
-            return javaValue == null ? null : javaValue.toString(); 
+        public Class<LocalTime> getJavaType() {
+            return LocalTime.class;
         }
 
         @Override
-        public LocalTime fromStorage(String storageValue) { 
-            return storageValue == null || storageValue.isEmpty() ? null : LocalTime.parse(storageValue); 
+        public Class<String> getStorageType() {
+            return String.class;
+        }
+
+        @Override
+        public String toStorage(LocalTime javaValue) {
+            return javaValue == null ? null : javaValue.toString();
+        }
+
+        @Override
+        public LocalTime fromStorage(String storageValue) {
+            return storageValue == null || storageValue.isEmpty() ? null : LocalTime.parse(storageValue);
         }
     }
 
     private static final class InstantLongConverter implements TypeConverter<Instant, Long> {
         @Override
-        public Class<Instant> getJavaType() { return Instant.class; }
+        public Class<Instant> getJavaType() {
+            return Instant.class;
+        }
 
         @Override
-        public Class<Long> getStorageType() { return long.class; }
+        public Class<Long> getStorageType() {
+            return long.class;
+        }
 
         @Override
         public Long toStorage(Instant javaValue) {
@@ -282,10 +334,14 @@ public final class TypeConverterRegistry {
 
     private static final class DateLongConverter implements TypeConverter<Date, Long> {
         @Override
-        public Class<Date> getJavaType() { return Date.class; }
+        public Class<Date> getJavaType() {
+            return Date.class;
+        }
 
         @Override
-        public Class<Long> getStorageType() { return long.class; }
+        public Class<Long> getStorageType() {
+            return long.class;
+        }
 
         @Override
         public Long toStorage(Date javaValue) {
@@ -300,39 +356,47 @@ public final class TypeConverterRegistry {
 
     private static final class SqlDateConverter implements TypeConverter<java.sql.Date, String> {
         @Override
-        public Class<java.sql.Date> getJavaType() { return java.sql.Date.class; }
-
-        @Override
-        public Class<String> getStorageType() { return String.class; }
-
-        @Override
-        public String toStorage(java.sql.Date javaValue) { 
-            return javaValue == null ? null : javaValue.toLocalDate().toString(); 
+        public Class<java.sql.Date> getJavaType() {
+            return java.sql.Date.class;
         }
 
         @Override
-        public java.sql.Date fromStorage(String storageValue) { 
-            return storageValue == null || storageValue.isEmpty() ? null : 
-                java.sql.Date.valueOf(LocalDate.parse(storageValue)); 
+        public Class<String> getStorageType() {
+            return String.class;
+        }
+
+        @Override
+        public String toStorage(java.sql.Date javaValue) {
+            return javaValue == null ? null : javaValue.toLocalDate().toString();
+        }
+
+        @Override
+        public java.sql.Date fromStorage(String storageValue) {
+            return storageValue == null || storageValue.isEmpty() ? null
+                    : java.sql.Date.valueOf(LocalDate.parse(storageValue));
         }
     }
 
     private static final class SqlTimestampConverter implements TypeConverter<java.sql.Timestamp, String> {
         @Override
-        public Class<java.sql.Timestamp> getJavaType() { return java.sql.Timestamp.class; }
-
-        @Override
-        public Class<String> getStorageType() { return String.class; }
-
-        @Override
-        public String toStorage(java.sql.Timestamp javaValue) { 
-            return javaValue == null ? null : javaValue.toLocalDateTime().toString(); 
+        public Class<java.sql.Timestamp> getJavaType() {
+            return java.sql.Timestamp.class;
         }
 
         @Override
-        public java.sql.Timestamp fromStorage(String storageValue) { 
-            return storageValue == null || storageValue.isEmpty() ? null : 
-                java.sql.Timestamp.valueOf(LocalDateTime.parse(storageValue)); 
+        public Class<String> getStorageType() {
+            return String.class;
+        }
+
+        @Override
+        public String toStorage(java.sql.Timestamp javaValue) {
+            return javaValue == null ? null : javaValue.toLocalDateTime().toString();
+        }
+
+        @Override
+        public java.sql.Timestamp fromStorage(String storageValue) {
+            return storageValue == null || storageValue.isEmpty() ? null
+                    : java.sql.Timestamp.valueOf(LocalDateTime.parse(storageValue));
         }
     }
 }

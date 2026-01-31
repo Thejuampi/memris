@@ -2,9 +2,6 @@ package io.memris.kernel;
 
 import io.memris.kernel.selection.IntEnumerator;
 import io.memris.kernel.selection.IntSelection;
-import io.memris.kernel.MutableSelectionVector;
-import io.memris.kernel.SelectionVector;
-import io.memris.kernel.SelectionVectorFactory;
 
 import java.util.HashMap;
 import java.util.Map;

@@ -2,40 +2,30 @@ package io.memris.repository;
 
 import io.memris.index.HashIndex;
 import io.memris.index.RangeIndex;
-import io.memris.kernel.Column;
+
 import io.memris.kernel.Predicate;
 import io.memris.kernel.RowId;
 import io.memris.kernel.RowIdSet;
 import io.memris.core.IdGenerator;
 import io.memris.core.MemrisConfiguration;
 import io.memris.core.MemrisArena;
-import io.memris.core.MemrisException;
-import io.memris.core.GenerationType;
+
 import io.memris.core.GeneratedValue;
 import io.memris.core.Index;
-import io.memris.core.converter.TypeConverter;
-import io.memris.core.converter.TypeConverterRegistry;
-import io.memris.storage.SimpleTable;
-import io.memris.storage.SimpleTable.ColumnSpec;
 import jakarta.persistence.*;
-
-import java.lang.reflect.Field;
-import java.lang.reflect.Method;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 import java.util.*;
-import java.util.concurrent.atomic.AtomicLong;
 
 public final class MemrisRepositoryFactory implements AutoCloseable {
 
     private final Map<String, IdGenerator<?>> customIdGenerators = new HashMap<>();
-    private final Map<Class<?>, AtomicLong> numericIdCounters = new HashMap<>();
+
     private final Map<Class<?>, io.memris.storage.GeneratedTable> tables = new HashMap<>();
     private final Map<Class<?>, Map<String, Object>> indexes = new HashMap<>();
 
     // Configuration settings
     private final MemrisConfiguration configuration;
-    private SortAlgorithm sortAlgorithm = SortAlgorithm.AUTO;
 
     /**
      * Sorting algorithms for query results.
@@ -106,211 +96,6 @@ public final class MemrisRepositoryFactory implements AutoCloseable {
         }
         throw new IllegalArgumentException("Cannot extract entity class from " + repositoryInterface.getName() +
                 ". Repository must extend MemrisRepository<EntityType>.");
-    }
-
-    /**
-     * Find the ID field for an entity and return its storage type.
-     * Supports @GeneratedValue, @jakarta.persistence.Id, and legacy "id" field
-     * detection.
-     */
-    private Class<?> getIdStorageType(Class<?> entityClass) {
-        // First, try to find ID field with annotations
-        for (Field field : entityClass.getDeclaredFields()) {
-            if (field.isAnnotationPresent(GeneratedValue.class) ||
-                    field.isAnnotationPresent(Id.class)) {
-                Class<?> fieldType = field.getType();
-                TypeConverter<?, ?> converter = TypeConverterRegistry.getInstance().getConverter(fieldType);
-                if (converter != null) {
-                    return converter.getStorageType();
-                }
-                return fieldType;
-            }
-        }
-        throw new IllegalArgumentException("No ID field found for entity: " + entityClass.getName());
-    }
-
-    /**
-     * Find the ID field for an entity and return its Java field type.
-     * Used for UUID detection (returns UUID.class, not the storage type).
-     */
-    private Class<?> getIdFieldType(Class<?> entityClass) {
-        // First, try to find ID field with annotations
-        for (Field field : entityClass.getDeclaredFields()) {
-            if (field.isAnnotationPresent(GeneratedValue.class) ||
-                    field.isAnnotationPresent(Id.class)) {
-                return field.getType();
-            }
-        }
-
-        // Legacy support: look for int "id" field
-        for (Field field : entityClass.getDeclaredFields()) {
-            if (field.getName().equals("id")) {
-                return field.getType();
-            }
-        }
-        throw new IllegalArgumentException("No ID field found for entity: " + entityClass.getName());
-    }
-
-    private Class<?> getCollectionElementType(Field field) {
-        Class<?> type = field.getType();
-        if (type == Set.class || type == List.class) {
-            Type genericType = field.getGenericType();
-            if (genericType instanceof ParameterizedType) {
-                Type[] typeArgs = ((ParameterizedType) genericType).getActualTypeArguments();
-                if (typeArgs.length > 0 && typeArgs[0] instanceof Class<?>) {
-                    return (Class<?>) typeArgs[0];
-                }
-            }
-        }
-        return null;
-    }
-
-    private <T> io.memris.storage.GeneratedTable buildTable(Class<T> entityClass) {
-        // TODO: Implement using TableGenerator to create GeneratedTable
-        // For now, return null to allow compilation
-        return null;
-    }
-
-    private <T> void buildIndexes(Class<T> entityClass, io.memris.kernel.Table table) {
-        Map<String, Object> entityIndexes = new HashMap<>();
-
-        // Always create a HashIndex on the ID field for O(1) lookups (findById,
-        // existsById, etc.)
-        for (Field field : entityClass.getDeclaredFields()) {
-            if (field.isAnnotationPresent(GeneratedValue.class) ||
-                    field.isAnnotationPresent(Id.class) ||
-                    field.getName().equals("id")) {
-                // Create HashIndex for ID field - this is always built for performance
-                entityIndexes.put(field.getName(), new HashIndex<>());
-                break; // Only one ID field
-            }
-        }
-
-        // Build indexes for @Index annotated fields
-        for (Field field : entityClass.getDeclaredFields()) {
-            if (field.isAnnotationPresent(Index.class)) {
-                String fieldName = field.getName();
-                Class<?> fieldType = field.getType();
-                Index indexAnnotation = field.getAnnotation(Index.class);
-
-                Object index;
-                if (indexAnnotation.type() == Index.IndexType.BTREE) {
-                    // RangeIndex for range queries (GT, LT, GTE, LTE, BETWEEN)
-                    index = new RangeIndex<>();
-                } else {
-                    // HashIndex for equality lookups (EQ, NEQ)
-                    // Also works for ranges since RangeIndex extends NavigableMap
-                    index = new HashIndex<>();
-                }
-                entityIndexes.put(fieldName, index);
-            }
-        }
-        if (!entityIndexes.isEmpty()) {
-            indexes.put(entityClass, entityIndexes);
-        }
-    }
-
-    private boolean isEntityType(Class<?> type) {
-        return type.isAnnotationPresent(Entity.class) &&
-                !type.isPrimitive() &&
-                type != String.class;
-    }
-
-    // Java 21 switch with guarded patterns for blazing fast type dispatch
-    private boolean isZero(Object value, Class<?> type) {
-        if (value == null)
-            return false;
-
-        // Pattern matching on Class with guarded patterns - faster than string
-        // comparison
-        return switch (type) {
-            case Class<?> c when c == int.class || c == Integer.class -> (int) value == 0;
-            case Class<?> c when c == long.class || c == Long.class -> (long) value == 0L;
-            case Class<?> c when c == short.class || c == Short.class -> (short) value == (short) 0;
-            case Class<?> c when c == byte.class || c == Byte.class -> (byte) value == (byte) 0;
-            case Class<?> c when c == UUID.class -> {
-                UUID uuid = (UUID) value;
-                yield uuid.getMostSignificantBits() == 0L && uuid.getLeastSignificantBits() == 0L;
-            }
-            default -> false;
-        };
-    }
-
-    @SuppressWarnings("unchecked")
-    private <T> T generateId(Class<?> entityClass, Field idField) {
-        GeneratedValue annotation = idField.getAnnotation(GeneratedValue.class);
-        GenerationType strategy = (annotation != null) ? annotation.strategy() : GenerationType.AUTO;
-        Class<?> idType = idField.getType();
-
-        // Java 21 switch for blazing fast strategy dispatch
-        return switch (strategy) {
-            case AUTO -> {
-                // Auto-detect: numeric → IDENTITY, UUID → UUID
-                GenerationType detectedStrategy = switch (idType) {
-                    case Class<?> c when c == UUID.class -> GenerationType.UUID;
-                    default -> GenerationType.IDENTITY;
-                };
-                yield generateIdWithStrategy(entityClass, idField, detectedStrategy, idType, annotation);
-            }
-            case IDENTITY -> generateNumericId(entityClass, idType);
-            case UUID -> (T) UUID.randomUUID();
-            case CUSTOM -> {
-                String generatorName = annotation.generator();
-                if (generatorName == null || generatorName.isEmpty()) {
-                    throw new MemrisException(
-                            new IllegalArgumentException("CUSTOM strategy requires generator name in @GeneratedValue"));
-                }
-                IdGenerator<?> generator = customIdGenerators.get(generatorName);
-                if (generator == null) {
-                    throw new MemrisException(
-                            new IllegalArgumentException("No IdGenerator found for: " + generatorName));
-                }
-                yield (T) generator.generate();
-            }
-            default -> throw new MemrisException(
-                    new IllegalArgumentException("Unsupported generation strategy: " + strategy.name()));
-        };
-    }
-
-    @SuppressWarnings("unchecked")
-    private <T> T generateIdWithStrategy(Class<?> entityClass, Field idField, GenerationType strategy, Class<?> idType,
-            GeneratedValue annotation) {
-        // Java 21 switch for strategy dispatch
-        return switch (strategy) {
-            case IDENTITY -> generateNumericId(entityClass, idType);
-            case UUID -> (T) UUID.randomUUID();
-            case CUSTOM -> {
-                String generatorName = annotation.generator();
-                IdGenerator<?> generator = customIdGenerators.get(generatorName);
-                if (generator == null) {
-                    throw new MemrisException(
-                            new IllegalArgumentException("No IdGenerator found for: " + generatorName));
-                }
-                yield (T) generator.generate();
-            }
-            default -> throw new MemrisException(
-                    new IllegalArgumentException("Unsupported generation strategy: " + strategy.name()));
-        };
-    }
-
-    @SuppressWarnings("unchecked")
-    private <T> T generateNumericId(Class<?> entityClass, Class<?> idType) {
-        // Use per-entity-class atomics for lock-free ID generation
-        AtomicLong counter = numericIdCounters.computeIfAbsent(
-                entityClass,
-                k -> new AtomicLong(1));
-
-        long nextId = counter.getAndIncrement();
-
-        // Java 21 switch with guarded patterns - blazing fast type dispatch
-        return switch (idType) {
-            case Class<?> c when c == int.class || c == Integer.class -> (T) Integer.valueOf((int) nextId);
-            case Class<?> c when c == long.class || c == Long.class -> (T) Long.valueOf(nextId);
-            case Class<?> c when c == short.class || c == Short.class -> (T) Short.valueOf((short) nextId);
-            case Class<?> c when c == byte.class || c == Byte.class -> (T) Byte.valueOf((byte) nextId);
-            default -> throw new MemrisException(
-                    new IllegalArgumentException("Unsupported ID type for IDENTITY strategy: " + idType));
-        };
     }
 
     io.memris.storage.GeneratedTable getTable(Class<?> entityClass) {
@@ -447,55 +232,7 @@ public final class MemrisRepositoryFactory implements AutoCloseable {
         // TODO: Clean up resources
     }
 
-    private void invokePrePersist(Object entity, Class<?> entityClass) {
-        for (Method method : entityClass.getDeclaredMethods()) {
-            if (method.isAnnotationPresent(PrePersist.class)) {
-                method.setAccessible(true);
-                try {
-                    method.invoke(entity);
-                } catch (Exception e) {
-                    throw new MemrisException(e);
-                }
-            }
-        }
-    }
-
-    // TODO not used, this hast to be called on post load lifecycle
-    void invokePostLoad(Object entity, Class<?> entityClass) {
-        for (Method method : entityClass.getDeclaredMethods()) {
-            if (method.isAnnotationPresent(PostLoad.class)) {
-                method.setAccessible(true);
-                try {
-                    method.invoke(entity);
-                } catch (Exception e) {
-                    throw new MemrisException(e);
-                }
-            }
-        }
-    }
-
     // ========== Helper methods for repository implementation ==========
-
-    private Object defaultStorageValue(Class<?> storageType) {
-        return switch (storageType) {
-            case Class<?> c when c == int.class || c == Integer.class -> 0;
-            case Class<?> c when c == long.class || c == Long.class -> 0L;
-            case Class<?> c when c == short.class || c == Short.class -> (short) 0;
-            case Class<?> c when c == byte.class || c == Byte.class -> (byte) 0;
-            case Class<?> c when c == float.class || c == Float.class -> 0.0f;
-            case Class<?> c when c == double.class || c == Double.class -> 0.0d;
-            case Class<?> c when c == boolean.class || c == Boolean.class -> false;
-            case Class<?> c when c == char.class || c == Character.class -> (char) 0;
-            case Class<?> c when c == String.class -> "";
-            default -> null;
-        };
-    }
-
-    private Object getFromTable(io.memris.kernel.Table table, String columnName,
-            int row, Class<?> type) {
-        // TODO: Implement using GeneratedTable API
-        return null;
-    }
 
     // TODO: Reimplement sorting using GeneratedTable API
     // TODO: Reimplement join() using GeneratedTable API
@@ -600,7 +337,7 @@ public final class MemrisRepositoryFactory implements AutoCloseable {
                 metadata);
 
         // 11. Generate repository implementation using ByteBuddy
-        io.memris.repository.RepositoryEmitter emitter = new io.memris.repository.RepositoryEmitter(configuration);
+        io.memris.repository.RepositoryEmitter emitter = new io.memris.repository.RepositoryEmitter();
         return emitter.emitAndInstantiate(repositoryInterface, runtime);
     }
 
@@ -903,8 +640,6 @@ public final class MemrisRepositoryFactory implements AutoCloseable {
 
         // Build TableMetadata for TableGenerator
         java.util.List<io.memris.storage.heap.FieldMetadata> fields = new java.util.ArrayList<>();
-        int fieldIndex = 0;
-        byte idTypeCode = io.memris.core.TypeCodes.TYPE_LONG; // default
 
         for (io.memris.core.EntityMetadata.FieldMapping fm : metadata.fields()) {
             if (fm.columnPosition() < 0) {
@@ -916,16 +651,13 @@ public final class MemrisRepositoryFactory implements AutoCloseable {
 
             // Check if this is the ID field
             boolean isId = fm.name().equals(metadata.idColumnName());
-            if (isId) {
-                idTypeCode = typeCode;
-            }
 
             fields.add(new io.memris.storage.heap.FieldMetadata(
                     fm.columnName(),
                     typeCode,
                     isId,
                     isId));
-            fieldIndex++;
+
         }
 
         String entityName = entityClass.getSimpleName();

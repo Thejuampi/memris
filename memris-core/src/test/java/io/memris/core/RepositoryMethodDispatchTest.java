@@ -53,7 +53,7 @@ class RepositoryMethodDispatchTest {
         Optional<Product> found = repo.findBySku("SKU-1");
 
         assertThat(found).isPresent();
-        assertThat(found.get().sku).isEqualTo("SKU-1");
+        assertThat(found.orElseThrow().sku).isEqualTo("SKU-1");
     }
 
     public interface DispatchProductRepository extends MemrisRepository<Product> {

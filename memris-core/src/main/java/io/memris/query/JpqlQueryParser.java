@@ -847,7 +847,7 @@ public final class JpqlQueryParser {
 
             expect(JpqlLexer.TokenType.FROM);
             String entity = expectIdent();
-            String alias = null;
+            String alias;
             if (match(JpqlLexer.TokenType.AS)) {
                 alias = expectIdent();
             } else if (peek(JpqlLexer.TokenType.IDENT)) {
@@ -920,7 +920,7 @@ public final class JpqlQueryParser {
         private JpqlAst.Update parseUpdate() {
             expect(JpqlLexer.TokenType.UPDATE);
             String entity = expectIdent();
-            String alias = null;
+            String alias;
             if (match(JpqlLexer.TokenType.AS)) {
                 alias = expectIdent();
             } else if (peek(JpqlLexer.TokenType.IDENT)) {
@@ -951,7 +951,7 @@ public final class JpqlQueryParser {
                 // optional FROM
             }
             String entity = expectIdent();
-            String alias = null;
+            String alias;
             if (match(JpqlLexer.TokenType.AS)) {
                 alias = expectIdent();
             } else if (peek(JpqlLexer.TokenType.IDENT)) {

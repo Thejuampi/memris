@@ -23,21 +23,23 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Generates table implementation classes using ByteBuddy with direct field access.
+ * Generates table implementation classes using ByteBuddy with direct field
+ * access.
  * <p>
  * This generator creates table subclasses that:
  * <ul>
- *   <li>Have direct column field references (no MethodHandle fields)</li>
- *   <li>Implement scan operations with direct field access</li>
- *   <li>Filter tombstoned rows inline (no reflection)</li>
- *   <li>Use O(1) static array for type code lookup</li>
+ * <li>Have direct column field references (no MethodHandle fields)</li>
+ * <li>Implement scan operations with direct field access</li>
+ * <li>Filter tombstoned rows inline (no reflection)</li>
+ * <li>Use O(1) static array for type code lookup</li>
  * </ul>
  */
 public final class BytecodeTableGenerator {
 
     private static final int DEFAULT_ID_INDEX_CAPACITY = 16;
 
-    private BytecodeTableGenerator() {}
+    private BytecodeTableGenerator() {
+    }
 
     /**
      * Generate a table implementation class for the given metadata.
@@ -79,7 +81,8 @@ public final class BytecodeTableGenerator {
         Class<?> idIndexType = getIdIndexType(metadata.idTypeCode());
         builder = builder.defineField("idIndex", idIndexType, Visibility.PRIVATE);
 
-        // Add TYPE_CODES instance field (not static - so we can set it via reflection in constructor)
+        // Add TYPE_CODES instance field (not static - so we can set it via reflection
+        // in constructor)
         builder = builder.defineField("TYPE_CODES", byte[].class,
                 Visibility.PRIVATE, FieldManifestation.FINAL);
 
@@ -87,7 +90,7 @@ public final class BytecodeTableGenerator {
         builder = addConstructor(builder, columnFields, idIndexType, metadata.entityName());
 
         // Implement GeneratedTable methods
-        builder = implementGeneratedTableMethods(builder, columnFields, idIndexType);
+        builder = implementGeneratedTableMethods(builder, columnFields);
 
         // Load the class
         return builder.make()
@@ -132,7 +135,8 @@ public final class BytecodeTableGenerator {
         try {
             return builder.defineConstructor(Visibility.PUBLIC)
                     .withParameters(int.class, int.class)
-                    .intercept(MethodCall.invoke(AbstractTable.class.getDeclaredConstructor(String.class, int.class, int.class))
+                    .intercept(MethodCall
+                            .invoke(AbstractTable.class.getDeclaredConstructor(String.class, int.class, int.class))
                             .with(entityName)
                             .withArgument(0)
                             .withArgument(1)
@@ -144,8 +148,7 @@ public final class BytecodeTableGenerator {
 
     private static DynamicType.Builder<AbstractTable> implementGeneratedTableMethods(
             DynamicType.Builder<AbstractTable> builder,
-            List<ColumnFieldInfo> columnFields,
-            Class<?> idIndexType) {
+            List<ColumnFieldInfo> columnFields) {
 
         // Metadata methods
         builder = builder.method(net.bytebuddy.matcher.ElementMatchers.named("columnCount"))
@@ -213,21 +216,22 @@ public final class BytecodeTableGenerator {
 
         // ID index methods
         builder = builder.method(net.bytebuddy.matcher.ElementMatchers.named("lookupById")
-                        .and(net.bytebuddy.matcher.ElementMatchers.takesArguments(long.class)))
-                .intercept(MethodDelegation.to(new LookupInterceptor(idIndexType, "long")));
+                .and(net.bytebuddy.matcher.ElementMatchers.takesArguments(long.class)))
+                .intercept(MethodDelegation.to(new LookupInterceptor("long")));
 
         builder = builder.method(net.bytebuddy.matcher.ElementMatchers.named("lookupByIdString"))
-                .intercept(MethodDelegation.to(new LookupInterceptor(idIndexType, "String")));
+                .intercept(MethodDelegation.to(new LookupInterceptor("String")));
 
         builder = builder.method(net.bytebuddy.matcher.ElementMatchers.named("removeById"))
-                .intercept(MethodDelegation.to(new LookupInterceptor(idIndexType, "remove")));
+                .intercept(MethodDelegation.to(new LookupInterceptor("remove")));
 
-        // Lifecycle methods - use precise matchers to avoid overriding AbstractTable methods
+        // Lifecycle methods - use precise matchers to avoid overriding AbstractTable
+        // methods
         builder = builder.method(net.bytebuddy.matcher.ElementMatchers.named("insertFrom"))
-                .intercept(MethodDelegation.to(new InsertInterceptor(columnFields, idIndexType)));
+                .intercept(MethodDelegation.to(new InsertInterceptor(columnFields)));
 
         builder = builder.method(net.bytebuddy.matcher.ElementMatchers.named("tombstone")
-                        .and(net.bytebuddy.matcher.ElementMatchers.takesArguments(long.class)))
+                .and(net.bytebuddy.matcher.ElementMatchers.takesArguments(long.class)))
                 .intercept(MethodDelegation.to(new TombstoneInterceptor()));
 
         builder = builder.method(net.bytebuddy.matcher.ElementMatchers.named("isLive"))
@@ -237,10 +241,12 @@ public final class BytecodeTableGenerator {
     }
 
     // Column field info record
-    private record ColumnFieldInfo(String fieldName, Class<?> columnType, byte typeCode, int index) {}
+    private record ColumnFieldInfo(String fieldName, Class<?> columnType, byte typeCode, int index) {
+    }
 
     // ====================================================================================
-    // Interceptor Classes - use direct field access via reflection API (not MethodHandle)
+    // Interceptor Classes - use direct field access via reflection API (not
+    // MethodHandle)
     // ====================================================================================
 
     public static class ConstructorInterceptor {
@@ -290,12 +296,14 @@ public final class BytecodeTableGenerator {
     // Bytecode implementation for typeCodeAt - direct instance field access
     private static class TypeCodeAtImplementation implements Implementation {
         @Override
-        public net.bytebuddy.dynamic.scaffold.InstrumentedType prepare(net.bytebuddy.dynamic.scaffold.InstrumentedType instrumentedType) {
+        public net.bytebuddy.dynamic.scaffold.InstrumentedType prepare(
+                net.bytebuddy.dynamic.scaffold.InstrumentedType instrumentedType) {
             return instrumentedType;
         }
 
         @Override
-        public net.bytebuddy.implementation.bytecode.ByteCodeAppender appender(net.bytebuddy.implementation.Implementation.Target implementationTarget) {
+        public net.bytebuddy.implementation.bytecode.ByteCodeAppender appender(
+                net.bytebuddy.implementation.Implementation.Target implementationTarget) {
             return (methodVisitor, implementationContext, instrumentedMethod) -> {
                 // Load this (local variable 0)
                 methodVisitor.visitVarInsn(Opcodes.ALOAD, 0);
@@ -328,8 +336,8 @@ public final class BytecodeTableGenerator {
 
         @RuntimeType
         public Object intercept(@Argument(0) int columnIndex,
-                                @Argument(1) int rowIndex,
-                                @This Object obj) throws Exception {
+                @Argument(1) int rowIndex,
+                @This Object obj) throws Exception {
             if (columnIndex < 0 || columnIndex >= columnFields.size()) {
                 throw new IndexOutOfBoundsException("Column index out of range: " + columnIndex);
             }
@@ -373,8 +381,8 @@ public final class BytecodeTableGenerator {
 
         @RuntimeType
         public boolean intercept(@Argument(0) int columnIndex,
-                                 @Argument(1) int rowIndex,
-                                 @This Object obj) throws Exception {
+                @Argument(1) int rowIndex,
+                @This Object obj) throws Exception {
             if (columnIndex < 0 || columnIndex >= columnFields.size()) {
                 throw new IndexOutOfBoundsException("Column index out of range: " + columnIndex);
             }
@@ -417,7 +425,8 @@ public final class BytecodeTableGenerator {
         }
 
         @RuntimeType
-        public int[] intercept(@Argument(0) int columnIndex, @Argument(1) long value, @This Object obj) throws Exception {
+        public int[] intercept(@Argument(0) int columnIndex, @Argument(1) long value, @This Object obj)
+                throws Exception {
             ColumnFieldInfo fieldInfo = columnFields.get(columnIndex);
             Field field = obj.getClass().getDeclaredField(fieldInfo.fieldName());
             field.setAccessible(true);
@@ -430,7 +439,8 @@ public final class BytecodeTableGenerator {
         }
 
         private int[] filterTombstoned(int[] rows, AbstractTable table) {
-            if (rows.length == 0) return rows;
+            if (rows.length == 0)
+                return rows;
 
             int[] filtered = new int[rows.length];
             int count = 0;
@@ -457,7 +467,8 @@ public final class BytecodeTableGenerator {
         }
 
         @RuntimeType
-        public int[] intercept(@Argument(0) int columnIndex, @Argument(1) int value, @This Object obj) throws Exception {
+        public int[] intercept(@Argument(0) int columnIndex, @Argument(1) int value, @This Object obj)
+                throws Exception {
             ColumnFieldInfo fieldInfo = columnFields.get(columnIndex);
             Field field = obj.getClass().getDeclaredField(fieldInfo.fieldName());
             field.setAccessible(true);
@@ -470,7 +481,8 @@ public final class BytecodeTableGenerator {
         }
 
         private int[] filterTombstoned(int[] rows, AbstractTable table) {
-            if (rows.length == 0) return rows;
+            if (rows.length == 0)
+                return rows;
 
             int[] filtered = new int[rows.length];
             int count = 0;
@@ -497,7 +509,8 @@ public final class BytecodeTableGenerator {
         }
 
         @RuntimeType
-        public int[] intercept(@Argument(0) int columnIndex, @Argument(1) String value, @This Object obj) throws Exception {
+        public int[] intercept(@Argument(0) int columnIndex, @Argument(1) String value, @This Object obj)
+                throws Exception {
             ColumnFieldInfo fieldInfo = columnFields.get(columnIndex);
             Field field = obj.getClass().getDeclaredField(fieldInfo.fieldName());
             field.setAccessible(true);
@@ -510,7 +523,8 @@ public final class BytecodeTableGenerator {
         }
 
         private int[] filterTombstoned(int[] rows, AbstractTable table) {
-            if (rows.length == 0) return rows;
+            if (rows.length == 0)
+                return rows;
 
             int[] filtered = new int[rows.length];
             int count = 0;
@@ -537,7 +551,8 @@ public final class BytecodeTableGenerator {
         }
 
         @RuntimeType
-        public int[] intercept(@Argument(0) int columnIndex, @Argument(1) String value, @This Object obj) throws Exception {
+        public int[] intercept(@Argument(0) int columnIndex, @Argument(1) String value, @This Object obj)
+                throws Exception {
             ColumnFieldInfo fieldInfo = columnFields.get(columnIndex);
             Field field = obj.getClass().getDeclaredField(fieldInfo.fieldName());
             field.setAccessible(true);
@@ -550,7 +565,8 @@ public final class BytecodeTableGenerator {
         }
 
         private int[] filterTombstoned(int[] rows, AbstractTable table) {
-            if (rows.length == 0) return rows;
+            if (rows.length == 0)
+                return rows;
 
             int[] filtered = new int[rows.length];
             int count = 0;
@@ -577,7 +593,8 @@ public final class BytecodeTableGenerator {
         }
 
         @RuntimeType
-        public int[] intercept(@Argument(0) int columnIndex, @Argument(1) long min, @Argument(2) long max, @This Object obj) throws Exception {
+        public int[] intercept(@Argument(0) int columnIndex, @Argument(1) long min, @Argument(2) long max,
+                @This Object obj) throws Exception {
             ColumnFieldInfo fieldInfo = columnFields.get(columnIndex);
             Field field = obj.getClass().getDeclaredField(fieldInfo.fieldName());
             field.setAccessible(true);
@@ -597,7 +614,8 @@ public final class BytecodeTableGenerator {
         }
 
         private int[] filterTombstoned(int[] rows, AbstractTable table) {
-            if (rows.length == 0) return rows;
+            if (rows.length == 0)
+                return rows;
 
             int[] filtered = new int[rows.length];
             int count = 0;
@@ -624,7 +642,8 @@ public final class BytecodeTableGenerator {
         }
 
         @RuntimeType
-        public int[] intercept(@Argument(0) int columnIndex, @Argument(1) int min, @Argument(2) int max, @This Object obj) throws Exception {
+        public int[] intercept(@Argument(0) int columnIndex, @Argument(1) int min, @Argument(2) int max,
+                @This Object obj) throws Exception {
             ColumnFieldInfo fieldInfo = columnFields.get(columnIndex);
             Field field = obj.getClass().getDeclaredField(fieldInfo.fieldName());
             field.setAccessible(true);
@@ -637,7 +656,8 @@ public final class BytecodeTableGenerator {
         }
 
         private int[] filterTombstoned(int[] rows, AbstractTable table) {
-            if (rows.length == 0) return rows;
+            if (rows.length == 0)
+                return rows;
 
             int[] filtered = new int[rows.length];
             int count = 0;
@@ -664,7 +684,8 @@ public final class BytecodeTableGenerator {
         }
 
         @RuntimeType
-        public int[] intercept(@Argument(0) int columnIndex, @Argument(1) long[] values, @This Object obj) throws Exception {
+        public int[] intercept(@Argument(0) int columnIndex, @Argument(1) long[] values, @This Object obj)
+                throws Exception {
             ColumnFieldInfo fieldInfo = columnFields.get(columnIndex);
             Field field = obj.getClass().getDeclaredField(fieldInfo.fieldName());
             field.setAccessible(true);
@@ -677,7 +698,8 @@ public final class BytecodeTableGenerator {
         }
 
         private int[] filterTombstoned(int[] rows, AbstractTable table) {
-            if (rows.length == 0) return rows;
+            if (rows.length == 0)
+                return rows;
 
             int[] filtered = new int[rows.length];
             int count = 0;
@@ -704,7 +726,8 @@ public final class BytecodeTableGenerator {
         }
 
         @RuntimeType
-        public int[] intercept(@Argument(0) int columnIndex, @Argument(1) int[] values, @This Object obj) throws Exception {
+        public int[] intercept(@Argument(0) int columnIndex, @Argument(1) int[] values, @This Object obj)
+                throws Exception {
             ColumnFieldInfo fieldInfo = columnFields.get(columnIndex);
             Field field = obj.getClass().getDeclaredField(fieldInfo.fieldName());
             field.setAccessible(true);
@@ -717,7 +740,8 @@ public final class BytecodeTableGenerator {
         }
 
         private int[] filterTombstoned(int[] rows, AbstractTable table) {
-            if (rows.length == 0) return rows;
+            if (rows.length == 0)
+                return rows;
 
             int[] filtered = new int[rows.length];
             int count = 0;
@@ -744,7 +768,8 @@ public final class BytecodeTableGenerator {
         }
 
         @RuntimeType
-        public int[] intercept(@Argument(0) int columnIndex, @Argument(1) String[] values, @This Object obj) throws Exception {
+        public int[] intercept(@Argument(0) int columnIndex, @Argument(1) String[] values, @This Object obj)
+                throws Exception {
             ColumnFieldInfo fieldInfo = columnFields.get(columnIndex);
             Field field = obj.getClass().getDeclaredField(fieldInfo.fieldName());
             field.setAccessible(true);
@@ -757,7 +782,8 @@ public final class BytecodeTableGenerator {
         }
 
         private int[] filterTombstoned(int[] rows, AbstractTable table) {
-            if (rows.length == 0) return rows;
+            if (rows.length == 0)
+                return rows;
 
             int[] filtered = new int[rows.length];
             int count = 0;
@@ -801,11 +827,9 @@ public final class BytecodeTableGenerator {
     }
 
     public static class LookupInterceptor {
-        private final Class<?> idIndexType;
         private final String operation;
 
-        public LookupInterceptor(Class<?> idIndexType, String operation) {
-            this.idIndexType = idIndexType;
+        public LookupInterceptor(String operation) {
             this.operation = operation;
         }
 
@@ -820,27 +844,33 @@ public final class BytecodeTableGenerator {
             if ("long".equals(operation)) {
                 LongIdIndex idx = (LongIdIndex) idIndex;
                 LongIdIndex.RowIdAndGeneration rag = idx.getWithGeneration(((Number) key).longValue());
-                if (rag == null) return -1L;
+                if (rag == null)
+                    return -1L;
 
                 RowId rowId = rag.rowId();
                 long generation = rag.generation();
                 int rowIndex = (int) (rowId.page() * pageSize + rowId.offset());
 
-                if (table.isTombstone(rowId)) return -1L;
-                if (table.rowGeneration(rowIndex) != generation) return -1L;
+                if (table.isTombstone(rowId))
+                    return -1L;
+                if (table.rowGeneration(rowIndex) != generation)
+                    return -1L;
 
                 return Selection.pack(rowIndex, generation);
             } else if ("String".equals(operation)) {
                 StringIdIndex idx = (StringIdIndex) idIndex;
                 StringIdIndex.RowIdAndGeneration rag = idx.getWithGeneration((String) key);
-                if (rag == null) return -1L;
+                if (rag == null)
+                    return -1L;
 
                 RowId rowId = rag.rowId();
                 long generation = rag.generation();
                 int rowIndex = (int) (rowId.page() * pageSize + rowId.offset());
 
-                if (table.isTombstone(rowId)) return -1L;
-                if (table.rowGeneration(rowIndex) != generation) return -1L;
+                if (table.isTombstone(rowId))
+                    return -1L;
+                if (table.rowGeneration(rowIndex) != generation)
+                    return -1L;
 
                 return Selection.pack(rowIndex, generation);
             } else if ("remove".equals(operation)) {
@@ -858,17 +888,16 @@ public final class BytecodeTableGenerator {
 
     public static class InsertInterceptor {
         private final List<ColumnFieldInfo> columnFields;
-        private final Class<?> idIndexType;
 
-        public InsertInterceptor(List<ColumnFieldInfo> columnFields, Class<?> idIndexType) {
+        public InsertInterceptor(List<ColumnFieldInfo> columnFields) {
             this.columnFields = columnFields;
-            this.idIndexType = idIndexType;
         }
 
         @RuntimeType
         public long intercept(@Argument(0) Object[] values, @This Object obj) throws Exception {
             if (values.length != columnFields.size()) {
-                throw new IllegalArgumentException("Value count mismatch: expected " + columnFields.size() + ", got " + values.length);
+                throw new IllegalArgumentException(
+                        "Value count mismatch: expected " + columnFields.size() + ", got " + values.length);
             }
 
             AbstractTable table = (AbstractTable) obj;
@@ -903,128 +932,128 @@ public final class BytecodeTableGenerator {
                         if (typeCode == TypeCodes.TYPE_DOUBLE) {
                             if (value instanceof Double) {
                                 longValue = Double.doubleToLongBits((Double) value);
+                            } else if (value instanceof Number) {
+                                longValue = Double.doubleToLongBits(((Number) value).doubleValue());
+                            } else {
+                                throw new IllegalArgumentException("Expected Double for column " + i);
+                            }
+                        } else if (value instanceof Long) {
+                            longValue = (Long) value;
+                        } else if (value instanceof Integer) {
+                            longValue = ((Integer) value).longValue();
                         } else if (value instanceof Number) {
-                            longValue = Double.doubleToLongBits(((Number) value).doubleValue());
+                            longValue = ((Number) value).longValue();
                         } else {
-                            throw new IllegalArgumentException("Expected Double for column " + i);
+                            throw new IllegalArgumentException("Expected Long for column " + i);
                         }
-                    } else if (value instanceof Long) {
-                        longValue = (Long) value;
-                    } else if (value instanceof Integer) {
-                        longValue = ((Integer) value).longValue();
-                    } else if (value instanceof Number) {
-                        longValue = ((Number) value).longValue();
-                    } else {
-                        throw new IllegalArgumentException("Expected Long for column " + i);
-                    }
-                    col.set(rowIndex, longValue);
-                } else if (typeCode == TypeCodes.TYPE_INT
-                        || typeCode == TypeCodes.TYPE_FLOAT
-                        || typeCode == TypeCodes.TYPE_BOOLEAN
-                        || typeCode == TypeCodes.TYPE_BYTE
-                        || typeCode == TypeCodes.TYPE_SHORT
-                        || typeCode == TypeCodes.TYPE_CHAR) {
-                    PageColumnInt col = (PageColumnInt) column;
-                    if (value == null) {
-                        col.setNull(rowIndex);
-                        continue;
-                    }
-                    int intValue;
-                    if (typeCode == TypeCodes.TYPE_FLOAT) {
-                        if (value instanceof Float) {
-                            intValue = Float.floatToIntBits((Float) value);
+                        col.set(rowIndex, longValue);
+                    } else if (typeCode == TypeCodes.TYPE_INT
+                            || typeCode == TypeCodes.TYPE_FLOAT
+                            || typeCode == TypeCodes.TYPE_BOOLEAN
+                            || typeCode == TypeCodes.TYPE_BYTE
+                            || typeCode == TypeCodes.TYPE_SHORT
+                            || typeCode == TypeCodes.TYPE_CHAR) {
+                        PageColumnInt col = (PageColumnInt) column;
+                        if (value == null) {
+                            col.setNull(rowIndex);
+                            continue;
+                        }
+                        int intValue;
+                        if (typeCode == TypeCodes.TYPE_FLOAT) {
+                            if (value instanceof Float) {
+                                intValue = Float.floatToIntBits((Float) value);
+                            } else if (value instanceof Number) {
+                                intValue = Float.floatToIntBits(((Number) value).floatValue());
+                            } else {
+                                throw new IllegalArgumentException("Expected Float for column " + i);
+                            }
+                        } else if (typeCode == TypeCodes.TYPE_BOOLEAN) {
+                            if (value instanceof Boolean) {
+                                intValue = (Boolean) value ? 1 : 0;
+                            } else {
+                                throw new IllegalArgumentException("Expected Boolean for column " + i);
+                            }
+                        } else if (typeCode == TypeCodes.TYPE_CHAR) {
+                            if (value instanceof Character) {
+                                intValue = (Character) value;
+                            } else {
+                                throw new IllegalArgumentException("Expected Character for column " + i);
+                            }
+                        } else if (value instanceof Integer) {
+                            intValue = (Integer) value;
+                        } else if (value instanceof Long) {
+                            intValue = ((Long) value).intValue();
                         } else if (value instanceof Number) {
-                            intValue = Float.floatToIntBits(((Number) value).floatValue());
+                            intValue = ((Number) value).intValue();
                         } else {
-                            throw new IllegalArgumentException("Expected Float for column " + i);
+                            throw new IllegalArgumentException("Expected Integer for column " + i);
                         }
-                    } else if (typeCode == TypeCodes.TYPE_BOOLEAN) {
-                        if (value instanceof Boolean) {
-                            intValue = (Boolean) value ? 1 : 0;
+                        col.set(rowIndex, intValue);
+                    } else if (typeCode == TypeCodes.TYPE_STRING
+                            || typeCode == TypeCodes.TYPE_BIG_DECIMAL
+                            || typeCode == TypeCodes.TYPE_BIG_INTEGER) {
+                        PageColumnString col = (PageColumnString) column;
+                        if (value == null) {
+                            col.setNull(rowIndex);
                         } else {
-                            throw new IllegalArgumentException("Expected Boolean for column " + i);
+                            col.set(rowIndex, value.toString());
                         }
-                    } else if (typeCode == TypeCodes.TYPE_CHAR) {
-                        if (value instanceof Character) {
-                            intValue = (Character) value;
-                        } else {
-                            throw new IllegalArgumentException("Expected Character for column " + i);
-                        }
-                    } else if (value instanceof Integer) {
-                        intValue = (Integer) value;
-                    } else if (value instanceof Long) {
-                        intValue = ((Long) value).intValue();
-                    } else if (value instanceof Number) {
-                        intValue = ((Number) value).intValue();
                     } else {
-                        throw new IllegalArgumentException("Expected Integer for column " + i);
+                        throw new IllegalArgumentException("Unsupported type code: " + typeCode);
                     }
-                    col.set(rowIndex, intValue);
-                } else if (typeCode == TypeCodes.TYPE_STRING
-                        || typeCode == TypeCodes.TYPE_BIG_DECIMAL
-                        || typeCode == TypeCodes.TYPE_BIG_INTEGER) {
-                    PageColumnString col = (PageColumnString) column;
-                    if (value == null) {
-                        col.setNull(rowIndex);
-                    } else {
-                        col.set(rowIndex, value.toString());
+                }
+
+                // Update ID index
+                Field idIndexField = obj.getClass().getDeclaredField("idIndex");
+                idIndexField.setAccessible(true);
+                Object idIndex = idIndexField.get(obj);
+                Object idValue = values[0];
+
+                if (idIndex instanceof LongIdIndex longIdIndex && idValue instanceof Number) {
+                    longIdIndex.put(((Number) idValue).longValue(), rowId, generation);
+                } else if (idIndex instanceof StringIdIndex stringIdIndex && idValue instanceof String) {
+                    stringIdIndex.put((String) idValue, rowId, generation);
+                }
+
+                // Publish row to make data visible
+                for (int i = 0; i < columnFields.size(); i++) {
+                    ColumnFieldInfo fieldInfo = columnFields.get(i);
+                    Field field = obj.getClass().getDeclaredField(fieldInfo.fieldName());
+                    field.setAccessible(true);
+                    Object column = field.get(obj);
+
+                    byte typeCode = fieldInfo.typeCode();
+                    if (typeCode == TypeCodes.TYPE_LONG
+                            || typeCode == TypeCodes.TYPE_DOUBLE
+                            || typeCode == TypeCodes.TYPE_INSTANT
+                            || typeCode == TypeCodes.TYPE_LOCAL_DATE
+                            || typeCode == TypeCodes.TYPE_LOCAL_DATE_TIME
+                            || typeCode == TypeCodes.TYPE_DATE) {
+                        ((PageColumnLong) column).publish(rowIndex + 1);
+                    } else if (typeCode == TypeCodes.TYPE_INT
+                            || typeCode == TypeCodes.TYPE_FLOAT
+                            || typeCode == TypeCodes.TYPE_BOOLEAN
+                            || typeCode == TypeCodes.TYPE_BYTE
+                            || typeCode == TypeCodes.TYPE_SHORT
+                            || typeCode == TypeCodes.TYPE_CHAR) {
+                        ((PageColumnInt) column).publish(rowIndex + 1);
+                    } else if (typeCode == TypeCodes.TYPE_STRING
+                            || typeCode == TypeCodes.TYPE_BIG_DECIMAL
+                            || typeCode == TypeCodes.TYPE_BIG_INTEGER) {
+                        ((PageColumnString) column).publish(rowIndex + 1);
                     }
-                } else {
-                    throw new IllegalArgumentException("Unsupported type code: " + typeCode);
                 }
+
+                // End seqlock - mark row as stable (even)
+                table.endSeqLock(rowIndex);
+
+                table.incrementRowCount();
+                return Selection.pack(rowIndex, generation);
+            } finally {
+                // Ensure seqlock is ended even if exception occurs
+                table.endSeqLock(rowIndex);
             }
-
-            // Update ID index
-            Field idIndexField = obj.getClass().getDeclaredField("idIndex");
-            idIndexField.setAccessible(true);
-            Object idIndex = idIndexField.get(obj);
-            Object idValue = values[0];
-
-            if (idIndex instanceof LongIdIndex longIdIndex && idValue instanceof Number) {
-                longIdIndex.put(((Number) idValue).longValue(), rowId, generation);
-            } else if (idIndex instanceof StringIdIndex stringIdIndex && idValue instanceof String) {
-                stringIdIndex.put((String) idValue, rowId, generation);
-            }
-
-            // Publish row to make data visible
-            for (int i = 0; i < columnFields.size(); i++) {
-                ColumnFieldInfo fieldInfo = columnFields.get(i);
-                Field field = obj.getClass().getDeclaredField(fieldInfo.fieldName());
-                field.setAccessible(true);
-                Object column = field.get(obj);
-
-                byte typeCode = fieldInfo.typeCode();
-                if (typeCode == TypeCodes.TYPE_LONG
-                        || typeCode == TypeCodes.TYPE_DOUBLE
-                        || typeCode == TypeCodes.TYPE_INSTANT
-                        || typeCode == TypeCodes.TYPE_LOCAL_DATE
-                        || typeCode == TypeCodes.TYPE_LOCAL_DATE_TIME
-                        || typeCode == TypeCodes.TYPE_DATE) {
-                    ((PageColumnLong) column).publish(rowIndex + 1);
-                } else if (typeCode == TypeCodes.TYPE_INT
-                        || typeCode == TypeCodes.TYPE_FLOAT
-                        || typeCode == TypeCodes.TYPE_BOOLEAN
-                        || typeCode == TypeCodes.TYPE_BYTE
-                        || typeCode == TypeCodes.TYPE_SHORT
-                        || typeCode == TypeCodes.TYPE_CHAR) {
-                    ((PageColumnInt) column).publish(rowIndex + 1);
-                } else if (typeCode == TypeCodes.TYPE_STRING
-                        || typeCode == TypeCodes.TYPE_BIG_DECIMAL
-                        || typeCode == TypeCodes.TYPE_BIG_INTEGER) {
-                    ((PageColumnString) column).publish(rowIndex + 1);
-                }
-            }
-
-            // End seqlock - mark row as stable (even)
-            table.endSeqLock(rowIndex);
-
-            table.incrementRowCount();
-            return Selection.pack(rowIndex, generation);
-        } finally {
-            // Ensure seqlock is ended even if exception occurs
-            table.endSeqLock(rowIndex);
         }
-    }
     }
 
     public static class TombstoneInterceptor {

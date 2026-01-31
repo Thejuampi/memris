@@ -45,8 +45,8 @@ public final class RepositoryRuntime<T> {
     /**
      * Create a RepositoryRuntime from a RepositoryPlan.
      *
-     * @param plan  the compiled repository plan
-     * @param factory the repository factory (for index queries)
+     * @param plan     the compiled repository plan
+     * @param factory  the repository factory (for index queries)
      * @param metadata entity metadata for ID generation and field access
      */
     public RepositoryRuntime(RepositoryPlan<T> plan, MemrisRepositoryFactory factory, EntityMetadata<T> metadata) {
@@ -58,7 +58,8 @@ public final class RepositoryRuntime<T> {
         this.metadata = metadata;
         if (metadata != null && plan.materializersByEntity() != null) {
             @SuppressWarnings("unchecked")
-            EntityMaterializer<T> materializer = (EntityMaterializer<T>) plan.materializersByEntity().get(metadata.entityClass());
+            EntityMaterializer<T> materializer = (EntityMaterializer<T>) plan.materializersByEntity()
+                    .get(metadata.entityClass());
             this.materializer = materializer != null ? materializer : new EntityMaterializerImpl<>(metadata);
         } else {
             this.materializer = metadata != null ? new EntityMaterializerImpl<>(metadata) : null;
@@ -80,7 +81,8 @@ public final class RepositoryRuntime<T> {
         java.util.Map<Class<?>, EntityMetadata<?>> related = new java.util.HashMap<>();
         for (io.memris.core.EntityMetadata.FieldMapping field : metadata.fields()) {
             if (field.isRelationship() && field.targetEntity() != null) {
-                related.putIfAbsent(field.targetEntity(), io.memris.core.MetadataExtractor.extractEntityMetadata(field.targetEntity()));
+                related.putIfAbsent(field.targetEntity(),
+                        io.memris.core.MetadataExtractor.extractEntityMetadata(field.targetEntity()));
             }
         }
         return java.util.Map.copyOf(related);
@@ -112,8 +114,7 @@ public final class RepositoryRuntime<T> {
 
     private int findMethodIndex(Method method) {
         java.lang.reflect.Method[] methods = io.memris.repository.RepositoryMethodIntrospector.extractQueryMethods(
-            method.getDeclaringClass()
-        );
+                method.getDeclaringClass());
 
         for (int i = 0; i < methods.length; i++) {
             if (methods[i].equals(method)) {
@@ -124,7 +125,7 @@ public final class RepositoryRuntime<T> {
     }
 
     private Object executeCompiledQuery(CompiledQuery query, Object[] args) {
-        Object[] queryArgs = null;
+        Object[] queryArgs;
         switch (query.opCode()) {
             case SAVE_ONE:
                 return executeSaveOne(args);
@@ -227,10 +228,10 @@ public final class RepositoryRuntime<T> {
         // Update indexes after save - read values back from table
         if (metadata != null) {
             int maxColumnPos = metadata.fields().stream()
-                .filter(f -> f.columnPosition() >= 0)
-                .mapToInt(io.memris.core.EntityMetadata.FieldMapping::columnPosition)
-                .max()
-                .orElse(0);
+                    .filter(f -> f.columnPosition() >= 0)
+                    .mapToInt(io.memris.core.EntityMetadata.FieldMapping::columnPosition)
+                    .max()
+                    .orElse(0);
             Object[] indexValues = new Object[maxColumnPos + 1];
             for (io.memris.core.EntityMetadata.FieldMapping field : metadata.fields()) {
                 if (field.columnPosition() < 0) {
@@ -378,7 +379,8 @@ public final class RepositoryRuntime<T> {
     }
 
     private boolean isZeroId(Object id) {
-        if (id == null) return true;
+        if (id == null)
+            return true;
         return switch (id) {
             case Long l -> l == 0L;
             case Integer i -> i == 0;
@@ -393,7 +395,7 @@ public final class RepositoryRuntime<T> {
         Iterable<T> entities = (Iterable<T>) args[0];
         List<T> saved = new ArrayList<>();
         for (T entity : entities) {
-            saved.add(executeSaveOne(new Object[]{entity}));
+            saved.add(executeSaveOne(new Object[] { entity }));
         }
         return saved;
     }
@@ -517,11 +519,6 @@ public final class RepositoryRuntime<T> {
         return plan.table().liveCount();
     }
 
-    private boolean executeExists(CompiledQuery query, Object[] args) {
-        Selection selection = executeConditions(query, args);
-        return selection.size() > 0;
-    }
-
     /**
      * Fast EXISTS that short-circuits without building full selections.
      * <p>
@@ -560,7 +557,8 @@ public final class RepositoryRuntime<T> {
                     if (condition.nextCombinator() == LogicalQuery.Combinator.AND) {
                         // This AND group will be empty, skip to next OR group
                         // Fast-forward past all AND conditions
-                        while (i < conditions.length - 1 && conditions[i].nextCombinator() == LogicalQuery.Combinator.AND) {
+                        while (i < conditions.length - 1
+                                && conditions[i].nextCombinator() == LogicalQuery.Combinator.AND) {
                             i++;
                         }
                         currentGroup = null;
@@ -578,7 +576,8 @@ public final class RepositoryRuntime<T> {
                 if (currentGroup.isEmpty()) {
                     // AND group became empty - if followed by more ANDs, skip them
                     if (condition.nextCombinator() == LogicalQuery.Combinator.AND) {
-                        while (i < conditions.length - 1 && conditions[i].nextCombinator() == LogicalQuery.Combinator.AND) {
+                        while (i < conditions.length - 1
+                                && conditions[i].nextCombinator() == LogicalQuery.Combinator.AND) {
                             i++;
                         }
                     }
@@ -976,7 +975,8 @@ public final class RepositoryRuntime<T> {
         return values;
     }
 
-    private void applyUpdateAssignments(Object[] values, CompiledQuery.CompiledUpdateAssignment[] updates, Object[] args) {
+    private void applyUpdateAssignments(Object[] values, CompiledQuery.CompiledUpdateAssignment[] updates,
+            Object[] args) {
         for (CompiledQuery.CompiledUpdateAssignment update : updates) {
             int columnIndex = update.columnIndex();
             io.memris.core.EntityMetadata.FieldMapping field = findFieldByColumnIndex(columnIndex);
@@ -996,14 +996,16 @@ public final class RepositoryRuntime<T> {
     private Object readStorageValue(GeneratedTable table, int columnIndex, byte typeCode, int rowIndex) {
         return switch (typeCode) {
             case TypeCodes.TYPE_STRING,
-                 TypeCodes.TYPE_BIG_DECIMAL,
-                 TypeCodes.TYPE_BIG_INTEGER -> table.readString(columnIndex, rowIndex);
+                    TypeCodes.TYPE_BIG_DECIMAL,
+                    TypeCodes.TYPE_BIG_INTEGER ->
+                table.readString(columnIndex, rowIndex);
             case TypeCodes.TYPE_LONG,
-                 TypeCodes.TYPE_INSTANT,
-                 TypeCodes.TYPE_LOCAL_DATE,
-                 TypeCodes.TYPE_LOCAL_DATE_TIME,
-                 TypeCodes.TYPE_DATE,
-                 TypeCodes.TYPE_DOUBLE -> table.readLong(columnIndex, rowIndex);
+                    TypeCodes.TYPE_INSTANT,
+                    TypeCodes.TYPE_LOCAL_DATE,
+                    TypeCodes.TYPE_LOCAL_DATE_TIME,
+                    TypeCodes.TYPE_DATE,
+                    TypeCodes.TYPE_DOUBLE ->
+                table.readLong(columnIndex, rowIndex);
             default -> table.readInt(columnIndex, rowIndex);
         };
     }
@@ -1025,10 +1027,10 @@ public final class RepositoryRuntime<T> {
 
     private Object[] readIndexValues(int rowIndex) {
         int maxColumnPos = metadata.fields().stream()
-            .filter(f -> f.columnPosition() >= 0)
-            .mapToInt(io.memris.core.EntityMetadata.FieldMapping::columnPosition)
-            .max()
-            .orElse(0);
+                .filter(f -> f.columnPosition() >= 0)
+                .mapToInt(io.memris.core.EntityMetadata.FieldMapping::columnPosition)
+                .max()
+                .orElse(0);
         Object[] indexValues = new Object[maxColumnPos + 1];
         for (io.memris.core.EntityMetadata.FieldMapping field : metadata.fields()) {
             if (field.columnPosition() < 0) {
@@ -1084,14 +1086,16 @@ public final class RepositoryRuntime<T> {
         byte typeCode = field.typeCode();
         Object storage = switch (typeCode) {
             case TypeCodes.TYPE_STRING,
-                TypeCodes.TYPE_BIG_DECIMAL,
-                TypeCodes.TYPE_BIG_INTEGER -> table.readString(columnIndex, rowIndex);
+                    TypeCodes.TYPE_BIG_DECIMAL,
+                    TypeCodes.TYPE_BIG_INTEGER ->
+                table.readString(columnIndex, rowIndex);
             case TypeCodes.TYPE_LONG,
-                TypeCodes.TYPE_INSTANT,
-                TypeCodes.TYPE_LOCAL_DATE,
-                TypeCodes.TYPE_LOCAL_DATE_TIME,
-                TypeCodes.TYPE_DATE,
-                TypeCodes.TYPE_DOUBLE -> table.readLong(columnIndex, rowIndex);
+                    TypeCodes.TYPE_INSTANT,
+                    TypeCodes.TYPE_LOCAL_DATE,
+                    TypeCodes.TYPE_LOCAL_DATE_TIME,
+                    TypeCodes.TYPE_DATE,
+                    TypeCodes.TYPE_DOUBLE ->
+                table.readLong(columnIndex, rowIndex);
             default -> table.readInt(columnIndex, rowIndex);
         };
 
@@ -1167,14 +1171,15 @@ public final class RepositoryRuntime<T> {
         }
 
         if (operator == LogicalQuery.Operator.BETWEEN) {
-            Object[] range = new Object[]{args[condition.argumentIndex()], args[condition.argumentIndex() + 1]};
+            Object[] range = new Object[] { args[condition.argumentIndex()], args[condition.argumentIndex() + 1] };
             int[] rows = factory.queryIndex(metadata.entityClass(), fieldName, operator.toPredicateOperator(), range);
             return rows != null ? selectionFromRows(rows) : plan.kernel().executeCondition(condition, args);
         }
 
         switch (operator) {
             case EQ, GT, GTE, LT, LTE -> {
-                int[] rows = factory.queryIndex(metadata.entityClass(), fieldName, operator.toPredicateOperator(), value);
+                int[] rows = factory.queryIndex(metadata.entityClass(), fieldName, operator.toPredicateOperator(),
+                        value);
                 if (rows != null) {
                     return selectionFromRows(rows);
                 }
@@ -1283,20 +1288,23 @@ public final class RepositoryRuntime<T> {
 
         return switch (typeCode) {
             case TypeCodes.TYPE_INT,
-                TypeCodes.TYPE_BOOLEAN,
-                TypeCodes.TYPE_BYTE,
-                TypeCodes.TYPE_SHORT,
-                TypeCodes.TYPE_CHAR -> sortByIntColumn(rows, columnIndex, ascending);
+                    TypeCodes.TYPE_BOOLEAN,
+                    TypeCodes.TYPE_BYTE,
+                    TypeCodes.TYPE_SHORT,
+                    TypeCodes.TYPE_CHAR ->
+                sortByIntColumn(rows, columnIndex, ascending);
             case TypeCodes.TYPE_FLOAT -> sortByFloatColumn(rows, columnIndex, ascending);
             case TypeCodes.TYPE_LONG,
-                TypeCodes.TYPE_INSTANT,
-                TypeCodes.TYPE_LOCAL_DATE,
-                TypeCodes.TYPE_LOCAL_DATE_TIME,
-                TypeCodes.TYPE_DATE -> sortByLongColumn(rows, columnIndex, ascending);
+                    TypeCodes.TYPE_INSTANT,
+                    TypeCodes.TYPE_LOCAL_DATE,
+                    TypeCodes.TYPE_LOCAL_DATE_TIME,
+                    TypeCodes.TYPE_DATE ->
+                sortByLongColumn(rows, columnIndex, ascending);
             case TypeCodes.TYPE_DOUBLE -> sortByDoubleColumn(rows, columnIndex, ascending);
             case TypeCodes.TYPE_STRING,
-                TypeCodes.TYPE_BIG_DECIMAL,
-                TypeCodes.TYPE_BIG_INTEGER -> sortByStringColumn(rows, columnIndex, ascending);
+                    TypeCodes.TYPE_BIG_DECIMAL,
+                    TypeCodes.TYPE_BIG_INTEGER ->
+                sortByStringColumn(rows, columnIndex, ascending);
             default -> throw new UnsupportedOperationException("Unsupported sort type code: " + typeCode);
         };
     }
@@ -1306,7 +1314,8 @@ public final class RepositoryRuntime<T> {
         if (orderBy.length == 1) {
             return topKSingleColumn(rows, orderBy[0], k);
         }
-        // For multi-column, fall back to full sort then limit (optimization: could use bounded heap)
+        // For multi-column, fall back to full sort then limit (optimization: could use
+        // bounded heap)
         rows = sortByMultipleColumns(rows, orderBy);
         if (k < rows.length) {
             int[] limited = new int[k];
@@ -1323,18 +1332,21 @@ public final class RepositoryRuntime<T> {
 
         return switch (typeCode) {
             case TypeCodes.TYPE_INT,
-                TypeCodes.TYPE_BOOLEAN,
-                TypeCodes.TYPE_BYTE,
-                TypeCodes.TYPE_SHORT,
-                TypeCodes.TYPE_CHAR -> topKInt(rows, columnIndex, ascending, k);
+                    TypeCodes.TYPE_BOOLEAN,
+                    TypeCodes.TYPE_BYTE,
+                    TypeCodes.TYPE_SHORT,
+                    TypeCodes.TYPE_CHAR ->
+                topKInt(rows, columnIndex, ascending, k);
             case TypeCodes.TYPE_LONG,
-                TypeCodes.TYPE_INSTANT,
-                TypeCodes.TYPE_LOCAL_DATE,
-                TypeCodes.TYPE_LOCAL_DATE_TIME,
-                TypeCodes.TYPE_DATE -> topKLong(rows, columnIndex, ascending, k);
+                    TypeCodes.TYPE_INSTANT,
+                    TypeCodes.TYPE_LOCAL_DATE,
+                    TypeCodes.TYPE_LOCAL_DATE_TIME,
+                    TypeCodes.TYPE_DATE ->
+                topKLong(rows, columnIndex, ascending, k);
             case TypeCodes.TYPE_STRING,
-                TypeCodes.TYPE_BIG_DECIMAL,
-                TypeCodes.TYPE_BIG_INTEGER -> topKString(rows, columnIndex, ascending, k);
+                    TypeCodes.TYPE_BIG_DECIMAL,
+                    TypeCodes.TYPE_BIG_INTEGER ->
+                topKString(rows, columnIndex, ascending, k);
             default -> {
                 // Fall back to full sort for unsupported types
                 int[] sorted = sortBySingleColumn(rows, orderBy);
@@ -1370,7 +1382,8 @@ public final class RepositoryRuntime<T> {
     }
 
     private void topKHeapInt(int[] rows, int[] keys, boolean[] present, int k, boolean ascending) {
-        // Build a max-heap (if ascending) or min-heap (if descending) for the first k elements
+        // Build a max-heap (if ascending) or min-heap (if descending) for the first k
+        // elements
         // Then for remaining elements, compare with heap root and replace if better
         int n = rows.length;
         // Build heap for first k elements
@@ -1398,7 +1411,8 @@ public final class RepositoryRuntime<T> {
         if (left < size && compareIntForTopK(keys[left], present[left], keys[largest], present[largest], maxHeap) > 0) {
             largest = left;
         }
-        if (right < size && compareIntForTopK(keys[right], present[right], keys[largest], present[largest], maxHeap) > 0) {
+        if (right < size
+                && compareIntForTopK(keys[right], present[right], keys[largest], present[largest], maxHeap) > 0) {
             largest = right;
         }
 
@@ -1456,10 +1470,12 @@ public final class RepositoryRuntime<T> {
         int left = 2 * i + 1;
         int right = 2 * i + 2;
 
-        if (left < size && compareLongForTopK(keys[left], present[left], keys[largest], present[largest], maxHeap) > 0) {
+        if (left < size
+                && compareLongForTopK(keys[left], present[left], keys[largest], present[largest], maxHeap) > 0) {
             largest = left;
         }
-        if (right < size && compareLongForTopK(keys[right], present[right], keys[largest], present[largest], maxHeap) > 0) {
+        if (right < size
+                && compareLongForTopK(keys[right], present[right], keys[largest], present[largest], maxHeap) > 0) {
             largest = right;
         }
 
@@ -1533,9 +1549,12 @@ public final class RepositoryRuntime<T> {
     }
 
     private int compareStringValue(String a, String b) {
-        if (a == null && b == null) return 0;
-        if (a == null) return 1; // nulls last
-        if (b == null) return -1;
+        if (a == null && b == null)
+            return 0;
+        if (a == null)
+            return 1; // nulls last
+        if (b == null)
+            return -1;
         return a.compareTo(b);
     }
 
@@ -1557,10 +1576,10 @@ public final class RepositoryRuntime<T> {
             OrderKey key = new OrderKey(typeCode, ascending, present);
             switch (typeCode) {
                 case TypeCodes.TYPE_INT,
-                    TypeCodes.TYPE_BOOLEAN,
-                    TypeCodes.TYPE_BYTE,
-                    TypeCodes.TYPE_SHORT,
-                    TypeCodes.TYPE_CHAR -> {
+                        TypeCodes.TYPE_BOOLEAN,
+                        TypeCodes.TYPE_BYTE,
+                        TypeCodes.TYPE_SHORT,
+                        TypeCodes.TYPE_CHAR -> {
                     int[] values = new int[rows.length];
                     for (int r = 0; r < rows.length; r++) {
                         int row = rows[r];
@@ -1579,10 +1598,10 @@ public final class RepositoryRuntime<T> {
                     key.floatKeys = values;
                 }
                 case TypeCodes.TYPE_LONG,
-                    TypeCodes.TYPE_INSTANT,
-                    TypeCodes.TYPE_LOCAL_DATE,
-                    TypeCodes.TYPE_LOCAL_DATE_TIME,
-                    TypeCodes.TYPE_DATE -> {
+                        TypeCodes.TYPE_INSTANT,
+                        TypeCodes.TYPE_LOCAL_DATE,
+                        TypeCodes.TYPE_LOCAL_DATE_TIME,
+                        TypeCodes.TYPE_DATE -> {
                     long[] values = new long[rows.length];
                     for (int r = 0; r < rows.length; r++) {
                         int row = rows[r];
@@ -1601,8 +1620,8 @@ public final class RepositoryRuntime<T> {
                     key.doubleKeys = values;
                 }
                 case TypeCodes.TYPE_STRING,
-                    TypeCodes.TYPE_BIG_DECIMAL,
-                    TypeCodes.TYPE_BIG_INTEGER -> {
+                        TypeCodes.TYPE_BIG_DECIMAL,
+                        TypeCodes.TYPE_BIG_INTEGER -> {
                     String[] values = new String[rows.length];
                     for (int r = 0; r < rows.length; r++) {
                         int row = rows[r];
@@ -1640,8 +1659,10 @@ public final class RepositoryRuntime<T> {
             }
         }
 
-        if (low < j) quickSortMulti(rows, keys, low, j);
-        if (i < high) quickSortMulti(rows, keys, i, high);
+        if (low < j)
+            quickSortMulti(rows, keys, low, j);
+        if (i < high)
+            quickSortMulti(rows, keys, i, high);
     }
 
     private static int compareMulti(int left, int right, int[] rows, OrderKey[] keys) {
@@ -1678,20 +1699,23 @@ public final class RepositoryRuntime<T> {
             if (cmp == 0) {
                 cmp = switch (typeCode) {
                     case TypeCodes.TYPE_INT,
-                        TypeCodes.TYPE_BOOLEAN,
-                        TypeCodes.TYPE_BYTE,
-                        TypeCodes.TYPE_SHORT,
-                        TypeCodes.TYPE_CHAR -> Integer.compare(intKeys[left], intKeys[right]);
+                            TypeCodes.TYPE_BOOLEAN,
+                            TypeCodes.TYPE_BYTE,
+                            TypeCodes.TYPE_SHORT,
+                            TypeCodes.TYPE_CHAR ->
+                        Integer.compare(intKeys[left], intKeys[right]);
                     case TypeCodes.TYPE_FLOAT -> Float.compare(floatKeys[left], floatKeys[right]);
                     case TypeCodes.TYPE_LONG,
-                        TypeCodes.TYPE_INSTANT,
-                        TypeCodes.TYPE_LOCAL_DATE,
-                        TypeCodes.TYPE_LOCAL_DATE_TIME,
-                        TypeCodes.TYPE_DATE -> Long.compare(longKeys[left], longKeys[right]);
+                            TypeCodes.TYPE_INSTANT,
+                            TypeCodes.TYPE_LOCAL_DATE,
+                            TypeCodes.TYPE_LOCAL_DATE_TIME,
+                            TypeCodes.TYPE_DATE ->
+                        Long.compare(longKeys[left], longKeys[right]);
                     case TypeCodes.TYPE_DOUBLE -> Double.compare(doubleKeys[left], doubleKeys[right]);
                     case TypeCodes.TYPE_STRING,
-                        TypeCodes.TYPE_BIG_DECIMAL,
-                        TypeCodes.TYPE_BIG_INTEGER -> compareStringValue(stringKeys[left], stringKeys[right]);
+                            TypeCodes.TYPE_BIG_DECIMAL,
+                            TypeCodes.TYPE_BIG_INTEGER ->
+                        compareStringValue(stringKeys[left], stringKeys[right]);
                     default -> 0;
                 };
             }
@@ -1702,20 +1726,23 @@ public final class RepositoryRuntime<T> {
             RepositoryRuntime.swap(present, i, j);
             switch (typeCode) {
                 case TypeCodes.TYPE_INT,
-                    TypeCodes.TYPE_BOOLEAN,
-                    TypeCodes.TYPE_BYTE,
-                    TypeCodes.TYPE_SHORT,
-                    TypeCodes.TYPE_CHAR -> RepositoryRuntime.swap(intKeys, i, j);
+                        TypeCodes.TYPE_BOOLEAN,
+                        TypeCodes.TYPE_BYTE,
+                        TypeCodes.TYPE_SHORT,
+                        TypeCodes.TYPE_CHAR ->
+                    RepositoryRuntime.swap(intKeys, i, j);
                 case TypeCodes.TYPE_FLOAT -> RepositoryRuntime.swap(floatKeys, i, j);
                 case TypeCodes.TYPE_LONG,
-                    TypeCodes.TYPE_INSTANT,
-                    TypeCodes.TYPE_LOCAL_DATE,
-                    TypeCodes.TYPE_LOCAL_DATE_TIME,
-                    TypeCodes.TYPE_DATE -> RepositoryRuntime.swap(longKeys, i, j);
+                        TypeCodes.TYPE_INSTANT,
+                        TypeCodes.TYPE_LOCAL_DATE,
+                        TypeCodes.TYPE_LOCAL_DATE_TIME,
+                        TypeCodes.TYPE_DATE ->
+                    RepositoryRuntime.swap(longKeys, i, j);
                 case TypeCodes.TYPE_DOUBLE -> RepositoryRuntime.swap(doubleKeys, i, j);
                 case TypeCodes.TYPE_STRING,
-                    TypeCodes.TYPE_BIG_DECIMAL,
-                    TypeCodes.TYPE_BIG_INTEGER -> RepositoryRuntime.swap(stringKeys, i, j);
+                        TypeCodes.TYPE_BIG_DECIMAL,
+                        TypeCodes.TYPE_BIG_INTEGER ->
+                    RepositoryRuntime.swap(stringKeys, i, j);
                 default -> {
                 }
             }
@@ -1742,20 +1769,23 @@ public final class RepositoryRuntime<T> {
 
         return switch (typeCode) {
             case TypeCodes.TYPE_INT,
-                TypeCodes.TYPE_BOOLEAN,
-                TypeCodes.TYPE_BYTE,
-                TypeCodes.TYPE_SHORT,
-                TypeCodes.TYPE_CHAR -> sortByIntColumn(rows, columnIndex, ascending);
+                    TypeCodes.TYPE_BOOLEAN,
+                    TypeCodes.TYPE_BYTE,
+                    TypeCodes.TYPE_SHORT,
+                    TypeCodes.TYPE_CHAR ->
+                sortByIntColumn(rows, columnIndex, ascending);
             case TypeCodes.TYPE_LONG,
-                TypeCodes.TYPE_INSTANT,
-                TypeCodes.TYPE_LOCAL_DATE,
-                TypeCodes.TYPE_LOCAL_DATE_TIME,
-                TypeCodes.TYPE_DATE -> sortByLongColumn(rows, columnIndex, ascending);
+                    TypeCodes.TYPE_INSTANT,
+                    TypeCodes.TYPE_LOCAL_DATE,
+                    TypeCodes.TYPE_LOCAL_DATE_TIME,
+                    TypeCodes.TYPE_DATE ->
+                sortByLongColumn(rows, columnIndex, ascending);
             case TypeCodes.TYPE_FLOAT -> sortByFloatColumn(rows, columnIndex, ascending);
             case TypeCodes.TYPE_DOUBLE -> sortByDoubleColumn(rows, columnIndex, ascending);
             case TypeCodes.TYPE_STRING,
-                TypeCodes.TYPE_BIG_DECIMAL,
-                TypeCodes.TYPE_BIG_INTEGER -> sortByStringColumn(rows, columnIndex, ascending);
+                    TypeCodes.TYPE_BIG_DECIMAL,
+                    TypeCodes.TYPE_BIG_INTEGER ->
+                sortByStringColumn(rows, columnIndex, ascending);
             default -> throw new IllegalArgumentException("Unsupported type for sorting: " + typeCode);
         };
     }
@@ -1858,11 +1888,14 @@ public final class RepositoryRuntime<T> {
             }
         }
 
-        if (low < j) quickSortInt(rows, keys, present, low, j, ascending);
-        if (i < high) quickSortInt(rows, keys, present, i, high, ascending);
+        if (low < j)
+            quickSortInt(rows, keys, present, low, j, ascending);
+        if (i < high)
+            quickSortInt(rows, keys, present, i, high, ascending);
     }
 
-    private static void quickSortFloat(int[] rows, float[] keys, boolean[] present, int low, int high, boolean ascending) {
+    private static void quickSortFloat(int[] rows, float[] keys, boolean[] present, int low, int high,
+            boolean ascending) {
         int i = low;
         int j = high;
         int pivotIndex = low + ((high - low) >>> 1);
@@ -1886,11 +1919,14 @@ public final class RepositoryRuntime<T> {
             }
         }
 
-        if (low < j) quickSortFloat(rows, keys, present, low, j, ascending);
-        if (i < high) quickSortFloat(rows, keys, present, i, high, ascending);
+        if (low < j)
+            quickSortFloat(rows, keys, present, low, j, ascending);
+        if (i < high)
+            quickSortFloat(rows, keys, present, i, high, ascending);
     }
 
-    private static void quickSortLong(int[] rows, long[] keys, boolean[] present, int low, int high, boolean ascending) {
+    private static void quickSortLong(int[] rows, long[] keys, boolean[] present, int low, int high,
+            boolean ascending) {
         int i = low;
         int j = high;
         int pivotIndex = low + ((high - low) >>> 1);
@@ -1914,11 +1950,14 @@ public final class RepositoryRuntime<T> {
             }
         }
 
-        if (low < j) quickSortLong(rows, keys, present, low, j, ascending);
-        if (i < high) quickSortLong(rows, keys, present, i, high, ascending);
+        if (low < j)
+            quickSortLong(rows, keys, present, low, j, ascending);
+        if (i < high)
+            quickSortLong(rows, keys, present, i, high, ascending);
     }
 
-    private static void quickSortDouble(int[] rows, double[] keys, boolean[] present, int low, int high, boolean ascending) {
+    private static void quickSortDouble(int[] rows, double[] keys, boolean[] present, int low, int high,
+            boolean ascending) {
         int i = low;
         int j = high;
         int pivotIndex = low + ((high - low) >>> 1);
@@ -1942,8 +1981,10 @@ public final class RepositoryRuntime<T> {
             }
         }
 
-        if (low < j) quickSortDouble(rows, keys, present, low, j, ascending);
-        if (i < high) quickSortDouble(rows, keys, present, i, high, ascending);
+        if (low < j)
+            quickSortDouble(rows, keys, present, low, j, ascending);
+        if (i < high)
+            quickSortDouble(rows, keys, present, i, high, ascending);
     }
 
     private static void quickSortString(int[] rows, String[] keys, int low, int high, boolean ascending) {
@@ -1967,13 +2008,15 @@ public final class RepositoryRuntime<T> {
             }
         }
 
-        if (low < j) quickSortString(rows, keys, low, j, ascending);
-        if (i < high) quickSortString(rows, keys, i, high, ascending);
+        if (low < j)
+            quickSortString(rows, keys, low, j, ascending);
+        if (i < high)
+            quickSortString(rows, keys, i, high, ascending);
     }
 
     private static int compareInt(int value, boolean present, int row,
-                                  int pivot, boolean pivotPresent, int pivotRow,
-                                  boolean ascending) {
+            int pivot, boolean pivotPresent, int pivotRow,
+            boolean ascending) {
         int cmp = compareNullable(present, pivotPresent);
         if (cmp == 0) {
             cmp = Integer.compare(value, pivot);
@@ -1985,8 +2028,8 @@ public final class RepositoryRuntime<T> {
     }
 
     private static int compareFloat(float value, boolean present, int row,
-                                    float pivot, boolean pivotPresent, int pivotRow,
-                                    boolean ascending) {
+            float pivot, boolean pivotPresent, int pivotRow,
+            boolean ascending) {
         int cmp = compareNullable(present, pivotPresent);
         if (cmp == 0) {
             cmp = Float.compare(value, pivot);
@@ -1998,8 +2041,8 @@ public final class RepositoryRuntime<T> {
     }
 
     private static int compareLong(long value, boolean present, int row,
-                                   long pivot, boolean pivotPresent, int pivotRow,
-                                   boolean ascending) {
+            long pivot, boolean pivotPresent, int pivotRow,
+            boolean ascending) {
         int cmp = compareNullable(present, pivotPresent);
         if (cmp == 0) {
             cmp = Long.compare(value, pivot);
@@ -2011,8 +2054,8 @@ public final class RepositoryRuntime<T> {
     }
 
     private static int compareDouble(double value, boolean present, int row,
-                                     double pivot, boolean pivotPresent, int pivotRow,
-                                     boolean ascending) {
+            double pivot, boolean pivotPresent, int pivotRow,
+            boolean ascending) {
         int cmp = compareNullable(present, pivotPresent);
         if (cmp == 0) {
             cmp = Double.compare(value, pivot);
@@ -2070,11 +2113,6 @@ public final class RepositoryRuntime<T> {
         arr[j] = tmp;
     }
 
-    private static void swap(int[] arr, int i, int j, int[] keys) {
-        swap(arr, i, j);
-        swap(keys, i, j);
-    }
-
     private static void swap(String[] arr, int i, int j, int[] rows) {
         String tmp = arr[i];
         arr[i] = arr[j];
@@ -2128,7 +2166,8 @@ public final class RepositoryRuntime<T> {
             if (!sourceTable.isPresent(step.sourceColumnIndex(), currentRow)) {
                 return null;
             }
-            Object fkValue = readProjectionFkValue(sourceTable, step.fkTypeCode(), step.sourceColumnIndex(), currentRow);
+            Object fkValue = readProjectionFkValue(sourceTable, step.fkTypeCode(), step.sourceColumnIndex(),
+                    currentRow);
             if (fkValue == null) {
                 return null;
             }
@@ -2147,7 +2186,8 @@ public final class RepositoryRuntime<T> {
             return null;
         }
         EntityMetadata<?> fieldMetadata = projectionMetadata(item.fieldEntity());
-        return readProjectedValue(fieldTable, fieldMetadata, item.fieldName(), item.columnIndex(), item.typeCode(), currentRow);
+        return readProjectedValue(fieldTable, fieldMetadata, item.fieldName(), item.columnIndex(), item.typeCode(),
+                currentRow);
     }
 
     private Object readProjectionFkValue(GeneratedTable table, byte typeCode, int columnIndex, int rowIndex) {
@@ -2162,8 +2202,8 @@ public final class RepositoryRuntime<T> {
     }
 
     private int resolveProjectionTargetRow(GeneratedTable targetTable,
-                                           CompiledQuery.CompiledProjectionStep step,
-                                           Object fkValue) {
+            CompiledQuery.CompiledProjectionStep step,
+            Object fkValue) {
         if (step.targetColumnIsId()) {
             long packedRef;
             if (fkValue instanceof String stringId) {
@@ -2177,10 +2217,12 @@ public final class RepositoryRuntime<T> {
         }
 
         int[] matches = switch (step.fkTypeCode()) {
-            case TypeCodes.TYPE_LONG -> targetTable.scanEqualsLong(step.targetColumnIndex(), ((Number) fkValue).longValue());
+            case TypeCodes.TYPE_LONG ->
+                targetTable.scanEqualsLong(step.targetColumnIndex(), ((Number) fkValue).longValue());
             case TypeCodes.TYPE_INT,
-                 TypeCodes.TYPE_SHORT,
-                 TypeCodes.TYPE_BYTE -> targetTable.scanEqualsInt(step.targetColumnIndex(), ((Number) fkValue).intValue());
+                    TypeCodes.TYPE_SHORT,
+                    TypeCodes.TYPE_BYTE ->
+                targetTable.scanEqualsInt(step.targetColumnIndex(), ((Number) fkValue).intValue());
             case TypeCodes.TYPE_STRING -> targetTable.scanEqualsString(step.targetColumnIndex(), fkValue.toString());
             default -> targetTable.scanEqualsLong(step.targetColumnIndex(), ((Number) fkValue).longValue());
         };
@@ -2188,25 +2230,27 @@ public final class RepositoryRuntime<T> {
     }
 
     private Object readProjectedValue(GeneratedTable table,
-                                      EntityMetadata<?> entityMetadata,
-                                      String fieldName,
-                                      int columnIndex,
-                                      byte typeCode,
-                                      int rowIndex) {
+            EntityMetadata<?> entityMetadata,
+            String fieldName,
+            int columnIndex,
+            byte typeCode,
+            int rowIndex) {
         if (!table.isPresent(columnIndex, rowIndex)) {
             return null;
         }
 
         Object storage = switch (typeCode) {
             case TypeCodes.TYPE_STRING,
-                 TypeCodes.TYPE_BIG_DECIMAL,
-                 TypeCodes.TYPE_BIG_INTEGER -> table.readString(columnIndex, rowIndex);
+                    TypeCodes.TYPE_BIG_DECIMAL,
+                    TypeCodes.TYPE_BIG_INTEGER ->
+                table.readString(columnIndex, rowIndex);
             case TypeCodes.TYPE_LONG,
-                 TypeCodes.TYPE_INSTANT,
-                 TypeCodes.TYPE_LOCAL_DATE,
-                 TypeCodes.TYPE_LOCAL_DATE_TIME,
-                 TypeCodes.TYPE_DATE,
-                 TypeCodes.TYPE_DOUBLE -> table.readLong(columnIndex, rowIndex);
+                    TypeCodes.TYPE_INSTANT,
+                    TypeCodes.TYPE_LOCAL_DATE,
+                    TypeCodes.TYPE_LOCAL_DATE_TIME,
+                    TypeCodes.TYPE_DATE,
+                    TypeCodes.TYPE_DOUBLE ->
+                table.readLong(columnIndex, rowIndex);
             default -> table.readInt(columnIndex, rowIndex);
         };
 
@@ -2269,11 +2313,10 @@ public final class RepositoryRuntime<T> {
         Selection selection = null;
         for (CompiledQuery.CompiledJoinPredicate predicate : predicates) {
             CompiledQuery.CompiledCondition compiled = CompiledQuery.CompiledCondition.of(
-                predicate.columnIndex(),
-                predicate.operator(),
-                predicate.argumentIndex(),
-                predicate.ignoreCase()
-            );
+                    predicate.columnIndex(),
+                    predicate.operator(),
+                    predicate.argumentIndex(),
+                    predicate.ignoreCase());
             Selection next = join.targetKernel().executeCondition(compiled, args);
             selection = (selection == null) ? next : selection.intersect(next);
         }
@@ -2288,7 +2331,8 @@ public final class RepositoryRuntime<T> {
         }
 
         for (CompiledQuery.CompiledJoin join : joins) {
-            join.materializer().hydrate(entity, rowIndex, plan.table(), join.targetTable(), join.targetKernel(), join.targetMaterializer());
+            join.materializer().hydrate(entity, rowIndex, plan.table(), join.targetTable(), join.targetKernel(),
+                    join.targetMaterializer());
         }
     }
 
@@ -2302,7 +2346,8 @@ public final class RepositoryRuntime<T> {
             }
             if (field.relationshipType() == io.memris.core.EntityMetadata.FieldMapping.RelationshipType.ONE_TO_MANY) {
                 hydrateOneToMany(entity, rowIndex, field);
-            } else if (field.relationshipType() == io.memris.core.EntityMetadata.FieldMapping.RelationshipType.MANY_TO_MANY) {
+            } else if (field
+                    .relationshipType() == io.memris.core.EntityMetadata.FieldMapping.RelationshipType.MANY_TO_MANY) {
                 hydrateManyToMany(entity, rowIndex, field);
             }
         }
@@ -2317,12 +2362,14 @@ public final class RepositoryRuntime<T> {
             return;
         }
         io.memris.runtime.HeapRuntimeKernel targetKernel = plan.kernelsByEntity().get(field.targetEntity());
-        io.memris.runtime.EntityMaterializer<?> targetMaterializer = plan.materializersByEntity().get(field.targetEntity());
+        io.memris.runtime.EntityMaterializer<?> targetMaterializer = plan.materializersByEntity()
+                .get(field.targetEntity());
         if (targetKernel == null || targetMaterializer == null) {
             return;
         }
 
-        io.memris.core.EntityMetadata<?> targetMetadata = io.memris.core.MetadataExtractor.extractEntityMetadata(field.targetEntity());
+        io.memris.core.EntityMetadata<?> targetMetadata = io.memris.core.MetadataExtractor
+                .extractEntityMetadata(field.targetEntity());
         int fkColumnIndex = targetMetadata.resolveColumnPosition(field.columnName());
 
         int idColumnIndex = metadata.resolveColumnPosition(metadata.idColumnName());
@@ -2331,8 +2378,9 @@ public final class RepositoryRuntime<T> {
         int[] matches = switch (field.typeCode()) {
             case io.memris.core.TypeCodes.TYPE_LONG -> targetTable.scanEqualsLong(fkColumnIndex, sourceId);
             case io.memris.core.TypeCodes.TYPE_INT,
-                 io.memris.core.TypeCodes.TYPE_SHORT,
-                 io.memris.core.TypeCodes.TYPE_BYTE -> targetTable.scanEqualsInt(fkColumnIndex, (int) sourceId);
+                    io.memris.core.TypeCodes.TYPE_SHORT,
+                    io.memris.core.TypeCodes.TYPE_BYTE ->
+                targetTable.scanEqualsInt(fkColumnIndex, (int) sourceId);
             default -> targetTable.scanEqualsLong(fkColumnIndex, sourceId);
         };
 
@@ -2358,8 +2406,9 @@ public final class RepositoryRuntime<T> {
         return switch (typeCode) {
             case io.memris.core.TypeCodes.TYPE_LONG -> table.readLong(idColumnIndex, rowIndex);
             case io.memris.core.TypeCodes.TYPE_INT,
-                 io.memris.core.TypeCodes.TYPE_SHORT,
-                 io.memris.core.TypeCodes.TYPE_BYTE -> table.readInt(idColumnIndex, rowIndex);
+                    io.memris.core.TypeCodes.TYPE_SHORT,
+                    io.memris.core.TypeCodes.TYPE_BYTE ->
+                table.readInt(idColumnIndex, rowIndex);
             default -> table.readLong(idColumnIndex, rowIndex);
         };
     }
@@ -2377,9 +2426,11 @@ public final class RepositoryRuntime<T> {
             return;
         }
 
-        io.memris.core.EntityMetadata<?> targetMetadata = io.memris.core.MetadataExtractor.extractEntityMetadata(field.targetEntity());
+        io.memris.core.EntityMetadata<?> targetMetadata = io.memris.core.MetadataExtractor
+                .extractEntityMetadata(field.targetEntity());
         io.memris.runtime.HeapRuntimeKernel targetKernel = plan.kernelsByEntity().get(field.targetEntity());
-        io.memris.runtime.EntityMaterializer<?> targetMaterializer = plan.materializersByEntity().get(field.targetEntity());
+        io.memris.runtime.EntityMaterializer<?> targetMaterializer = plan.materializersByEntity()
+                .get(field.targetEntity());
         if (targetKernel == null || targetMaterializer == null) {
             return;
         }
@@ -2400,7 +2451,8 @@ public final class RepositoryRuntime<T> {
         io.memris.kernel.Column<?> inverseColumn = joinTable.column(joinInfo.inverseJoinColumn);
 
         long rowCount = joinTable.rowCount();
-        java.util.Collection<Object> collection = createCollection(field.javaType(), (int) Math.min(rowCount, Integer.MAX_VALUE));
+        java.util.Collection<Object> collection = createCollection(field.javaType(),
+                (int) Math.min(rowCount, Integer.MAX_VALUE));
 
         for (int i = 0; i < rowCount; i++) {
             io.memris.kernel.RowId rowId = new io.memris.kernel.RowId(i >>> 16, i & 0xFFFF);
@@ -2433,22 +2485,24 @@ public final class RepositoryRuntime<T> {
     }
 
     private int[] scanTargetById(io.memris.storage.GeneratedTable targetTable,
-                                 io.memris.core.EntityMetadata.FieldMapping targetId,
-                                 Object targetIdValue) {
+            io.memris.core.EntityMetadata.FieldMapping targetId,
+            Object targetIdValue) {
         return switch (targetId.typeCode()) {
             case io.memris.core.TypeCodes.TYPE_LONG -> targetTable.scanEqualsLong(
-                targetId.columnPosition(), ((Number) targetIdValue).longValue());
+                    targetId.columnPosition(), ((Number) targetIdValue).longValue());
             case io.memris.core.TypeCodes.TYPE_INT,
-                 io.memris.core.TypeCodes.TYPE_SHORT,
-                 io.memris.core.TypeCodes.TYPE_BYTE -> targetTable.scanEqualsInt(
-                targetId.columnPosition(), ((Number) targetIdValue).intValue());
+                    io.memris.core.TypeCodes.TYPE_SHORT,
+                    io.memris.core.TypeCodes.TYPE_BYTE ->
+                targetTable.scanEqualsInt(
+                        targetId.columnPosition(), ((Number) targetIdValue).intValue());
             case io.memris.core.TypeCodes.TYPE_STRING -> targetTable.scanEqualsString(
-                targetId.columnPosition(), targetIdValue.toString());
+                    targetId.columnPosition(), targetIdValue.toString());
             default -> targetTable.scanEqualsLong(targetId.columnPosition(), ((Number) targetIdValue).longValue());
         };
     }
 
-    private Object readSourceIdValue(io.memris.storage.GeneratedTable table, int idColumnIndex, byte typeCode, int rowIndex) {
+    private Object readSourceIdValue(io.memris.storage.GeneratedTable table, int idColumnIndex, byte typeCode,
+            int rowIndex) {
         return switch (typeCode) {
             case io.memris.core.TypeCodes.TYPE_LONG -> Long.valueOf(table.readLong(idColumnIndex, rowIndex));
             case io.memris.core.TypeCodes.TYPE_INT -> Integer.valueOf(table.readInt(idColumnIndex, rowIndex));
@@ -2463,7 +2517,8 @@ public final class RepositoryRuntime<T> {
             return;
         }
         for (io.memris.core.EntityMetadata.FieldMapping field : metadata.fields()) {
-            if (!field.isRelationship() || field.relationshipType() != io.memris.core.EntityMetadata.FieldMapping.RelationshipType.MANY_TO_MANY) {
+            if (!field.isRelationship() || field
+                    .relationshipType() != io.memris.core.EntityMetadata.FieldMapping.RelationshipType.MANY_TO_MANY) {
                 continue;
             }
             if (field.joinTable() == null || field.joinTable().isBlank()) {
@@ -2478,7 +2533,8 @@ public final class RepositoryRuntime<T> {
                 continue;
             }
 
-            io.memris.core.EntityMetadata<?> targetMetadata = io.memris.core.MetadataExtractor.extractEntityMetadata(field.targetEntity());
+            io.memris.core.EntityMetadata<?> targetMetadata = io.memris.core.MetadataExtractor
+                    .extractEntityMetadata(field.targetEntity());
             io.memris.core.EntityMetadata.FieldMapping targetId = findIdField(targetMetadata);
             if (targetId == null) {
                 continue;
@@ -2562,10 +2618,12 @@ public final class RepositoryRuntime<T> {
 
     private JoinTableInfo resolveJoinTable(io.memris.core.EntityMetadata.FieldMapping field) {
         if (field.joinTable() != null && !field.joinTable().isBlank()) {
-            return buildJoinTableInfo(field, metadata, io.memris.core.MetadataExtractor.extractEntityMetadata(field.targetEntity()), false);
+            return buildJoinTableInfo(field, metadata,
+                    io.memris.core.MetadataExtractor.extractEntityMetadata(field.targetEntity()), false);
         }
         if (field.mappedBy() != null && !field.mappedBy().isBlank()) {
-            io.memris.core.EntityMetadata<?> targetMetadata = io.memris.core.MetadataExtractor.extractEntityMetadata(field.targetEntity());
+            io.memris.core.EntityMetadata<?> targetMetadata = io.memris.core.MetadataExtractor
+                    .extractEntityMetadata(field.targetEntity());
             io.memris.core.EntityMetadata.FieldMapping ownerField = findFieldByName(targetMetadata, field.mappedBy());
             if (ownerField == null || ownerField.joinTable() == null || ownerField.joinTable().isBlank()) {
                 return null;
@@ -2576,9 +2634,9 @@ public final class RepositoryRuntime<T> {
     }
 
     private JoinTableInfo buildJoinTableInfo(io.memris.core.EntityMetadata.FieldMapping ownerField,
-                                             io.memris.core.EntityMetadata<?> ownerMetadata,
-                                             io.memris.core.EntityMetadata<?> inverseMetadata,
-                                             boolean inverseSide) {
+            io.memris.core.EntityMetadata<?> ownerMetadata,
+            io.memris.core.EntityMetadata<?> inverseMetadata,
+            boolean inverseSide) {
         String joinTableName = ownerField.joinTable();
         io.memris.storage.SimpleTable joinTable = plan.joinTables().get(joinTableName);
         if (joinTable == null) {
@@ -2590,27 +2648,34 @@ public final class RepositoryRuntime<T> {
         if (!inverseSide) {
             joinColumn = ownerField.columnName();
             if (joinColumn == null || joinColumn.isBlank()) {
-                joinColumn = ownerMetadata.entityClass().getSimpleName().toLowerCase() + "_" + ownerMetadata.idColumnName();
+                joinColumn = ownerMetadata.entityClass().getSimpleName().toLowerCase() + "_"
+                        + ownerMetadata.idColumnName();
             }
             inverseJoinColumn = ownerField.referencedColumnName();
             if (inverseJoinColumn == null || inverseJoinColumn.isBlank()) {
-                inverseJoinColumn = inverseMetadata.entityClass().getSimpleName().toLowerCase() + "_" + inverseMetadata.idColumnName();
+                inverseJoinColumn = inverseMetadata.entityClass().getSimpleName().toLowerCase() + "_"
+                        + inverseMetadata.idColumnName();
             }
-            return new JoinTableInfo(joinTableName, joinColumn, inverseJoinColumn, joinTable, plan.tablesByEntity().get(ownerField.targetEntity()));
+            return new JoinTableInfo(joinTableName, joinColumn, inverseJoinColumn, joinTable,
+                    plan.tablesByEntity().get(ownerField.targetEntity()));
         }
 
         joinColumn = ownerField.referencedColumnName();
         if (joinColumn == null || joinColumn.isBlank()) {
-            joinColumn = inverseMetadata.entityClass().getSimpleName().toLowerCase() + "_" + inverseMetadata.idColumnName();
+            joinColumn = inverseMetadata.entityClass().getSimpleName().toLowerCase() + "_"
+                    + inverseMetadata.idColumnName();
         }
         inverseJoinColumn = ownerField.columnName();
         if (inverseJoinColumn == null || inverseJoinColumn.isBlank()) {
-            inverseJoinColumn = ownerMetadata.entityClass().getSimpleName().toLowerCase() + "_" + ownerMetadata.idColumnName();
+            inverseJoinColumn = ownerMetadata.entityClass().getSimpleName().toLowerCase() + "_"
+                    + ownerMetadata.idColumnName();
         }
-        return new JoinTableInfo(joinTableName, joinColumn, inverseJoinColumn, joinTable, plan.tablesByEntity().get(ownerMetadata.entityClass()));
+        return new JoinTableInfo(joinTableName, joinColumn, inverseJoinColumn, joinTable,
+                plan.tablesByEntity().get(ownerMetadata.entityClass()));
     }
 
-    private io.memris.core.EntityMetadata.FieldMapping findFieldByName(io.memris.core.EntityMetadata<?> targetMetadata, String name) {
+    private io.memris.core.EntityMetadata.FieldMapping findFieldByName(io.memris.core.EntityMetadata<?> targetMetadata,
+            String name) {
         for (io.memris.core.EntityMetadata.FieldMapping field : targetMetadata.fields()) {
             if (field.name().equals(name)) {
                 return field;
@@ -2620,12 +2685,11 @@ public final class RepositoryRuntime<T> {
     }
 
     private record JoinTableInfo(
-        String name,
-        String joinColumn,
-        String inverseJoinColumn,
-        io.memris.storage.SimpleTable table,
-        io.memris.storage.GeneratedTable targetTable
-    ) {
+            String name,
+            String joinColumn,
+            String inverseJoinColumn,
+            io.memris.storage.SimpleTable table,
+            io.memris.storage.GeneratedTable targetTable) {
     }
 
     private record JoinKey(Object left, Object right) {

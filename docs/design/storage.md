@@ -38,10 +38,10 @@
 - **Storage**: Single unbounded ColumnarBatch
 - **Index Registry**: ConcurrentHashMap<String, Index<?>>
 - **No max rows limit**: Grows dynamically
-- **Thread Safety**: 
-  - Reads: Thread-safe via atomic rowCounter
-  - Writes: Mostly thread-safe via CAS (free-list, tombstones, seqlock)
-  - Column writes: Require external coordination
+- **Thread Safety**:
+  - Reads: Thread-safe via published watermark + seqlock
+  - Writes: Thread-safe via CAS (free-list, tombstones, per-row seqlock)
+  - Index updates: Eventually consistent with row writes
 
 ## Performance Optimizations
 
@@ -72,7 +72,7 @@
 
 ## Current Limitations
 
-- **Column write atomicity**: Still requires coordination for full consistency
+- **Column write atomicity**: Coordinated by row seqlock; index visibility is eventual
 - **MVCC**: No snapshot isolation
 - **@OneToMany and @ManyToMany**: Only @OneToOne and @ManyToOne relationships implemented
 - **DISTINCT query modifier**: Tokenized but execution not complete

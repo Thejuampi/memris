@@ -9,6 +9,7 @@ import net.bytebuddy.implementation.bind.annotation.This;
 
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
+import java.lang.invoke.VarHandle;
 import java.lang.reflect.Field;
 import java.util.List;
 
@@ -19,167 +20,166 @@ import java.util.List;
  * easy to maintain, reliable.
  */
 public class MethodHandleImplementation implements TableImplementationStrategy {
-    
+
     @Override
     public DynamicType.Builder<AbstractTable> implementMethods(
             DynamicType.Builder<AbstractTable> builder,
             List<ColumnFieldInfo> columnFields,
             Class<?> idIndexType) {
-        
+
         // 1. Metadata methods
         builder = addMetadataMethods(builder, columnFields.size());
-        
+
         // 2. Read methods
         builder = addReadMethods(builder, columnFields);
-        
+
         // 3. Scan methods
         builder = addScanMethods(builder, columnFields);
-        
+
         // 4. Row lifecycle methods
-        builder = addLifecycleMethods(builder, columnFields, idIndexType);
-        
+        builder = addLifecycleMethods(builder, columnFields);
+
         // 5. ID index methods
-        builder = addIdIndexMethods(builder, idIndexType);
-        
+        builder = addIdIndexMethods(builder);
+
         return builder;
     }
-    
+
     private static DynamicType.Builder<AbstractTable> addMetadataMethods(
             DynamicType.Builder<AbstractTable> builder, int columnCount) {
-        
+
         builder = builder.method(net.bytebuddy.matcher.ElementMatchers.named("columnCount"))
                 .intercept(FixedValue.value(columnCount));
-        
+
         builder = builder.method(net.bytebuddy.matcher.ElementMatchers.named("typeCodeAt"))
                 .intercept(MethodDelegation.to(TypeCodeInterceptor.class));
-        
+
         try {
             builder = builder.method(net.bytebuddy.matcher.ElementMatchers.named("allocatedCount"))
                     .intercept(net.bytebuddy.implementation.MethodCall.invoke(
-                        AbstractTable.class.getDeclaredMethod("allocatedCount")).onSuper());
+                            AbstractTable.class.getDeclaredMethod("allocatedCount")).onSuper());
         } catch (NoSuchMethodException e) {
             throw new RuntimeException("Failed to find allocatedCount method", e);
         }
-        
+
         try {
             builder = builder.method(net.bytebuddy.matcher.ElementMatchers.named("liveCount"))
                     .intercept(net.bytebuddy.implementation.MethodCall.invoke(
-                        AbstractTable.class.getDeclaredMethod("rowCount")).onSuper());
+                            AbstractTable.class.getDeclaredMethod("rowCount")).onSuper());
         } catch (NoSuchMethodException e) {
             throw new RuntimeException("Failed to find rowCount method", e);
         }
-        
+
         try {
             builder = builder.method(net.bytebuddy.matcher.ElementMatchers.named("currentGeneration"))
                     .intercept(net.bytebuddy.implementation.MethodCall.invoke(
-                        AbstractTable.class.getDeclaredMethod("currentGeneration")).onSuper());
+                            AbstractTable.class.getDeclaredMethod("currentGeneration")).onSuper());
         } catch (NoSuchMethodException e) {
             throw new RuntimeException("Failed to find currentGeneration method", e);
         }
 
         builder = builder.method(net.bytebuddy.matcher.ElementMatchers.named("rowGeneration"))
                 .intercept(MethodDelegation.to(new RowGenerationInterceptor()));
-        
+
         return builder;
     }
-    
+
     private static DynamicType.Builder<AbstractTable> addReadMethods(
             DynamicType.Builder<AbstractTable> builder,
             List<ColumnFieldInfo> columnFields) {
-        
+
         ReadInterceptor interceptor = new ReadInterceptor(columnFields);
-        
+
         builder = builder.method(net.bytebuddy.matcher.ElementMatchers.named("readLong"))
                 .intercept(MethodDelegation.to(interceptor));
-        
+
         builder = builder.method(net.bytebuddy.matcher.ElementMatchers.named("readInt"))
                 .intercept(MethodDelegation.to(interceptor));
-        
+
         builder = builder.method(net.bytebuddy.matcher.ElementMatchers.named("readString"))
                 .intercept(MethodDelegation.to(interceptor));
 
         builder = builder.method(net.bytebuddy.matcher.ElementMatchers.named("isPresent"))
                 .intercept(MethodDelegation.to(new PresentInterceptor(columnFields)));
-        
+
         return builder;
     }
-    
+
     private static DynamicType.Builder<AbstractTable> addScanMethods(
             DynamicType.Builder<AbstractTable> builder,
             List<ColumnFieldInfo> columnFields) {
-        
-        // Each scan method gets its own specialized interceptor - O(1) dispatch, no runtime switch
+
+        // Each scan method gets its own specialized interceptor - O(1) dispatch, no
+        // runtime switch
         builder = builder.method(net.bytebuddy.matcher.ElementMatchers.named("scanEqualsLong"))
                 .intercept(MethodDelegation.to(new ScanEqualsLongInterceptor(columnFields)));
-        
+
         builder = builder.method(net.bytebuddy.matcher.ElementMatchers.named("scanEqualsInt"))
                 .intercept(MethodDelegation.to(new ScanEqualsIntInterceptor(columnFields)));
-        
+
         builder = builder.method(net.bytebuddy.matcher.ElementMatchers.named("scanEqualsString"))
                 .intercept(MethodDelegation.to(new ScanEqualsStringInterceptor(columnFields)));
-        
+
         builder = builder.method(net.bytebuddy.matcher.ElementMatchers.named("scanEqualsStringIgnoreCase"))
                 .intercept(MethodDelegation.to(new ScanEqualsStringIgnoreCaseInterceptor(columnFields)));
-        
+
         builder = builder.method(net.bytebuddy.matcher.ElementMatchers.named("scanBetweenLong"))
                 .intercept(MethodDelegation.to(new ScanBetweenLongInterceptor(columnFields)));
-        
+
         builder = builder.method(net.bytebuddy.matcher.ElementMatchers.named("scanBetweenInt"))
                 .intercept(MethodDelegation.to(new ScanBetweenIntInterceptor(columnFields)));
-        
+
         builder = builder.method(net.bytebuddy.matcher.ElementMatchers.named("scanInLong"))
                 .intercept(MethodDelegation.to(new ScanInLongInterceptor(columnFields)));
-        
+
         builder = builder.method(net.bytebuddy.matcher.ElementMatchers.named("scanInInt"))
                 .intercept(MethodDelegation.to(new ScanInIntInterceptor(columnFields)));
-        
+
         builder = builder.method(net.bytebuddy.matcher.ElementMatchers.named("scanInString"))
                 .intercept(MethodDelegation.to(new ScanInStringInterceptor(columnFields)));
-        
+
         // scanAll returns all allocated row indices
         builder = builder.method(net.bytebuddy.matcher.ElementMatchers.named("scanAll"))
                 .intercept(MethodDelegation.to(new ScanAllInterceptor()));
-        
+
         return builder;
     }
-    
+
     private static DynamicType.Builder<AbstractTable> addLifecycleMethods(
             DynamicType.Builder<AbstractTable> builder,
-            List<ColumnFieldInfo> columnFields,
-            Class<?> idIndexType) {
-        
+            List<ColumnFieldInfo> columnFields) {
+
         builder = builder.method(net.bytebuddy.matcher.ElementMatchers.named("insertFrom"))
-                .intercept(MethodDelegation.to(new InsertInterceptor(columnFields, idIndexType)));
+                .intercept(MethodDelegation.to(new InsertInterceptor(columnFields)));
 
         builder = builder.method(net.bytebuddy.matcher.ElementMatchers.named("tombstone"))
                 .intercept(MethodDelegation.to(new TombstoneInterceptor(columnFields)));
 
         builder = builder.method(net.bytebuddy.matcher.ElementMatchers.named("isLive"))
                 .intercept(MethodDelegation.to(new IsLiveInterceptor()));
-        
+
         return builder;
     }
-    
+
     private static DynamicType.Builder<AbstractTable> addIdIndexMethods(
-            DynamicType.Builder<AbstractTable> builder,
-            Class<?> idIndexType) {
-        
+            DynamicType.Builder<AbstractTable> builder) {
+
         builder = builder.method(net.bytebuddy.matcher.ElementMatchers.named("lookupById"))
-                .intercept(MethodDelegation.to(new LookupInterceptor(idIndexType, "long")));
-        
+                .intercept(MethodDelegation.to(new LookupInterceptor("long")));
+
         builder = builder.method(net.bytebuddy.matcher.ElementMatchers.named("lookupByIdString"))
-                .intercept(MethodDelegation.to(new LookupInterceptor(idIndexType, "String")));
-        
+                .intercept(MethodDelegation.to(new LookupInterceptor("String")));
+
         builder = builder.method(net.bytebuddy.matcher.ElementMatchers.named("removeById"))
-                .intercept(MethodDelegation.to(new LookupInterceptor(idIndexType, "remove")));
-        
+                .intercept(MethodDelegation.to(new LookupInterceptor("remove")));
+
         return builder;
     }
-    
+
     // ====================================================================================
     // Interceptor Classes
     // ====================================================================================
-    
+
     public static class TypeCodeInterceptor {
         @RuntimeType
         public static byte intercept(@Argument(0) int columnIndex, @This Object obj) throws Exception {
@@ -203,15 +203,15 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
     public static class ReadInterceptor {
         private final List<ColumnFieldInfo> columnFields;
         private final MethodHandles.Lookup lookup = MethodHandles.lookup();
-        
+
         public ReadInterceptor(List<ColumnFieldInfo> columnFields) {
             this.columnFields = columnFields;
         }
-        
+
         @RuntimeType
-        public Object intercept(@Argument(0) int columnIndex, 
-                                @Argument(1) int rowIndex,
-                                @This Object obj) throws Throwable {
+        public Object intercept(@Argument(0) int columnIndex,
+                @Argument(1) int rowIndex,
+                @This Object obj) throws Throwable {
             if (columnIndex < 0 || columnIndex >= columnFields.size()) {
                 throw new IndexOutOfBoundsException("Column index out of range: " + columnIndex);
             }
@@ -226,22 +226,22 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
 
                         byte typeCode = fieldInfo.typeCode();
                         if (typeCode == io.memris.core.TypeCodes.TYPE_LONG
-                            || typeCode == io.memris.core.TypeCodes.TYPE_DOUBLE
-                            || typeCode == io.memris.core.TypeCodes.TYPE_INSTANT
-                            || typeCode == io.memris.core.TypeCodes.TYPE_LOCAL_DATE
-                            || typeCode == io.memris.core.TypeCodes.TYPE_LOCAL_DATE_TIME
-                            || typeCode == io.memris.core.TypeCodes.TYPE_DATE) {
+                                || typeCode == io.memris.core.TypeCodes.TYPE_DOUBLE
+                                || typeCode == io.memris.core.TypeCodes.TYPE_INSTANT
+                                || typeCode == io.memris.core.TypeCodes.TYPE_LOCAL_DATE
+                                || typeCode == io.memris.core.TypeCodes.TYPE_LOCAL_DATE_TIME
+                                || typeCode == io.memris.core.TypeCodes.TYPE_DATE) {
                             return ((PageColumnLong) column).get(rowIndex);
                         } else if (typeCode == io.memris.core.TypeCodes.TYPE_INT
-                            || typeCode == io.memris.core.TypeCodes.TYPE_FLOAT
-                            || typeCode == io.memris.core.TypeCodes.TYPE_BOOLEAN
-                            || typeCode == io.memris.core.TypeCodes.TYPE_BYTE
-                            || typeCode == io.memris.core.TypeCodes.TYPE_SHORT
-                            || typeCode == io.memris.core.TypeCodes.TYPE_CHAR) {
+                                || typeCode == io.memris.core.TypeCodes.TYPE_FLOAT
+                                || typeCode == io.memris.core.TypeCodes.TYPE_BOOLEAN
+                                || typeCode == io.memris.core.TypeCodes.TYPE_BYTE
+                                || typeCode == io.memris.core.TypeCodes.TYPE_SHORT
+                                || typeCode == io.memris.core.TypeCodes.TYPE_CHAR) {
                             return ((PageColumnInt) column).get(rowIndex);
                         } else if (typeCode == io.memris.core.TypeCodes.TYPE_STRING
-                            || typeCode == io.memris.core.TypeCodes.TYPE_BIG_DECIMAL
-                            || typeCode == io.memris.core.TypeCodes.TYPE_BIG_INTEGER) {
+                                || typeCode == io.memris.core.TypeCodes.TYPE_BIG_DECIMAL
+                                || typeCode == io.memris.core.TypeCodes.TYPE_BIG_INTEGER) {
                             return ((PageColumnString) column).get(rowIndex);
                         } else {
                             throw new IllegalStateException("Unknown type code: " + typeCode);
@@ -269,8 +269,8 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
 
         @RuntimeType
         public boolean intercept(@Argument(0) int columnIndex,
-                                 @Argument(1) int rowIndex,
-                                 @This Object obj) throws Throwable {
+                @Argument(1) int rowIndex,
+                @This Object obj) throws Throwable {
             if (columnIndex < 0 || columnIndex >= columnFields.size()) {
                 throw new IndexOutOfBoundsException("Column index out of range: " + columnIndex);
             }
@@ -285,22 +285,22 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
 
                         byte typeCode = fieldInfo.typeCode();
                         if (typeCode == io.memris.core.TypeCodes.TYPE_LONG
-                            || typeCode == io.memris.core.TypeCodes.TYPE_DOUBLE
-                            || typeCode == io.memris.core.TypeCodes.TYPE_INSTANT
-                            || typeCode == io.memris.core.TypeCodes.TYPE_LOCAL_DATE
-                            || typeCode == io.memris.core.TypeCodes.TYPE_LOCAL_DATE_TIME
-                            || typeCode == io.memris.core.TypeCodes.TYPE_DATE) {
+                                || typeCode == io.memris.core.TypeCodes.TYPE_DOUBLE
+                                || typeCode == io.memris.core.TypeCodes.TYPE_INSTANT
+                                || typeCode == io.memris.core.TypeCodes.TYPE_LOCAL_DATE
+                                || typeCode == io.memris.core.TypeCodes.TYPE_LOCAL_DATE_TIME
+                                || typeCode == io.memris.core.TypeCodes.TYPE_DATE) {
                             return ((PageColumnLong) column).isPresent(rowIndex);
                         } else if (typeCode == io.memris.core.TypeCodes.TYPE_INT
-                            || typeCode == io.memris.core.TypeCodes.TYPE_FLOAT
-                            || typeCode == io.memris.core.TypeCodes.TYPE_BOOLEAN
-                            || typeCode == io.memris.core.TypeCodes.TYPE_BYTE
-                            || typeCode == io.memris.core.TypeCodes.TYPE_SHORT
-                            || typeCode == io.memris.core.TypeCodes.TYPE_CHAR) {
+                                || typeCode == io.memris.core.TypeCodes.TYPE_FLOAT
+                                || typeCode == io.memris.core.TypeCodes.TYPE_BOOLEAN
+                                || typeCode == io.memris.core.TypeCodes.TYPE_BYTE
+                                || typeCode == io.memris.core.TypeCodes.TYPE_SHORT
+                                || typeCode == io.memris.core.TypeCodes.TYPE_CHAR) {
                             return ((PageColumnInt) column).isPresent(rowIndex);
                         } else if (typeCode == io.memris.core.TypeCodes.TYPE_STRING
-                            || typeCode == io.memris.core.TypeCodes.TYPE_BIG_DECIMAL
-                            || typeCode == io.memris.core.TypeCodes.TYPE_BIG_INTEGER) {
+                                || typeCode == io.memris.core.TypeCodes.TYPE_BIG_DECIMAL
+                                || typeCode == io.memris.core.TypeCodes.TYPE_BIG_INTEGER) {
                             return ((PageColumnString) column).isPresent(rowIndex);
                         } else {
                             throw new IllegalStateException("Unknown type code: " + typeCode);
@@ -317,19 +317,21 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
             }
         }
     }
-    
-    // Specialized scan interceptors - each handles one scan type with zero runtime dispatch
-    
+
+    // Specialized scan interceptors - each handles one scan type with zero runtime
+    // dispatch
+
     public static class ScanEqualsLongInterceptor {
         private final List<ColumnFieldInfo> columnFields;
         private final MethodHandles.Lookup lookup = MethodHandles.lookup();
-        
+
         public ScanEqualsLongInterceptor(List<ColumnFieldInfo> columnFields) {
             this.columnFields = columnFields;
         }
-        
+
         @RuntimeType
-        public int[] intercept(@Argument(0) int columnIndex, @Argument(1) Long value, @This Object obj) throws Throwable {
+        public int[] intercept(@Argument(0) int columnIndex, @Argument(1) Long value, @This Object obj)
+                throws Throwable {
             if (columnIndex < 0 || columnIndex >= columnFields.size()) {
                 throw new IndexOutOfBoundsException("Column index out of range: " + columnIndex);
             }
@@ -337,20 +339,22 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
             Field field = obj.getClass().getDeclaredField(fieldInfo.fieldName());
             MethodHandle getter = lookup.unreflectGetter(field);
             PageColumnLong column = (PageColumnLong) getter.invoke(obj);
-            
+
             java.lang.reflect.Method allocatedMethod = AbstractTable.class.getDeclaredMethod("allocatedCount");
             allocatedMethod.setAccessible(true);
             int limit = (int) (long) allocatedMethod.invoke(obj);
-            
+
             int[] results = column.scanEquals(value, limit);
             return filterTombstoned(results, obj);
         }
-        
+
         private int[] filterTombstoned(int[] rows, Object obj) throws Exception {
-            if (rows.length == 0) return rows;
-            java.lang.reflect.Method isTombstoneMethod = AbstractTable.class.getDeclaredMethod("isTombstone", io.memris.kernel.RowId.class);
+            if (rows.length == 0)
+                return rows;
+            java.lang.reflect.Method isTombstoneMethod = AbstractTable.class.getDeclaredMethod("isTombstone",
+                    io.memris.kernel.RowId.class);
             isTombstoneMethod.setAccessible(true);
-            
+
             int[] filtered = new int[rows.length];
             int count = 0;
             for (int rowIndex : rows) {
@@ -364,17 +368,18 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
             return result;
         }
     }
-    
+
     public static class ScanEqualsIntInterceptor {
         private final List<ColumnFieldInfo> columnFields;
         private final MethodHandles.Lookup lookup = MethodHandles.lookup();
-        
+
         public ScanEqualsIntInterceptor(List<ColumnFieldInfo> columnFields) {
             this.columnFields = columnFields;
         }
-        
+
         @RuntimeType
-        public int[] intercept(@Argument(0) int columnIndex, @Argument(1) Integer value, @This Object obj) throws Throwable {
+        public int[] intercept(@Argument(0) int columnIndex, @Argument(1) Integer value, @This Object obj)
+                throws Throwable {
             if (columnIndex < 0 || columnIndex >= columnFields.size()) {
                 throw new IndexOutOfBoundsException("Column index out of range: " + columnIndex);
             }
@@ -382,20 +387,22 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
             Field field = obj.getClass().getDeclaredField(fieldInfo.fieldName());
             MethodHandle getter = lookup.unreflectGetter(field);
             PageColumnInt column = (PageColumnInt) getter.invoke(obj);
-            
+
             java.lang.reflect.Method allocatedMethod = AbstractTable.class.getDeclaredMethod("allocatedCount");
             allocatedMethod.setAccessible(true);
             int limit = (int) (long) allocatedMethod.invoke(obj);
-            
+
             int[] results = column.scanEquals(value, limit);
             return filterTombstoned(results, obj);
         }
-        
+
         private int[] filterTombstoned(int[] rows, Object obj) throws Exception {
-            if (rows.length == 0) return rows;
-            java.lang.reflect.Method isTombstoneMethod = AbstractTable.class.getDeclaredMethod("isTombstone", io.memris.kernel.RowId.class);
+            if (rows.length == 0)
+                return rows;
+            java.lang.reflect.Method isTombstoneMethod = AbstractTable.class.getDeclaredMethod("isTombstone",
+                    io.memris.kernel.RowId.class);
             isTombstoneMethod.setAccessible(true);
-            
+
             int[] filtered = new int[rows.length];
             int count = 0;
             for (int rowIndex : rows) {
@@ -409,35 +416,38 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
             return result;
         }
     }
-    
+
     public static class ScanEqualsStringInterceptor {
         private final List<ColumnFieldInfo> columnFields;
         private final MethodHandles.Lookup lookup = MethodHandles.lookup();
-        
+
         public ScanEqualsStringInterceptor(List<ColumnFieldInfo> columnFields) {
             this.columnFields = columnFields;
         }
-        
+
         @RuntimeType
-        public int[] intercept(@Argument(0) int columnIndex, @Argument(1) String value, @This Object obj) throws Throwable {
+        public int[] intercept(@Argument(0) int columnIndex, @Argument(1) String value, @This Object obj)
+                throws Throwable {
             ColumnFieldInfo fieldInfo = columnFields.get(columnIndex);
             Field field = obj.getClass().getDeclaredField(fieldInfo.fieldName());
             MethodHandle getter = lookup.unreflectGetter(field);
             PageColumnString column = (PageColumnString) getter.invoke(obj);
-            
+
             java.lang.reflect.Method allocatedMethod = AbstractTable.class.getDeclaredMethod("allocatedCount");
             allocatedMethod.setAccessible(true);
             int limit = (int) (long) allocatedMethod.invoke(obj);
-            
+
             int[] results = column.scanEquals(value, limit);
             return filterTombstoned(results, obj);
         }
-        
+
         private int[] filterTombstoned(int[] rows, Object obj) throws Exception {
-            if (rows.length == 0) return rows;
-            java.lang.reflect.Method isTombstoneMethod = AbstractTable.class.getDeclaredMethod("isTombstone", io.memris.kernel.RowId.class);
+            if (rows.length == 0)
+                return rows;
+            java.lang.reflect.Method isTombstoneMethod = AbstractTable.class.getDeclaredMethod("isTombstone",
+                    io.memris.kernel.RowId.class);
             isTombstoneMethod.setAccessible(true);
-            
+
             int[] filtered = new int[rows.length];
             int count = 0;
             for (int rowIndex : rows) {
@@ -451,17 +461,18 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
             return result;
         }
     }
-    
+
     public static class ScanEqualsStringIgnoreCaseInterceptor {
         private final List<ColumnFieldInfo> columnFields;
         private final MethodHandles.Lookup lookup = MethodHandles.lookup();
-        
+
         public ScanEqualsStringIgnoreCaseInterceptor(List<ColumnFieldInfo> columnFields) {
             this.columnFields = columnFields;
         }
-        
+
         @RuntimeType
-        public int[] intercept(@Argument(0) int columnIndex, @Argument(1) String value, @This Object obj) throws Throwable {
+        public int[] intercept(@Argument(0) int columnIndex, @Argument(1) String value, @This Object obj)
+                throws Throwable {
             if (columnIndex < 0 || columnIndex >= columnFields.size()) {
                 throw new IndexOutOfBoundsException("Column index out of range: " + columnIndex);
             }
@@ -477,12 +488,14 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
             int[] results = column.scanEqualsIgnoreCase(value, limit);
             return filterTombstoned(results, obj);
         }
-        
+
         private int[] filterTombstoned(int[] rows, Object obj) throws Exception {
-            if (rows.length == 0) return rows;
-            java.lang.reflect.Method isTombstoneMethod = AbstractTable.class.getDeclaredMethod("isTombstone", io.memris.kernel.RowId.class);
+            if (rows.length == 0)
+                return rows;
+            java.lang.reflect.Method isTombstoneMethod = AbstractTable.class.getDeclaredMethod("isTombstone",
+                    io.memris.kernel.RowId.class);
             isTombstoneMethod.setAccessible(true);
-            
+
             int[] filtered = new int[rows.length];
             int count = 0;
             for (int rowIndex : rows) {
@@ -496,17 +509,18 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
             return result;
         }
     }
-    
+
     public static class ScanBetweenLongInterceptor {
         private final List<ColumnFieldInfo> columnFields;
         private final MethodHandles.Lookup lookup = MethodHandles.lookup();
-        
+
         public ScanBetweenLongInterceptor(List<ColumnFieldInfo> columnFields) {
             this.columnFields = columnFields;
         }
-        
+
         @RuntimeType
-        public int[] intercept(@Argument(0) int columnIndex, @Argument(1) Long lower, @Argument(2) Long upper, @This Object obj) throws Throwable {
+        public int[] intercept(@Argument(0) int columnIndex, @Argument(1) Long lower, @Argument(2) Long upper,
+                @This Object obj) throws Throwable {
             if (columnIndex < 0 || columnIndex >= columnFields.size()) {
                 throw new IndexOutOfBoundsException("Column index out of range: " + columnIndex);
             }
@@ -514,20 +528,22 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
             Field field = obj.getClass().getDeclaredField(fieldInfo.fieldName());
             MethodHandle getter = lookup.unreflectGetter(field);
             PageColumnLong column = (PageColumnLong) getter.invoke(obj);
-            
+
             java.lang.reflect.Method allocatedMethod = AbstractTable.class.getDeclaredMethod("allocatedCount");
             allocatedMethod.setAccessible(true);
             int limit = (int) (long) allocatedMethod.invoke(obj);
-            
+
             int[] results = column.scanBetween(lower, upper, limit);
             return filterTombstoned(results, obj);
         }
-        
+
         private int[] filterTombstoned(int[] rows, Object obj) throws Exception {
-            if (rows.length == 0) return rows;
-            java.lang.reflect.Method isTombstoneMethod = AbstractTable.class.getDeclaredMethod("isTombstone", io.memris.kernel.RowId.class);
+            if (rows.length == 0)
+                return rows;
+            java.lang.reflect.Method isTombstoneMethod = AbstractTable.class.getDeclaredMethod("isTombstone",
+                    io.memris.kernel.RowId.class);
             isTombstoneMethod.setAccessible(true);
-            
+
             int[] filtered = new int[rows.length];
             int count = 0;
             for (int rowIndex : rows) {
@@ -541,17 +557,18 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
             return result;
         }
     }
-    
+
     public static class ScanBetweenIntInterceptor {
         private final List<ColumnFieldInfo> columnFields;
         private final MethodHandles.Lookup lookup = MethodHandles.lookup();
-        
+
         public ScanBetweenIntInterceptor(List<ColumnFieldInfo> columnFields) {
             this.columnFields = columnFields;
         }
-        
+
         @RuntimeType
-        public int[] intercept(@Argument(0) int columnIndex, @Argument(1) Integer lower, @Argument(2) Integer upper, @This Object obj) throws Throwable {
+        public int[] intercept(@Argument(0) int columnIndex, @Argument(1) Integer lower, @Argument(2) Integer upper,
+                @This Object obj) throws Throwable {
             if (columnIndex < 0 || columnIndex >= columnFields.size()) {
                 throw new IndexOutOfBoundsException("Column index out of range: " + columnIndex);
             }
@@ -559,20 +576,22 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
             Field field = obj.getClass().getDeclaredField(fieldInfo.fieldName());
             MethodHandle getter = lookup.unreflectGetter(field);
             PageColumnInt column = (PageColumnInt) getter.invoke(obj);
-            
+
             java.lang.reflect.Method allocatedMethod = AbstractTable.class.getDeclaredMethod("allocatedCount");
             allocatedMethod.setAccessible(true);
             int limit = (int) (long) allocatedMethod.invoke(obj);
-            
+
             int[] results = column.scanBetween(lower, upper, limit);
             return filterTombstoned(results, obj);
         }
-        
+
         private int[] filterTombstoned(int[] rows, Object obj) throws Exception {
-            if (rows.length == 0) return rows;
-            java.lang.reflect.Method isTombstoneMethod = AbstractTable.class.getDeclaredMethod("isTombstone", io.memris.kernel.RowId.class);
+            if (rows.length == 0)
+                return rows;
+            java.lang.reflect.Method isTombstoneMethod = AbstractTable.class.getDeclaredMethod("isTombstone",
+                    io.memris.kernel.RowId.class);
             isTombstoneMethod.setAccessible(true);
-            
+
             int[] filtered = new int[rows.length];
             int count = 0;
             for (int rowIndex : rows) {
@@ -586,17 +605,18 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
             return result;
         }
     }
-    
+
     public static class ScanInLongInterceptor {
         private final List<ColumnFieldInfo> columnFields;
         private final MethodHandles.Lookup lookup = MethodHandles.lookup();
-        
+
         public ScanInLongInterceptor(List<ColumnFieldInfo> columnFields) {
             this.columnFields = columnFields;
         }
-        
+
         @RuntimeType
-        public int[] intercept(@Argument(0) int columnIndex, @Argument(1) long[] values, @This Object obj) throws Throwable {
+        public int[] intercept(@Argument(0) int columnIndex, @Argument(1) long[] values, @This Object obj)
+                throws Throwable {
             if (columnIndex < 0 || columnIndex >= columnFields.size()) {
                 throw new IndexOutOfBoundsException("Column index out of range: " + columnIndex);
             }
@@ -604,20 +624,22 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
             Field field = obj.getClass().getDeclaredField(fieldInfo.fieldName());
             MethodHandle getter = lookup.unreflectGetter(field);
             PageColumnLong column = (PageColumnLong) getter.invoke(obj);
-            
+
             java.lang.reflect.Method allocatedMethod = AbstractTable.class.getDeclaredMethod("allocatedCount");
             allocatedMethod.setAccessible(true);
             int limit = (int) (long) allocatedMethod.invoke(obj);
-            
+
             int[] results = column.scanIn(values, limit);
             return filterTombstoned(results, obj);
         }
-        
+
         private int[] filterTombstoned(int[] rows, Object obj) throws Exception {
-            if (rows.length == 0) return rows;
-            java.lang.reflect.Method isTombstoneMethod = AbstractTable.class.getDeclaredMethod("isTombstone", io.memris.kernel.RowId.class);
+            if (rows.length == 0)
+                return rows;
+            java.lang.reflect.Method isTombstoneMethod = AbstractTable.class.getDeclaredMethod("isTombstone",
+                    io.memris.kernel.RowId.class);
             isTombstoneMethod.setAccessible(true);
-            
+
             int[] filtered = new int[rows.length];
             int count = 0;
             for (int rowIndex : rows) {
@@ -631,35 +653,38 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
             return result;
         }
     }
-    
+
     public static class ScanInIntInterceptor {
         private final List<ColumnFieldInfo> columnFields;
         private final MethodHandles.Lookup lookup = MethodHandles.lookup();
-        
+
         public ScanInIntInterceptor(List<ColumnFieldInfo> columnFields) {
             this.columnFields = columnFields;
         }
-        
+
         @RuntimeType
-        public int[] intercept(@Argument(0) int columnIndex, @Argument(1) int[] values, @This Object obj) throws Throwable {
+        public int[] intercept(@Argument(0) int columnIndex, @Argument(1) int[] values, @This Object obj)
+                throws Throwable {
             ColumnFieldInfo fieldInfo = columnFields.get(columnIndex);
             Field field = obj.getClass().getDeclaredField(fieldInfo.fieldName());
             MethodHandle getter = lookup.unreflectGetter(field);
             PageColumnInt column = (PageColumnInt) getter.invoke(obj);
-            
+
             java.lang.reflect.Method allocatedMethod = AbstractTable.class.getDeclaredMethod("allocatedCount");
             allocatedMethod.setAccessible(true);
             int limit = (int) (long) allocatedMethod.invoke(obj);
-            
+
             int[] results = column.scanIn(values, limit);
             return filterTombstoned(results, obj);
         }
-        
+
         private int[] filterTombstoned(int[] rows, Object obj) throws Exception {
-            if (rows.length == 0) return rows;
-            java.lang.reflect.Method isTombstoneMethod = AbstractTable.class.getDeclaredMethod("isTombstone", io.memris.kernel.RowId.class);
+            if (rows.length == 0)
+                return rows;
+            java.lang.reflect.Method isTombstoneMethod = AbstractTable.class.getDeclaredMethod("isTombstone",
+                    io.memris.kernel.RowId.class);
             isTombstoneMethod.setAccessible(true);
-            
+
             int[] filtered = new int[rows.length];
             int count = 0;
             for (int rowIndex : rows) {
@@ -673,35 +698,38 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
             return result;
         }
     }
-    
+
     public static class ScanInStringInterceptor {
         private final List<ColumnFieldInfo> columnFields;
         private final MethodHandles.Lookup lookup = MethodHandles.lookup();
-        
+
         public ScanInStringInterceptor(List<ColumnFieldInfo> columnFields) {
             this.columnFields = columnFields;
         }
-        
+
         @RuntimeType
-        public int[] intercept(@Argument(0) int columnIndex, @Argument(1) String[] values, @This Object obj) throws Throwable {
+        public int[] intercept(@Argument(0) int columnIndex, @Argument(1) String[] values, @This Object obj)
+                throws Throwable {
             ColumnFieldInfo fieldInfo = columnFields.get(columnIndex);
             Field field = obj.getClass().getDeclaredField(fieldInfo.fieldName());
             MethodHandle getter = lookup.unreflectGetter(field);
             PageColumnString column = (PageColumnString) getter.invoke(obj);
-            
+
             java.lang.reflect.Method allocatedMethod = AbstractTable.class.getDeclaredMethod("allocatedCount");
             allocatedMethod.setAccessible(true);
             int limit = (int) (long) allocatedMethod.invoke(obj);
-            
+
             int[] results = column.scanIn(values, limit);
             return filterTombstoned(results, obj);
         }
-        
+
         private int[] filterTombstoned(int[] rows, Object obj) throws Exception {
-            if (rows.length == 0) return rows;
-            java.lang.reflect.Method isTombstoneMethod = AbstractTable.class.getDeclaredMethod("isTombstone", io.memris.kernel.RowId.class);
+            if (rows.length == 0)
+                return rows;
+            java.lang.reflect.Method isTombstoneMethod = AbstractTable.class.getDeclaredMethod("isTombstone",
+                    io.memris.kernel.RowId.class);
             isTombstoneMethod.setAccessible(true);
-            
+
             int[] filtered = new int[rows.length];
             int count = 0;
             for (int rowIndex : rows) {
@@ -715,18 +743,19 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
             return result;
         }
     }
-    
+
     public static class ScanAllInterceptor {
         @RuntimeType
         public int[] intercept(@This Object obj) throws Exception {
             java.lang.reflect.Method allocatedMethod = AbstractTable.class.getDeclaredMethod("allocatedCount");
             allocatedMethod.setAccessible(true);
             long allocated = (long) allocatedMethod.invoke(obj);
-            
+
             // Get tombstone BitSet to filter deleted rows
-            java.lang.reflect.Method isTombstoneMethod = AbstractTable.class.getDeclaredMethod("isTombstone", io.memris.kernel.RowId.class);
+            java.lang.reflect.Method isTombstoneMethod = AbstractTable.class.getDeclaredMethod("isTombstone",
+                    io.memris.kernel.RowId.class);
             isTombstoneMethod.setAccessible(true);
-            
+
             int[] temp = new int[(int) allocated];
             int count = 0;
             for (int i = 0; i < allocated; i++) {
@@ -738,36 +767,35 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
                     temp[count++] = i;
                 }
             }
-            
+
             // Trim to actual size
             int[] results = new int[count];
             System.arraycopy(temp, 0, results, 0, count);
             return results;
         }
     }
-    
+
     public static class InsertInterceptor {
         private final List<ColumnFieldInfo> columnFields;
-        private final Class<?> idIndexType;
         private final MethodHandles.Lookup lookup = MethodHandles.lookup();
-        
-        public InsertInterceptor(List<ColumnFieldInfo> columnFields, Class<?> idIndexType) {
+
+        public InsertInterceptor(List<ColumnFieldInfo> columnFields) {
             this.columnFields = columnFields;
-            this.idIndexType = idIndexType;
         }
-        
+
         @RuntimeType
         public long intercept(@Argument(0) Object[] values, @This Object obj) throws Throwable {
             if (values.length != columnFields.size()) {
-                throw new IllegalArgumentException("Value count mismatch: expected " + columnFields.size() + ", got " + values.length);
+                throw new IllegalArgumentException(
+                        "Value count mismatch: expected " + columnFields.size() + ", got " + values.length);
             }
-            
+
             // Allocate row
             java.lang.reflect.Method allocateMethod = AbstractTable.class.getDeclaredMethod("allocateRowId");
             allocateMethod.setAccessible(true);
             io.memris.kernel.RowId rowId = (io.memris.kernel.RowId) allocateMethod.invoke(obj);
             int rowIndex = (int) (rowId.page() * 1024 + rowId.offset());
-            
+
             // Get generation for this row
             java.lang.reflect.Method rowGenMethod = AbstractTable.class.getDeclaredMethod("rowGeneration", int.class);
             rowGenMethod.setAccessible(true);
@@ -786,11 +814,11 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
 
                     byte typeCode = fieldInfo.typeCode();
                     if (typeCode == io.memris.core.TypeCodes.TYPE_LONG
-                        || typeCode == io.memris.core.TypeCodes.TYPE_INSTANT
-                        || typeCode == io.memris.core.TypeCodes.TYPE_LOCAL_DATE
-                        || typeCode == io.memris.core.TypeCodes.TYPE_LOCAL_DATE_TIME
-                        || typeCode == io.memris.core.TypeCodes.TYPE_DATE
-                        || typeCode == io.memris.core.TypeCodes.TYPE_DOUBLE) {
+                            || typeCode == io.memris.core.TypeCodes.TYPE_INSTANT
+                            || typeCode == io.memris.core.TypeCodes.TYPE_LOCAL_DATE
+                            || typeCode == io.memris.core.TypeCodes.TYPE_LOCAL_DATE_TIME
+                            || typeCode == io.memris.core.TypeCodes.TYPE_DATE
+                            || typeCode == io.memris.core.TypeCodes.TYPE_DOUBLE) {
                         PageColumnLong col = (PageColumnLong) column;
                         if (value == null) {
                             col.setNull(rowIndex);
@@ -816,11 +844,11 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
                         }
                         col.set(rowIndex, longValue);
                     } else if (typeCode == io.memris.core.TypeCodes.TYPE_INT
-                        || typeCode == io.memris.core.TypeCodes.TYPE_FLOAT
-                        || typeCode == io.memris.core.TypeCodes.TYPE_BOOLEAN
-                        || typeCode == io.memris.core.TypeCodes.TYPE_BYTE
-                        || typeCode == io.memris.core.TypeCodes.TYPE_SHORT
-                        || typeCode == io.memris.core.TypeCodes.TYPE_CHAR) {
+                            || typeCode == io.memris.core.TypeCodes.TYPE_FLOAT
+                            || typeCode == io.memris.core.TypeCodes.TYPE_BOOLEAN
+                            || typeCode == io.memris.core.TypeCodes.TYPE_BYTE
+                            || typeCode == io.memris.core.TypeCodes.TYPE_SHORT
+                            || typeCode == io.memris.core.TypeCodes.TYPE_CHAR) {
                         PageColumnInt col = (PageColumnInt) column;
                         if (value == null) {
                             col.setNull(rowIndex);
@@ -858,8 +886,8 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
                         }
                         col.set(rowIndex, intValue);
                     } else if (typeCode == io.memris.core.TypeCodes.TYPE_STRING
-                        || typeCode == io.memris.core.TypeCodes.TYPE_BIG_DECIMAL
-                        || typeCode == io.memris.core.TypeCodes.TYPE_BIG_INTEGER) {
+                            || typeCode == io.memris.core.TypeCodes.TYPE_BIG_DECIMAL
+                            || typeCode == io.memris.core.TypeCodes.TYPE_BIG_INTEGER) {
                         PageColumnString col = (PageColumnString) column;
                         if (value == null) {
                             col.setNull(rowIndex);
@@ -875,6 +903,7 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
             }
 
             // Publish row to make data visible to scans
+            VarHandle.storeStoreFence();
             for (int i = 0; i < columnFields.size(); i++) {
                 ColumnFieldInfo fieldInfo = columnFields.get(i);
                 Field field = obj.getClass().getDeclaredField(fieldInfo.fieldName());
@@ -883,24 +912,24 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
 
                 byte typeCode = fieldInfo.typeCode();
                 if (typeCode == io.memris.core.TypeCodes.TYPE_LONG
-                    || typeCode == io.memris.core.TypeCodes.TYPE_DOUBLE
-                    || typeCode == io.memris.core.TypeCodes.TYPE_INSTANT
-                    || typeCode == io.memris.core.TypeCodes.TYPE_LOCAL_DATE
-                    || typeCode == io.memris.core.TypeCodes.TYPE_LOCAL_DATE_TIME
-                    || typeCode == io.memris.core.TypeCodes.TYPE_DATE) {
+                        || typeCode == io.memris.core.TypeCodes.TYPE_DOUBLE
+                        || typeCode == io.memris.core.TypeCodes.TYPE_INSTANT
+                        || typeCode == io.memris.core.TypeCodes.TYPE_LOCAL_DATE
+                        || typeCode == io.memris.core.TypeCodes.TYPE_LOCAL_DATE_TIME
+                        || typeCode == io.memris.core.TypeCodes.TYPE_DATE) {
                     PageColumnLong col = (PageColumnLong) column;
                     col.publish(rowIndex + 1);
                 } else if (typeCode == io.memris.core.TypeCodes.TYPE_INT
-                    || typeCode == io.memris.core.TypeCodes.TYPE_FLOAT
-                    || typeCode == io.memris.core.TypeCodes.TYPE_BOOLEAN
-                    || typeCode == io.memris.core.TypeCodes.TYPE_BYTE
-                    || typeCode == io.memris.core.TypeCodes.TYPE_SHORT
-                    || typeCode == io.memris.core.TypeCodes.TYPE_CHAR) {
+                        || typeCode == io.memris.core.TypeCodes.TYPE_FLOAT
+                        || typeCode == io.memris.core.TypeCodes.TYPE_BOOLEAN
+                        || typeCode == io.memris.core.TypeCodes.TYPE_BYTE
+                        || typeCode == io.memris.core.TypeCodes.TYPE_SHORT
+                        || typeCode == io.memris.core.TypeCodes.TYPE_CHAR) {
                     PageColumnInt col = (PageColumnInt) column;
                     col.publish(rowIndex + 1);
                 } else if (typeCode == io.memris.core.TypeCodes.TYPE_STRING
-                    || typeCode == io.memris.core.TypeCodes.TYPE_BIG_DECIMAL
-                    || typeCode == io.memris.core.TypeCodes.TYPE_BIG_INTEGER) {
+                        || typeCode == io.memris.core.TypeCodes.TYPE_BIG_DECIMAL
+                        || typeCode == io.memris.core.TypeCodes.TYPE_BIG_INTEGER) {
                     PageColumnString col = (PageColumnString) column;
                     col.publish(rowIndex + 1);
                 }
@@ -926,7 +955,7 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
             return io.memris.storage.Selection.pack(rowIndex, generation);
         }
     }
-    
+
     public static class TombstoneInterceptor {
         private final List<ColumnFieldInfo> columnFields;
         private final MethodHandles.Lookup lookup = MethodHandles.lookup();
@@ -956,28 +985,29 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
 
                     byte typeCode = idFieldInfo.typeCode();
                     if (typeCode == io.memris.core.TypeCodes.TYPE_LONG
-                        || typeCode == io.memris.core.TypeCodes.TYPE_DOUBLE
-                        || typeCode == io.memris.core.TypeCodes.TYPE_INSTANT
-                        || typeCode == io.memris.core.TypeCodes.TYPE_LOCAL_DATE
-                        || typeCode == io.memris.core.TypeCodes.TYPE_LOCAL_DATE_TIME
-                        || typeCode == io.memris.core.TypeCodes.TYPE_DATE) {
+                            || typeCode == io.memris.core.TypeCodes.TYPE_DOUBLE
+                            || typeCode == io.memris.core.TypeCodes.TYPE_INSTANT
+                            || typeCode == io.memris.core.TypeCodes.TYPE_LOCAL_DATE
+                            || typeCode == io.memris.core.TypeCodes.TYPE_LOCAL_DATE_TIME
+                            || typeCode == io.memris.core.TypeCodes.TYPE_DATE) {
                         idValue = ((PageColumnLong) idColumn).get(rowIndex);
                     } else if (typeCode == io.memris.core.TypeCodes.TYPE_INT
-                        || typeCode == io.memris.core.TypeCodes.TYPE_FLOAT
-                        || typeCode == io.memris.core.TypeCodes.TYPE_BOOLEAN
-                        || typeCode == io.memris.core.TypeCodes.TYPE_BYTE
-                        || typeCode == io.memris.core.TypeCodes.TYPE_SHORT
-                        || typeCode == io.memris.core.TypeCodes.TYPE_CHAR) {
+                            || typeCode == io.memris.core.TypeCodes.TYPE_FLOAT
+                            || typeCode == io.memris.core.TypeCodes.TYPE_BOOLEAN
+                            || typeCode == io.memris.core.TypeCodes.TYPE_BYTE
+                            || typeCode == io.memris.core.TypeCodes.TYPE_SHORT
+                            || typeCode == io.memris.core.TypeCodes.TYPE_CHAR) {
                         idValue = ((PageColumnInt) idColumn).get(rowIndex);
                     } else if (typeCode == io.memris.core.TypeCodes.TYPE_STRING
-                        || typeCode == io.memris.core.TypeCodes.TYPE_BIG_DECIMAL
-                        || typeCode == io.memris.core.TypeCodes.TYPE_BIG_INTEGER) {
+                            || typeCode == io.memris.core.TypeCodes.TYPE_BIG_DECIMAL
+                            || typeCode == io.memris.core.TypeCodes.TYPE_BIG_INTEGER) {
                         idValue = ((PageColumnString) idColumn).get(rowIndex);
                     }
                 }
 
                 // Use generation-validated tombstone
-                java.lang.reflect.Method tombstoneMethod = AbstractTable.class.getDeclaredMethod("tombstone", io.memris.kernel.RowId.class, long.class);
+                java.lang.reflect.Method tombstoneMethod = AbstractTable.class.getDeclaredMethod("tombstone",
+                        io.memris.kernel.RowId.class, long.class);
                 tombstoneMethod.setAccessible(true);
                 tombstoneMethod.invoke(obj, rowId, generation);
             } finally {
@@ -998,7 +1028,7 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
             }
         }
     }
-    
+
     public static class IsLiveInterceptor {
         @RuntimeType
         public boolean intercept(@Argument(0) long ref, @This AbstractTable table) {
@@ -1017,66 +1047,71 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
             return table.rowGenerations[rowIndex] == generation;
         }
     }
-    
+
     public static class LookupInterceptor {
-        private final Class<?> idIndexType;
         private final String operation;
         private final MethodHandles.Lookup lookup = MethodHandles.lookup();
-        
-        public LookupInterceptor(Class<?> idIndexType, String operation) {
-            this.idIndexType = idIndexType;
+
+        public LookupInterceptor(String operation) {
             this.operation = operation;
         }
-        
+
         @RuntimeType
         public Object intercept(@Argument(0) Object key, @This Object obj) throws Throwable {
             Field idIndexField = obj.getClass().getDeclaredField("idIndex");
             MethodHandle getter = lookup.unreflectGetter(idIndexField);
             Object idIndex = getter.invoke(obj);
-            
+
             // Get tombstone check method
-            java.lang.reflect.Method isTombstoneMethod = AbstractTable.class.getDeclaredMethod("isTombstone", io.memris.kernel.RowId.class);
+            java.lang.reflect.Method isTombstoneMethod = AbstractTable.class.getDeclaredMethod("isTombstone",
+                    io.memris.kernel.RowId.class);
             isTombstoneMethod.setAccessible(true);
-            
+
             // Get generation check method
             java.lang.reflect.Method rowGenMethod = AbstractTable.class.getDeclaredMethod("rowGeneration", int.class);
             rowGenMethod.setAccessible(true);
-            
+
             if ("long".equals(operation)) {
                 LongIdIndex idx = (LongIdIndex) idIndex;
                 LongIdIndex.RowIdAndGeneration rag = idx.getWithGeneration(((Number) key).longValue());
-                if (rag == null) return -1L;
-                
+                if (rag == null)
+                    return -1L;
+
                 io.memris.kernel.RowId rowId = rag.rowId();
                 long generation = rag.generation();
                 int rowIndex = (int) (rowId.page() * 1024 + rowId.offset());
-                
+
                 // Validate not tombstoned
                 boolean isTombstoned = (boolean) isTombstoneMethod.invoke(obj, rowId);
-                if (isTombstoned) return -1L;
-                
+                if (isTombstoned)
+                    return -1L;
+
                 // Validate generation matches
                 long storedGen = (long) rowGenMethod.invoke(obj, rowIndex);
-                if (storedGen != generation) return -1L;
-                
+                if (storedGen != generation)
+                    return -1L;
+
                 return io.memris.storage.Selection.pack(rowIndex, generation);
             } else if ("String".equals(operation)) {
                 StringIdIndex idx = (StringIdIndex) idIndex;
                 StringIdIndex.RowIdAndGeneration rag = idx.getWithGeneration((String) key);
-                if (rag == null) return -1L;
-                
+                if (rag == null)
+                    return -1L;
+
                 io.memris.kernel.RowId rowId = rag.rowId();
                 long generation = rag.generation();
                 int rowIndex = (int) (rowId.page() * 1024 + rowId.offset());
-                
+
                 // Validate not tombstoned
                 boolean isTombstoned = (boolean) isTombstoneMethod.invoke(obj, rowId);
-                if (isTombstoned) return -1L;
-                
+                if (isTombstoned)
+                    return -1L;
+
                 // Validate generation matches
                 long storedGen = (long) rowGenMethod.invoke(obj, rowIndex);
-                if (storedGen != generation) return -1L;
-                
+                if (storedGen != generation)
+                    return -1L;
+
                 return io.memris.storage.Selection.pack(rowIndex, generation);
             } else if ("remove".equals(operation)) {
                 if (idIndex instanceof LongIdIndex longIdx) {

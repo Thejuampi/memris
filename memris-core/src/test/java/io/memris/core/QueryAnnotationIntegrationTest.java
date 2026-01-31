@@ -57,7 +57,7 @@ class QueryAnnotationIntegrationTest {
         Optional<Product> found = repo.findBySkuQuery("SKU-2");
 
         assertThat(found).isPresent();
-        assertThat(found.get().name).isEqualTo("Product 2");
+        assertThat(found.orElseThrow().name).isEqualTo("Product 2");
     }
 
     @Test
