@@ -26,9 +26,11 @@ public record CompiledQuery(
         /** Pre-compiled joins */
         CompiledJoin[] joins,
         /** Pre-compiled order by (optional) */
-        CompiledOrderBy orderBy,
+        CompiledOrderBy[] orderBy,
         /** Limit for Top/First queries (0 = none) */
         int limit,
+        /** DISTINCT flag for result de-duplication */
+        boolean distinct,
         /** Bound literal values (appended after method arguments) */
         Object[] boundValues,
         /** Parameter index mapping for query argument slots */
@@ -49,7 +51,7 @@ public record CompiledQuery(
             OpCode opCode,
             LogicalQuery.ReturnKind returnKind,
             CompiledCondition[] conditions) {
-        return new CompiledQuery(opCode, returnKind, conditions, new CompiledJoin[0], null, 0, new Object[0], new int[0], conditions.length);
+        return new CompiledQuery(opCode, returnKind, conditions, new CompiledJoin[0], null, 0, false, new Object[0], new int[0], conditions.length);
     }
 
     public static CompiledQuery of(
@@ -57,10 +59,10 @@ public record CompiledQuery(
             LogicalQuery.ReturnKind returnKind,
             CompiledCondition[] conditions,
             CompiledJoin[] joins,
-            CompiledOrderBy orderBy,
+            CompiledOrderBy[] orderBy,
             int limit,
             int arity) {
-        return new CompiledQuery(opCode, returnKind, conditions, joins, orderBy, limit, new Object[0], new int[0], arity);
+        return new CompiledQuery(opCode, returnKind, conditions, joins, orderBy, limit, false, new Object[0], new int[0], arity);
     }
 
     public static CompiledQuery of(
@@ -68,16 +70,17 @@ public record CompiledQuery(
             LogicalQuery.ReturnKind returnKind,
             CompiledCondition[] conditions,
             CompiledJoin[] joins,
-            CompiledOrderBy orderBy,
+            CompiledOrderBy[] orderBy,
             int limit,
+            boolean distinct,
             Object[] boundValues,
             int[] parameterIndices,
             int arity) {
-        return new CompiledQuery(opCode, returnKind, conditions, joins, orderBy, limit, boundValues, parameterIndices, arity);
+        return new CompiledQuery(opCode, returnKind, conditions, joins, orderBy, limit, distinct, boundValues, parameterIndices, arity);
     }
 
     public CompiledQuery withJoins(CompiledJoin[] joins) {
-        return new CompiledQuery(opCode, returnKind, conditions, joins, orderBy, limit, boundValues, parameterIndices, arity);
+        return new CompiledQuery(opCode, returnKind, conditions, joins, orderBy, limit, distinct, boundValues, parameterIndices, arity);
     }
 
     /**

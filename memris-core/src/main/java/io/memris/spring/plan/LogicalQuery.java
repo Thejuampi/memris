@@ -18,58 +18,60 @@ import io.memris.kernel.Predicate;
  * @see QueryCompiler
  * @see CompiledQuery
  */
-    public record LogicalQuery(
+public record LogicalQuery(
+        OpCode opCode,
+        ReturnKind returnKind,
+        Condition[] conditions,
+        Join[] joins,
+        OrderBy[] orderBy,
+        int limit,
+        boolean distinct,
+        Object[] boundValues,
+        int[] parameterIndices,
+        int parameterCount
+) {
+
+    public static LogicalQuery of(
+            OpCode opCode,
+            ReturnKind returnKind,
+            Condition[] conditions,
+            OrderBy[] orderBy) {
+        return new LogicalQuery(opCode, returnKind, conditions, new Join[0], orderBy, 0, false, new Object[0], new int[0], conditions.length);
+    }
+
+    public static LogicalQuery of(
             OpCode opCode,
             ReturnKind returnKind,
             Condition[] conditions,
             Join[] joins,
-            OrderBy orderBy,
+            OrderBy[] orderBy,
+            int parameterCount) {
+        return new LogicalQuery(opCode, returnKind, conditions, joins, orderBy, 0, false, new Object[0], new int[0], parameterCount);
+    }
+
+    public static LogicalQuery of(
+            OpCode opCode,
+            ReturnKind returnKind,
+            Condition[] conditions,
+            Join[] joins,
+            OrderBy[] orderBy,
             int limit,
+            int parameterCount) {
+        return new LogicalQuery(opCode, returnKind, conditions, joins, orderBy, limit, false, new Object[0], new int[0], parameterCount);
+    }
+
+    public static LogicalQuery of(
+            OpCode opCode,
+            ReturnKind returnKind,
+            Condition[] conditions,
+            Join[] joins,
+            OrderBy[] orderBy,
+            int limit,
+            boolean distinct,
             Object[] boundValues,
             int[] parameterIndices,
-            int parameterCount
-    ) {
-
-    public static LogicalQuery of(
-            OpCode opCode,
-            ReturnKind returnKind,
-            Condition[] conditions,
-            OrderBy orderBy) {
-        return new LogicalQuery(opCode, returnKind, conditions, new Join[0], orderBy, 0, new Object[0], new int[0], conditions.length);
-    }
-
-    public static LogicalQuery of(
-            OpCode opCode,
-            ReturnKind returnKind,
-            Condition[] conditions,
-            Join[] joins,
-            OrderBy orderBy,
             int parameterCount) {
-        return new LogicalQuery(opCode, returnKind, conditions, joins, orderBy, 0, new Object[0], new int[0], parameterCount);
-    }
-
-    public static LogicalQuery of(
-            OpCode opCode,
-            ReturnKind returnKind,
-            Condition[] conditions,
-            Join[] joins,
-            OrderBy orderBy,
-            int limit,
-            int parameterCount) {
-        return new LogicalQuery(opCode, returnKind, conditions, joins, orderBy, limit, new Object[0], new int[0], parameterCount);
-    }
-
-    public static LogicalQuery of(
-            OpCode opCode,
-            ReturnKind returnKind,
-            Condition[] conditions,
-            Join[] joins,
-            OrderBy orderBy,
-            int limit,
-            Object[] boundValues,
-            int[] parameterIndices,
-            int parameterCount) {
-        return new LogicalQuery(opCode, returnKind, conditions, joins, orderBy, limit, boundValues, parameterIndices, parameterCount);
+        return new LogicalQuery(opCode, returnKind, conditions, joins, orderBy, limit, distinct, boundValues, parameterIndices, parameterCount);
     }
 
     /**
@@ -79,9 +81,9 @@ import io.memris.kernel.Predicate;
             OpCode opCode,
             ReturnKind returnKind,
             Condition[] conditions,
-            OrderBy orderBy,
+            OrderBy[] orderBy,
             int parameterCount) {
-        return new LogicalQuery(opCode, returnKind, conditions, new Join[0], orderBy, 0, new Object[0], new int[0], parameterCount);
+        return new LogicalQuery(opCode, returnKind, conditions, new Join[0], orderBy, 0, false, new Object[0], new int[0], parameterCount);
     }
 
     /**
@@ -95,7 +97,7 @@ import io.memris.kernel.Predicate;
      * @return a LogicalQuery for the CRUD operation
      */
     public static LogicalQuery crud(OpCode opCode, ReturnKind returnKind, int parameterCount) {
-        return new LogicalQuery(opCode, returnKind, new Condition[0], new Join[0], null, 0, new Object[0], new int[0], parameterCount);
+        return new LogicalQuery(opCode, returnKind, new Condition[0], new Join[0], null, 0, false, new Object[0], new int[0], parameterCount);
     }
 
     /**
@@ -117,16 +119,18 @@ import io.memris.kernel.Predicate;
                 && opCode == that.opCode
                 && returnKind == that.returnKind
                 && limit == that.limit
+                && distinct == that.distinct
                 && java.util.Arrays.equals(boundValues, that.boundValues)
                 && java.util.Arrays.equals(parameterIndices, that.parameterIndices)
                 && java.util.Arrays.equals(conditions, that.conditions)
                 && java.util.Arrays.equals(joins, that.joins)
-                && java.util.Objects.equals(orderBy, that.orderBy);
+                && java.util.Arrays.equals(orderBy, that.orderBy);
     }
 
     @Override
     public int hashCode() {
-        int result = java.util.Objects.hash(opCode, returnKind, orderBy, limit, parameterCount);
+        int result = java.util.Objects.hash(opCode, returnKind, limit, distinct, parameterCount);
+        result = 31 * result + java.util.Arrays.hashCode(orderBy);
         result = 31 * result + java.util.Arrays.hashCode(boundValues);
         result = 31 * result + java.util.Arrays.hashCode(parameterIndices);
         result = 31 * result + java.util.Arrays.hashCode(conditions);
