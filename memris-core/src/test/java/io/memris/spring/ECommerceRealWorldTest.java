@@ -29,8 +29,10 @@ import static org.assertj.core.api.Assertions.*;
 /**
  * E-Commerce Real World Integration Test
  * 
- * Tests the Memris repository infrastructure with a realistic e-commerce domain model.
- * Uses simplified entities without relationships (foreign keys stored as Long fields)
+ * Tests the Memris repository infrastructure with a realistic e-commerce domain
+ * model.
+ * Uses simplified entities without relationships (foreign keys stored as Long
+ * fields)
  * since full relationship support is not yet implemented.
  */
 class ECommerceRealWorldTest {
@@ -94,7 +96,7 @@ class ECommerceRealWorldTest {
         // Then
         assertThat(results).hasSize(2);
         assertThat(results).extracting(c -> c.name)
-            .containsExactlyInAnyOrder("Alice Johnson", "Alicia Brown");
+                .containsExactlyInAnyOrder("Alice Johnson", "Alicia Brown");
     }
 
     @Test
@@ -120,10 +122,10 @@ class ECommerceRealWorldTest {
     void shouldFindProductsByPriceRange() {
         // Given
         ProductRepository productRepo = arena.createRepository(ProductRepository.class);
-        productRepo.save(new Product("MOUSE-001", "Wireless Mouse", 2999, 100));      // $29.99
+        productRepo.save(new Product("MOUSE-001", "Wireless Mouse", 2999, 100)); // $29.99
         productRepo.save(new Product("KEYBOARD-001", "Mechanical Keyboard", 14999, 75)); // $149.99
-        productRepo.save(new Product("MONITOR-001", "4K Monitor", 49999, 30));          // $499.99
-        productRepo.save(new Product("HEADSET-001", "Gaming Headset", 7999, 50));        // $79.99
+        productRepo.save(new Product("MONITOR-001", "4K Monitor", 49999, 30)); // $499.99
+        productRepo.save(new Product("HEADSET-001", "Gaming Headset", 7999, 50)); // $79.99
 
         // When
         List<Product> results = productRepo.findByPriceBetween(5000, 20000);
@@ -131,7 +133,7 @@ class ECommerceRealWorldTest {
         // Then
         assertThat(results).hasSize(2);
         assertThat(results).extracting(p -> p.name)
-            .containsExactlyInAnyOrder("Mechanical Keyboard", "Gaming Headset");
+                .containsExactlyInAnyOrder("Mechanical Keyboard", "Gaming Headset");
     }
 
     @Test
@@ -148,7 +150,7 @@ class ECommerceRealWorldTest {
         // Then
         assertThat(results).hasSize(2);
         assertThat(results).extracting(p -> p.name)
-            .containsExactlyInAnyOrder("Item B", "Item C");
+                .containsExactlyInAnyOrder("Item B", "Item C");
     }
 
     @Test
@@ -167,8 +169,8 @@ class ECommerceRealWorldTest {
         Order savedOrder = orderRepo.save(order);
 
         // Create order items
-        OrderItem item1 = new OrderItem(savedOrder.id, 1L, 2, 9999);  // 2 x $99.99
-        OrderItem item2 = new OrderItem(savedOrder.id, 2L, 1, 4999);  // 1 x $49.99
+        OrderItem item1 = new OrderItem(savedOrder.id, 1L, 2, 9999); // 2 x $99.99
+        OrderItem item2 = new OrderItem(savedOrder.id, 2L, 1, 4999); // 1 x $49.99
         orderItemRepo.save(item1);
         orderItemRepo.save(item2);
 
@@ -178,7 +180,7 @@ class ECommerceRealWorldTest {
 
         // Then
         assertThat(foundOrder).isPresent();
-        assertThat(foundOrder.get().customer).isEqualTo(savedCustomer.id);
+        assertThat(foundOrder.get().customerId).isEqualTo(savedCustomer.id);
         assertThat(foundOrder.get().status).isEqualTo("PENDING");
         assertThat(orderItems).hasSize(2);
     }
@@ -201,11 +203,11 @@ class ECommerceRealWorldTest {
         orderRepo.save(new Order(customer2.id, "PENDING", 5000));
 
         // When
-        List<Order> customer1Pending = orderRepo.findByCustomerAndStatus(customer1.id, "PENDING");
+        List<Order> customer1Pending = orderRepo.findByCustomerIdAndStatus(customer1.id, "PENDING");
 
         // Then
         assertThat(customer1Pending).hasSize(2);
-        assertThat(customer1Pending).allMatch(o -> o.customer == customer1.id);
+        assertThat(customer1Pending).allMatch(o -> o.customerId.equals(customer1.id));
         assertThat(customer1Pending).allMatch(o -> o.status.equals("PENDING"));
     }
 
@@ -213,7 +215,7 @@ class ECommerceRealWorldTest {
     void shouldCountOrdersByStatus() {
         // Given
         OrderRepository orderRepo = arena.createRepository(OrderRepository.class);
-        
+
         orderRepo.save(new Order(1L, "PENDING", 10000));
         orderRepo.save(new Order(2L, "PENDING", 20000));
         orderRepo.save(new Order(3L, "CONFIRMED", 15000));

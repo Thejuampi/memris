@@ -71,7 +71,7 @@ class QueryAnnotationIntegrationTest {
 
         assertThat(results).hasSize(2);
         assertThat(results).extracting(p -> p.sku)
-            .containsExactlyInAnyOrder("SKU-2", "SKU-3");
+                .containsExactlyInAnyOrder("SKU-2", "SKU-3");
     }
 
     @Test
@@ -85,7 +85,7 @@ class QueryAnnotationIntegrationTest {
 
         assertThat(results).hasSize(2);
         assertThat(results).extracting(p -> p.sku)
-            .containsExactlyInAnyOrder("SKU-1", "SKU-3");
+                .containsExactlyInAnyOrder("SKU-1", "SKU-3");
     }
 
     @Test
@@ -99,7 +99,7 @@ class QueryAnnotationIntegrationTest {
 
         assertThat(results).hasSize(2);
         assertThat(results).extracting(c -> c.name)
-            .containsExactlyInAnyOrder("Alice Johnson", "ALICIA Brown");
+                .containsExactlyInAnyOrder("Alice Johnson", "ALICIA Brown");
     }
 
     @Test
@@ -128,7 +128,24 @@ class QueryAnnotationIntegrationTest {
 
         assertThat(results).hasSize(2);
         assertThat(results).extracting(p -> p.sku)
-            .containsExactlyInAnyOrder("SKU-2", "SKU-3");
+                .containsExactlyInAnyOrder("SKU-2", "SKU-3");
+    }
+
+    @Test
+    void shouldProjectOrderSummaries() {
+        QueryOrderRepository repo = arena.createRepository(QueryOrderRepository.class);
+        QueryCustomerRepository customerRepo = arena.createRepository(QueryCustomerRepository.class);
+        Customer alice = customerRepo.save(new Customer("alice@example.com", "Alice", "123"));
+        Customer bob = customerRepo.save(new Customer("bob@example.com", "Bob", "456"));
+
+        repo.save(new Order(1500, alice));
+        repo.save(new Order(2500, bob));
+
+        List<OrderSummary> results = repo.findSummaries(2000);
+
+        assertThat(results).hasSize(1);
+        assertThat(results.get(0).customerName()).isEqualTo("Bob");
+        assertThat(results.get(0).total()).isEqualTo(2500);
     }
 
     @Test
@@ -166,7 +183,8 @@ class QueryAnnotationIntegrationTest {
         List<Product> findAllOrderByPriceDesc();
 
         @Query("select p from Product p where (p.stock > :minStock and p.price < :maxPrice) or p.sku = :sku")
-        List<Product> findAffordableOrSpecific(@Param("minStock") int minStock, @Param("maxPrice") long maxPrice, @Param("sku") String sku);
+        List<Product> findAffordableOrSpecific(@Param("minStock") int minStock, @Param("maxPrice") long maxPrice,
+                @Param("sku") String sku);
 
         @Query("select count(p) from Product p where p.stock > 0")
         long countInStock();
@@ -182,5 +200,15 @@ class QueryAnnotationIntegrationTest {
         List<Customer> findByNameIlike(@Param("pattern") String pattern);
 
         Customer save(Customer customer);
+    }
+
+    public interface QueryOrderRepository extends MemrisRepository<Order> {
+        @Query("select o.total as total, o.customer.name as customerName from Order o where o.total >= :min")
+        List<OrderSummary> findSummaries(@Param("min") long min);
+
+        Order save(Order order);
+    }
+
+    public record OrderSummary(long total, String customerName) {
     }
 }

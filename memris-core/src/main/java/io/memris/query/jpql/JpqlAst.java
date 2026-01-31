@@ -12,6 +12,7 @@ public final class JpqlAst {
     public record Query(
             boolean count,
             boolean distinct,
+            List<SelectItem> selectItems,
             String entityName,
             String rootAlias,
             List<Join> joins,
@@ -48,6 +49,9 @@ public final class JpqlAst {
     }
 
     public record OrderBy(String path, boolean ascending) {
+    }
+
+    public record SelectItem(String path, String alias) {
     }
 
     public record Assignment(String path, Value value) {

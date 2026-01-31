@@ -32,6 +32,42 @@ class JpqlQueryPlannerTest {
     }
 
     @Test
+    void parseSelectProjectionWithAliases() throws Exception {
+        Method method = TestRepository.class.getMethod("findProjection");
+        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class, "id");
+
+        assertThat(actual.opCode()).isEqualTo(OpCode.FIND);
+        assertThat(actual.returnKind()).isEqualTo(LogicalQuery.ReturnKind.MANY_LIST);
+        assertThat(actual.projection()).isNotNull();
+        assertThat(actual.projection().projectionType()).isEqualTo(SimpleProjection.class);
+        assertThat(actual.projection().items()).containsExactly(
+            new LogicalQuery.ProjectionItem("name", "name"),
+            new LogicalQuery.ProjectionItem("age", "age")
+        );
+    }
+
+    @Test
+    void parseSelectProjectionWithNestedPath() throws Exception {
+        Method method = TestRepository.class.getMethod("findNestedProjection");
+        LogicalQuery actual = QueryPlanner.parse(method, NestedEntity.class, "id");
+
+        assertThat(actual.projection()).isNotNull();
+        assertThat(actual.projection().projectionType()).isEqualTo(NestedProjection.class);
+        assertThat(actual.projection().items()).containsExactly(
+            new LogicalQuery.ProjectionItem("departmentName", "department.name"),
+            new LogicalQuery.ProjectionItem("city", "address.city")
+        );
+    }
+
+    @Test
+    void parseSelectProjectionMissingAliasShouldFail() throws Exception {
+        Method method = TestRepository.class.getMethod("findProjectionMissingAlias");
+        assertThatThrownBy(() -> QueryPlanner.parse(method, SimpleEntity.class, "id"))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("aliases");
+    }
+
+    @Test
     void parseSelectWithNestedPropertyAndIlike() throws Exception {
         Method method = TestRepository.class.getMethod("findByDepartmentNameAndCity", String.class, String.class);
         LogicalQuery actual = QueryPlanner.parse(method, NestedEntity.class, "id");
@@ -216,6 +252,15 @@ class JpqlQueryPlannerTest {
         @Query("select s from SimpleEntity s where s.name = :name")
         List<SimpleEntity> findByName(@Param("name") String name);
 
+        @Query("select s.name as name, s.age as age from SimpleEntity s")
+        List<SimpleProjection> findProjection();
+
+        @Query("select n.department.name as departmentName, n.address.city as city from NestedEntity n")
+        List<NestedProjection> findNestedProjection();
+
+        @Query("select s.name, s.age from SimpleEntity s")
+        List<SimpleProjection> findProjectionMissingAlias();
+
         @Query("select n from NestedEntity n where n.department.name ilike :name and n.address.city = :city")
         List<NestedEntity> findByDepartmentNameAndCity(@Param("name") String name, @Param("city") String city);
 
@@ -260,5 +305,11 @@ class JpqlQueryPlannerTest {
 
         @Query("select s from SimpleEntity s where s.name = :missing")
         List<SimpleEntity> findMissingParam(@Param("name") String name);
+    }
+
+    record SimpleProjection(String name, int age) {
+    }
+
+    record NestedProjection(String departmentName, String city) {
     }
 }

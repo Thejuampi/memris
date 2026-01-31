@@ -25,6 +25,8 @@ public record CompiledQuery(
         CompiledCondition[] conditions,
         /** Pre-compiled update assignments */
         CompiledUpdateAssignment[] updateAssignments,
+        /** Pre-compiled projection */
+        CompiledProjection projection,
         /** Pre-compiled joins */
         CompiledJoin[] joins,
         /** Pre-compiled order by (optional) */
@@ -53,7 +55,7 @@ public record CompiledQuery(
             OpCode opCode,
             LogicalQuery.ReturnKind returnKind,
             CompiledCondition[] conditions) {
-        return new CompiledQuery(opCode, returnKind, conditions, new CompiledUpdateAssignment[0], new CompiledJoin[0], null, 0, false, new Object[0], new int[0], conditions.length);
+        return new CompiledQuery(opCode, returnKind, conditions, new CompiledUpdateAssignment[0], null, new CompiledJoin[0], null, 0, false, new Object[0], new int[0], conditions.length);
     }
 
     public static CompiledQuery of(
@@ -64,7 +66,7 @@ public record CompiledQuery(
             CompiledOrderBy[] orderBy,
             int limit,
             int arity) {
-        return new CompiledQuery(opCode, returnKind, conditions, new CompiledUpdateAssignment[0], joins, orderBy, limit, false, new Object[0], new int[0], arity);
+        return new CompiledQuery(opCode, returnKind, conditions, new CompiledUpdateAssignment[0], null, joins, orderBy, limit, false, new Object[0], new int[0], arity);
     }
 
     public static CompiledQuery of(
@@ -72,6 +74,7 @@ public record CompiledQuery(
             LogicalQuery.ReturnKind returnKind,
             CompiledCondition[] conditions,
             CompiledUpdateAssignment[] updateAssignments,
+            CompiledProjection projection,
             CompiledJoin[] joins,
             CompiledOrderBy[] orderBy,
             int limit,
@@ -79,11 +82,11 @@ public record CompiledQuery(
             Object[] boundValues,
             int[] parameterIndices,
             int arity) {
-        return new CompiledQuery(opCode, returnKind, conditions, updateAssignments, joins, orderBy, limit, distinct, boundValues, parameterIndices, arity);
+        return new CompiledQuery(opCode, returnKind, conditions, updateAssignments, projection, joins, orderBy, limit, distinct, boundValues, parameterIndices, arity);
     }
 
     public CompiledQuery withJoins(CompiledJoin[] joins) {
-        return new CompiledQuery(opCode, returnKind, conditions, updateAssignments, joins, orderBy, limit, distinct, boundValues, parameterIndices, arity);
+        return new CompiledQuery(opCode, returnKind, conditions, updateAssignments, projection, joins, orderBy, limit, distinct, boundValues, parameterIndices, arity);
     }
 
     /**
@@ -92,6 +95,32 @@ public record CompiledQuery(
     public record CompiledUpdateAssignment(
             int columnIndex,
             int argumentIndex
+    ) {
+    }
+
+    public record CompiledProjection(
+            Class<?> projectionType,
+            CompiledProjectionItem[] items
+    ) {
+    }
+
+    public record CompiledProjectionItem(
+            String alias,
+            CompiledProjectionStep[] steps,
+            Class<?> fieldEntity,
+            int columnIndex,
+            byte typeCode,
+            String fieldName
+    ) {
+    }
+
+    public record CompiledProjectionStep(
+            Class<?> sourceEntity,
+            Class<?> targetEntity,
+            int sourceColumnIndex,
+            int targetColumnIndex,
+            boolean targetColumnIsId,
+            byte fkTypeCode
     ) {
     }
 

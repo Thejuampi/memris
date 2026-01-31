@@ -1,10 +1,13 @@
 package io.memris.query;
 
 import java.lang.reflect.Method;
+import java.lang.reflect.ParameterizedType;
+import java.lang.reflect.Type;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * Enum of Spring Data JPA query method operators with their LogicalQuery mappings.
@@ -229,6 +232,10 @@ public final class QueryPlanner {
             return JpqlQueryParser.parse(method, entityClass);
         }
 
+        if (isRecordProjectionReturnType(method)) {
+            throw new IllegalArgumentException("Record projections require @Query with select aliases: " + methodName);
+        }
+
         // Fast path: Check for built-in operations using MethodKey signature matching
         // This correctly handles overloads like deleteById(Long) vs deleteById(UUID)
         // Uses BuiltInResolver for deterministic tie-breaking and ambiguity detection
@@ -315,6 +322,7 @@ public final class QueryPlanner {
         return LogicalQuery.of(opCode, returnKind,
                                conditions.toArray(new LogicalQuery.Condition[0]),
                                new LogicalQuery.UpdateAssignment[0],
+                               null,
                                new LogicalQuery.Join[0],
                                orderBy,
                                limitParse.limit(),
@@ -560,6 +568,21 @@ public final class QueryPlanner {
             case "find", "read", "query", "get" -> true;
             default -> false;
         };
+    }
+
+    private static boolean isRecordProjectionReturnType(Method method) {
+        Class<?> rawType = method.getReturnType();
+        if (rawType.isRecord()) {
+            return true;
+        }
+        Type generic = method.getGenericReturnType();
+        if (generic instanceof ParameterizedType parameterized) {
+            Type[] args = parameterized.getActualTypeArguments();
+            if (args.length == 1 && args[0] instanceof Class<?> argClass && argClass.isRecord()) {
+                return Optional.class.equals(rawType) || List.class.isAssignableFrom(rawType);
+            }
+        }
+        return false;
     }
 
     private record LimitParseResult(int limit, String normalizedName) {

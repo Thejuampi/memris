@@ -23,6 +23,7 @@ public record LogicalQuery(
         ReturnKind returnKind,
         Condition[] conditions,
         UpdateAssignment[] updateAssignments,
+        Projection projection,
         Join[] joins,
         OrderBy[] orderBy,
         int limit,
@@ -37,7 +38,7 @@ public record LogicalQuery(
             ReturnKind returnKind,
             Condition[] conditions,
             OrderBy[] orderBy) {
-        return new LogicalQuery(opCode, returnKind, conditions, new UpdateAssignment[0], new Join[0], orderBy, 0, false, new Object[0], new int[0], conditions.length);
+        return new LogicalQuery(opCode, returnKind, conditions, new UpdateAssignment[0], null, new Join[0], orderBy, 0, false, new Object[0], new int[0], conditions.length);
     }
 
     public static LogicalQuery of(
@@ -47,7 +48,7 @@ public record LogicalQuery(
             Join[] joins,
             OrderBy[] orderBy,
             int parameterCount) {
-        return new LogicalQuery(opCode, returnKind, conditions, new UpdateAssignment[0], joins, orderBy, 0, false, new Object[0], new int[0], parameterCount);
+        return new LogicalQuery(opCode, returnKind, conditions, new UpdateAssignment[0], null, joins, orderBy, 0, false, new Object[0], new int[0], parameterCount);
     }
 
     public static LogicalQuery of(
@@ -58,7 +59,7 @@ public record LogicalQuery(
             OrderBy[] orderBy,
             int limit,
             int parameterCount) {
-        return new LogicalQuery(opCode, returnKind, conditions, new UpdateAssignment[0], joins, orderBy, limit, false, new Object[0], new int[0], parameterCount);
+        return new LogicalQuery(opCode, returnKind, conditions, new UpdateAssignment[0], null, joins, orderBy, limit, false, new Object[0], new int[0], parameterCount);
     }
 
     public static LogicalQuery of(
@@ -66,6 +67,7 @@ public record LogicalQuery(
             ReturnKind returnKind,
             Condition[] conditions,
             UpdateAssignment[] updateAssignments,
+            Projection projection,
             Join[] joins,
             OrderBy[] orderBy,
             int limit,
@@ -73,7 +75,7 @@ public record LogicalQuery(
             Object[] boundValues,
             int[] parameterIndices,
             int parameterCount) {
-        return new LogicalQuery(opCode, returnKind, conditions, updateAssignments, joins, orderBy, limit, distinct, boundValues, parameterIndices, parameterCount);
+        return new LogicalQuery(opCode, returnKind, conditions, updateAssignments, projection, joins, orderBy, limit, distinct, boundValues, parameterIndices, parameterCount);
     }
 
     /**
@@ -85,7 +87,7 @@ public record LogicalQuery(
             Condition[] conditions,
             OrderBy[] orderBy,
             int parameterCount) {
-        return new LogicalQuery(opCode, returnKind, conditions, new UpdateAssignment[0], new Join[0], orderBy, 0, false, new Object[0], new int[0], parameterCount);
+        return new LogicalQuery(opCode, returnKind, conditions, new UpdateAssignment[0], null, new Join[0], orderBy, 0, false, new Object[0], new int[0], parameterCount);
     }
 
     /**
@@ -99,7 +101,7 @@ public record LogicalQuery(
      * @return a LogicalQuery for the CRUD operation
      */
     public static LogicalQuery crud(OpCode opCode, ReturnKind returnKind, int parameterCount) {
-        return new LogicalQuery(opCode, returnKind, new Condition[0], new UpdateAssignment[0], new Join[0], null, 0, false, new Object[0], new int[0], parameterCount);
+        return new LogicalQuery(opCode, returnKind, new Condition[0], new UpdateAssignment[0], null, new Join[0], null, 0, false, new Object[0], new int[0], parameterCount);
     }
 
     /**
@@ -176,6 +178,18 @@ public record LogicalQuery(
     public record UpdateAssignment(
             String propertyPath,
             int argumentIndex
+    ) {
+    }
+
+    public record Projection(
+            Class<?> projectionType,
+            ProjectionItem[] items
+    ) {
+    }
+
+    public record ProjectionItem(
+            String alias,
+            String propertyPath
     ) {
     }
 

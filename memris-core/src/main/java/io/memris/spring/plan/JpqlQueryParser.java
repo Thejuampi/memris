@@ -9,6 +9,7 @@ import io.memris.query.jpql.JpqlLexer;
 
 import java.lang.reflect.Method;
 import java.lang.reflect.Parameter;
+import java.lang.reflect.RecordComponent;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -34,7 +35,12 @@ public final class JpqlQueryParser {
         if (statement instanceof JpqlAst.Query ast) {
             validateEntity(ast.entityName(), entityClass);
 
-            LogicalQuery.ReturnKind returnKind = resolveReturnKind(method);
+            Map<String, String> aliasMap = buildAliasMap(ast);
+            ProjectionSpec projectionSpec = resolveProjectionSpec(method, ast, aliasMap, entityClass);
+
+            LogicalQuery.ReturnKind returnKind = projectionSpec != null
+                    ? projectionSpec.returnKind
+                    : resolveReturnKind(method);
             if (ast.count() && returnKind != LogicalQuery.ReturnKind.COUNT_LONG) {
                 throw new IllegalArgumentException("@Query count must return long: " + method.getName());
             }
@@ -42,7 +48,6 @@ public final class JpqlQueryParser {
                 throw new IllegalArgumentException("@Query return type long requires count: " + method.getName());
             }
 
-            Map<String, String> aliasMap = buildAliasMap(ast);
             LogicalQuery.Join[] joins = buildJoins(ast, aliasMap, entityClass);
             BindingContext bindingContext = new BindingContext(method);
             List<LogicalQuery.Condition> flattened = flattenConditions(ast.where(), aliasMap, bindingContext);
@@ -72,18 +77,18 @@ public final class JpqlQueryParser {
             int limit = parseLimitFromMethodName(method.getName());
 
             return LogicalQuery.of(
-                opCode,
-                returnKind,
-                conditions,
-                new LogicalQuery.UpdateAssignment[0],
-                joins,
-                orderBy,
-                limit,
-                ast.distinct(),
-                boundValues,
-                parameterIndices,
-                arity
-            );
+                    opCode,
+                    returnKind,
+                    conditions,
+                    new LogicalQuery.UpdateAssignment[0],
+                    projectionSpec != null ? projectionSpec.projection : null,
+                    joins,
+                    orderBy,
+                    limit,
+                    ast.distinct(),
+                    boundValues,
+                    parameterIndices,
+                    arity);
         }
 
         if (statement instanceof JpqlAst.Delete deleteAst) {
@@ -101,18 +106,18 @@ public final class JpqlQueryParser {
             int arity = parameterIndices.length;
 
             return LogicalQuery.of(
-                OpCode.DELETE_QUERY,
-                returnKind,
-                conditions,
-                new LogicalQuery.UpdateAssignment[0],
-                new LogicalQuery.Join[0],
-                null,
-                0,
-                false,
-                boundValues,
-                parameterIndices,
-                arity
-            );
+                    OpCode.DELETE_QUERY,
+                    returnKind,
+                    conditions,
+                    new LogicalQuery.UpdateAssignment[0],
+                    null,
+                    new LogicalQuery.Join[0],
+                    null,
+                    0,
+                    false,
+                    boundValues,
+                    parameterIndices,
+                    arity);
         }
 
         if (statement instanceof JpqlAst.Update updateAst) {
@@ -131,7 +136,8 @@ public final class JpqlQueryParser {
             for (JpqlAst.Assignment assignment : updateAst.assignments()) {
                 String path = resolvePath(assignment.path(), aliasMap);
                 if (path.contains(".")) {
-                    throw new IllegalArgumentException("@Query update does not support nested paths: " + assignment.path());
+                    throw new IllegalArgumentException(
+                            "@Query update does not support nested paths: " + assignment.path());
                 }
                 if (path.equals(metadata.idColumnName())) {
                     throw new IllegalArgumentException("@Query update cannot modify ID column: " + assignment.path());
@@ -147,18 +153,18 @@ public final class JpqlQueryParser {
             int arity = parameterIndices.length;
 
             return LogicalQuery.of(
-                OpCode.UPDATE_QUERY,
-                returnKind,
-                conditions,
-                assignments.toArray(new LogicalQuery.UpdateAssignment[0]),
-                new LogicalQuery.Join[0],
-                null,
-                0,
-                false,
-                boundValues,
-                parameterIndices,
-                arity
-            );
+                    OpCode.UPDATE_QUERY,
+                    returnKind,
+                    conditions,
+                    assignments.toArray(new LogicalQuery.UpdateAssignment[0]),
+                    null,
+                    new LogicalQuery.Join[0],
+                    null,
+                    0,
+                    false,
+                    boundValues,
+                    parameterIndices,
+                    arity);
         }
 
         throw new IllegalArgumentException("Unsupported @Query statement: " + jpql);
@@ -166,7 +172,7 @@ public final class JpqlQueryParser {
 
     private static int parseLimitFromMethodName(String methodName) {
         // Check for TopN or FirstN patterns (similar to QueryPlanner)
-        String[] prefixes = {"find", "read", "query", "get", "search"};
+        String[] prefixes = { "find", "read", "query", "get", "search" };
         for (String prefix : prefixes) {
             if (methodName.startsWith(prefix)) {
                 String remaining = methodName.substring(prefix.length());
@@ -210,6 +216,177 @@ public final class JpqlQueryParser {
         return LogicalQuery.ReturnKind.MANY_LIST;
     }
 
+    private static ProjectionSpec resolveProjectionSpec(Method method,
+            JpqlAst.Query ast,
+            Map<String, String> aliasMap,
+            Class<?> entityClass) {
+        ProjectionReturn projectionReturn = resolveProjectionReturn(method);
+        if (projectionReturn == null) {
+            validateSelectItemsForNonProjection(ast, method);
+            return null;
+        }
+
+        if (ast.count()) {
+            throw new IllegalArgumentException("@Query count cannot return a projection: " + method.getName());
+        }
+
+        List<JpqlAst.SelectItem> selectItems = ast.selectItems();
+        if (selectItems == null || selectItems.isEmpty()) {
+            throw new IllegalArgumentException("@Query projection requires a select list: " + method.getName());
+        }
+
+        Map<String, JpqlAst.SelectItem> byAlias = new HashMap<>();
+        for (JpqlAst.SelectItem item : selectItems) {
+            if (item.alias() == null || item.alias().isBlank()) {
+                throw new IllegalArgumentException(
+                        "@Query projection requires aliases for select items: " + method.getName());
+            }
+            if (byAlias.putIfAbsent(item.alias(), item) != null) {
+                throw new IllegalArgumentException("Duplicate projection alias: " + item.alias());
+            }
+        }
+
+        RecordComponent[] components = projectionReturn.projectionType.getRecordComponents();
+        LogicalQuery.ProjectionItem[] projectionItems = new LogicalQuery.ProjectionItem[components.length];
+        EntityMetadata<?> metadata = MetadataExtractor.extractEntityMetadata(entityClass);
+        for (int i = 0; i < components.length; i++) {
+            RecordComponent component = components[i];
+            JpqlAst.SelectItem item = byAlias.remove(component.getName());
+            if (item == null) {
+                throw new IllegalArgumentException("Missing select alias for record component: " + component.getName());
+            }
+            String resolved = resolvePath(item.path(), aliasMap);
+            if (resolved.isBlank()) {
+                throw new IllegalArgumentException(
+                        "Projection select item cannot target the root entity: " + item.path());
+            }
+            EntityMetadata.FieldMapping field = resolveProjectionField(metadata, resolved);
+            if (!isCompatible(component.getType(), field.javaType())) {
+                throw new IllegalArgumentException("Projection type mismatch for component " + component.getName());
+            }
+            projectionItems[i] = new LogicalQuery.ProjectionItem(component.getName(), resolved);
+        }
+
+        if (!byAlias.isEmpty()) {
+            throw new IllegalArgumentException("Unknown projection aliases: " + byAlias.keySet());
+        }
+
+        return new ProjectionSpec(projectionReturn.returnKind,
+                new LogicalQuery.Projection(projectionReturn.projectionType, projectionItems));
+    }
+
+    private static void validateSelectItemsForNonProjection(JpqlAst.Query ast, Method method) {
+        if (ast.selectItems() == null || ast.selectItems().isEmpty()) {
+            return;
+        }
+        if (ast.selectItems().size() > 1) {
+            throw new IllegalArgumentException(
+                    "@Query select list requires a projection return type: " + method.getName());
+        }
+        JpqlAst.SelectItem item = ast.selectItems().get(0);
+        if (item.alias() != null && !item.alias().isBlank()) {
+            throw new IllegalArgumentException(
+                    "@Query select alias requires a projection return type: " + method.getName());
+        }
+        if (!item.path().equals(ast.rootAlias()) && !item.path().equals(ast.entityName())) {
+            throw new IllegalArgumentException(
+                    "@Query select list requires a projection return type: " + method.getName());
+        }
+    }
+
+    private static ProjectionReturn resolveProjectionReturn(Method method) {
+        Class<?> rawType = method.getReturnType();
+        if (rawType.isRecord()) {
+            throw new IllegalArgumentException(
+                    "Record projections must be returned as List or Optional: " + method.getName());
+        }
+
+        java.lang.reflect.Type generic = method.getGenericReturnType();
+        if (!(generic instanceof java.lang.reflect.ParameterizedType parameterized)) {
+            return null;
+        }
+        java.lang.reflect.Type[] args = parameterized.getActualTypeArguments();
+        if (args.length != 1 || !(args[0] instanceof Class<?> argClass)) {
+            return null;
+        }
+        if (!argClass.isRecord()) {
+            return null;
+        }
+
+        if (Optional.class.equals(rawType)) {
+            return new ProjectionReturn(argClass, LogicalQuery.ReturnKind.ONE_OPTIONAL);
+        }
+        if (List.class.isAssignableFrom(rawType)) {
+            return new ProjectionReturn(argClass, LogicalQuery.ReturnKind.MANY_LIST);
+        }
+        return null;
+    }
+
+    private static EntityMetadata.FieldMapping resolveProjectionField(EntityMetadata<?> metadata, String path) {
+        String[] segments = path.split("\\.");
+        EntityMetadata<?> current = metadata;
+        for (int i = 0; i < segments.length; i++) {
+            String segment = segments[i];
+            EntityMetadata.FieldMapping field = findField(current, segment);
+            if (field == null) {
+                throw new IllegalArgumentException("Unknown projection path: " + path);
+            }
+            if (i < segments.length - 1) {
+                if (!field.isRelationship()) {
+                    throw new IllegalArgumentException("Projection path must traverse relationships: " + path);
+                }
+                if (field.isCollection()) {
+                    throw new IllegalArgumentException("Projection paths cannot traverse collections: " + path);
+                }
+                current = MetadataExtractor.extractEntityMetadata(field.targetEntity());
+                continue;
+            }
+            if (field.isRelationship()) {
+                throw new IllegalArgumentException("Projection field must be a column: " + path);
+            }
+            return field;
+        }
+        throw new IllegalArgumentException("Invalid projection path: " + path);
+    }
+
+    private static EntityMetadata.FieldMapping findField(EntityMetadata<?> metadata, String name) {
+        for (EntityMetadata.FieldMapping field : metadata.fields()) {
+            if (field.name().equals(name)) {
+                return field;
+            }
+        }
+        return null;
+    }
+
+    private static boolean isCompatible(Class<?> componentType, Class<?> fieldType) {
+        Class<?> boxedComponent = box(componentType);
+        Class<?> boxedField = box(fieldType);
+        return boxedComponent.isAssignableFrom(boxedField);
+    }
+
+    private static Class<?> box(Class<?> type) {
+        if (!type.isPrimitive()) {
+            return type;
+        }
+        return switch (type.getName()) {
+            case "int" -> Integer.class;
+            case "long" -> Long.class;
+            case "boolean" -> Boolean.class;
+            case "byte" -> Byte.class;
+            case "short" -> Short.class;
+            case "float" -> Float.class;
+            case "double" -> Double.class;
+            case "char" -> Character.class;
+            default -> type;
+        };
+    }
+
+    private record ProjectionReturn(Class<?> projectionType, LogicalQuery.ReturnKind returnKind) {
+    }
+
+    private record ProjectionSpec(LogicalQuery.ReturnKind returnKind, LogicalQuery.Projection projection) {
+    }
+
     private static LogicalQuery.ReturnKind resolveModifyingReturnKind(Method method) {
         Class<?> returnType = method.getReturnType();
         if (returnType == void.class || returnType == Void.class) {
@@ -225,7 +402,8 @@ public final class JpqlQueryParser {
     }
 
     private static void ensureModifying(Method method) {
-        if (hasAnnotationByName(method, "io.memris.core.Modifying", "org.springframework.data.jpa.repository.Modifying")) {
+        if (hasAnnotationByName(method, "io.memris.core.Modifying",
+                "org.springframework.data.jpa.repository.Modifying")) {
             return;
         }
         throw new IllegalArgumentException("@Query update/delete requires @Modifying: " + method.getName());
@@ -264,8 +442,8 @@ public final class JpqlQueryParser {
     }
 
     private static LogicalQuery.Join[] buildJoins(JpqlAst.Query query,
-                                                  Map<String, String> aliasMap,
-                                                  Class<?> entityClass) {
+            Map<String, String> aliasMap,
+            Class<?> entityClass) {
         if (query.joins().isEmpty()) {
             return new LogicalQuery.Join[0];
         }
@@ -274,7 +452,8 @@ public final class JpqlQueryParser {
         List<LogicalQuery.Join> joins = new ArrayList<>();
         for (JpqlAst.Join join : query.joins()) {
             String resolvedPath = resolvePath(join.path(), aliasMap);
-            String joinProperty = resolvedPath.contains(".") ? resolvedPath.substring(0, resolvedPath.indexOf('.')) : resolvedPath;
+            String joinProperty = resolvedPath.contains(".") ? resolvedPath.substring(0, resolvedPath.indexOf('.'))
+                    : resolvedPath;
 
             EntityMetadata.FieldMapping relationship = findRelationship(metadata, joinProperty);
             if (relationship == null) {
@@ -284,20 +463,19 @@ public final class JpqlQueryParser {
             Class<?> targetEntity = relationship.targetEntity();
             EntityMetadata<?> targetMetadata = MetadataExtractor.extractEntityMetadata(targetEntity);
             String referencedColumn = relationship.referencedColumnName() != null
-                ? relationship.referencedColumnName()
-                : targetMetadata.idColumnName();
+                    ? relationship.referencedColumnName()
+                    : targetMetadata.idColumnName();
 
             LogicalQuery.Join.JoinType joinType = join.type() == JpqlAst.JoinType.LEFT
-                ? LogicalQuery.Join.JoinType.LEFT
-                : LogicalQuery.Join.JoinType.INNER;
+                    ? LogicalQuery.Join.JoinType.LEFT
+                    : LogicalQuery.Join.JoinType.INNER;
 
             joins.add(new LogicalQuery.Join(
-                joinProperty,
-                targetEntity,
-                relationship.columnName(),
-                referencedColumn,
-                joinType
-            ));
+                    joinProperty,
+                    targetEntity,
+                    relationship.columnName(),
+                    referencedColumn,
+                    joinType));
         }
 
         return joins.toArray(new LogicalQuery.Join[0]);
@@ -313,8 +491,8 @@ public final class JpqlQueryParser {
     }
 
     private static List<LogicalQuery.Condition> flattenConditions(JpqlAst.Expression expression,
-                                                                  Map<String, String> aliasMap,
-                                                                  BindingContext bindingContext) {
+            Map<String, String> aliasMap,
+            BindingContext bindingContext) {
         if (expression == null) {
             return List.of();
         }
@@ -327,8 +505,8 @@ public final class JpqlQueryParser {
             for (int j = 0; j < group.size(); j++) {
                 ConditionSpec spec = group.get(j);
                 LogicalQuery.Combinator combinator = (i < dnf.size() - 1 && j == group.size() - 1)
-                    ? LogicalQuery.Combinator.OR
-                    : LogicalQuery.Combinator.AND;
+                        ? LogicalQuery.Combinator.OR
+                        : LogicalQuery.Combinator.AND;
                 flattened.add(spec.withCombinator(combinator).toCondition());
             }
         }
@@ -393,8 +571,8 @@ public final class JpqlQueryParser {
     }
 
     private static List<List<ConditionSpec>> toDnf(JpqlAst.Expression expression,
-                                                   Map<String, String> aliasMap,
-                                                   BindingContext bindingContext) {
+            Map<String, String> aliasMap,
+            BindingContext bindingContext) {
         if (expression instanceof JpqlAst.PredicateExpr predicateExpr) {
             ConditionSpec spec = toConditionSpec(predicateExpr.predicate(), aliasMap, bindingContext);
             return List.of(List.of(spec));
@@ -425,10 +603,11 @@ public final class JpqlQueryParser {
     }
 
     private static ConditionSpec toConditionSpec(JpqlAst.Predicate predicate,
-                                                 Map<String, String> aliasMap,
-                                                 BindingContext bindingContext) {
+            Map<String, String> aliasMap,
+            BindingContext bindingContext) {
         if (predicate instanceof JpqlAst.IsNull isNull) {
-            LogicalQuery.Operator op = isNull.negated() ? LogicalQuery.Operator.NOT_NULL : LogicalQuery.Operator.IS_NULL;
+            LogicalQuery.Operator op = isNull.negated() ? LogicalQuery.Operator.NOT_NULL
+                    : LogicalQuery.Operator.IS_NULL;
             String path = resolvePath(isNull.path(), aliasMap);
             return new ConditionSpec(path, op, bindingContext.bindLiteral(null), false, LogicalQuery.Combinator.AND);
         }
@@ -509,8 +688,7 @@ public final class JpqlQueryParser {
             LogicalQuery.Operator operator,
             int argumentIndex,
             boolean ignoreCase,
-            LogicalQuery.Combinator combinator
-    ) {
+            LogicalQuery.Combinator combinator) {
         LogicalQuery.Condition toCondition() {
             return LogicalQuery.Condition.of(path, operator, argumentIndex, ignoreCase, combinator);
         }
@@ -653,6 +831,7 @@ public final class JpqlQueryParser {
             expect(JpqlLexer.TokenType.SELECT);
             boolean distinct = match(JpqlLexer.TokenType.DISTINCT);
             boolean count = false;
+            List<JpqlAst.SelectItem> selectItems = List.of();
             if (match(JpqlLexer.TokenType.COUNT)) {
                 count = true;
                 expect(JpqlLexer.TokenType.LPAREN);
@@ -663,7 +842,7 @@ public final class JpqlQueryParser {
                 }
                 expect(JpqlLexer.TokenType.RPAREN);
             } else {
-                expect(JpqlLexer.TokenType.IDENT);
+                selectItems = parseSelectItems();
             }
 
             expect(JpqlLexer.TokenType.FROM);
@@ -710,7 +889,32 @@ public final class JpqlQueryParser {
             }
 
             expect(JpqlLexer.TokenType.EOF);
-            return new JpqlAst.Query(count, distinct, entity, alias, joins, where, orderBy);
+            return new JpqlAst.Query(count, distinct, selectItems, entity, alias, joins, where, orderBy);
+        }
+
+        private List<JpqlAst.SelectItem> parseSelectItems() {
+            List<JpqlAst.SelectItem> items = new ArrayList<>();
+            items.add(parseSelectItem());
+            while (match(JpqlLexer.TokenType.COMMA)) {
+                items.add(parseSelectItem());
+            }
+            return items;
+        }
+
+        private JpqlAst.SelectItem parseSelectItem() {
+            String path = parsePath();
+            String alias = null;
+            if (match(JpqlLexer.TokenType.AS)) {
+                alias = expectIdent();
+            } else if (peek(JpqlLexer.TokenType.IDENT)) {
+                if (peekNext(JpqlLexer.TokenType.COMMA)
+                        || peekNext(JpqlLexer.TokenType.FROM)
+                        || peekNext(JpqlLexer.TokenType.WHERE)
+                        || peekNext(JpqlLexer.TokenType.ORDER)) {
+                    alias = expectIdent();
+                }
+            }
+            return new JpqlAst.SelectItem(path, alias);
         }
 
         private JpqlAst.Update parseUpdate() {
@@ -862,13 +1066,13 @@ public final class JpqlQueryParser {
             }
 
             if (peek(JpqlLexer.TokenType.EQ)
-                || peek(JpqlLexer.TokenType.NE)
-                || peek(JpqlLexer.TokenType.GT)
-                || peek(JpqlLexer.TokenType.GTE)
-                || peek(JpqlLexer.TokenType.LT)
-                || peek(JpqlLexer.TokenType.LTE)
-                || peek(JpqlLexer.TokenType.LIKE)
-                || peek(JpqlLexer.TokenType.ILIKE)) {
+                    || peek(JpqlLexer.TokenType.NE)
+                    || peek(JpqlLexer.TokenType.GT)
+                    || peek(JpqlLexer.TokenType.GTE)
+                    || peek(JpqlLexer.TokenType.LT)
+                    || peek(JpqlLexer.TokenType.LTE)
+                    || peek(JpqlLexer.TokenType.LIKE)
+                    || peek(JpqlLexer.TokenType.ILIKE)) {
                 JpqlAst.ComparisonOp op = parseComparisonOp();
                 JpqlAst.Value value = parseValue();
                 return new JpqlAst.Comparison(path, op, value);
@@ -968,6 +1172,14 @@ public final class JpqlQueryParser {
             return tokens.get(position).type() == type;
         }
 
+        private boolean peekNext(JpqlLexer.TokenType type) {
+            int next = position + 1;
+            if (next >= tokens.size()) {
+                return false;
+            }
+            return tokens.get(next).type() == type;
+        }
+
         private void expect(JpqlLexer.TokenType type) {
             if (!match(type)) {
                 JpqlLexer.Token token = tokens.get(position);
@@ -976,11 +1188,28 @@ public final class JpqlQueryParser {
         }
 
         private String expectIdent() {
-            if (!match(JpqlLexer.TokenType.IDENT)) {
-                JpqlLexer.Token token = tokens.get(position);
-                throw new IllegalArgumentException("Expected identifier at position " + token.position());
+            // Accept IDENT or certain keywords that can also be valid entity/field names
+            if (match(JpqlLexer.TokenType.IDENT)) {
+                return previous().text();
             }
-            return previous().text();
+            // Allow ORDER, BY, etc. to be used as identifiers (entity/field names)
+            if (match(JpqlLexer.TokenType.ORDER)
+                    || match(JpqlLexer.TokenType.BY)
+                    || match(JpqlLexer.TokenType.AS)
+                    || match(JpqlLexer.TokenType.SET)
+                    || match(JpqlLexer.TokenType.IN)
+                    || match(JpqlLexer.TokenType.IS)
+                    || match(JpqlLexer.TokenType.NULL)
+                    || match(JpqlLexer.TokenType.COUNT)
+                    || match(JpqlLexer.TokenType.DISTINCT)
+                    || match(JpqlLexer.TokenType.TRUE)
+                    || match(JpqlLexer.TokenType.FALSE)
+                    || match(JpqlLexer.TokenType.FETCH)
+                    || match(JpqlLexer.TokenType.LEFT)) {
+                return previous().text();
+            }
+            JpqlLexer.Token token = tokens.get(position);
+            throw new IllegalArgumentException("Expected identifier at position " + token.position());
         }
 
         private JpqlLexer.Token previous() {

@@ -13,7 +13,10 @@ import io.memris.storage.Selection;
 import io.memris.storage.SelectionImpl;
 
 import java.lang.invoke.MethodHandle;
+import java.lang.invoke.MethodHandles;
+import java.lang.invoke.MethodType;
 import java.lang.reflect.Method;
+import java.lang.reflect.RecordComponent;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -35,6 +38,8 @@ public final class RepositoryRuntime<T> {
     private final EntityMetadata<T> metadata;
     private final java.util.Map<Class<?>, EntityMetadata<?>> relatedMetadata;
     private final EntitySaver<T> entitySaver;
+    private final java.util.concurrent.ConcurrentHashMap<Class<?>, EntityMetadata<?>> projectionMetadata;
+    private final java.util.concurrent.ConcurrentHashMap<Class<?>, MethodHandle> projectionConstructors;
     private static final AtomicLong idCounter = new AtomicLong(1L);
 
     /**
@@ -59,6 +64,12 @@ public final class RepositoryRuntime<T> {
             this.materializer = metadata != null ? new EntityMaterializerImpl<>(metadata) : null;
         }
         this.relatedMetadata = buildRelatedMetadata(metadata);
+        this.projectionMetadata = new java.util.concurrent.ConcurrentHashMap<>();
+        if (metadata != null) {
+            this.projectionMetadata.put(metadata.entityClass(), metadata);
+        }
+        this.projectionMetadata.putAll(this.relatedMetadata);
+        this.projectionConstructors = new java.util.concurrent.ConcurrentHashMap<>();
         this.entitySaver = plan.entitySaver();
     }
 
@@ -440,6 +451,20 @@ public final class RepositoryRuntime<T> {
         }
 
         int max = (limit > 0 && limit < rows.length) ? limit : rows.length;
+
+        CompiledQuery.CompiledProjection projection = query.projection();
+        if (projection != null) {
+            List<Object> results = new ArrayList<>(max);
+            for (int i = 0; i < max; i++) {
+                int rowIndex = rows[i];
+                results.add(materializeProjection(projection, rowIndex));
+            }
+            return switch (query.returnKind()) {
+                case ONE_OPTIONAL -> results.isEmpty() ? Optional.empty() : Optional.of(results.get(0));
+                case MANY_LIST -> results;
+                default -> throw new IllegalStateException("Unexpected return kind for FIND: " + query.returnKind());
+            };
+        }
 
         List<T> results = new ArrayList<>(max);
         for (int i = 0; i < max; i++) {
@@ -2069,6 +2094,162 @@ public final class RepositoryRuntime<T> {
             current = join.executor().filterJoin(plan.table(), join.targetTable(), current, targetSelection);
         }
         return current;
+    }
+
+    private Object materializeProjection(CompiledQuery.CompiledProjection projection, int rowIndex) {
+        CompiledQuery.CompiledProjectionItem[] items = projection.items();
+        Object[] args = new Object[items.length];
+        for (int i = 0; i < items.length; i++) {
+            args[i] = resolveProjectionValue(items[i], rowIndex);
+        }
+        MethodHandle ctor = projectionConstructor(projection.projectionType());
+        try {
+            return ctor.invokeWithArguments(args);
+        } catch (Throwable e) {
+            throw new RuntimeException("Failed to materialize projection", e);
+        }
+    }
+
+    private Object resolveProjectionValue(CompiledQuery.CompiledProjectionItem item, int rootRowIndex) {
+        int currentRow = rootRowIndex;
+        for (CompiledQuery.CompiledProjectionStep step : item.steps()) {
+            GeneratedTable sourceTable = tableFor(step.sourceEntity());
+            if (sourceTable == null || currentRow < 0) {
+                return null;
+            }
+            if (!sourceTable.isPresent(step.sourceColumnIndex(), currentRow)) {
+                return null;
+            }
+            Object fkValue = readProjectionFkValue(sourceTable, step.fkTypeCode(), step.sourceColumnIndex(), currentRow);
+            if (fkValue == null) {
+                return null;
+            }
+            GeneratedTable targetTable = tableFor(step.targetEntity());
+            if (targetTable == null) {
+                return null;
+            }
+            currentRow = resolveProjectionTargetRow(targetTable, step, fkValue);
+            if (currentRow < 0) {
+                return null;
+            }
+        }
+
+        GeneratedTable fieldTable = tableFor(item.fieldEntity());
+        if (fieldTable == null || currentRow < 0) {
+            return null;
+        }
+        EntityMetadata<?> fieldMetadata = projectionMetadata(item.fieldEntity());
+        return readProjectedValue(fieldTable, fieldMetadata, item.fieldName(), item.columnIndex(), item.typeCode(), currentRow);
+    }
+
+    private Object readProjectionFkValue(GeneratedTable table, byte typeCode, int columnIndex, int rowIndex) {
+        return switch (typeCode) {
+            case TypeCodes.TYPE_LONG -> Long.valueOf(table.readLong(columnIndex, rowIndex));
+            case TypeCodes.TYPE_INT -> Integer.valueOf(table.readInt(columnIndex, rowIndex));
+            case TypeCodes.TYPE_SHORT -> Short.valueOf((short) table.readInt(columnIndex, rowIndex));
+            case TypeCodes.TYPE_BYTE -> Byte.valueOf((byte) table.readInt(columnIndex, rowIndex));
+            case TypeCodes.TYPE_STRING -> table.readString(columnIndex, rowIndex);
+            default -> Long.valueOf(table.readLong(columnIndex, rowIndex));
+        };
+    }
+
+    private int resolveProjectionTargetRow(GeneratedTable targetTable,
+                                           CompiledQuery.CompiledProjectionStep step,
+                                           Object fkValue) {
+        if (step.targetColumnIsId()) {
+            long packedRef;
+            if (fkValue instanceof String stringId) {
+                packedRef = targetTable.lookupByIdString(stringId);
+            } else if (fkValue instanceof Number number) {
+                packedRef = targetTable.lookupById(number.longValue());
+            } else {
+                return -1;
+            }
+            return packedRef < 0 ? -1 : io.memris.storage.Selection.index(packedRef);
+        }
+
+        int[] matches = switch (step.fkTypeCode()) {
+            case TypeCodes.TYPE_LONG -> targetTable.scanEqualsLong(step.targetColumnIndex(), ((Number) fkValue).longValue());
+            case TypeCodes.TYPE_INT,
+                 TypeCodes.TYPE_SHORT,
+                 TypeCodes.TYPE_BYTE -> targetTable.scanEqualsInt(step.targetColumnIndex(), ((Number) fkValue).intValue());
+            case TypeCodes.TYPE_STRING -> targetTable.scanEqualsString(step.targetColumnIndex(), fkValue.toString());
+            default -> targetTable.scanEqualsLong(step.targetColumnIndex(), ((Number) fkValue).longValue());
+        };
+        return matches.length == 0 ? -1 : matches[0];
+    }
+
+    private Object readProjectedValue(GeneratedTable table,
+                                      EntityMetadata<?> entityMetadata,
+                                      String fieldName,
+                                      int columnIndex,
+                                      byte typeCode,
+                                      int rowIndex) {
+        if (!table.isPresent(columnIndex, rowIndex)) {
+            return null;
+        }
+
+        Object storage = switch (typeCode) {
+            case TypeCodes.TYPE_STRING,
+                 TypeCodes.TYPE_BIG_DECIMAL,
+                 TypeCodes.TYPE_BIG_INTEGER -> table.readString(columnIndex, rowIndex);
+            case TypeCodes.TYPE_LONG,
+                 TypeCodes.TYPE_INSTANT,
+                 TypeCodes.TYPE_LOCAL_DATE,
+                 TypeCodes.TYPE_LOCAL_DATE_TIME,
+                 TypeCodes.TYPE_DATE,
+                 TypeCodes.TYPE_DOUBLE -> table.readLong(columnIndex, rowIndex);
+            default -> table.readInt(columnIndex, rowIndex);
+        };
+
+        TypeConverter<?, ?> converter = entityMetadata.converters().get(fieldName);
+        if (converter != null && storage != null) {
+            @SuppressWarnings("unchecked")
+            TypeConverter<Object, Object> typedConverter = (TypeConverter<Object, Object>) converter;
+            return typedConverter.fromStorage(storage);
+        }
+
+        return switch (typeCode) {
+            case TypeCodes.TYPE_LONG -> (Long) storage;
+            case TypeCodes.TYPE_INT -> (Integer) storage;
+            case TypeCodes.TYPE_BOOLEAN -> ((Integer) storage) != 0;
+            case TypeCodes.TYPE_BYTE -> (byte) (int) storage;
+            case TypeCodes.TYPE_SHORT -> (short) (int) storage;
+            case TypeCodes.TYPE_FLOAT -> Float.intBitsToFloat((Integer) storage);
+            case TypeCodes.TYPE_DOUBLE -> Double.longBitsToDouble((Long) storage);
+            case TypeCodes.TYPE_CHAR -> (char) (int) storage;
+            case TypeCodes.TYPE_STRING -> storage;
+            default -> storage;
+        };
+    }
+
+    private GeneratedTable tableFor(Class<?> entityClass) {
+        if (metadata != null && metadata.entityClass().equals(entityClass)) {
+            return plan.table();
+        }
+        return plan.tablesByEntity().get(entityClass);
+    }
+
+    private EntityMetadata<?> projectionMetadata(Class<?> entityClass) {
+        return projectionMetadata.computeIfAbsent(entityClass, io.memris.core.MetadataExtractor::extractEntityMetadata);
+    }
+
+    private MethodHandle projectionConstructor(Class<?> projectionType) {
+        return projectionConstructors.computeIfAbsent(projectionType, type -> {
+            if (!type.isRecord()) {
+                throw new IllegalArgumentException("Projection type must be a record: " + type.getName());
+            }
+            RecordComponent[] components = type.getRecordComponents();
+            Class<?>[] paramTypes = new Class<?>[components.length];
+            for (int i = 0; i < components.length; i++) {
+                paramTypes[i] = components[i].getType();
+            }
+            try {
+                return MethodHandles.lookup().findConstructor(type, MethodType.methodType(void.class, paramTypes));
+            } catch (NoSuchMethodException | IllegalAccessException e) {
+                throw new RuntimeException("Failed to resolve projection constructor", e);
+            }
+        });
     }
 
     private Selection evaluateJoinPredicates(CompiledQuery.CompiledJoin join, Object[] args) {

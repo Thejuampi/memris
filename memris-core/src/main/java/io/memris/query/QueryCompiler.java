@@ -30,6 +30,7 @@ public class QueryCompiler {
         java.util.Map<String, LogicalQuery.Join.JoinType> joinTypes = new java.util.HashMap<>();
         CompiledQuery.CompiledOrderBy[] compiledOrderBy = null;
         CompiledQuery.CompiledUpdateAssignment[] compiledUpdates = new CompiledQuery.CompiledUpdateAssignment[0];
+        CompiledQuery.CompiledProjection compiledProjection = null;
 
         if (logicalQuery.joins() != null) {
             for (LogicalQuery.Join join : logicalQuery.joins()) {
@@ -95,11 +96,17 @@ public class QueryCompiler {
             }
         }
 
+        LogicalQuery.Projection projection = logicalQuery.projection();
+        if (projection != null) {
+            compiledProjection = compileProjection(projection, joinsByPath, joinTypes);
+        }
+
         return CompiledQuery.of(
             logicalQuery.opCode(),
             logicalQuery.returnKind(),
             baseConditions.toArray(new CompiledQuery.CompiledCondition[0]),
             compiledUpdates,
+            compiledProjection,
             attachJoinPredicates(joinsByPath, joinPredicates),
             compiledOrderBy,
             logicalQuery.limit(),
@@ -284,6 +291,138 @@ public class QueryCompiler {
             }
         }
         return null;
+    }
+
+    private EntityMetadata.FieldMapping findField(EntityMetadata<?> entityMetadata, String name) {
+        for (EntityMetadata.FieldMapping field : entityMetadata.fields()) {
+            if (field.name().equals(name)) {
+                return field;
+            }
+        }
+        return null;
+    }
+
+    private CompiledQuery.CompiledProjection compileProjection(LogicalQuery.Projection projection,
+                                                               java.util.Map<String, CompiledQuery.CompiledJoin> joinsByPath,
+                                                               java.util.Map<String, LogicalQuery.Join.JoinType> joinTypes) {
+        LogicalQuery.ProjectionItem[] items = projection.items();
+        CompiledQuery.CompiledProjectionItem[] compiled = new CompiledQuery.CompiledProjectionItem[items.length];
+        for (int i = 0; i < items.length; i++) {
+            LogicalQuery.ProjectionItem item = items[i];
+            ProjectionPath path = compileProjectionPath(item.propertyPath(), joinsByPath, joinTypes);
+            EntityMetadata.FieldMapping field = path.field;
+            compiled[i] = new CompiledQuery.CompiledProjectionItem(
+                item.alias(),
+                path.steps,
+                path.fieldMetadata.entityClass(),
+                field.columnPosition(),
+                field.typeCode(),
+                field.name()
+            );
+        }
+        return new CompiledQuery.CompiledProjection(projection.projectionType(), compiled);
+    }
+
+    private ProjectionPath compileProjectionPath(String propertyPath,
+                                                 java.util.Map<String, CompiledQuery.CompiledJoin> joinsByPath,
+                                                 java.util.Map<String, LogicalQuery.Join.JoinType> joinTypes) {
+        String[] segments = propertyPath.split("\\.");
+        if (segments.length == 0) {
+            throw new IllegalArgumentException("Invalid projection path: " + propertyPath);
+        }
+
+        EntityMetadata<?> currentMetadata = metadata;
+        Class<?> currentEntity = metadata.entityClass();
+        java.util.List<CompiledQuery.CompiledProjectionStep> steps = new java.util.ArrayList<>();
+        StringBuilder joinPathBuilder = new StringBuilder();
+
+        for (int idx = 0; idx < segments.length - 1; idx++) {
+            String segment = segments[idx];
+            EntityMetadata.FieldMapping relationship = findRelationship(currentMetadata, segment);
+            if (relationship == null) {
+                throw new IllegalArgumentException("Unknown relationship in projection path: " + propertyPath);
+            }
+            if (relationship.isCollection()) {
+                throw new IllegalArgumentException("Projection paths cannot traverse collections: " + propertyPath);
+            }
+
+            if (joinPathBuilder.length() > 0) {
+                joinPathBuilder.append('.');
+            }
+            joinPathBuilder.append(segment);
+            String joinPath = joinPathBuilder.toString();
+
+            EntityMetadata<?> targetMetadata = resolveMetadata(relationship.targetEntity());
+            int sourceColumnIndex = currentMetadata.resolveColumnPosition(relationship.columnName());
+            String referencedColumn = relationship.referencedColumnName() != null
+                ? relationship.referencedColumnName()
+                : targetMetadata.idColumnName();
+            int targetColumnIndex = targetMetadata.resolveColumnPosition(referencedColumn);
+            boolean targetColumnIsId = referencedColumn.equals(targetMetadata.idColumnName());
+
+            byte fkTypeCode = relationship.typeCode();
+            if (fkTypeCode != io.memris.core.TypeCodes.TYPE_LONG
+                && fkTypeCode != io.memris.core.TypeCodes.TYPE_INT
+                && fkTypeCode != io.memris.core.TypeCodes.TYPE_SHORT
+                && fkTypeCode != io.memris.core.TypeCodes.TYPE_BYTE) {
+                throw new IllegalArgumentException("Unsupported FK type for projection: " + fkTypeCode);
+            }
+
+            joinTypes.putIfAbsent(joinPath, LogicalQuery.Join.JoinType.LEFT);
+            if (!joinsByPath.containsKey(joinPath)) {
+                LogicalQuery.Join.JoinType joinType = joinTypes.getOrDefault(joinPath, LogicalQuery.Join.JoinType.LEFT);
+                joinsByPath.put(joinPath, new CompiledQuery.CompiledJoin(
+                    joinPath,
+                    currentEntity,
+                    relationship.targetEntity(),
+                    sourceColumnIndex,
+                    targetColumnIndex,
+                    targetColumnIsId,
+                    fkTypeCode,
+                    joinType,
+                    segment,
+                    new CompiledQuery.CompiledJoinPredicate[0],
+                    null,
+                    null,
+                    null,
+                    null,
+                    null
+                ));
+            }
+
+            steps.add(new CompiledQuery.CompiledProjectionStep(
+                currentEntity,
+                relationship.targetEntity(),
+                sourceColumnIndex,
+                targetColumnIndex,
+                targetColumnIsId,
+                fkTypeCode
+            ));
+
+            currentMetadata = targetMetadata;
+            currentEntity = relationship.targetEntity();
+        }
+
+        String lastSegment = segments[segments.length - 1];
+        EntityMetadata.FieldMapping field = findField(currentMetadata, lastSegment);
+        if (field == null) {
+            throw new IllegalArgumentException("Unknown projection field: " + propertyPath);
+        }
+        if (field.isRelationship()) {
+            throw new IllegalArgumentException("Projection field must be a column, not a relationship: " + propertyPath);
+        }
+        if (field.columnPosition() < 0) {
+            throw new IllegalArgumentException("Projection field is not stored: " + propertyPath);
+        }
+
+        return new ProjectionPath(currentMetadata, field, steps.toArray(new CompiledQuery.CompiledProjectionStep[0]));
+    }
+
+    private record ProjectionPath(
+        EntityMetadata<?> fieldMetadata,
+        EntityMetadata.FieldMapping field,
+        CompiledQuery.CompiledProjectionStep[] steps
+    ) {
     }
 
     private EntityMetadata<?> resolveMetadata(Class<?> entityClass) {

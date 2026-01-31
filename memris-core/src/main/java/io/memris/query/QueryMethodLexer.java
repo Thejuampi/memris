@@ -23,18 +23,23 @@ public final class QueryMethodLexer {
      * <p>
      * <b>Signature strategy:</b>
      * <ul>
-     *   <li>Entity CRUD (save, delete) use Object.class - matches any entity type</li>
-     *   *   <li>ID operations (findById, deleteById, existsById) use IdParam marker - matches any ID type</li>
-     *   <li>Iterable operations (saveAll) are exact - Iterable required</li>
-     *   <li>Zero-arg operations (findAll, count, deleteAll) are exact</li>
+     * <li>Entity CRUD (save, delete) use Object.class - matches any entity
+     * type</li>
+     * *
+     * <li>ID operations (findById, deleteById, existsById) use IdParam marker -
+     * matches any ID type</li>
+     * <li>Iterable operations (saveAll) are exact - Iterable required</li>
+     * <li>Zero-arg operations (findAll, count, deleteAll) are exact</li>
      * </ul>
      * <p>
      * NOTE: This is package-private for QueryPlanner access only.
      * The lexer does not use this map - it's used by the planner which has
      * access to the full Method object for signature matching.
      * <p>
-     * <b>Reserved operations:</b> Keys marked as "reserved" are for future Spring Data compatibility.
-     * They are defined now to prevent the Object wildcard from accidentally capturing them later.
+     * <b>Reserved operations:</b> Keys marked as "reserved" are for future Spring
+     * Data compatibility.
+     * They are defined now to prevent the Object wildcard from accidentally
+     * capturing them later.
      * These will throw "not yet implemented" at runtime until implemented.
      */
     static final java.util.Map<io.memris.repository.RepositoryMethodIntrospector.MethodKey, OpCode> BUILT_INS;
@@ -43,64 +48,75 @@ public final class QueryMethodLexer {
     static {
         // Active built-ins (implemented)
         BUILT_INS = java.util.Map.ofEntries(
-            // save(T entity) - any entity type
-            java.util.Map.entry(
-                new io.memris.repository.RepositoryMethodIntrospector.MethodKey("save", java.util.List.of(Object.class)),
-                OpCode.SAVE_ONE),
-            // saveAll(Iterable<T> entities) - exact, must be Iterable
-            java.util.Map.entry(
-                new io.memris.repository.RepositoryMethodIntrospector.MethodKey("saveAll", java.util.List.of(Iterable.class)),
-                OpCode.SAVE_ALL),
-            // delete(T entity) - any entity type
-            java.util.Map.entry(
-                new io.memris.repository.RepositoryMethodIntrospector.MethodKey("delete", java.util.List.of(Object.class)),
-                OpCode.DELETE_ONE),
-            // deleteAll()
-            java.util.Map.entry(
-                new io.memris.repository.RepositoryMethodIntrospector.MethodKey("deleteAll", java.util.List.of()),
-                OpCode.DELETE_ALL),
-            // deleteById(ID id) - any ID type (using IdParam marker)
-            java.util.Map.entry(
-                new io.memris.repository.RepositoryMethodIntrospector.MethodKey("deleteById", java.util.List.of(IdParam.class)),
-                OpCode.DELETE_BY_ID),
-            // deleteAllById(Iterable<ID>) - Spring Data JPA compatible
-            java.util.Map.entry(
-                new io.memris.repository.RepositoryMethodIntrospector.MethodKey("deleteAllById", java.util.List.of(Iterable.class)),
-                OpCode.DELETE_ALL_BY_ID),
-            // findById(ID id) - any ID type (using IdParam marker)
-            java.util.Map.entry(
-                new io.memris.repository.RepositoryMethodIntrospector.MethodKey("findById", java.util.List.of(IdParam.class)),
-                OpCode.FIND_BY_ID),
-            // findAllById(Iterable<ID>) - Spring Data JPA compatible
-            java.util.Map.entry(
-                new io.memris.repository.RepositoryMethodIntrospector.MethodKey("findAllById", java.util.List.of(Iterable.class)),
-                OpCode.FIND_ALL_BY_ID),
-            // existsById(ID id) - any ID type (using IdParam marker)
-            java.util.Map.entry(
-                new io.memris.repository.RepositoryMethodIntrospector.MethodKey("existsById", java.util.List.of(IdParam.class)),
-                OpCode.EXISTS_BY_ID),
-            // findAll()
-            java.util.Map.entry(
-                new io.memris.repository.RepositoryMethodIntrospector.MethodKey("findAll", java.util.List.of()),
-                OpCode.FIND_ALL),
-            // count()
-            java.util.Map.entry(
-                new io.memris.repository.RepositoryMethodIntrospector.MethodKey("count", java.util.List.of()),
-                OpCode.COUNT_ALL)
-        );
+                // save(T entity) - any entity type
+                java.util.Map.entry(
+                        new io.memris.repository.RepositoryMethodIntrospector.MethodKey("save",
+                                java.util.List.of(Object.class)),
+                        OpCode.SAVE_ONE),
+                // saveAll(Iterable<T> entities) - exact, must be Iterable
+                java.util.Map.entry(
+                        new io.memris.repository.RepositoryMethodIntrospector.MethodKey("saveAll",
+                                java.util.List.of(Iterable.class)),
+                        OpCode.SAVE_ALL),
+                // delete(T entity) - any entity type
+                java.util.Map.entry(
+                        new io.memris.repository.RepositoryMethodIntrospector.MethodKey("delete",
+                                java.util.List.of(Object.class)),
+                        OpCode.DELETE_ONE),
+                // deleteAll()
+                java.util.Map.entry(
+                        new io.memris.repository.RepositoryMethodIntrospector.MethodKey("deleteAll",
+                                java.util.List.of()),
+                        OpCode.DELETE_ALL),
+                // deleteById(ID id) - any ID type (using IdParam marker)
+                java.util.Map.entry(
+                        new io.memris.repository.RepositoryMethodIntrospector.MethodKey("deleteById",
+                                java.util.List.of(IdParam.class)),
+                        OpCode.DELETE_BY_ID),
+                // deleteAllById(Iterable<ID>) - Spring Data JPA compatible
+                java.util.Map.entry(
+                        new io.memris.repository.RepositoryMethodIntrospector.MethodKey("deleteAllById",
+                                java.util.List.of(Iterable.class)),
+                        OpCode.DELETE_ALL_BY_ID),
+                // findById(ID id) - any ID type (using IdParam marker)
+                java.util.Map.entry(
+                        new io.memris.repository.RepositoryMethodIntrospector.MethodKey("findById",
+                                java.util.List.of(IdParam.class)),
+                        OpCode.FIND_BY_ID),
+                // findAllById(Iterable<ID>) - Spring Data JPA compatible
+                java.util.Map.entry(
+                        new io.memris.repository.RepositoryMethodIntrospector.MethodKey("findAllById",
+                                java.util.List.of(Iterable.class)),
+                        OpCode.FIND_ALL_BY_ID),
+                // existsById(ID id) - any ID type (using IdParam marker)
+                java.util.Map.entry(
+                        new io.memris.repository.RepositoryMethodIntrospector.MethodKey("existsById",
+                                java.util.List.of(IdParam.class)),
+                        OpCode.EXISTS_BY_ID),
+                // findAll()
+                java.util.Map.entry(
+                        new io.memris.repository.RepositoryMethodIntrospector.MethodKey("findAll", java.util.List.of()),
+                        OpCode.FIND_ALL),
+                // count()
+                java.util.Map.entry(
+                        new io.memris.repository.RepositoryMethodIntrospector.MethodKey("count", java.util.List.of()),
+                        OpCode.COUNT_ALL));
 
         // Reserved built-ins (future Spring Data compatibility)
-        // These are defined now to prevent the Object wildcard from accidentally capturing them later.
+        // These are defined now to prevent the Object wildcard from accidentally
+        // capturing them later.
         // They will throw "not yet implemented" at runtime until implemented.
         // Examples: findAll(Sort), queryByDsl(...)
         RESERVED_BUILT_INS = java.util.Map.ofEntries();
     }
 
-    private QueryMethodLexer() { }
+    private QueryMethodLexer() {
+    }
 
     /**
      * NOTE:
-     * - Keep operators longest-first to avoid premature matches (e.g. GreaterThan before GreaterThanEqual).
+     * - Keep operators longest-first to avoid premature matches (e.g. GreaterThan
+     * before GreaterThanEqual).
      * - Do not include And/Or in OPERATORS; they are handled as combinators.
      */
     private static final String[] OPERATORS = {
@@ -132,12 +148,12 @@ public final class QueryMethodLexer {
      * Includes "save" for prefix extraction. Built-in methods are matched
      * by exact name first, then derived queries use prefix matching.
      */
-    static final String[] PREFIXES = {"find", "read", "query", "count", "exists", "delete", "save", "get"};
+    static final String[] PREFIXES = { "find", "read", "query", "count", "exists", "delete", "save", "get" };
 
     private static final ConcurrentMap<Class<?>, EntityMetadata> ENTITY_METADATA_CACHE = new ConcurrentHashMap<>();
 
     private static final class EntityMetadata {
-        final Map<String, Field> fields;              // key: lower-case field name
+        final Map<String, Field> fields; // key: lower-case field name
         final Map<String, String> relatedEntityTypes; // key: lower-case field name -> fqcn
 
         EntityMetadata(Map<String, Field> fields, Map<String, String> relatedEntityTypes) {
@@ -170,8 +186,7 @@ public final class QueryMethodLexer {
                 Class<?> fieldType = field.getType();
 
                 // Relationship / traversal support: check annotations on FIELD (not on type)
-                boolean isRelationship =
-                        field.isAnnotationPresent(ManyToOne.class) ||
+                boolean isRelationship = field.isAnnotationPresent(ManyToOne.class) ||
                         field.isAnnotationPresent(OneToOne.class) ||
                         field.isAnnotationPresent(jakarta.persistence.OneToMany.class) ||
                         field.isAnnotationPresent(jakarta.persistence.ManyToMany.class) ||
@@ -181,8 +196,7 @@ public final class QueryMethodLexer {
                         field.isAnnotationPresent(io.memris.core.ManyToMany.class);
 
                 // Embedded/value-object traversal support
-                boolean isEmbedded =
-                        field.isAnnotationPresent(Embedded.class) ||
+                boolean isEmbedded = field.isAnnotationPresent(Embedded.class) ||
                         fieldType.isAnnotationPresent(Embeddable.class);
 
                 // Entity traversal support (type-level annotation)
@@ -243,13 +257,14 @@ public final class QueryMethodLexer {
         // These are common operations that can be detected by name alone
         OpCode builtIn = getParameterlessBuiltIn(methodName);
         if (builtIn != null) {
-            return List.of(new QueryMethodToken(QueryMethodTokenType.OPERATION, builtIn.name(), 0, methodName.length(), false));
+            return List.of(new QueryMethodToken(QueryMethodTokenType.OPERATION, builtIn.name(), 0, methodName.length(),
+                    false));
         }
 
         // Derived query parsing (findByXxx, countByXxx, deleteByXxx, etc.)
         return tokenizeDerived(entityClass, methodName);
     }
-    
+
     /**
      * Check if a method name is a parameterless built-in operation.
      * <p>
@@ -303,12 +318,14 @@ public final class QueryMethodLexer {
     /**
      * Classify the operation type based on prefix and what follows.
      * <p>
-     * This is for DERIVED queries only. Built-in detection is handled by QueryPlanner
+     * This is for DERIVED queries only. Built-in detection is handled by
+     * QueryPlanner
      * using MethodKey for exact signature matching.
      * <p>
      * The lexer is lenient - it tokenizes what it sees and lets the planner
      * handle semantic validation. This allows the planner to distinguish between
-     * built-ins (save, delete, etc.) and derived queries using full method signatures.
+     * built-ins (save, delete, etc.) and derived queries using full method
+     * signatures.
      */
     private static QueryMethodTokenType classifyOperation(String prefix, String remaining) {
         boolean hasBy = remaining.startsWith("By");
@@ -318,7 +335,8 @@ public final class QueryMethodLexer {
         return switch (prefix.toLowerCase()) {
             case "find", "read", "query", "get" -> {
                 // findAll() or findByXxx()
-                if (isAll || hasBy || remaining.isEmpty() || isAllStarting) yield QueryMethodTokenType.FIND_BY;
+                if (isAll || hasBy || remaining.isEmpty() || isAllStarting)
+                    yield QueryMethodTokenType.FIND_BY;
                 throw new IllegalArgumentException("Invalid find method: expected 'By' or 'All', got: " + remaining);
             }
             case "count" -> {
@@ -331,12 +349,13 @@ public final class QueryMethodLexer {
             }
             case "delete" -> {
                 // delete(), deleteAll(), or deleteByXxx()
-                if (hasBy) yield QueryMethodTokenType.DELETE_BY;
-                yield QueryMethodTokenType.DELETE;  // delete() or deleteAll()
+                if (hasBy)
+                    yield QueryMethodTokenType.DELETE_BY;
+                yield QueryMethodTokenType.DELETE; // delete() or deleteAll()
             }
             case "save" -> {
                 // save() or saveAll()
-                yield QueryMethodTokenType.DELETE;  // Reuse DELETE token as placeholder (no SAVE token type)
+                yield QueryMethodTokenType.DELETE; // Reuse DELETE token as placeholder (no SAVE token type)
             }
             default -> throw new IllegalArgumentException("Unknown prefix: " + prefix);
         };
@@ -414,8 +433,7 @@ public final class QueryMethodLexer {
             int end,
             String value,
             EntityMetadata metadata,
-            int absoluteBaseOffset
-    ) {
+            int absoluteBaseOffset) {
         QueryMethodTokenType type = determineTokenType(value);
         boolean ignoreCase = (type == QueryMethodTokenType.OPERATOR && "IgnoreCase".equals(value));
         String normalizedValue = normalizePropertyValue(type, value, metadata);
@@ -455,7 +473,8 @@ public final class QueryMethodLexer {
     /**
      * Attempts Spring-Data-like resolution:
      * - First try to match the longest field name prefix on current metadata
-     * - If that field is a related/embedded/entity type, continue resolving remainder against that type metadata
+     * - If that field is a related/embedded/entity type, continue resolving
+     * remainder against that type metadata
      * - If no match exists, fall back to lowercasing the remainder
      *
      * Also supports "_" as an explicit segment boundary (common in your examples).
@@ -478,19 +497,22 @@ public final class QueryMethodLexer {
                 Match m = longestFieldPrefixMatch(current, remaining);
 
                 if (m == null) {
-                    // Could not resolve; append the rest as a single segment (lowercased) and stop this part
-                    if (!firstOut) resolved.append('.');
+                    // Could not resolve; append the rest as a single segment (lowercased) and stop
+                    // this part
+                    if (!firstOut)
+                        resolved.append('.');
                     resolved.append(remaining.toLowerCase());
                     firstOut = false;
                     break;
                 }
 
-                if (!firstOut) resolved.append('.');
-                resolved.append(m.fieldNameLower);
+                if (!firstOut)
+                    resolved.append('.');
+                resolved.append(m.fieldName);
                 firstOut = false;
 
                 // Move into related type if present (for nested paths)
-                String relType = current.getRelatedEntityType(m.fieldNameLower);
+                String relType = current.getRelatedEntityType(m.fieldName);
                 if (relType != null && !m.rest.isEmpty()) {
                     current = safeLoadMetadata(relType, current);
                 }
@@ -511,7 +533,8 @@ public final class QueryMethodLexer {
         }
     }
 
-    private record Match(String fieldNameLower, String rest) { }
+    private record Match(String fieldName, String rest) {
+    }
 
     private static Match longestFieldPrefixMatch(EntityMetadata metadata, String camel) {
         if (metadata == null || camel == null || camel.isEmpty()) {
@@ -519,22 +542,25 @@ public final class QueryMethodLexer {
         }
 
         String lower = camel.toLowerCase();
-        String best = null;
+        String bestKey = null;
+        String bestFieldName = null;
 
         // longest prefix match across known fields
-        for (String fieldNameLower : metadata.fields.keySet()) {
+        for (Map.Entry<String, Field> entry : metadata.fields.entrySet()) {
+            String fieldNameLower = entry.getKey(); // lowercase key
             if (lower.startsWith(fieldNameLower)) {
-                if (best == null || fieldNameLower.length() > best.length()) {
-                    best = fieldNameLower;
+                if (bestKey == null || fieldNameLower.length() > bestKey.length()) {
+                    bestKey = fieldNameLower;
+                    bestFieldName = entry.getValue().getName(); // actual field name with proper case
                 }
             }
         }
 
-        if (best == null) {
+        if (bestKey == null) {
             return null;
         }
 
-        String rest = camel.substring(best.length());
+        String rest = camel.substring(bestKey.length());
 
         // If remainder exists, it must start with a capital letter or be empty
         // This prevents matching "age" in "age2" and leaving "2" as remainder
@@ -542,7 +568,7 @@ public final class QueryMethodLexer {
             return null;
         }
 
-        return new Match(best, rest);
+        return new Match(bestFieldName, rest);
     }
 
     private static String extractPrefix(String methodName) {
@@ -552,7 +578,8 @@ public final class QueryMethodLexer {
                 return methodName.substring(0, prefix.length());
             }
         }
-        // no prefix match -> treat entire name as "prefix" (caller will likely fail on mapPrefixToType)
+        // no prefix match -> treat entire name as "prefix" (caller will likely fail on
+        // mapPrefixToType)
         return methodName;
     }
 
@@ -576,18 +603,21 @@ public final class QueryMethodLexer {
     }
 
     private static int findTokenEnd(String input, int start) {
-        // If we're at the start of a known token (combinator/operator), return its length
+        // If we're at the start of a known token (combinator/operator), return its
+        // length
         String firstToken = findTokenAtStart(input, start);
         if (firstToken != null) {
             return start + firstToken.length();
         }
 
-        // Otherwise we're in a property - find where it ends (next known token or end of string)
+        // Otherwise we're in a property - find where it ends (next known token or end
+        // of string)
         return findNextTokenStart(input, start);
     }
 
     /**
-     * Find the position of the next known token (combinator or operator) after start.
+     * Find the position of the next known token (combinator or operator) after
+     * start.
      * Used to determine where a property path ends.
      */
     private static int findNextTokenStart(String input, int start) {
@@ -625,7 +655,8 @@ public final class QueryMethodLexer {
 
     /**
      * Find the index of a combinator ("And" or "Or") only if it's valid.
-     * A combinator is valid only if followed by an uppercase letter or end of string.
+     * A combinator is valid only if followed by an uppercase letter or end of
+     * string.
      * This prevents "Order" from matching "Or" or "Anderson" from matching "And".
      */
     private static int findCombinatorIndex(String input, int start, String combinator) {
@@ -658,8 +689,9 @@ public final class QueryMethodLexer {
 
     private static String findTokenAtStart(String input, int start) {
         // Check for OrderBy first (must be before "Or" check)
-        if (input.startsWith("OrderBy", start)) return "OrderBy";
-        
+        if (input.startsWith("OrderBy", start))
+            return "OrderBy";
+
         // Check for "And" - only if followed by uppercase or end of string
         if (input.startsWith("And", start)) {
             int afterAnd = start + 3;
@@ -667,7 +699,7 @@ public final class QueryMethodLexer {
                 return "And";
             }
         }
-        
+
         // Check for "Or" - only if followed by uppercase or end of string
         // This prevents "Order" from being split as "Or" + "der"
         if (input.startsWith("Or", start)) {
@@ -678,7 +710,8 @@ public final class QueryMethodLexer {
         }
 
         for (String operator : OPERATORS) {
-            if (input.startsWith(operator, start)) return operator;
+            if (input.startsWith(operator, start))
+                return operator;
         }
         return null;
     }
@@ -708,8 +741,7 @@ public final class QueryMethodLexer {
             List<QueryMethodToken> tokens,
             String orderBy,
             EntityMetadata metadata,
-            int orderByAbsoluteStart
-    ) {
+            int orderByAbsoluteStart) {
         if (orderBy == null || orderBy.isEmpty()) {
             return;
         }
@@ -746,7 +778,8 @@ public final class QueryMethodLexer {
             if (nextDir == -1) {
                 // No direction: treat rest as property
                 String property = remaining.substring(segmentStart);
-                String resolvedProperty = (metadata != null) ? resolvePropertyPath(metadata, property) : property.toLowerCase();
+                String resolvedProperty = (metadata != null) ? resolvePropertyPath(metadata, property)
+                        : property.toLowerCase();
                 tokens.add(new QueryMethodToken(QueryMethodTokenType.PROPERTY_PATH, resolvedProperty,
                         base + segmentStart, base + remaining.length(), false));
                 break;
@@ -754,7 +787,8 @@ public final class QueryMethodLexer {
 
             // Property part up to direction
             String property = remaining.substring(segmentStart, nextDir);
-            String resolvedProperty = (metadata != null) ? resolvePropertyPath(metadata, property) : property.toLowerCase();
+            String resolvedProperty = (metadata != null) ? resolvePropertyPath(metadata, property)
+                    : property.toLowerCase();
             tokens.add(new QueryMethodToken(QueryMethodTokenType.PROPERTY_PATH, resolvedProperty,
                     base + segmentStart, base + nextDir, false));
 
