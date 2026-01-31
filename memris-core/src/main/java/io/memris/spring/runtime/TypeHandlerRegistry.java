@@ -3,10 +3,16 @@ package io.memris.spring.runtime;
 import io.memris.spring.runtime.handlers.BooleanTypeHandler;
 import io.memris.spring.runtime.handlers.ByteTypeHandler;
 import io.memris.spring.runtime.handlers.CharTypeHandler;
+import io.memris.spring.runtime.handlers.DateTypeHandler;
 import io.memris.spring.runtime.handlers.DoubleTypeHandler;
 import io.memris.spring.runtime.handlers.FloatTypeHandler;
+import io.memris.spring.runtime.handlers.InstantTypeHandler;
 import io.memris.spring.runtime.handlers.IntTypeHandler;
+import io.memris.spring.runtime.handlers.LocalDateTimeTypeHandler;
+import io.memris.spring.runtime.handlers.LocalDateTypeHandler;
 import io.memris.spring.runtime.handlers.LongTypeHandler;
+import io.memris.spring.runtime.handlers.BigDecimalTypeHandler;
+import io.memris.spring.runtime.handlers.BigIntegerTypeHandler;
 import io.memris.spring.runtime.handlers.ShortTypeHandler;
 import io.memris.spring.runtime.handlers.StringTypeHandler;
 
@@ -79,6 +85,12 @@ public class TypeHandlerRegistry {
         registerHandler(new ShortTypeHandler());
         registerHandler(new CharTypeHandler());
         registerHandler(new FloatTypeHandler());
+        registerHandler(new InstantTypeHandler());
+        registerHandler(new LocalDateTypeHandler());
+        registerHandler(new LocalDateTimeTypeHandler());
+        registerHandler(new DateTypeHandler());
+        registerHandler(new BigDecimalTypeHandler());
+        registerHandler(new BigIntegerTypeHandler());
     }
     
     /**

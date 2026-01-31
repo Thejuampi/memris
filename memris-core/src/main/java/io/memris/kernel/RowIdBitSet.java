@@ -24,6 +24,22 @@ public final class RowIdBitSet implements MutableRowIdSet {
     }
 
     @Override
+    public void remove(RowId rowId) {
+        if (rowId == null) {
+            return;
+        }
+        long value = rowId.value();
+        if (value > Integer.MAX_VALUE) {
+            return;
+        }
+        int index = (int) value;
+        if (bitSet.get(index)) {
+            bitSet.clear(index);
+            size--;
+        }
+    }
+
+    @Override
     public int size() {
         return size;
     }

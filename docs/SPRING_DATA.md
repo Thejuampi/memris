@@ -14,6 +14,7 @@ Memris provides a lightweight, high-performance Spring Data-compatible API for i
 - Spring Data-like query method patterns (`findBy…And…`, `In`, `Between`, comparisons)
 - Custom annotations (`@Entity`, `@Index`, `@GeneratedValue`, `@OneToOne`)
 - **Note:** Uses custom annotations, NOT Jakarta/JPA annotations
+- **Note:** Transactions and session management are not supported (in-memory, no persistence context)
 
 **Architecture Note:**
 - Generates **TABLE** classes via ByteBuddy, not repository classes
@@ -34,7 +35,7 @@ Memris provides a lightweight, high-performance Spring Data-compatible API for i
 | **Queries** | Boolean operators (IsTrue, IsFalse) | ✅ Done | ✅ Tests |
 | **Queries** | Null operators (IsNull, IsNotNull) | ✅ Done | ✅ Tests |
 | **Queries** | Logical operators (And, Or) | ✅ Done | ✅ Tests |
-| **Type Mapping** | Primitive types (int, long, String) | ✅ Done | ✅ Tests |
+| **Type Mapping** | Primitive + String + time + Big types | ✅ Done | ✅ Tests |
 | **Advanced** | Hash join | ✅ Done | ✅ Available |
 | **Advanced** | MemrisException | ✅ Done | ✅ Integrated |
 
@@ -91,6 +92,19 @@ public class User {
     private int age;
 }
 ```
+
+## Supported Field Types
+
+**Primitive + String types:**
+- `int`, `long`, `boolean`, `byte`, `short`, `float`, `double`, `char`, `String`
+
+**Common Java types:**
+- `Instant`, `LocalDate`, `LocalDateTime`, `java.util.Date` (stored as epoch long values)
+- `BigDecimal`, `BigInteger` (stored as String; equality and set membership only)
+
+**Notes:**
+- Date/time values are stored as epoch millis (Instant/Date/LocalDateTime) or epoch day (LocalDate)
+- BigDecimal/BigInteger only support EQ/NE/IN/NOT_IN operators
 
 ## Query Method Support
 

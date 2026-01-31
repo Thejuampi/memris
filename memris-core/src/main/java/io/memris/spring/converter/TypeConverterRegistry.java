@@ -8,7 +8,8 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
-import java.lang.reflect.Method;
+import java.time.ZoneOffset;
+import java.util.Date;
 import java.util.UUID;
 
 /**
@@ -61,11 +62,14 @@ public final class TypeConverterRegistry {
         register(new BigDecimalConverter());
         register(new BigIntegerConverter());
 
-        // Date/Time types - stored as String in ISO format
-        register(new LocalDateConverter());
-        register(new LocalDateTimeConverter());
+        // Date/Time types - stored as epoch-based long values
+        register(new LocalDateLongConverter());
+        register(new LocalDateTimeLongConverter());
+        register(new InstantLongConverter());
+        register(new DateLongConverter());
+
+        // LocalTime remains stored as String
         register(new LocalTimeConverter());
-        register(new InstantConverter());
         register(new SqlDateConverter());
         register(new SqlTimestampConverter());
     }
@@ -204,39 +208,39 @@ public final class TypeConverterRegistry {
         }
     }
 
-    private static final class LocalDateConverter implements TypeConverter<LocalDate, String> {
+    private static final class LocalDateLongConverter implements TypeConverter<LocalDate, Long> {
         @Override
         public Class<LocalDate> getJavaType() { return LocalDate.class; }
 
         @Override
-        public Class<String> getStorageType() { return String.class; }
+        public Class<Long> getStorageType() { return long.class; }
 
         @Override
-        public String toStorage(LocalDate javaValue) { 
-            return javaValue == null ? null : javaValue.toString(); 
+        public Long toStorage(LocalDate javaValue) {
+            return javaValue == null ? null : javaValue.toEpochDay();
         }
 
         @Override
-        public LocalDate fromStorage(String storageValue) { 
-            return storageValue == null || storageValue.isEmpty() ? null : LocalDate.parse(storageValue); 
+        public LocalDate fromStorage(Long storageValue) {
+            return storageValue == null ? null : LocalDate.ofEpochDay(storageValue);
         }
     }
 
-    private static final class LocalDateTimeConverter implements TypeConverter<LocalDateTime, String> {
+    private static final class LocalDateTimeLongConverter implements TypeConverter<LocalDateTime, Long> {
         @Override
         public Class<LocalDateTime> getJavaType() { return LocalDateTime.class; }
 
         @Override
-        public Class<String> getStorageType() { return String.class; }
+        public Class<Long> getStorageType() { return long.class; }
 
         @Override
-        public String toStorage(LocalDateTime javaValue) { 
-            return javaValue == null ? null : javaValue.toString(); 
+        public Long toStorage(LocalDateTime javaValue) {
+            return javaValue == null ? null : javaValue.toInstant(ZoneOffset.UTC).toEpochMilli();
         }
 
         @Override
-        public LocalDateTime fromStorage(String storageValue) { 
-            return storageValue == null || storageValue.isEmpty() ? null : LocalDateTime.parse(storageValue); 
+        public LocalDateTime fromStorage(Long storageValue) {
+            return storageValue == null ? null : LocalDateTime.ofInstant(Instant.ofEpochMilli(storageValue), ZoneOffset.UTC);
         }
     }
 
@@ -258,21 +262,39 @@ public final class TypeConverterRegistry {
         }
     }
 
-    private static final class InstantConverter implements TypeConverter<Instant, String> {
+    private static final class InstantLongConverter implements TypeConverter<Instant, Long> {
         @Override
         public Class<Instant> getJavaType() { return Instant.class; }
 
         @Override
-        public Class<String> getStorageType() { return String.class; }
+        public Class<Long> getStorageType() { return long.class; }
 
         @Override
-        public String toStorage(Instant javaValue) { 
-            return javaValue == null ? null : javaValue.toString(); 
+        public Long toStorage(Instant javaValue) {
+            return javaValue == null ? null : javaValue.toEpochMilli();
         }
 
         @Override
-        public Instant fromStorage(String storageValue) { 
-            return storageValue == null || storageValue.isEmpty() ? null : Instant.parse(storageValue); 
+        public Instant fromStorage(Long storageValue) {
+            return storageValue == null ? null : Instant.ofEpochMilli(storageValue);
+        }
+    }
+
+    private static final class DateLongConverter implements TypeConverter<Date, Long> {
+        @Override
+        public Class<Date> getJavaType() { return Date.class; }
+
+        @Override
+        public Class<Long> getStorageType() { return long.class; }
+
+        @Override
+        public Long toStorage(Date javaValue) {
+            return javaValue == null ? null : javaValue.getTime();
+        }
+
+        @Override
+        public Date fromStorage(Long storageValue) {
+            return storageValue == null ? null : new Date(storageValue);
         }
     }
 

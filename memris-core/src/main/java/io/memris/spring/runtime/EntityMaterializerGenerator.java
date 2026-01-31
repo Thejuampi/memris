@@ -142,6 +142,7 @@ public final class EntityMaterializerGenerator {
         @Override
         public Size apply(MethodVisitor mv, Implementation.Context context, net.bytebuddy.description.method.MethodDescription method) {
             String entityInternal = Type.getInternalName(entityClass);
+            String materializerInternal = context.getInstrumentedType().getInternalName();
             String tableInternal = Type.getInternalName(io.memris.storage.GeneratedTable.class);
             String kernelInternal = Type.getInternalName(HeapRuntimeKernel.class);
             String converterInternal = Type.getInternalName(TypeConverter.class);
@@ -164,7 +165,7 @@ public final class EntityMaterializerGenerator {
             mv.visitVarInsn(Opcodes.ASTORE, tableVar);
 
             for (FieldInfo info : fields) {
-                emitFieldWrite(mv, info, entityInternal, tableInternal, converterInternal, entityVar, tableVar,
+                emitFieldWrite(mv, info, entityInternal, materializerInternal, tableInternal, converterInternal, entityVar, tableVar,
                     intVar, longVar, doubleVar, floatVar, objVar);
             }
 
@@ -177,6 +178,7 @@ public final class EntityMaterializerGenerator {
         private void emitFieldWrite(MethodVisitor mv,
                                     FieldInfo info,
                                     String entityInternal,
+                                    String materializerInternal,
                                     String tableInternal,
                                     String converterInternal,
                                     int entityVar,
@@ -195,7 +197,7 @@ public final class EntityMaterializerGenerator {
                 emitStorageAsObject(mv, mapping.typeCode(), tableInternal, tableVar, colIdx, objVar, intVar, longVar, doubleVar, floatVar);
 
                 mv.visitVarInsn(Opcodes.ALOAD, 0);
-                mv.visitFieldInsn(Opcodes.GETFIELD, entityInternal, converterFieldName(info.converterIndex), "Lio/memris/spring/converter/TypeConverter;");
+                mv.visitFieldInsn(Opcodes.GETFIELD, materializerInternal, converterFieldName(info.converterIndex), "Lio/memris/spring/converter/TypeConverter;");
                 mv.visitVarInsn(Opcodes.ALOAD, objVar);
                 mv.visitMethodInsn(Opcodes.INVOKESTATIC,
                     Type.getInternalName(EntityMaterializerGenerator.class),
@@ -367,10 +369,27 @@ public final class EntityMaterializerGenerator {
         private void emitStorageAsObject(MethodVisitor mv, byte typeCode, String tableInternal, int tableVar, int colIdx,
                                          int objVar, int intVar, int longVar, int doubleVar, int floatVar) {
             switch (typeCode) {
-                case TypeCodes.TYPE_LONG -> {
+
+                case TypeCodes.TYPE_DOUBLE -> {
                     emitReadLong(mv, tableInternal, tableVar, colIdx, longVar);
                     mv.visitVarInsn(Opcodes.LLOAD, longVar);
-                    mv.visitMethodInsn(Opcodes.INVOKESTATIC, "java/lang/Long", "valueOf", "(J)Ljava/lang/Long;", false);
+                    mv.visitMethodInsn(Opcodes.INVOKESTATIC, "java/lang/Double", "longBitsToDouble", "(J)D", false);
+                    mv.visitMethodInsn(Opcodes.INVOKESTATIC, "java/lang/Double", "valueOf", "(D)Ljava/lang/Double;", false);
+                    mv.visitVarInsn(Opcodes.ASTORE, objVar);
+                }
+                case TypeCodes.TYPE_LONG,
+                    TypeCodes.TYPE_INSTANT,
+                    TypeCodes.TYPE_LOCAL_DATE,
+                    TypeCodes.TYPE_LOCAL_DATE_TIME,
+                    TypeCodes.TYPE_DATE -> {
+                    mv.visitVarInsn(Opcodes.ALOAD, tableVar);
+                    pushInt(mv, colIdx);
+                    mv.visitVarInsn(Opcodes.ILOAD, 2);
+                    mv.visitMethodInsn(Opcodes.INVOKESTATIC,
+                        Type.getInternalName(EntityMaterializerGenerator.class),
+                        "readBoxedLong",
+                        "(Lio/memris/storage/GeneratedTable;II)Ljava/lang/Object;",
+                        false);
                     mv.visitVarInsn(Opcodes.ASTORE, objVar);
                 }
                 case TypeCodes.TYPE_INT -> {
@@ -379,7 +398,9 @@ public final class EntityMaterializerGenerator {
                     mv.visitMethodInsn(Opcodes.INVOKESTATIC, "java/lang/Integer", "valueOf", "(I)Ljava/lang/Integer;", false);
                     mv.visitVarInsn(Opcodes.ASTORE, objVar);
                 }
-                case TypeCodes.TYPE_STRING -> {
+                case TypeCodes.TYPE_STRING,
+                    TypeCodes.TYPE_BIG_DECIMAL,
+                    TypeCodes.TYPE_BIG_INTEGER -> {
                     emitReadString(mv, tableInternal, tableVar, colIdx);
                     mv.visitVarInsn(Opcodes.ASTORE, objVar);
                 }
@@ -417,13 +438,7 @@ public final class EntityMaterializerGenerator {
                     mv.visitMethodInsn(Opcodes.INVOKESTATIC, "java/lang/Float", "valueOf", "(F)Ljava/lang/Float;", false);
                     mv.visitVarInsn(Opcodes.ASTORE, objVar);
                 }
-                case TypeCodes.TYPE_DOUBLE -> {
-                    emitReadLong(mv, tableInternal, tableVar, colIdx, longVar);
-                    mv.visitVarInsn(Opcodes.LLOAD, longVar);
-                    mv.visitMethodInsn(Opcodes.INVOKESTATIC, "java/lang/Double", "longBitsToDouble", "(J)D", false);
-                    mv.visitMethodInsn(Opcodes.INVOKESTATIC, "java/lang/Double", "valueOf", "(D)Ljava/lang/Double;", false);
-                    mv.visitVarInsn(Opcodes.ASTORE, objVar);
-                }
+
                 default -> throw new IllegalStateException("Unknown type code: " + typeCode);
             }
         }

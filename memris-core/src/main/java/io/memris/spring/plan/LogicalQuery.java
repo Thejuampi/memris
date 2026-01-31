@@ -24,6 +24,7 @@ public record LogicalQuery(
         Condition[] conditions,
         Join[] joins,
         OrderBy orderBy,
+        int limit,
         int parameterCount
 ) {
 
@@ -32,7 +33,7 @@ public record LogicalQuery(
             ReturnKind returnKind,
             Condition[] conditions,
             OrderBy orderBy) {
-        return new LogicalQuery(opCode, returnKind, conditions, new Join[0], orderBy, conditions.length);
+        return new LogicalQuery(opCode, returnKind, conditions, new Join[0], orderBy, 0, conditions.length);
     }
 
     public static LogicalQuery of(
@@ -42,7 +43,18 @@ public record LogicalQuery(
             Join[] joins,
             OrderBy orderBy,
             int parameterCount) {
-        return new LogicalQuery(opCode, returnKind, conditions, joins, orderBy, parameterCount);
+        return new LogicalQuery(opCode, returnKind, conditions, joins, orderBy, 0, parameterCount);
+    }
+
+    public static LogicalQuery of(
+            OpCode opCode,
+            ReturnKind returnKind,
+            Condition[] conditions,
+            Join[] joins,
+            OrderBy orderBy,
+            int limit,
+            int parameterCount) {
+        return new LogicalQuery(opCode, returnKind, conditions, joins, orderBy, limit, parameterCount);
     }
 
     /**
@@ -54,7 +66,7 @@ public record LogicalQuery(
             Condition[] conditions,
             OrderBy orderBy,
             int parameterCount) {
-        return new LogicalQuery(opCode, returnKind, conditions, new Join[0], orderBy, parameterCount);
+        return new LogicalQuery(opCode, returnKind, conditions, new Join[0], orderBy, 0, parameterCount);
     }
 
     /**
@@ -68,7 +80,7 @@ public record LogicalQuery(
      * @return a LogicalQuery for the CRUD operation
      */
     public static LogicalQuery crud(OpCode opCode, ReturnKind returnKind, int parameterCount) {
-        return new LogicalQuery(opCode, returnKind, new Condition[0], new Join[0], null, parameterCount);
+        return new LogicalQuery(opCode, returnKind, new Condition[0], new Join[0], null, 0, parameterCount);
     }
 
     /**
@@ -89,6 +101,7 @@ public record LogicalQuery(
         return parameterCount == that.parameterCount
                 && opCode == that.opCode
                 && returnKind == that.returnKind
+                && limit == that.limit
                 && java.util.Arrays.equals(conditions, that.conditions)
                 && java.util.Arrays.equals(joins, that.joins)
                 && java.util.Objects.equals(orderBy, that.orderBy);
@@ -96,7 +109,7 @@ public record LogicalQuery(
 
     @Override
     public int hashCode() {
-        int result = java.util.Objects.hash(opCode, returnKind, orderBy, parameterCount);
+        int result = java.util.Objects.hash(opCode, returnKind, orderBy, limit, parameterCount);
         result = 31 * result + java.util.Arrays.hashCode(conditions);
         result = 31 * result + java.util.Arrays.hashCode(joins);
         return result;
@@ -144,17 +157,22 @@ public record LogicalQuery(
             String propertyPath,
             Operator operator,
             int argumentIndex,
-            boolean ignoreCase
+            boolean ignoreCase,
+            Combinator nextCombinator
     ) {
         /** Special marker for the entity's ID property. Resolved at compile time. */
         public static final String ID_PROPERTY = "$ID";
 
         public static Condition of(String propertyPath, Operator operator, int argumentIndex) {
-            return new Condition(propertyPath, operator, argumentIndex, false);
+            return new Condition(propertyPath, operator, argumentIndex, false, Combinator.AND);
         }
 
         public static Condition of(String propertyPath, Operator operator, int argumentIndex, boolean ignoreCase) {
-            return new Condition(propertyPath, operator, argumentIndex, ignoreCase);
+            return new Condition(propertyPath, operator, argumentIndex, ignoreCase, Combinator.AND);
+        }
+
+        public static Condition of(String propertyPath, Operator operator, int argumentIndex, boolean ignoreCase, Combinator nextCombinator) {
+            return new Condition(propertyPath, operator, argumentIndex, ignoreCase, nextCombinator);
         }
 
         /**
@@ -164,13 +182,21 @@ public record LogicalQuery(
          * at compile time (via @Id or @javax.persistence.Id annotation).
          */
         public static Condition idCondition(int argumentIndex) {
-            return new Condition(ID_PROPERTY, Operator.EQ, argumentIndex, false);
+            return new Condition(ID_PROPERTY, Operator.EQ, argumentIndex, false, Combinator.AND);
         }
 
         /** Returns true if this condition is on the entity's ID property. */
         public boolean isIdCondition() {
             return ID_PROPERTY.equals(propertyPath);
         }
+    }
+
+    /**
+     * Combinator for joining conditions.
+     */
+    public enum Combinator {
+        AND,
+        OR
     }
 
     /**

@@ -64,8 +64,8 @@ This document provides a complete query operator reference for Memris.
 | Modifier | JPA Pattern | Status |
 |----------|-------------|--------|
 | DISTINCT | `findDistinctByXxx` | ⚠️ |
-| ORDER BY | `findByXxxOrderByYxxAsc`<br>`findByXxxOrderByYyyDesc` | ⚠️ |
-| LIMIT/TOP/FIRST | `findFirstByXxx`<br>`findTopByXxx`<br>`findTop10ByXxx` | ⚠️ |
+| ORDER BY | `findByXxxOrderByYxxAsc`<br>`findByXxxOrderByYyyDesc` | ✅ |
+| LIMIT/TOP/FIRST | `findFirstByXxx`<br>`findTopByXxx`<br>`findTop10ByXxx` | ✅ |
 
 ### Return Types
 | Return Type | Pattern | Status |
@@ -74,6 +74,19 @@ This document provides a complete query operator reference for Memris.
 | Optional\<T\> | `findById` | ✅ |
 | long | `countByXxx` | ✅ |
 | boolean | `existsByXxx` | ✅ |
+
+## Field Type Support
+
+**Primitive + String types:**
+- `int`, `long`, `boolean`, `byte`, `short`, `float`, `double`, `char`, `String`
+
+**Common Java types:**
+- `Instant`, `LocalDate`, `LocalDateTime`, `java.util.Date`
+- `BigDecimal`, `BigInteger`
+
+**Operator notes:**
+- Time types support EQ/NE/GT/GTE/LT/LTE/BETWEEN/IN/NOT_IN
+- BigDecimal/BigInteger support EQ/NE/IN/NOT_IN only
 
 ## Query Method Naming Quick Reference
 
@@ -153,23 +166,11 @@ List<User> youngOrActive = new ArrayList<>(result);
 
 ### Sorting (ORDER BY Pattern)
 
-**Goal:** Find adults sorted by name descending
-
-**Workaround:** Retrieve all + sort in memory
-```java
-List<User> adults = repo.findByAgeGreaterThan(18);
-adults.sort((a, b) -> b.getLastname().compareTo(a.getLastname()));
-```
+Sorting is supported via `OrderBy` in method names.
 
 ### Limiting (TOP/FIRST Pattern)
 
-**Goal:** Find top 10 active users
-
-**Workaround:** Retrieve all + sublist
-```java
-List<User> active = repo.findByActiveTrue();
-List<User> top10 = active.size() > 10 ? active.subList(0, 10) : active;
-```
+Limiting is supported via `Top`/`First` prefixes (with optional numeric limit).
 
 ### Distinct
 

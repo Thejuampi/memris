@@ -38,6 +38,16 @@ public final class RangeIndex<K extends Comparable<K>> {
         });
     }
 
+    public void remove(K key, RowId rowId) {
+        if (key == null || rowId == null) {
+            return;
+        }
+        index.computeIfPresent(key, (ignored, existing) -> {
+            existing.remove(rowId);
+            return existing.size() == 0 ? null : existing;
+        });
+    }
+
     public RowIdSet lookup(K key) {
         if (key == null) {
             return RowIdSets.empty();
@@ -83,6 +93,10 @@ public final class RangeIndex<K extends Comparable<K>> {
 
     public int size() {
         return index.size();
+    }
+
+    public void clear() {
+        index.clear();
     }
 
     private RowIdSet collect(NavigableMap<K, MutableRowIdSet> map) {

@@ -5,6 +5,12 @@ import io.memris.storage.Selection;
 import io.memris.spring.plan.CompiledQuery;
 import io.memris.spring.plan.LogicalQuery;
 
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
+import java.util.Date;
+
 /**
  * Hot-path query execution kernel using type handlers for extensibility.
  * 
@@ -121,7 +127,25 @@ public final class HeapRuntimeKernel {
                 int max = ((Number) maxObj).intValue();
                 yield createSelection(table, table.scanBetweenInt(columnIndex, min, max));
             }
+            case io.memris.spring.TypeCodes.TYPE_INSTANT,
+                io.memris.spring.TypeCodes.TYPE_LOCAL_DATE,
+                io.memris.spring.TypeCodes.TYPE_LOCAL_DATE_TIME,
+                io.memris.spring.TypeCodes.TYPE_DATE -> {
+                long min = convertToEpochLong(typeCode, minObj);
+                long max = convertToEpochLong(typeCode, maxObj);
+                yield createSelection(table, table.scanBetweenLong(columnIndex, min, max));
+            }
             default -> throw new UnsupportedOperationException("BETWEEN not supported for type code: " + typeCode);
+        };
+    }
+
+    private static long convertToEpochLong(byte typeCode, Object value) {
+        return switch (typeCode) {
+            case io.memris.spring.TypeCodes.TYPE_INSTANT -> ((Instant) value).toEpochMilli();
+            case io.memris.spring.TypeCodes.TYPE_LOCAL_DATE -> ((LocalDate) value).toEpochDay();
+            case io.memris.spring.TypeCodes.TYPE_LOCAL_DATE_TIME -> ((LocalDateTime) value).toInstant(ZoneOffset.UTC).toEpochMilli();
+            case io.memris.spring.TypeCodes.TYPE_DATE -> ((Date) value).getTime();
+            default -> ((Number) value).longValue();
         };
     }
 

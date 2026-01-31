@@ -171,12 +171,15 @@ public final class RepositoryEmitter {
                 io.memris.spring.runtime.JoinExecutor executor = new io.memris.spring.runtime.JoinExecutorImpl(
                     join.sourceColumnIndex(),
                     join.targetColumnIndex(),
+                    join.targetColumnIsId(),
                     join.fkTypeCode(),
                     join.joinType()
                 );
                 java.lang.invoke.MethodHandle setter = metadata.fieldSetters().get(join.relationshipFieldName());
                 io.memris.spring.runtime.JoinMaterializer materializer = new io.memris.spring.runtime.JoinMaterializerImpl(
                     join.sourceColumnIndex(),
+                    join.targetColumnIndex(),
+                    join.targetColumnIsId(),
                     join.fkTypeCode(),
                     setter
                 );

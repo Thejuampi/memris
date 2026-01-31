@@ -151,6 +151,12 @@ public final class TableGenerator {
             case io.memris.spring.TypeCodes.TYPE_BYTE -> PageColumnInt.class;
             case io.memris.spring.TypeCodes.TYPE_SHORT -> PageColumnInt.class;
             case io.memris.spring.TypeCodes.TYPE_CHAR -> PageColumnInt.class;
+            case io.memris.spring.TypeCodes.TYPE_INSTANT -> PageColumnLong.class;
+            case io.memris.spring.TypeCodes.TYPE_LOCAL_DATE -> PageColumnLong.class;
+            case io.memris.spring.TypeCodes.TYPE_LOCAL_DATE_TIME -> PageColumnLong.class;
+            case io.memris.spring.TypeCodes.TYPE_DATE -> PageColumnLong.class;
+            case io.memris.spring.TypeCodes.TYPE_BIG_DECIMAL -> PageColumnString.class;
+            case io.memris.spring.TypeCodes.TYPE_BIG_INTEGER -> PageColumnString.class;
             default -> throw new IllegalArgumentException("Unsupported type code: " + typeCode);
         };
     }

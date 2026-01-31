@@ -123,7 +123,6 @@ public final class MemrisArena implements AutoCloseable {
      * @param <T> the entity type
      * @return the generated table
      */
-    @SuppressWarnings("unchecked")
     public <T> io.memris.storage.GeneratedTable getOrCreateTable(Class<T> entityClass) {
         return tables.computeIfAbsent(entityClass, ec -> 
             factory.buildTableForEntity(ec, this)

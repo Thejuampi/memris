@@ -200,11 +200,15 @@ public final class QueryPlanner {
         boolean lastTokenWasOperator;
         boolean hasPropertyAfterBy;
 
+        // Combinator for the next condition (AND/OR)
+        LogicalQuery.Combinator nextCombinator;
+
         // Argument index for parameter binding
         int argIndex;
 
         ParseState() {
             this.argIndex = 0;
+            this.nextCombinator = LogicalQuery.Combinator.AND; // default
         }
     }
 
@@ -239,9 +243,15 @@ public final class QueryPlanner {
         }
 
         // Otherwise: derived query parsing
+        LimitParseResult limitParse = parseLimit(methodName);
+        if (limitParse.limit() > 0 && !isFindPrefix(extractPrefix(methodName))) {
+            throw new IllegalArgumentException("Top/First is only supported for find/read/query/get methods: " + methodName);
+        }
+        String parseName = limitParse.normalizedName();
+
         // Tokenize using context-aware lexer
-        List<QueryMethodToken> tokens = QueryMethodLexer.tokenize(entityClass, methodName);
-        LogicalQuery.ReturnKind returnKind = determineReturnKind(methodName, returnType, paramTypes.length);
+        List<QueryMethodToken> tokens = QueryMethodLexer.tokenize(entityClass, parseName);
+        LogicalQuery.ReturnKind returnKind = determineReturnKind(parseName, returnType, paramTypes.length);
         List<LogicalQuery.Condition> conditions = new ArrayList<>();
         LogicalQuery.OrderBy orderBy = null;
 
@@ -252,7 +262,7 @@ public final class QueryPlanner {
             switch (token.type()) {
                 case PROPERTY_PATH -> handlePropertyToken(token, state, methodName, conditions);
                 case OPERATOR -> handleOperatorToken(token, state, methodName, conditions);
-                case AND, OR -> handleCombinatorToken(state, methodName, conditions);
+                case AND, OR -> handleCombinatorToken(token.type(), state, methodName, conditions);
                 case ASC -> state.orderByDirection = true;
                 case DESC -> state.orderByDirection = false;
                 case FIND_BY, COUNT_BY, EXISTS_BY, DELETE_BY, DELETE, DELETE_ALL -> {
@@ -276,7 +286,7 @@ public final class QueryPlanner {
 
         // Finalize last condition if pending
         if (state.pendingProperty != null && !state.inOrderBy) {
-            state.argIndex = finalizeCondition(state.pendingProperty, state.pendingOperatorValue, state.pendingIgnoreCase, state.argIndex, conditions);
+            state.argIndex = finalizeCondition(state.pendingProperty, state.pendingOperatorValue, state.pendingIgnoreCase, state.argIndex, conditions, state.nextCombinator, state);
         }
 
         // Finalize OrderBy
@@ -289,11 +299,13 @@ public final class QueryPlanner {
         }
 
         // Determine OpCode for derived queries based on method prefix
-        OpCode opCode = determineOpCodeForDerived(methodName, returnKind);
+        OpCode opCode = determineOpCodeForDerived(parseName, returnKind);
 
         return LogicalQuery.of(opCode, returnKind,
                                conditions.toArray(new LogicalQuery.Condition[0]),
+                               new LogicalQuery.Join[0],
                                orderBy,
+                               limitParse.limit(),
                                state.argIndex);
     }
 
@@ -327,12 +339,19 @@ public final class QueryPlanner {
      */
     private static int finalizeCondition(String propertyPath, String operatorValue,
                                        boolean ignoreCase, int argIndex,
-                                       List<LogicalQuery.Condition> conditions) {
+                                       List<LogicalQuery.Condition> conditions,
+                                       LogicalQuery.Combinator combinator,
+                                       ParseState state) {
         LogicalQuery.Operator operator = (operatorValue == null)
                 ? LogicalQuery.Operator.EQ
                 : mapToOperator(operatorValue, ignoreCase);
 
-        conditions.add(LogicalQuery.Condition.of(propertyPath, operator, argIndex, ignoreCase));
+        conditions.add(LogicalQuery.Condition.of(propertyPath, operator, argIndex, ignoreCase, combinator));
+
+        // Reset combinator to default (AND) after using it - each combinator only applies once
+        if (state != null) {
+            state.nextCombinator = LogicalQuery.Combinator.AND;
+        }
 
         // Return the next argIndex based on how many parameters this operator consumes
         return switch (operator) {
@@ -352,7 +371,7 @@ public final class QueryPlanner {
             state.pendingProperty = token.value();
         } else if (state.pendingProperty != null) {
             validatePropertyAfterOperator(state.pendingOperatorValue, methodName, token.value());
-            state.argIndex = finalizeCondition(state.pendingProperty, state.pendingOperatorValue, state.pendingIgnoreCase, state.argIndex, conditions);
+            state.argIndex = finalizeCondition(state.pendingProperty, state.pendingOperatorValue, state.pendingIgnoreCase, state.argIndex, conditions, state.nextCombinator, state);
             state.pendingProperty = token.value();
             state.pendingOperatorValue = null;
             state.pendingIgnoreCase = false;
@@ -372,7 +391,7 @@ public final class QueryPlanner {
         if (value.equals("OrderBy")) {
             state.inOrderBy = true;
             if (state.pendingProperty != null) {
-                state.argIndex = finalizeCondition(state.pendingProperty, state.pendingOperatorValue, state.pendingIgnoreCase, state.argIndex, conditions);
+                state.argIndex = finalizeCondition(state.pendingProperty, state.pendingOperatorValue, state.pendingIgnoreCase, state.argIndex, conditions, state.nextCombinator, state);
                 state.pendingProperty = null;
                 state.pendingOperatorValue = null;
                 state.pendingIgnoreCase = false;
@@ -390,11 +409,16 @@ public final class QueryPlanner {
     /**
      * Handle an AND or OR combinator token.
      */
-    private static void handleCombinatorToken(ParseState state, String methodName,
+    private static void handleCombinatorToken(QueryMethodTokenType tokenType, ParseState state, String methodName,
                                                List<LogicalQuery.Condition> conditions) {
         validateNoConsecutiveCombinators(state.lastTokenWasCombinator, methodName);
+        // Set combinator for the next condition
+        state.nextCombinator = (tokenType == QueryMethodTokenType.AND) 
+            ? LogicalQuery.Combinator.AND 
+            : LogicalQuery.Combinator.OR;
         if (state.pendingProperty != null) {
-            state.argIndex = finalizeCondition(state.pendingProperty, state.pendingOperatorValue, state.pendingIgnoreCase, state.argIndex, conditions);
+            // Finalize current condition with the combinator that follows it
+            state.argIndex = finalizeCondition(state.pendingProperty, state.pendingOperatorValue, state.pendingIgnoreCase, state.argIndex, conditions, state.nextCombinator, state);
             state.pendingProperty = null;
             state.pendingOperatorValue = null;
             state.pendingIgnoreCase = false;
@@ -514,6 +538,43 @@ public final class QueryPlanner {
         }
         // no prefix match -> treat entire name as "prefix"
         return methodName;
+    }
+
+    private static boolean isFindPrefix(String prefix) {
+        return switch (prefix.toLowerCase()) {
+            case "find", "read", "query", "get" -> true;
+            default -> false;
+        };
+    }
+
+    private record LimitParseResult(int limit, String normalizedName) {
+    }
+
+    private static LimitParseResult parseLimit(String methodName) {
+        String prefix = extractPrefix(methodName);
+        String remaining = methodName.substring(prefix.length());
+
+        if (remaining.startsWith("Top")) {
+            return parseLimitAfterPrefix(methodName, prefix, remaining, 3);
+        }
+        if (remaining.startsWith("First")) {
+            return parseLimitAfterPrefix(methodName, prefix, remaining, 5);
+        }
+        return new LimitParseResult(0, methodName);
+    }
+
+    private static LimitParseResult parseLimitAfterPrefix(String methodName, String prefix, String remaining, int keywordLength) {
+        int idx = keywordLength;
+        int startDigits = idx;
+        while (idx < remaining.length() && Character.isDigit(remaining.charAt(idx))) {
+            idx++;
+        }
+        int limit = 1;
+        if (idx > startDigits) {
+            limit = Integer.parseInt(remaining.substring(startDigits, idx));
+        }
+        String normalized = prefix + remaining.substring(idx);
+        return new LimitParseResult(limit, normalized);
     }
 
     /**

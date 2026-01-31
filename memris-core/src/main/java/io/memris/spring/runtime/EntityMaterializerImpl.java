@@ -90,6 +90,12 @@ public class EntityMaterializerImpl<T> implements EntityMaterializer<T> {
                     case TypeCodes.TYPE_FLOAT -> Float.intBitsToFloat(table.readInt(colIdx, rowIndex));
                     case TypeCodes.TYPE_DOUBLE -> Double.longBitsToDouble(table.readLong(colIdx, rowIndex));
                     case TypeCodes.TYPE_CHAR -> (char) table.readInt(colIdx, rowIndex);
+                    case TypeCodes.TYPE_INSTANT -> table.readLong(colIdx, rowIndex);
+                    case TypeCodes.TYPE_LOCAL_DATE -> table.readLong(colIdx, rowIndex);
+                    case TypeCodes.TYPE_LOCAL_DATE_TIME -> table.readLong(colIdx, rowIndex);
+                    case TypeCodes.TYPE_DATE -> table.readLong(colIdx, rowIndex);
+                    case TypeCodes.TYPE_BIG_DECIMAL -> table.readString(colIdx, rowIndex);
+                    case TypeCodes.TYPE_BIG_INTEGER -> table.readString(colIdx, rowIndex);
                     default -> throw new IllegalStateException("Unknown type code: " + typeCode);
                 };
 

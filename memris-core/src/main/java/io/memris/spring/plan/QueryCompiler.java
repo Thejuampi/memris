@@ -27,6 +27,7 @@ public class QueryCompiler {
         java.util.List<CompiledQuery.CompiledCondition> baseConditions = new java.util.ArrayList<>();
         java.util.List<CompiledQuery.CompiledJoinPredicate> joinPredicates = new java.util.ArrayList<>();
         java.util.Map<String, CompiledQuery.CompiledJoin> joinsByPath = new java.util.LinkedHashMap<>();
+        CompiledQuery.CompiledOrderBy compiledOrderBy = null;
 
         for (LogicalQuery.Condition condition : conditions) {
             if (LogicalQuery.Condition.ID_PROPERTY.equals(condition.propertyPath())) {
@@ -35,7 +36,8 @@ public class QueryCompiler {
                     columnIndex,
                     condition.operator(),
                     condition.argumentIndex(),
-                    condition.ignoreCase()
+                    condition.ignoreCase(),
+                    condition.nextCombinator()
                 ));
                 continue;
             }
@@ -47,7 +49,8 @@ public class QueryCompiler {
                     columnIndex,
                     condition.operator(),
                     condition.argumentIndex(),
-                    condition.ignoreCase()
+                    condition.ignoreCase(),
+                    condition.nextCombinator()
                 ));
                 continue;
             }
@@ -59,9 +62,16 @@ public class QueryCompiler {
                     columnIndex,
                     condition.operator(),
                     condition.argumentIndex(),
-                    condition.ignoreCase()
+                    condition.ignoreCase(),
+                    condition.nextCombinator()
                 ));
             }
+        }
+
+        LogicalQuery.OrderBy orderBy = logicalQuery.orderBy();
+        if (orderBy != null) {
+            int columnIndex = resolveColumnIndex(orderBy.propertyPath(), metadata);
+            compiledOrderBy = new CompiledQuery.CompiledOrderBy(columnIndex, orderBy.ascending());
         }
 
         return CompiledQuery.of(
@@ -69,6 +79,8 @@ public class QueryCompiler {
             logicalQuery.returnKind(),
             baseConditions.toArray(new CompiledQuery.CompiledCondition[0]),
             attachJoinPredicates(joinsByPath, joinPredicates),
+            compiledOrderBy,
+            logicalQuery.limit(),
             logicalQuery.arity()
         );
     }
@@ -118,6 +130,10 @@ public class QueryCompiler {
             int targetColumnIndex = targetMetadata.resolveColumnPosition(
                 relationship.referencedColumnName() != null ? relationship.referencedColumnName() : targetMetadata.idColumnName()
             );
+            String referencedColumn = relationship.referencedColumnName() != null
+                ? relationship.referencedColumnName()
+                : targetMetadata.idColumnName();
+            boolean targetColumnIsId = referencedColumn.equals(targetMetadata.idColumnName());
 
             byte fkTypeCode = relationship.typeCode();
             if (fkTypeCode != io.memris.spring.TypeCodes.TYPE_LONG
@@ -133,6 +149,7 @@ public class QueryCompiler {
                     relationship.targetEntity(),
                     sourceColumnIndex,
                     targetColumnIndex,
+                    targetColumnIsId,
                     fkTypeCode,
                     LogicalQuery.Join.JoinType.INNER,
                     segment,
@@ -200,6 +217,7 @@ public class QueryCompiler {
                 join.targetEntity(),
                 join.sourceColumnIndex(),
                 join.targetColumnIndex(),
+                join.targetColumnIsId(),
                 join.fkTypeCode(),
                 join.joinType(),
                 join.relationshipFieldName(),

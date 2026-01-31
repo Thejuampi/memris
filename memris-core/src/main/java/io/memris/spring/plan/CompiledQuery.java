@@ -25,6 +25,10 @@ public record CompiledQuery(
         CompiledCondition[] conditions,
         /** Pre-compiled joins */
         CompiledJoin[] joins,
+        /** Pre-compiled order by (optional) */
+        CompiledOrderBy orderBy,
+        /** Limit for Top/First queries (0 = none) */
+        int limit,
         /** Number of method parameters */
         int arity
 ) {
@@ -41,7 +45,7 @@ public record CompiledQuery(
             OpCode opCode,
             LogicalQuery.ReturnKind returnKind,
             CompiledCondition[] conditions) {
-        return new CompiledQuery(opCode, returnKind, conditions, new CompiledJoin[0], conditions.length);
+        return new CompiledQuery(opCode, returnKind, conditions, new CompiledJoin[0], null, 0, conditions.length);
     }
 
     public static CompiledQuery of(
@@ -49,12 +53,23 @@ public record CompiledQuery(
             LogicalQuery.ReturnKind returnKind,
             CompiledCondition[] conditions,
             CompiledJoin[] joins,
+            CompiledOrderBy orderBy,
+            int limit,
             int arity) {
-        return new CompiledQuery(opCode, returnKind, conditions, joins, arity);
+        return new CompiledQuery(opCode, returnKind, conditions, joins, orderBy, limit, arity);
     }
 
     public CompiledQuery withJoins(CompiledJoin[] joins) {
-        return new CompiledQuery(opCode, returnKind, conditions, joins, arity);
+        return new CompiledQuery(opCode, returnKind, conditions, joins, orderBy, limit, arity);
+    }
+
+    /**
+     * Pre-compiled order by clause.
+     */
+    public record CompiledOrderBy(
+            int columnIndex,
+            boolean ascending
+    ) {
     }
 
     /**
@@ -68,20 +83,26 @@ public record CompiledQuery(
         private final Operator operator;     // from LogicalQuery
         private final int argumentIndex;     // which method parameter
         private final boolean ignoreCase;
+        private final LogicalQuery.Combinator nextCombinator; // how to combine with next condition
 
-        private CompiledCondition(int columnIndex, Operator operator, int argumentIndex, boolean ignoreCase) {
+        private CompiledCondition(int columnIndex, Operator operator, int argumentIndex, boolean ignoreCase, LogicalQuery.Combinator nextCombinator) {
             this.columnIndex = columnIndex;
             this.operator = operator;
             this.argumentIndex = argumentIndex;
             this.ignoreCase = ignoreCase;
+            this.nextCombinator = nextCombinator;
         }
 
         public static CompiledCondition of(int columnIndex, Operator operator, int argumentIndex) {
-            return new CompiledCondition(columnIndex, operator, argumentIndex, false);
+            return new CompiledCondition(columnIndex, operator, argumentIndex, false, LogicalQuery.Combinator.AND);
         }
 
         public static CompiledCondition of(int columnIndex, Operator operator, int argumentIndex, boolean ignoreCase) {
-            return new CompiledCondition(columnIndex, operator, argumentIndex, ignoreCase);
+            return new CompiledCondition(columnIndex, operator, argumentIndex, ignoreCase, LogicalQuery.Combinator.AND);
+        }
+
+        public static CompiledCondition of(int columnIndex, Operator operator, int argumentIndex, boolean ignoreCase, LogicalQuery.Combinator nextCombinator) {
+            return new CompiledCondition(columnIndex, operator, argumentIndex, ignoreCase, nextCombinator);
         }
 
         public int columnIndex() {
@@ -99,6 +120,10 @@ public record CompiledQuery(
         public boolean ignoreCase() {
             return ignoreCase;
         }
+
+        public LogicalQuery.Combinator nextCombinator() {
+            return nextCombinator;
+        }
     }
 
     /**
@@ -110,6 +135,7 @@ public record CompiledQuery(
             Class<?> targetEntity,
             int sourceColumnIndex,
             int targetColumnIndex,
+            boolean targetColumnIsId,
             byte fkTypeCode,
             LogicalQuery.Join.JoinType joinType,
             String relationshipFieldName,
@@ -131,8 +157,8 @@ public record CompiledQuery(
                                         io.memris.spring.runtime.EntityMaterializer<?> targetMaterializer,
                                         io.memris.spring.runtime.JoinExecutor executor,
                                         io.memris.spring.runtime.JoinMaterializer materializer) {
-            return new CompiledJoin(joinPath, sourceEntity, targetEntity, sourceColumnIndex, targetColumnIndex, fkTypeCode,
-                    joinType, relationshipFieldName, predicates, targetTable, targetKernel, targetMaterializer, executor, materializer);
+            return new CompiledJoin(joinPath, sourceEntity, targetEntity, sourceColumnIndex, targetColumnIndex, targetColumnIsId,
+                    fkTypeCode, joinType, relationshipFieldName, predicates, targetTable, targetKernel, targetMaterializer, executor, materializer);
         }
     }
 

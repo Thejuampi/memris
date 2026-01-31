@@ -48,24 +48,21 @@ public interface Selection {
     /**
      * Create union of two selections.
      * <p>
-     * Naive implementation - concatenates arrays.
-     * TODO: Implement deduplication if needed.
+     * Returns a sorted, deduplicated selection.
      */
     Selection union(Selection other);
 
     /**
      * Create intersection of two selections.
      * <p>
-     * O(n*m) nested loop - acceptable for small selections.
-     * TODO: Implement optimized merge for large selections.
+     * Uses sorted merge for O(n+m).
      */
     Selection intersect(Selection other);
 
     /**
      * Create difference of two selections (this - other).
      * <p>
-     * Returns elements in this selection that are not in other.
-     * O(n*m) nested loop.
+     * Returns elements in this selection that are not in other, using O(n+m) merge.
      */
     Selection subtract(Selection other);
 

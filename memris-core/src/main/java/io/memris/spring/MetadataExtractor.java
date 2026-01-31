@@ -2,6 +2,8 @@ package io.memris.spring;
 
 import io.memris.spring.EntityMetadata.FieldMapping;
 import io.memris.spring.EntityMetadata.FieldMapping.RelationshipType;
+import io.memris.spring.converter.TypeConverter;
+import io.memris.spring.converter.TypeConverterRegistry;
 import jakarta.persistence.Id;
 
 import java.lang.invoke.MethodHandle;
@@ -38,6 +40,7 @@ public final class MetadataExtractor {
             
             // Build field mappings with relationship support
             List<FieldMapping> fields = new ArrayList<>();
+            Map<String, TypeConverter<?, ?>> converters = new HashMap<>();
             Set<String> foreignKeyColumns = new HashSet<>();
             int colPos = 0;
             
@@ -48,25 +51,51 @@ public final class MetadataExtractor {
                 
                 // Check for relationship annotations
                 ManyToOne manyToOne = field.getAnnotation(ManyToOne.class);
+                OneToOne oneToOne = field.getAnnotation(OneToOne.class);
                 JoinColumn joinColumn = field.getAnnotation(JoinColumn.class);
                 jakarta.persistence.ManyToOne jpaManyToOne = field.getAnnotation(jakarta.persistence.ManyToOne.class);
+                jakarta.persistence.OneToOne jpaOneToOne = field.getAnnotation(jakarta.persistence.OneToOne.class);
                 jakarta.persistence.JoinColumn jpaJoinColumn = field.getAnnotation(jakarta.persistence.JoinColumn.class);
-                
+
                 if (manyToOne != null || jpaManyToOne != null) {
-                    // This is a relationship field
                     FieldMapping relationshipMapping = createRelationshipMapping(
-                        field, manyToOne, joinColumn, jpaManyToOne, jpaJoinColumn, colPos, foreignKeyColumns
+                        field,
+                        manyToOne,
+                        joinColumn,
+                        jpaManyToOne,
+                        jpaJoinColumn,
+                        colPos,
+                        foreignKeyColumns,
+                        RelationshipType.MANY_TO_ONE
+                    );
+                    fields.add(relationshipMapping);
+                    colPos++;
+                } else if (oneToOne != null || jpaOneToOne != null) {
+                    FieldMapping relationshipMapping = createRelationshipMapping(
+                        field,
+                        null,
+                        joinColumn,
+                        null,
+                        jpaJoinColumn,
+                        colPos,
+                        foreignKeyColumns,
+                        RelationshipType.ONE_TO_ONE
                     );
                     fields.add(relationshipMapping);
                     colPos++;
                 } else {
                     // Regular field
-                    Byte typeCode = TypeCodes.forClassOrDefault(field.getType(), TypeCodes.TYPE_LONG);
+                    TypeConverter<?, ?> converter = TypeConverterRegistry.getInstance().getConverter(field.getType());
+                    Class<?> storageType = converter != null ? converter.getStorageType() : field.getType();
+                    byte typeCode = resolveTypeCode(field.getType(), storageType);
+                    if (converter != null) {
+                        converters.put(field.getName(), converter);
+                    }
                     fields.add(new FieldMapping(
                         field.getName(),
                         field.getName(),
                         field.getType(),
-                        field.getType(),
+                        storageType,
                         colPos++,
                         typeCode
                     ));
@@ -105,7 +134,7 @@ public final class MetadataExtractor {
                 idColumnName,
                 fields,
                 foreignKeyColumns,
-                Map.of(),
+                Map.copyOf(converters),
                 null, null, null,
                 fieldGetters, fieldSetters,
                 entityClass.isRecord()
@@ -125,7 +154,8 @@ public final class MetadataExtractor {
         jakarta.persistence.ManyToOne jpaManyToOne,
         jakarta.persistence.JoinColumn jpaJoinColumn,
         int colPos,
-        Set<String> foreignKeyColumns
+        Set<String> foreignKeyColumns,
+        EntityMetadata.FieldMapping.RelationshipType relationshipType
     ) {
         // Determine target entity class
         Class<?> targetEntity = null;
@@ -169,7 +199,7 @@ public final class MetadataExtractor {
             colPos,
             typeCode,
             true,                      // isRelationship
-            RelationshipType.MANY_TO_ONE,
+            relationshipType,
             targetEntity,
             null,                      // joinTable (not used for @ManyToOne)
             referencedColumnName,
@@ -198,12 +228,18 @@ public final class MetadataExtractor {
     }
 
     private static Class<?> resolveStorageType(Class<?> fieldType) {
-        io.memris.spring.converter.TypeConverter<?, ?> converter = io.memris.spring.converter.TypeConverterRegistry
-            .getInstance()
-            .getConverter(fieldType);
+        TypeConverter<?, ?> converter = TypeConverterRegistry.getInstance().getConverter(fieldType);
         if (converter != null) {
             return converter.getStorageType();
         }
         return fieldType;
+    }
+
+    private static byte resolveTypeCode(Class<?> javaType, Class<?> storageType) {
+        try {
+            return TypeCodes.forClass(javaType);
+        } catch (IllegalArgumentException ex) {
+            return TypeCodes.forClassOrDefault(storageType, TypeCodes.TYPE_LONG);
+        }
     }
 }

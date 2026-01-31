@@ -30,6 +30,23 @@ public final class RowIdArraySet implements MutableRowIdSet {
     }
 
     @Override
+    public void remove(RowId rowId) {
+        if (rowId == null) {
+            return;
+        }
+        long target = rowId.value();
+        for (int i = 0; i < size; i++) {
+            if (values[i] == target) {
+                int last = size - 1;
+                values[i] = values[last];
+                values[last] = 0L;
+                size--;
+                return;
+            }
+        }
+    }
+
+    @Override
     public int size() {
         return size;
     }

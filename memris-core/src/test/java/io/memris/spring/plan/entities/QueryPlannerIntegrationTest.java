@@ -255,7 +255,7 @@ class QueryPlannerIntegrationTest {
         LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class, "id");
 
         assertThat(actual).isEqualTo(expectedFind(
-                conds(cond("name", Operator.EQ, 0), cond("age", Operator.EQ, 1)),
+                conds(cond("name", Operator.EQ, 0, LogicalQuery.Combinator.OR), cond("age", Operator.EQ, 1)),
                 2
         ));
     }
@@ -277,7 +277,7 @@ class QueryPlannerIntegrationTest {
         LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class, "id");
 
         assertThat(actual).isEqualTo(expectedFind(
-                conds(cond("name", Operator.EQ, 0), cond("age", Operator.LT, 1)),
+                conds(cond("name", Operator.EQ, 0, LogicalQuery.Combinator.OR), cond("age", Operator.LT, 1)),
                 2
         ));
     }
@@ -290,6 +290,30 @@ class QueryPlannerIntegrationTest {
         LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class, "id");
 
         assertThat(actual).isEqualTo(expectedFind(cond("name", Operator.EQ, 0), OrderBy.desc("age")));
+    }
+
+    @Test
+    void parseWithTopPrefix_ExtractsLimit() throws Exception {
+        Method method = TestRepository.class.getMethod("findTop5ByName", String.class);
+        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class, "id");
+
+        assertThat(actual).isEqualTo(expectedFindWithLimit(
+                conds(cond("name", Operator.EQ, 0)),
+                1,
+                5
+        ));
+    }
+
+    @Test
+    void parseWithFirstPrefix_ExtractsLimit() throws Exception {
+        Method method = TestRepository.class.getMethod("findFirstByAge", int.class);
+        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class, "id");
+
+        assertThat(actual).isEqualTo(expectedFindWithLimit(
+                conds(cond("age", Operator.EQ, 0)),
+                1,
+                1
+        ));
     }
 
     // ========== COUNT PREFIX ==========
@@ -518,6 +542,10 @@ class QueryPlannerIntegrationTest {
         // Order by
         List<SimpleEntity> findByNameOrderByAgeDesc(String name);
 
+        // Limit modifiers
+        List<SimpleEntity> findTop5ByName(String name);
+        List<SimpleEntity> findFirstByAge(int age);
+
         // Count
         Long countByName(String name);
         Long count();
@@ -573,6 +601,18 @@ class QueryPlannerIntegrationTest {
                 ReturnKind.MANY_LIST,
                 conditions,
                 null,
+                paramCount
+        );
+    }
+
+    private static LogicalQuery expectedFindWithLimit(Condition[] conditions, int paramCount, int limit) {
+        return LogicalQuery.of(
+                OpCode.FIND,
+                ReturnKind.MANY_LIST,
+                conditions,
+                new LogicalQuery.Join[0],
+                null,
+                limit,
                 paramCount
         );
     }
@@ -686,5 +726,9 @@ class QueryPlannerIntegrationTest {
 
     private static Condition cond(String property, Operator op, int argIndex) {
         return Condition.of(property, op, argIndex);
+    }
+
+    private static Condition cond(String property, Operator op, int argIndex, LogicalQuery.Combinator combinator) {
+        return Condition.of(property, op, argIndex, false, combinator);
     }
 }

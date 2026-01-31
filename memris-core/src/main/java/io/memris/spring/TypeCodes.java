@@ -1,5 +1,12 @@
 package io.memris.spring;
 
+import java.math.BigDecimal;
+import java.math.BigInteger;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.Date;
+
 /**
  * Type code constants for zero-overhead type switching.
  * <p>
@@ -25,9 +32,15 @@ public final class TypeCodes {
     public static final byte TYPE_DOUBLE = 6;
     public static final byte TYPE_CHAR = 7;
     public static final byte TYPE_STRING = 8;
+    public static final byte TYPE_INSTANT = 9;
+    public static final byte TYPE_LOCAL_DATE = 10;
+    public static final byte TYPE_LOCAL_DATE_TIME = 11;
+    public static final byte TYPE_DATE = 12;
+    public static final byte TYPE_BIG_DECIMAL = 13;
+    public static final byte TYPE_BIG_INTEGER = 14;
     
     // Total count of type codes
-    public static final int TYPE_COUNT = 9;
+    public static final int TYPE_COUNT = 15;
     
     private TypeCodes() { }
     
@@ -55,6 +68,12 @@ public final class TypeCodes {
             case Class c when c == double.class || c == Double.class -> TYPE_DOUBLE;
             case Class c when c == char.class || c == Character.class -> TYPE_CHAR;
             case Class c when c == String.class -> TYPE_STRING;
+            case Class c when c == Instant.class -> TYPE_INSTANT;
+            case Class c when c == LocalDate.class -> TYPE_LOCAL_DATE;
+            case Class c when c == LocalDateTime.class -> TYPE_LOCAL_DATE_TIME;
+            case Class c when c == Date.class -> TYPE_DATE;
+            case Class c when c == BigDecimal.class -> TYPE_BIG_DECIMAL;
+            case Class c when c == BigInteger.class -> TYPE_BIG_INTEGER;
             default -> throw new IllegalArgumentException("Unsupported type: " + clazz);
         };
     }
@@ -80,6 +99,12 @@ public final class TypeCodes {
             case Class c when c == double.class || c == Double.class -> TYPE_DOUBLE;
             case Class c when c == char.class || c == Character.class -> TYPE_CHAR;
             case Class c when c == String.class -> TYPE_STRING;
+            case Class c when c == Instant.class -> TYPE_INSTANT;
+            case Class c when c == LocalDate.class -> TYPE_LOCAL_DATE;
+            case Class c when c == LocalDateTime.class -> TYPE_LOCAL_DATE_TIME;
+            case Class c when c == Date.class -> TYPE_DATE;
+            case Class c when c == BigDecimal.class -> TYPE_BIG_DECIMAL;
+            case Class c when c == BigInteger.class -> TYPE_BIG_INTEGER;
             default -> defaultValue;
         };
     }
@@ -102,6 +127,12 @@ public final class TypeCodes {
             case Class c when c == double.class || c == Double.class -> true;
             case Class c when c == char.class || c == Character.class -> true;
             case Class c when c == String.class -> true;
+            case Class c when c == Instant.class -> true;
+            case Class c when c == LocalDate.class -> true;
+            case Class c when c == LocalDateTime.class -> true;
+            case Class c when c == Date.class -> true;
+            case Class c when c == BigDecimal.class -> true;
+            case Class c when c == BigInteger.class -> true;
             default -> false;
         };
     }

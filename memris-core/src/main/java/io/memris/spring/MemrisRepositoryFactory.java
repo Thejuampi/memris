@@ -4,6 +4,7 @@ import io.memris.index.HashIndex;
 import io.memris.index.RangeIndex;
 import io.memris.kernel.Column;
 import io.memris.kernel.Predicate;
+import io.memris.kernel.RowId;
 import io.memris.kernel.RowIdSet;
 import io.memris.spring.converter.TypeConverter;
 import io.memris.spring.converter.TypeConverterRegistry;
@@ -18,7 +19,6 @@ import java.lang.reflect.Type;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicLong;
 
-@SuppressWarnings({"preview", "Since15"})
 public final class MemrisRepositoryFactory implements AutoCloseable {
 
     private final Map<String, IdGenerator<?>> customIdGenerators = new HashMap<>();
@@ -305,7 +305,7 @@ public final class MemrisRepositoryFactory implements AutoCloseable {
      * @param value The value to match
      * @return Array of matching row indices, or null if no index available
      */
-    int[] queryIndex(Class<?> entityClass, String fieldName, Predicate.Operator operator, Object value) {
+    public int[] queryIndex(Class<?> entityClass, String fieldName, Predicate.Operator operator, Object value) {
         Map<String, Object> entityIndexes = indexes.get(entityClass);
         if (entityIndexes == null) {
             return null;
@@ -320,14 +320,77 @@ public final class MemrisRepositoryFactory implements AutoCloseable {
         return switch (index) {
             case HashIndex hashIndex when value != null -> rowIdSetToIntArray(hashIndex.lookup(value));
             case RangeIndex rangeIndex when value instanceof Comparable comp -> switch (operator) {
+                case EQ -> rowIdSetToIntArray(rangeIndex.lookup(comp));
                 case GT -> rowIdSetToIntArray(rangeIndex.greaterThan(comp));
                 case GTE -> rowIdSetToIntArray(rangeIndex.greaterThanOrEqual(comp));
                 case LT -> rowIdSetToIntArray(rangeIndex.lessThan(comp));
                 case LTE -> rowIdSetToIntArray(rangeIndex.lessThanOrEqual(comp));
                 default -> null;
             };
+            case RangeIndex rangeIndex when operator == Predicate.Operator.BETWEEN && value instanceof Object[] range -> {
+                if (range.length < 2) {
+                    yield null;
+                }
+                Object lower = range[0];
+                Object upper = range[1];
+                if (lower instanceof Comparable lowerComp && upper instanceof Comparable upperComp) {
+                    yield rowIdSetToIntArray(rangeIndex.between(lowerComp, upperComp));
+                }
+                yield null;
+            }
             default -> null;
         };
+    }
+
+    public void addIndexEntry(Class<?> entityClass, String fieldName, Object value, int rowIndex) {
+        Object index = getIndex(entityClass, fieldName);
+        if (index == null || value == null) {
+            return;
+        }
+        RowId rowId = RowId.fromLong(rowIndex);
+        switch (index) {
+            case HashIndex hashIndex -> hashIndex.add(value, rowId);
+            case RangeIndex rangeIndex -> {
+                if (value instanceof Comparable comp) {
+                    rangeIndex.add(comp, rowId);
+                }
+            }
+            default -> {
+            }
+        }
+    }
+
+    public void removeIndexEntry(Class<?> entityClass, String fieldName, Object value, int rowIndex) {
+        Object index = getIndex(entityClass, fieldName);
+        if (index == null || value == null) {
+            return;
+        }
+        RowId rowId = RowId.fromLong(rowIndex);
+        switch (index) {
+            case HashIndex hashIndex -> hashIndex.remove(value, rowId);
+            case RangeIndex rangeIndex -> {
+                if (value instanceof Comparable comp) {
+                    rangeIndex.remove(comp, rowId);
+                }
+            }
+            default -> {
+            }
+        }
+    }
+
+    public void clearIndexes(Class<?> entityClass) {
+        Map<String, Object> entityIndexes = indexes.get(entityClass);
+        if (entityIndexes == null) {
+            return;
+        }
+        for (Object index : entityIndexes.values()) {
+            switch (index) {
+                case HashIndex hashIndex -> hashIndex.clear();
+                case RangeIndex rangeIndex -> rangeIndex.clear();
+                default -> {
+                }
+            }
+        }
     }
 
     private static int[] rowIdSetToIntArray(RowIdSet rowIdSet) {
@@ -557,12 +620,15 @@ public final class MemrisRepositoryFactory implements AutoCloseable {
                 io.memris.spring.runtime.JoinExecutor executor = new io.memris.spring.runtime.JoinExecutorImpl(
                     join.sourceColumnIndex(),
                     join.targetColumnIndex(),
+                    join.targetColumnIsId(),
                     join.fkTypeCode(),
                     join.joinType()
                 );
                 java.lang.invoke.MethodHandle setter = metadata.fieldSetters().get(join.relationshipFieldName());
                 io.memris.spring.runtime.JoinMaterializer materializer = new io.memris.spring.runtime.JoinMaterializerImpl(
                     join.sourceColumnIndex(),
+                    join.targetColumnIndex(),
+                    join.targetColumnIsId(),
                     join.fkTypeCode(),
                     setter
                 );

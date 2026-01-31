@@ -46,6 +46,16 @@ public final class HashIndex<K> {
         index.remove(key);
     }
 
+    public void remove(K key, RowId rowId) {
+        if (key == null || rowId == null) {
+            return;
+        }
+        index.computeIfPresent(key, (ignored, existing) -> {
+            existing.remove(rowId);
+            return existing.size() == 0 ? null : existing;
+        });
+    }
+
     /**
      * Clear all entries from the index (O(1) operation).
      * Used for deleteAll() to avoid iterating over all entities.
