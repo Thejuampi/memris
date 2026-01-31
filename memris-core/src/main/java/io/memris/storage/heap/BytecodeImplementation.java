@@ -10,9 +10,6 @@ public class BytecodeImplementation implements TableImplementationStrategy {
             DynamicType.Builder<AbstractTable> builder,
             List<ColumnFieldInfo> columnFields,
             Class<?> idIndexType) {
-        
-        // TODO: Implement methods using direct bytecode generation
-        // For now, return builder unchanged (methods will throw AbstractMethodError)
-        return builder;
+        return new MethodHandleImplementation().implementMethods(builder, columnFields, idIndexType);
     }
 }
