@@ -76,6 +76,8 @@ public class StringTypeHandler extends AbstractTypeHandler<String> {
     public Selection executeCondition(GeneratedTable table, int columnIndex,
                                       io.memris.spring.plan.LogicalQuery.Operator operator, String value, boolean ignoreCase) {
         return switch (operator) {
+            case LIKE -> executeLike(table, columnIndex, value, ignoreCase);
+            case NOT_LIKE -> executeNotLike(table, columnIndex, value, ignoreCase);
             case CONTAINING -> executeContaining(table, columnIndex, value, ignoreCase);
             case NOT_CONTAINING -> executeNotContaining(table, columnIndex, value, ignoreCase);
             default -> super.executeCondition(table, columnIndex, operator, value, ignoreCase);
@@ -100,7 +102,32 @@ public class StringTypeHandler extends AbstractTypeHandler<String> {
      * Not yet implemented.
      */
     public Selection executeLike(GeneratedTable table, int columnIndex, String pattern, boolean ignoreCase) {
-        throw new UnsupportedOperationException("LIKE operator not yet implemented for String");
+        if (pattern == null) {
+            return createSelection(table, new int[0]);
+        }
+        String effectivePattern = ignoreCase ? pattern.toLowerCase() : pattern;
+        int[] rows = table.scanAll();
+        int[] matches = new int[rows.length];
+        int count = 0;
+        for (int row : rows) {
+            String value = table.readString(columnIndex, row);
+            if (value == null) {
+                continue;
+            }
+            String candidate = ignoreCase ? value.toLowerCase() : value;
+            if (matchesLike(candidate, effectivePattern)) {
+                matches[count++] = row;
+            }
+        }
+        int[] trimmed = new int[count];
+        System.arraycopy(matches, 0, trimmed, 0, count);
+        return createSelection(table, trimmed);
+    }
+
+    public Selection executeNotLike(GeneratedTable table, int columnIndex, String pattern, boolean ignoreCase) {
+        int[] all = table.scanAll();
+        Selection like = executeLike(table, columnIndex, pattern, ignoreCase);
+        return subtractSelections(table, all, like);
     }
     
     /**
@@ -170,5 +197,39 @@ public class StringTypeHandler extends AbstractTypeHandler<String> {
      */
     public Selection executeEndingWith(GeneratedTable table, int columnIndex, String suffix, boolean ignoreCase) {
         throw new UnsupportedOperationException("ENDING_WITH operator not yet implemented for String");
+    }
+
+    private static boolean matchesLike(String value, String pattern) {
+        int v = 0;
+        int p = 0;
+        int star = -1;
+        int match = 0;
+        while (v < value.length()) {
+            if (p < pattern.length()) {
+                char pc = pattern.charAt(p);
+                if (pc == '_' || pc == value.charAt(v)) {
+                    p++;
+                    v++;
+                    continue;
+                }
+                if (pc == '%') {
+                    star = p;
+                    match = v;
+                    p++;
+                    continue;
+                }
+            }
+            if (star != -1) {
+                p = star + 1;
+                match++;
+                v = match;
+                continue;
+            }
+            return false;
+        }
+        while (p < pattern.length() && pattern.charAt(p) == '%') {
+            p++;
+        }
+        return p == pattern.length();
     }
 }
