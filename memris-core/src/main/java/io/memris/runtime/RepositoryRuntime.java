@@ -7,7 +7,6 @@ import io.memris.kernel.Predicate;
 import io.memris.core.converter.TypeConverter;
 import io.memris.query.CompiledQuery;
 import io.memris.query.LogicalQuery;
-import io.memris.query.OpCode;
 import io.memris.storage.GeneratedTable;
 import io.memris.storage.Selection;
 import io.memris.storage.SelectionImpl;
