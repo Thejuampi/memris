@@ -27,9 +27,8 @@ public final class MemrisRepositoryFactory implements AutoCloseable {
     private final Map<Class<?>, Map<String, Object>> indexes = new HashMap<>();
 
     // Configuration settings
+    private final MemrisConfiguration configuration;
     private SortAlgorithm sortAlgorithm = SortAlgorithm.AUTO;
-    private boolean enableParallelSorting = true;
-    private int parallelSortThreshold = 1000;  // Use parallel sorting for results larger than this
 
     /**
      * Sorting algorithms for query results.
@@ -45,8 +44,29 @@ public final class MemrisRepositoryFactory implements AutoCloseable {
         PARALLEL_STREAM
     }
 
+    /**
+     * Creates a factory with default configuration.
+     */
     public MemrisRepositoryFactory() {
+        this(MemrisConfiguration.builder().build());
+    }
 
+    /**
+     * Creates a factory with the specified configuration.
+     *
+     * @param configuration the configuration to use
+     */
+    public MemrisRepositoryFactory(MemrisConfiguration configuration) {
+        this.configuration = configuration;
+    }
+
+    /**
+     * Get the configuration for this factory.
+     *
+     * @return the configuration
+     */
+    public MemrisConfiguration getConfiguration() {
+        return configuration;
     }
 
     /**
@@ -554,7 +574,7 @@ public final class MemrisRepositoryFactory implements AutoCloseable {
         io.memris.spring.runtime.RepositoryRuntime<T> runtime = new io.memris.spring.runtime.RepositoryRuntime<>(plan, this, metadata);
 
         // 11. Generate repository implementation using ByteBuddy
-        io.memris.spring.scaffold.RepositoryEmitter emitter = new io.memris.spring.scaffold.RepositoryEmitter();
+        io.memris.spring.scaffold.RepositoryEmitter emitter = new io.memris.spring.scaffold.RepositoryEmitter(configuration);
         return emitter.emitAndInstantiate(repositoryInterface, runtime);
     }
 
@@ -695,7 +715,7 @@ public final class MemrisRepositoryFactory implements AutoCloseable {
         // Generate the table class using ByteBuddy
         Class<? extends io.memris.storage.heap.AbstractTable> tableClass;
         try {
-            tableClass = io.memris.storage.heap.TableGenerator.generate(tableMetadata);
+            tableClass = io.memris.storage.heap.TableGenerator.generate(tableMetadata, configuration);
         } catch (Exception e) {
             throw new RuntimeException("Failed to generate table for entity: " + entityClass.getName(), e);
         }

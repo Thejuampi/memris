@@ -65,7 +65,7 @@ public final class MemrisArena implements AutoCloseable {
         }
 
         // Create repository through factory's emitter, but scoped to this arena
-        R repository = (R) RepositoryEmitter.createRepository(repositoryInterface, this);
+        R repository = (R) RepositoryEmitter.createRepository(repositoryInterface, this, factory.getConfiguration());
         repositories.put(repositoryInterface, repository);
 
         // Also map entity class to repository interface for lookup by entity class

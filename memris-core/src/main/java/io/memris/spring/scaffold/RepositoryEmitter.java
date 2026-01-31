@@ -1,5 +1,6 @@
 package io.memris.spring.scaffold;
 
+import io.memris.spring.MemrisConfiguration;
 import io.memris.spring.MemrisRepository;
 import io.memris.spring.runtime.RepositoryRuntime;
 import net.bytebuddy.ByteBuddy;
@@ -21,8 +22,22 @@ import java.util.Arrays;
 public final class RepositoryEmitter {
 
     private final ByteBuddy byteBuddy;
+    private final MemrisConfiguration configuration;
 
+    /**
+     * Creates a RepositoryEmitter with default configuration.
+     */
     public RepositoryEmitter() {
+        this(MemrisConfiguration.builder().build());
+    }
+
+    /**
+     * Creates a RepositoryEmitter with the specified configuration.
+     *
+     * @param configuration the configuration to use
+     */
+    public RepositoryEmitter(MemrisConfiguration configuration) {
+        this.configuration = configuration;
         this.byteBuddy = new ByteBuddy();
     }
 
@@ -32,14 +47,16 @@ public final class RepositoryEmitter {
      *
      * @param repositoryInterface the repository interface class
      * @param arena               the arena for scoping
+     * @param configuration       the configuration to use
      * @param <T>               the entity type
      * @param <R>               the repository interface type
      * @return an instance of the generated repository implementation
      */
     @SuppressWarnings("unchecked")
-    public static <T, R extends MemrisRepository<T>> R createRepository(Class<R> repositoryInterface, 
-                                                                        io.memris.spring.MemrisArena arena) {
-        RepositoryEmitter emitter = new RepositoryEmitter();
+    public static <T, R extends MemrisRepository<T>> R createRepository(Class<R> repositoryInterface,
+                                                                        io.memris.spring.MemrisArena arena,
+                                                                        MemrisConfiguration configuration) {
+        RepositoryEmitter emitter = new RepositoryEmitter(configuration);
         
         // Extract entity class and create/get table
         Class<T> entityClass = extractEntityClass(repositoryInterface);

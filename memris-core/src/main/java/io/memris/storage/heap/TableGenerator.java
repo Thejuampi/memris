@@ -1,5 +1,6 @@
 package io.memris.storage.heap;
 
+import io.memris.spring.MemrisConfiguration;
 import net.bytebuddy.ByteBuddy;
 import net.bytebuddy.description.modifier.FieldManifestation;
 import net.bytebuddy.description.modifier.TypeManifestation;
@@ -25,10 +26,18 @@ public final class TableGenerator {
     private static final int DEFAULT_ID_INDEX_CAPACITY = 16;
 
     /**
-     * Generate a table class from entity metadata.
+     * Generate a table class from entity metadata using default configuration.
      */
     @SuppressWarnings("unchecked")
     public static Class<? extends AbstractTable> generate(TableMetadata metadata) {
+        return generate(metadata, MemrisConfiguration.builder().build());
+    }
+
+    /**
+     * Generate a table class from entity metadata with specified configuration.
+     */
+    @SuppressWarnings("unchecked")
+    public static Class<? extends AbstractTable> generate(TableMetadata metadata, MemrisConfiguration configuration) {
         String className = metadata.entityName() + "Table";
         String packageName = "io.memris.storage.generated";
 
@@ -80,7 +89,9 @@ public final class TableGenerator {
         }
 
         // Implement all GeneratedTable interface methods using pluggable strategy
-        TableImplementationStrategy strategy = TableImplementationStrategy.create();
+        TableImplementationStrategy strategy = configuration.tableImplementation() == MemrisConfiguration.TableImplementation.BYTECODE
+                ? new BytecodeImplementation()
+                : new MethodHandleImplementation();
         builder = strategy.implementMethods(builder, columnFields, idIndexType);
 
         // Load the class

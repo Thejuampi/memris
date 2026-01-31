@@ -1,37 +1,20 @@
 package io.memris.storage.heap;
 
+import io.memris.spring.MemrisConfiguration;
 import io.memris.storage.GeneratedTable;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * TDD Tests for TableGenerator strategy selection.
+ * TDD Tests for TableGenerator strategy selection using MemrisConfiguration.
  */
 class TableGeneratorStrategyTest {
 
-    private String originalImpl;
-
-    @BeforeEach
-    void setUp() {
-        originalImpl = System.getProperty("memris.table.impl");
-    }
-
-    @AfterEach
-    void tearDown() {
-        if (originalImpl == null) {
-            System.clearProperty("memris.table.impl");
-        } else {
-            System.setProperty("memris.table.impl", originalImpl);
-        }
-    }
-
     @Test
     void tableGeneratorShouldUseBytecodeImplementationByDefault() throws Exception {
-        // Clear any explicit setting
-        System.clearProperty("memris.table.impl");
+        // Use default configuration (BYTECODE)
+        MemrisConfiguration config = MemrisConfiguration.builder().build();
         
         TableMetadata metadata = new TableMetadata(
                 "Person",
@@ -42,7 +25,7 @@ class TableGeneratorStrategyTest {
                 )
         );
         
-        Class<? extends AbstractTable> tableClass = TableGenerator.generate(metadata);
+        Class<? extends AbstractTable> tableClass = TableGenerator.generate(metadata, config);
         
         // Verify it's the bytecode implementation (not MethodHandleImplementation)
         assertFalse(tableClass.getName().contains("MethodHandle"), 
@@ -66,8 +49,10 @@ class TableGeneratorStrategyTest {
     }
 
     @Test
-    void tableGeneratorShouldRespectBytecodeProperty() throws Exception {
-        System.setProperty("memris.table.impl", "bytecode");
+    void tableGeneratorShouldUseBytecodeImplementationWhenConfigured() throws Exception {
+        MemrisConfiguration config = MemrisConfiguration.builder()
+                .tableImplementation(MemrisConfiguration.TableImplementation.BYTECODE)
+                .build();
         
         TableMetadata metadata = new TableMetadata(
                 "Person",
@@ -78,7 +63,7 @@ class TableGeneratorStrategyTest {
                 )
         );
         
-        Class<? extends AbstractTable> tableClass = TableGenerator.generate(metadata);
+        Class<? extends AbstractTable> tableClass = TableGenerator.generate(metadata, config);
         
         // Verify no MethodHandle fields
         java.lang.reflect.Field[] fields = tableClass.getDeclaredFields();
@@ -90,8 +75,10 @@ class TableGeneratorStrategyTest {
     }
 
     @Test
-    void tableGeneratorShouldFallbackToMethodHandleWhenRequested() throws Exception {
-        System.setProperty("memris.table.impl", "methodhandle");
+    void tableGeneratorShouldUseMethodHandleImplementationWhenConfigured() throws Exception {
+        MemrisConfiguration config = MemrisConfiguration.builder()
+                .tableImplementation(MemrisConfiguration.TableImplementation.METHOD_HANDLE)
+                .build();
         
         TableMetadata metadata = new TableMetadata(
                 "Person",
@@ -102,7 +89,7 @@ class TableGeneratorStrategyTest {
                 )
         );
         
-        Class<? extends AbstractTable> tableClass = TableGenerator.generate(metadata);
+        Class<? extends AbstractTable> tableClass = TableGenerator.generate(metadata, config);
         
         // Verify the table works correctly with methodhandle implementation
         GeneratedTable table = (GeneratedTable) tableClass
