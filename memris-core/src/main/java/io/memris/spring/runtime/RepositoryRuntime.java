@@ -33,6 +33,7 @@ public final class RepositoryRuntime<T> {
     private final EntityMaterializer<T> materializer;
     private final EntityMetadata<T> metadata;
     private final java.util.Map<Class<?>, EntityMetadata<?>> relatedMetadata;
+    private final EntitySaver<T> entitySaver;
     private static long idCounter = 1L;
 
     /**
@@ -57,6 +58,7 @@ public final class RepositoryRuntime<T> {
             this.materializer = metadata != null ? new EntityMaterializerImpl<>(metadata) : null;
         }
         this.relatedMetadata = buildRelatedMetadata(metadata);
+        this.entitySaver = plan.entitySaver();
     }
 
     private static java.util.Map<Class<?>, EntityMetadata<?>> buildRelatedMetadata(EntityMetadata<?> metadata) {
@@ -183,116 +185,45 @@ public final class RepositoryRuntime<T> {
         T entity = (T) args[0];
         GeneratedTable table = plan.table();
 
-        try {
-            String idFieldName = metadata.idColumnName();
-            MethodHandle idGetter = metadata.fieldGetters().get(idFieldName);
-            MethodHandle idSetter = metadata.fieldSetters().get(idFieldName);
+        // Use EntitySaver for ID extraction and field access
+        Long currentId = entitySaver != null ? entitySaver.extractId(entity) : null;
+        boolean isNew = (currentId == null) || isZeroId(currentId);
 
-            Object currentId = idGetter != null ? idGetter.invoke(entity) : null;
-            boolean isNew = (currentId == null) || isZeroId(currentId);
-
-            Object id = currentId;
-            if (isNew && idSetter != null) {
-                id = generateIdForEntity(entity);
-                idSetter.invoke(entity, id);
+        Long id = currentId;
+        if (isNew) {
+            id = generateNextId();
+            if (entitySaver != null) {
+                entitySaver.setId(entity, id);
             }
-
-            int maxColumnPos = metadata.fields().stream()
-                .filter(f -> f.columnPosition() >= 0)
-                .mapToInt(io.memris.spring.EntityMetadata.FieldMapping::columnPosition)
-                .max()
-                .orElse(0);
-            Object[] values = new Object[maxColumnPos + 1];
-            Object[] indexValues = new Object[maxColumnPos + 1];
-
-            // First pass: populate all values
-            for (io.memris.spring.EntityMetadata.FieldMapping field : metadata.fields()) {
-                if (field.columnPosition() < 0) {
-                    continue; // Skip collection fields
-                }
-
-                MethodHandle getter = metadata.fieldGetters().get(field.name());
-                if (getter == null) {
-                    continue;
-                }
-
-                Object value = getter.invoke(entity);
-
-                if (field.isRelationship()) {
-                    value = resolveRelationshipId(field, value);
-                    values[field.columnPosition()] = value;
-                    indexValues[field.columnPosition()] = value;
-                    continue;
-                }
-
-                Object rawValue = value;
-
-                // Apply converter if present
-                TypeConverter<?, ?> converter = metadata.converters().get(field.name());
-                if (converter != null && value != null) {
-                    @SuppressWarnings("unchecked")
-                    TypeConverter<Object, Object> typedConverter = (TypeConverter<Object, Object>) converter;
-                    value = typedConverter.toStorage(value);
-                }
-
-                values[field.columnPosition()] = value;
-                indexValues[field.columnPosition()] = rawValue;
-            }
-
-            // Ensure ID column (position 0) is a Long
-            Object idValue = values[0];
-            if (idValue == null) {
-                throw new IllegalStateException("ID value is null after generation");
-            }
-            if (idValue instanceof Number) {
-                values[0] = ((Number) idValue).longValue();
-            } else {
-                throw new IllegalStateException("ID value is not a Number: " + idValue.getClass());
-            }
-
-            long packedRef = table.insertFrom(values);
-            int rowIndex = io.memris.storage.Selection.index(packedRef);
-            updateIndexesOnInsert(indexValues, rowIndex);
-            return entity;
-        } catch (Throwable e) {
-            throw new RuntimeException("Failed to save entity", e);
         }
+
+        // EntitySaver handles all field extraction, converters, and relationships
+        T savedEntity = entitySaver != null ? entitySaver.save(entity, table, id) : entity;
+
+        // Look up row index by ID for index updates
+        long packedRef = table.lookupById(id);
+        int rowIndex = io.memris.storage.Selection.index(packedRef);
+
+        // Update indexes after save - read values back from table
+        int maxColumnPos = metadata.fields().stream()
+            .filter(f -> f.columnPosition() >= 0)
+            .mapToInt(io.memris.spring.EntityMetadata.FieldMapping::columnPosition)
+            .max()
+            .orElse(0);
+        Object[] indexValues = new Object[maxColumnPos + 1];
+        for (io.memris.spring.EntityMetadata.FieldMapping field : metadata.fields()) {
+            if (field.columnPosition() < 0) {
+                continue;
+            }
+            indexValues[field.columnPosition()] = readIndexValue(field, rowIndex);
+        }
+        updateIndexesOnInsert(indexValues, rowIndex);
+
+        return savedEntity;
     }
 
-    private Object resolveRelationshipId(io.memris.spring.EntityMetadata.FieldMapping field, Object relatedEntity) throws Throwable {
-        if (relatedEntity == null) {
-            return null;
-        }
-        EntityMetadata<?> targetMetadata = relatedMetadata.get(field.targetEntity());
-        if (targetMetadata == null) {
-            throw new IllegalStateException("No metadata for related entity: " + field.targetEntity());
-        }
-
-        String idFieldName = targetMetadata.idColumnName();
-        MethodHandle idGetter = targetMetadata.fieldGetters().get(idFieldName);
-        if (idGetter == null) {
-            throw new IllegalStateException("No ID getter for related entity: " + field.targetEntity().getName());
-        }
-
-        Object idValue = idGetter.invoke(relatedEntity);
-        if (idValue == null) {
-            return null;
-        }
-
-        Class<?> storageType = field.storageType();
-        if (storageType == Long.class || storageType == long.class) {
-            return ((Number) idValue).longValue();
-        }
-        if (storageType == Integer.class || storageType == int.class) {
-            return ((Number) idValue).intValue();
-        }
-        if (storageType == Short.class || storageType == short.class) {
-            return ((Number) idValue).shortValue();
-        }
-        if (storageType == Byte.class || storageType == byte.class) {
-            return ((Number) idValue).byteValue();
-        }
-        return idValue;
+    private Long generateNextId() {
+        return idCounter++;
     }
 
     private boolean isZeroId(Object id) {
@@ -305,27 +236,6 @@ public final class RepositoryRuntime<T> {
             case java.util.UUID uuid -> uuid.getMostSignificantBits() == 0 && uuid.getLeastSignificantBits() == 0;
             default -> false;
         };
-    }
-
-    private Object generateIdForEntity(T entity) {
-        long nextId = idCounter++;
-
-        String idFieldName = metadata.idColumnName();
-        for (io.memris.spring.EntityMetadata.FieldMapping field : metadata.fields()) {
-            if (field.name().equals(idFieldName)) {
-                Class<?> idType = field.javaType();
-
-                return switch (idType) {
-                    case Class<?> c when c == Long.class || c == long.class -> Long.valueOf(nextId);
-                    case Class<?> c when c == Integer.class || c == int.class -> (int) (int) nextId;
-                    case Class<?> c when c == Short.class || c == short.class -> (short) (short) nextId;
-                    case Class<?> c when c == Byte.class || c == byte.class -> (byte) (byte) nextId;
-                    case Class<?> c when c == java.util.UUID.class -> java.util.UUID.randomUUID();
-                    default -> throw new IllegalArgumentException("Unsupported ID type: " + idType);
-                };
-            }
-        }
-        throw new IllegalStateException("ID field not found in metadata");
     }
 
     private List<T> executeSaveAll(Object[] args) {

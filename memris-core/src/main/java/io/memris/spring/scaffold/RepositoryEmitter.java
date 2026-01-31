@@ -83,6 +83,10 @@ public final class RepositoryEmitter {
             throw new RuntimeException("Failed to get entity constructor", e);
         }
         
+        // Generate EntitySaver for the entity
+        io.memris.spring.runtime.EntitySaver<T> entitySaver = 
+            EntitySaverGenerator.generate(entityClass, metadata);
+        
         // Build RepositoryPlan with compiled queries
         io.memris.spring.runtime.RepositoryPlan<T> plan = 
             io.memris.spring.runtime.RepositoryPlan.fromGeneratedTable(
@@ -97,7 +101,8 @@ public final class RepositoryEmitter {
                 setters,
                 tablesByEntity,
                 kernelsByEntity,
-                materializersByEntity
+                materializersByEntity,
+                entitySaver
         );
         
         // Create RepositoryRuntime

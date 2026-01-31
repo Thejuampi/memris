@@ -529,7 +529,11 @@ public final class MemrisRepositoryFactory implements AutoCloseable {
             throw new RuntimeException("Failed to get entity constructor", e);
         }
 
-        // 9. Build RepositoryPlan
+        // 9. Generate EntitySaver for the entity
+        io.memris.spring.runtime.EntitySaver<T> entitySaver = 
+            io.memris.spring.scaffold.EntitySaverGenerator.generate(entityClass, metadata);
+        
+        // 10. Build RepositoryPlan
         io.memris.spring.runtime.RepositoryPlan<T> plan = io.memris.spring.runtime.RepositoryPlan.fromGeneratedTable(
                 table,
                 entityClass,
@@ -542,7 +546,8 @@ public final class MemrisRepositoryFactory implements AutoCloseable {
                 setters,
                 tablesByEntity,
                 kernelsByEntity,
-                materializersByEntity
+                materializersByEntity,
+                entitySaver
         );
 
         // 10. Create RepositoryRuntime
