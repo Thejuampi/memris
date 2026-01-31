@@ -289,7 +289,7 @@ class QueryPlannerIntegrationTest {
         Method method = TestRepository.class.getMethod("findByNameOrderByAgeDesc", String.class);
         LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class, "id");
 
-        assertThat(actual).isEqualTo(expectedFind(cond("name", Operator.EQ, 0), OrderBy.desc("age")));
+        assertThat(actual).isEqualTo(expectedFind(cond("name", Operator.EQ, 0), new OrderBy[]{OrderBy.desc("age")}));
     }
 
     @Test
@@ -617,7 +617,7 @@ class QueryPlannerIntegrationTest {
         );
     }
 
-    private static LogicalQuery expectedFind(Condition condition, OrderBy orderBy) {
+    private static LogicalQuery expectedFind(Condition condition, OrderBy[] orderBy) {
         return LogicalQuery.of(
                 OpCode.FIND,
                 ReturnKind.MANY_LIST,

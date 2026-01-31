@@ -156,7 +156,7 @@ class JpqlQueryPlannerTest {
         Method method = TestRepository.class.getMethod("findByNameOrderByAgeDesc", String.class);
         LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class, "id");
 
-        assertThat(actual.orderBy()).isEqualTo(LogicalQuery.OrderBy.desc("age"));
+        assertThat(actual.orderBy()).containsExactly(LogicalQuery.OrderBy.desc("age"));
     }
 
     @Test

@@ -257,7 +257,7 @@ public final class QueryPlanner {
         List<QueryMethodToken> tokens = QueryMethodLexer.tokenize(entityClass, parseName);
         LogicalQuery.ReturnKind returnKind = determineReturnKind(parseName, returnType, paramTypes.length);
         List<LogicalQuery.Condition> conditions = new ArrayList<>();
-        LogicalQuery.OrderBy orderBy = null;
+        LogicalQuery.OrderBy[] orderBy = null;
 
         // Initialize parse state
         ParseState state = new ParseState();
@@ -296,9 +296,13 @@ public final class QueryPlanner {
         // Finalize OrderBy
         if (state.inOrderBy && state.pendingProperty != null) {
             if (state.orderByDirection != null) {
-                orderBy = LogicalQuery.OrderBy.of(state.pendingProperty, state.orderByDirection);
+                orderBy = new LogicalQuery.OrderBy[]{
+                    LogicalQuery.OrderBy.of(state.pendingProperty, state.orderByDirection)
+                };
             } else {
-                orderBy = LogicalQuery.OrderBy.asc(state.pendingProperty);
+                orderBy = new LogicalQuery.OrderBy[]{
+                    LogicalQuery.OrderBy.asc(state.pendingProperty)
+                };
             }
         }
 

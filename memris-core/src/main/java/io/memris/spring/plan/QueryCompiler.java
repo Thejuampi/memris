@@ -27,7 +27,14 @@ public class QueryCompiler {
         java.util.List<CompiledQuery.CompiledCondition> baseConditions = new java.util.ArrayList<>();
         java.util.List<CompiledQuery.CompiledJoinPredicate> joinPredicates = new java.util.ArrayList<>();
         java.util.Map<String, CompiledQuery.CompiledJoin> joinsByPath = new java.util.LinkedHashMap<>();
-        CompiledQuery.CompiledOrderBy compiledOrderBy = null;
+        java.util.Map<String, LogicalQuery.Join.JoinType> joinTypes = new java.util.HashMap<>();
+        CompiledQuery.CompiledOrderBy[] compiledOrderBy = null;
+
+        if (logicalQuery.joins() != null) {
+            for (LogicalQuery.Join join : logicalQuery.joins()) {
+                joinTypes.put(join.propertyPath(), join.joinType());
+            }
+        }
 
         for (LogicalQuery.Condition condition : conditions) {
             if (LogicalQuery.Condition.ID_PROPERTY.equals(condition.propertyPath())) {
@@ -55,7 +62,7 @@ public class QueryCompiler {
                 continue;
             }
 
-            boolean handled = compileJoinPath(condition, propertyPath, joinsByPath, joinPredicates);
+            boolean handled = compileJoinPath(condition, propertyPath, joinsByPath, joinPredicates, joinTypes);
             if (!handled) {
                 int columnIndex = resolveColumnIndex(propertyPath, metadata);
                 baseConditions.add(CompiledQuery.CompiledCondition.of(
@@ -68,10 +75,13 @@ public class QueryCompiler {
             }
         }
 
-        LogicalQuery.OrderBy orderBy = logicalQuery.orderBy();
-        if (orderBy != null) {
-            int columnIndex = resolveColumnIndex(orderBy.propertyPath(), metadata);
-            compiledOrderBy = new CompiledQuery.CompiledOrderBy(columnIndex, orderBy.ascending());
+        LogicalQuery.OrderBy[] orderBy = logicalQuery.orderBy();
+        if (orderBy != null && orderBy.length > 0) {
+            compiledOrderBy = new CompiledQuery.CompiledOrderBy[orderBy.length];
+            for (int i = 0; i < orderBy.length; i++) {
+                int columnIndex = resolveColumnIndex(orderBy[i].propertyPath(), metadata);
+                compiledOrderBy[i] = new CompiledQuery.CompiledOrderBy(columnIndex, orderBy[i].ascending());
+            }
         }
 
         return CompiledQuery.of(
@@ -81,6 +91,7 @@ public class QueryCompiler {
             attachJoinPredicates(joinsByPath, joinPredicates),
             compiledOrderBy,
             logicalQuery.limit(),
+            logicalQuery.distinct(),
             logicalQuery.boundValues(),
             logicalQuery.parameterIndices(),
             logicalQuery.arity()
@@ -106,7 +117,8 @@ public class QueryCompiler {
         LogicalQuery.Condition condition,
         String propertyPath,
         java.util.Map<String, CompiledQuery.CompiledJoin> joinsByPath,
-        java.util.List<CompiledQuery.CompiledJoinPredicate> joinPredicates
+        java.util.List<CompiledQuery.CompiledJoinPredicate> joinPredicates,
+        java.util.Map<String, LogicalQuery.Join.JoinType> joinTypes
     ) {
         String[] segments = propertyPath.split("\\.");
         EntityMetadata<?> currentMetadata = metadata;
@@ -145,6 +157,7 @@ public class QueryCompiler {
                 throw new IllegalArgumentException("Unsupported FK type for join: " + fkTypeCode);
             }
             if (!joinsByPath.containsKey(joinPath)) {
+                LogicalQuery.Join.JoinType joinType = joinTypes.getOrDefault(joinPath, LogicalQuery.Join.JoinType.INNER);
                 joinsByPath.put(joinPath, new CompiledQuery.CompiledJoin(
                     joinPath,
                     currentEntity,
@@ -153,7 +166,7 @@ public class QueryCompiler {
                     targetColumnIndex,
                     targetColumnIsId,
                     fkTypeCode,
-                    LogicalQuery.Join.JoinType.INNER,
+                    joinType,
                     segment,
                     new CompiledQuery.CompiledJoinPredicate[0],
                     null,

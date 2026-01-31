@@ -1,5 +1,7 @@
 package io.memris.spring.plan;
 
+import io.memris.spring.EntityMetadata;
+import io.memris.spring.MetadataExtractor;
 import io.memris.spring.Param;
 import io.memris.spring.Query;
 import io.memris.spring.plan.jpql.JpqlAst;
@@ -30,9 +32,6 @@ public final class JpqlQueryParser {
         JpqlAst.Query ast = parser.parseQuery();
 
         validateEntity(ast.entityName(), entityClass);
-        if (ast.distinct()) {
-            throw new UnsupportedOperationException("DISTINCT is not supported in @Query");
-        }
 
         LogicalQuery.ReturnKind returnKind = resolveReturnKind(method);
         if (ast.count() && returnKind != LogicalQuery.ReturnKind.COUNT_LONG) {
@@ -43,17 +42,18 @@ public final class JpqlQueryParser {
         }
 
         Map<String, String> aliasMap = buildAliasMap(ast);
+        LogicalQuery.Join[] joins = buildJoins(ast, aliasMap, entityClass);
         BindingContext bindingContext = new BindingContext(method);
         List<LogicalQuery.Condition> flattened = flattenConditions(ast.where(), aliasMap, bindingContext);
 
-        LogicalQuery.OrderBy orderBy = null;
+        LogicalQuery.OrderBy[] orderBy = null;
         if (!ast.orderBy().isEmpty()) {
-            if (ast.orderBy().size() > 1) {
-                throw new UnsupportedOperationException("Multiple ORDER BY clauses are not supported");
+            orderBy = new LogicalQuery.OrderBy[ast.orderBy().size()];
+            for (int i = 0; i < ast.orderBy().size(); i++) {
+                JpqlAst.OrderBy order = ast.orderBy().get(i);
+                String path = resolvePath(order.path(), aliasMap);
+                orderBy[i] = LogicalQuery.OrderBy.of(path, order.ascending());
             }
-            JpqlAst.OrderBy order = ast.orderBy().get(0);
-            String path = resolvePath(order.path(), aliasMap);
-            orderBy = LogicalQuery.OrderBy.of(path, order.ascending());
         }
 
         OpCode opCode = switch (returnKind) {
@@ -71,9 +71,10 @@ public final class JpqlQueryParser {
             opCode,
             returnKind,
             conditions,
-            new LogicalQuery.Join[0],
+            joins,
             orderBy,
             0,
+            ast.distinct(),
             boundValues,
             parameterIndices,
             arity
@@ -115,6 +116,55 @@ public final class JpqlQueryParser {
             }
         }
         return aliases;
+    }
+
+    private static LogicalQuery.Join[] buildJoins(JpqlAst.Query query,
+                                                  Map<String, String> aliasMap,
+                                                  Class<?> entityClass) {
+        if (query.joins().isEmpty()) {
+            return new LogicalQuery.Join[0];
+        }
+
+        EntityMetadata<?> metadata = MetadataExtractor.extractEntityMetadata(entityClass);
+        List<LogicalQuery.Join> joins = new ArrayList<>();
+        for (JpqlAst.Join join : query.joins()) {
+            String resolvedPath = resolvePath(join.path(), aliasMap);
+            String joinProperty = resolvedPath.contains(".") ? resolvedPath.substring(0, resolvedPath.indexOf('.')) : resolvedPath;
+
+            EntityMetadata.FieldMapping relationship = findRelationship(metadata, joinProperty);
+            if (relationship == null) {
+                throw new IllegalArgumentException("Unknown join property: " + joinProperty);
+            }
+
+            Class<?> targetEntity = relationship.targetEntity();
+            EntityMetadata<?> targetMetadata = MetadataExtractor.extractEntityMetadata(targetEntity);
+            String referencedColumn = relationship.referencedColumnName() != null
+                ? relationship.referencedColumnName()
+                : targetMetadata.idColumnName();
+
+            LogicalQuery.Join.JoinType joinType = join.type() == JpqlAst.JoinType.LEFT
+                ? LogicalQuery.Join.JoinType.LEFT
+                : LogicalQuery.Join.JoinType.INNER;
+
+            joins.add(new LogicalQuery.Join(
+                joinProperty,
+                targetEntity,
+                relationship.columnName(),
+                referencedColumn,
+                joinType
+            ));
+        }
+
+        return joins.toArray(new LogicalQuery.Join[0]);
+    }
+
+    private static EntityMetadata.FieldMapping findRelationship(EntityMetadata<?> metadata, String property) {
+        for (EntityMetadata.FieldMapping field : metadata.fields()) {
+            if (field.isRelationship() && field.name().equals(property)) {
+                return field;
+            }
+        }
+        return null;
     }
 
     private static List<LogicalQuery.Condition> flattenConditions(JpqlAst.Expression expression,
