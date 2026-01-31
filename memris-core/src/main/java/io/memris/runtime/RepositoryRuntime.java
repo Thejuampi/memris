@@ -17,6 +17,7 @@ import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Hot-path query execution engine.
@@ -34,7 +35,7 @@ public final class RepositoryRuntime<T> {
     private final EntityMetadata<T> metadata;
     private final java.util.Map<Class<?>, EntityMetadata<?>> relatedMetadata;
     private final EntitySaver<T> entitySaver;
-    private static long idCounter = 1L;
+    private static final AtomicLong idCounter = new AtomicLong(1L);
 
     /**
      * Create a RepositoryRuntime from a RepositoryPlan.
@@ -223,7 +224,7 @@ public final class RepositoryRuntime<T> {
     }
 
     private Long generateNextId() {
-        return idCounter++;
+        return idCounter.getAndIncrement();
     }
 
     private boolean isZeroId(Object id) {
