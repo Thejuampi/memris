@@ -158,7 +158,7 @@ public final class MetadataExtractor {
                         fieldSetters.put(field.getName(), setter);
                     }
                 }
-            } catch (Exception e) {
+            } catch (IllegalAccessException | SecurityException e) {
                 // If we can't create MethodHandles, continue with empty maps
                 // (entity materialization will fall back to reflection)
             }
@@ -191,7 +191,7 @@ public final class MetadataExtractor {
                 fieldGetters, fieldSetters,
                 entityClass.isRecord()
             );
-        } catch (Exception e) {
+        } catch (NoSuchMethodException | SecurityException e) {
             throw new RuntimeException("Failed to extract metadata for " + entityClass.getName(), e);
         }
     }

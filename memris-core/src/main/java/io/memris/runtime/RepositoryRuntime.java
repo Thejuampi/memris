@@ -225,19 +225,21 @@ public final class RepositoryRuntime<T> {
         int rowIndex = io.memris.storage.Selection.index(packedRef);
 
         // Update indexes after save - read values back from table
-        int maxColumnPos = metadata.fields().stream()
-            .filter(f -> f.columnPosition() >= 0)
-            .mapToInt(io.memris.core.EntityMetadata.FieldMapping::columnPosition)
-            .max()
-            .orElse(0);
-        Object[] indexValues = new Object[maxColumnPos + 1];
-        for (io.memris.core.EntityMetadata.FieldMapping field : metadata.fields()) {
-            if (field.columnPosition() < 0) {
-                continue;
+        if (metadata != null) {
+            int maxColumnPos = metadata.fields().stream()
+                .filter(f -> f.columnPosition() >= 0)
+                .mapToInt(io.memris.core.EntityMetadata.FieldMapping::columnPosition)
+                .max()
+                .orElse(0);
+            Object[] indexValues = new Object[maxColumnPos + 1];
+            for (io.memris.core.EntityMetadata.FieldMapping field : metadata.fields()) {
+                if (field.columnPosition() < 0) {
+                    continue;
+                }
+                indexValues[field.columnPosition()] = readIndexValue(field, rowIndex);
             }
-            indexValues[field.columnPosition()] = readIndexValue(field, rowIndex);
+            updateIndexesOnInsert(indexValues, rowIndex);
         }
-        updateIndexesOnInsert(indexValues, rowIndex);
 
         persistManyToMany(entity);
 

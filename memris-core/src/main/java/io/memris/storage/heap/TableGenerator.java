@@ -8,18 +8,13 @@ import net.bytebuddy.description.modifier.Visibility;
 import net.bytebuddy.dynamic.DynamicType;
 import net.bytebuddy.implementation.MethodCall;
 import net.bytebuddy.implementation.MethodDelegation;
-import net.bytebuddy.implementation.FixedValue;
 import net.bytebuddy.implementation.bind.annotation.AllArguments;
 import net.bytebuddy.implementation.bind.annotation.RuntimeType;
 import net.bytebuddy.implementation.bind.annotation.This;
 
 import java.lang.reflect.Field;
-import java.lang.invoke.MethodHandle;
-import java.lang.invoke.MethodHandles;
 import java.util.ArrayList;
 import java.util.List;
-
-import io.memris.core.TypeCodes;
 
 public final class TableGenerator {
 
