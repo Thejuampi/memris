@@ -29,6 +29,10 @@ public record CompiledQuery(
         CompiledOrderBy orderBy,
         /** Limit for Top/First queries (0 = none) */
         int limit,
+        /** Bound literal values (appended after method arguments) */
+        Object[] boundValues,
+        /** Parameter index mapping for query argument slots */
+        int[] parameterIndices,
         /** Number of method parameters */
         int arity
 ) {
@@ -45,7 +49,7 @@ public record CompiledQuery(
             OpCode opCode,
             LogicalQuery.ReturnKind returnKind,
             CompiledCondition[] conditions) {
-        return new CompiledQuery(opCode, returnKind, conditions, new CompiledJoin[0], null, 0, conditions.length);
+        return new CompiledQuery(opCode, returnKind, conditions, new CompiledJoin[0], null, 0, new Object[0], new int[0], conditions.length);
     }
 
     public static CompiledQuery of(
@@ -56,11 +60,24 @@ public record CompiledQuery(
             CompiledOrderBy orderBy,
             int limit,
             int arity) {
-        return new CompiledQuery(opCode, returnKind, conditions, joins, orderBy, limit, arity);
+        return new CompiledQuery(opCode, returnKind, conditions, joins, orderBy, limit, new Object[0], new int[0], arity);
+    }
+
+    public static CompiledQuery of(
+            OpCode opCode,
+            LogicalQuery.ReturnKind returnKind,
+            CompiledCondition[] conditions,
+            CompiledJoin[] joins,
+            CompiledOrderBy orderBy,
+            int limit,
+            Object[] boundValues,
+            int[] parameterIndices,
+            int arity) {
+        return new CompiledQuery(opCode, returnKind, conditions, joins, orderBy, limit, boundValues, parameterIndices, arity);
     }
 
     public CompiledQuery withJoins(CompiledJoin[] joins) {
-        return new CompiledQuery(opCode, returnKind, conditions, joins, orderBy, limit, arity);
+        return new CompiledQuery(opCode, returnKind, conditions, joins, orderBy, limit, boundValues, parameterIndices, arity);
     }
 
     /**

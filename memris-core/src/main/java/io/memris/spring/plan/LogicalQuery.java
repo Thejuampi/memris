@@ -18,22 +18,24 @@ import io.memris.kernel.Predicate;
  * @see QueryCompiler
  * @see CompiledQuery
  */
-public record LogicalQuery(
-        OpCode opCode,
-        ReturnKind returnKind,
-        Condition[] conditions,
-        Join[] joins,
-        OrderBy orderBy,
-        int limit,
-        int parameterCount
-) {
+    public record LogicalQuery(
+            OpCode opCode,
+            ReturnKind returnKind,
+            Condition[] conditions,
+            Join[] joins,
+            OrderBy orderBy,
+            int limit,
+            Object[] boundValues,
+            int[] parameterIndices,
+            int parameterCount
+    ) {
 
     public static LogicalQuery of(
             OpCode opCode,
             ReturnKind returnKind,
             Condition[] conditions,
             OrderBy orderBy) {
-        return new LogicalQuery(opCode, returnKind, conditions, new Join[0], orderBy, 0, conditions.length);
+        return new LogicalQuery(opCode, returnKind, conditions, new Join[0], orderBy, 0, new Object[0], new int[0], conditions.length);
     }
 
     public static LogicalQuery of(
@@ -43,7 +45,7 @@ public record LogicalQuery(
             Join[] joins,
             OrderBy orderBy,
             int parameterCount) {
-        return new LogicalQuery(opCode, returnKind, conditions, joins, orderBy, 0, parameterCount);
+        return new LogicalQuery(opCode, returnKind, conditions, joins, orderBy, 0, new Object[0], new int[0], parameterCount);
     }
 
     public static LogicalQuery of(
@@ -54,7 +56,20 @@ public record LogicalQuery(
             OrderBy orderBy,
             int limit,
             int parameterCount) {
-        return new LogicalQuery(opCode, returnKind, conditions, joins, orderBy, limit, parameterCount);
+        return new LogicalQuery(opCode, returnKind, conditions, joins, orderBy, limit, new Object[0], new int[0], parameterCount);
+    }
+
+    public static LogicalQuery of(
+            OpCode opCode,
+            ReturnKind returnKind,
+            Condition[] conditions,
+            Join[] joins,
+            OrderBy orderBy,
+            int limit,
+            Object[] boundValues,
+            int[] parameterIndices,
+            int parameterCount) {
+        return new LogicalQuery(opCode, returnKind, conditions, joins, orderBy, limit, boundValues, parameterIndices, parameterCount);
     }
 
     /**
@@ -66,7 +81,7 @@ public record LogicalQuery(
             Condition[] conditions,
             OrderBy orderBy,
             int parameterCount) {
-        return new LogicalQuery(opCode, returnKind, conditions, new Join[0], orderBy, 0, parameterCount);
+        return new LogicalQuery(opCode, returnKind, conditions, new Join[0], orderBy, 0, new Object[0], new int[0], parameterCount);
     }
 
     /**
@@ -80,7 +95,7 @@ public record LogicalQuery(
      * @return a LogicalQuery for the CRUD operation
      */
     public static LogicalQuery crud(OpCode opCode, ReturnKind returnKind, int parameterCount) {
-        return new LogicalQuery(opCode, returnKind, new Condition[0], new Join[0], null, 0, parameterCount);
+        return new LogicalQuery(opCode, returnKind, new Condition[0], new Join[0], null, 0, new Object[0], new int[0], parameterCount);
     }
 
     /**
@@ -102,6 +117,8 @@ public record LogicalQuery(
                 && opCode == that.opCode
                 && returnKind == that.returnKind
                 && limit == that.limit
+                && java.util.Arrays.equals(boundValues, that.boundValues)
+                && java.util.Arrays.equals(parameterIndices, that.parameterIndices)
                 && java.util.Arrays.equals(conditions, that.conditions)
                 && java.util.Arrays.equals(joins, that.joins)
                 && java.util.Objects.equals(orderBy, that.orderBy);
@@ -110,6 +127,8 @@ public record LogicalQuery(
     @Override
     public int hashCode() {
         int result = java.util.Objects.hash(opCode, returnKind, orderBy, limit, parameterCount);
+        result = 31 * result + java.util.Arrays.hashCode(boundValues);
+        result = 31 * result + java.util.Arrays.hashCode(parameterIndices);
         result = 31 * result + java.util.Arrays.hashCode(conditions);
         result = 31 * result + java.util.Arrays.hashCode(joins);
         return result;
