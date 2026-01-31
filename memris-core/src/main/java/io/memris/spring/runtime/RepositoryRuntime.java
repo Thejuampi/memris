@@ -1024,13 +1024,10 @@ public final class RepositoryRuntime<T> {
     }
 
     private String resolveFieldName(int columnIndex) {
-        if (metadata == null) {
-            return null;
-        }
-        for (io.memris.spring.EntityMetadata.FieldMapping field : metadata.fields()) {
-            if (field.columnPosition() == columnIndex) {
-                return field.name();
-            }
+        // Use precomputed column names array for O(1) lookup
+        String[] columnNames = plan.columnNames();
+        if (columnIndex >= 0 && columnIndex < columnNames.length) {
+            return columnNames[columnIndex];
         }
         return null;
     }
