@@ -113,8 +113,8 @@ public class Main {
 | `@GeneratedValue` | Auto ID generation | ✅ Implemented |
 | `@OneToOne` | One-to-one relationship | ✅ Implemented |
 | `@ManyToOne` | Many-to-one relationship | ✅ Implemented |
-| `@OneToMany` | One-to-many relationship | ❌ Not implemented |
-| `@ManyToMany` | Many-to-many relationship | ❌ Not implemented |
+| `@OneToMany` | One-to-many relationship | ✅ Implemented |
+| `@ManyToMany` | Many-to-many relationship | ✅ Implemented |
 | `@JoinColumn` | Specifies foreign key column | ✅ Implemented |
 | `@Query` | JPQL-like query string | ✅ Implemented |
 | `@Param` | Named parameter binding | ✅ Implemented |
@@ -276,25 +276,17 @@ Repository Method → QueryCompiler → HeapRuntimeKernel
 
 ## Current Limitations
 
-### Functional Limitations
-
-1. **@OneToMany and @ManyToMany** — Not implemented
-   - Workaround: Use manual foreign key fields (`long customerId`)
-
-2. **Relationship Cascades** — Not implemented
-   - Only partial support on @OneToOne
-
-3. **DISTINCT** — Tokenized but execution incomplete
+1. **DISTINCT** — Tokenized but execution incomplete
    - Workaround: Use `Stream.distinct()` on results
 
-4. **Query Aggregates** — Only `COUNT` supported
+2. **Query Aggregates** — Only `COUNT` supported
    - No `SUM`, `AVG`, `MIN`, `MAX`
 
-5. **GROUP BY / HAVING** — Not implemented
+3. **GROUP BY / HAVING** — Not implemented
 
-6. **Subqueries** — Not implemented
+4. **Subqueries** — Not implemented
 
-7. **Transactions** — Not supported (no persistence context)
+5. **Transactions** — Not supported (no persistence context)
 
 ### Type Limitations
 
@@ -304,9 +296,9 @@ Repository Method → QueryCompiler → HeapRuntimeKernel
 
 ### Enterprise Features
 
-- No `@Embeddable` components
-- No `@Enumerated` types
-- No lifecycle callbacks (@PrePersist, @PostLoad, etc.)
+- ✅ `@Embeddable` components
+- ✅ `@Enumerated` types
+- ✅ Lifecycle callbacks (@PrePersist, @PostLoad, @PreUpdate)
 - No inheritance hierarchies
 - No composite keys
 
@@ -385,11 +377,8 @@ Memris is currently in SNAPSHOT version (1.0.0-SNAPSHOT). Build locally to use:
 
 ## Roadmap
 
-### Planned Features
-
 - **FFM Off-Heap Storage** — For large datasets (reduces GC pressure)
 - **MVCC** — Snapshot isolation for better concurrency
-- **@OneToMany / @ManyToMany** — Full relationship support
 - **SIMD Vectorization** — Via Vector API for scan operations
 - **Striped Index Updates** — 4-8x better write throughput
 - **Projections from Method Names** — Without @Query annotation
@@ -399,11 +388,8 @@ Memris is currently in SNAPSHOT version (1.0.0-SNAPSHOT). Build locally to use:
 
 ### Future Enhancements
 
-- `@Embeddable` components
-- `@Enumerated` types
-- Lifecycle callbacks
-- Inheritance hierarchies
-- Composite keys
+- No inheritance hierarchies
+- No composite keys
 - Schema evolution (online changes)
 
 ## License
