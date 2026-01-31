@@ -1,5 +1,6 @@
 package io.memris.spring;
 
+import io.memris.core.TypeCodes;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;

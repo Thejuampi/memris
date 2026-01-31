@@ -1,8 +1,8 @@
-package io.memris.spring.scaffold;
+package io.memris.repository;
 
-import io.memris.spring.EntityMetadata;
-import io.memris.spring.MetadataExtractor;
-import io.memris.spring.runtime.EntitySaver;
+import io.memris.core.EntityMetadata;
+import io.memris.core.MetadataExtractor;
+import io.memris.runtime.EntitySaver;
 import io.memris.storage.GeneratedTable;
 import io.memris.storage.heap.AbstractTable;
 import io.memris.storage.heap.TableGenerator;
@@ -36,9 +36,9 @@ class EntitySaverGeneratorTest {
                 "Customer",
                 "io.memris.test.Customer",
                 List.of(
-                        new FieldMetadata("id", io.memris.spring.TypeCodes.TYPE_LONG, true, true),
-                        new FieldMetadata("name", io.memris.spring.TypeCodes.TYPE_STRING, false, false),
-                        new FieldMetadata("email", io.memris.spring.TypeCodes.TYPE_STRING, false, false)
+                        new FieldMetadata("id", io.memris.core.TypeCodes.TYPE_LONG, true, true),
+                        new FieldMetadata("name", io.memris.core.TypeCodes.TYPE_STRING, false, false),
+                        new FieldMetadata("email", io.memris.core.TypeCodes.TYPE_STRING, false, false)
                 )
         );
         Class<? extends AbstractTable> tableClass = TableGenerator.generate(tableMetadata);

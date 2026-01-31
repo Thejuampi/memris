@@ -13,7 +13,7 @@ import java.util.List;
  *   <li>{@link BytecodeImplementation} - Preview. Maximum performance (~1ns overhead), may have bugs</li>
  * </ul>
  * <p>
- * Configure via {@link io.memris.spring.MemrisConfiguration}:
+ * Configure via {@link io.memris.core.MemrisConfiguration}:
  * <pre>
  * MemrisConfiguration config = MemrisConfiguration.builder()
  *     .tableImplementation(TableImplementation.BYTECODE)
@@ -21,7 +21,7 @@ import java.util.List;
  * </pre>
  *
  * @see TableGenerator
- * @see io.memris.spring.MemrisConfiguration
+ * @see io.memris.core.MemrisConfiguration
  */
 public interface TableImplementationStrategy {
 

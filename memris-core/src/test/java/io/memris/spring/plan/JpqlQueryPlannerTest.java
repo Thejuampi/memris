@@ -1,9 +1,9 @@
-package io.memris.spring.plan;
+package io.memris.query;
 
-import io.memris.spring.Param;
-import io.memris.spring.Query;
-import io.memris.spring.plan.entities.NestedEntity;
-import io.memris.spring.plan.entities.SimpleEntity;
+import io.memris.core.Param;
+import io.memris.core.Query;
+import io.memris.query.entities.NestedEntity;
+import io.memris.query.entities.SimpleEntity;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Method;

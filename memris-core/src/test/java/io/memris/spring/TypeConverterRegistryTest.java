@@ -1,7 +1,20 @@
 package io.memris.spring;
 
-import io.memris.spring.converter.TypeConverter;
-import io.memris.spring.converter.TypeConverterRegistry;
+import io.memris.repository.MemrisRepositoryFactory;
+import io.memris.core.MemrisArena;
+import io.memris.repository.MemrisRepository;
+import io.memris.core.Entity;
+import io.memris.core.GeneratedValue;
+import io.memris.core.GenerationType;
+import io.memris.core.Index;
+
+import io.memris.core.Entity;
+import io.memris.core.GeneratedValue;
+import io.memris.core.GenerationType;
+import io.memris.core.Index;
+
+import io.memris.core.converter.TypeConverter;
+import io.memris.core.converter.TypeConverterRegistry;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;

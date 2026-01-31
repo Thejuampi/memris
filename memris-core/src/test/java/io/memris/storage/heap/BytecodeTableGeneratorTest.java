@@ -124,9 +124,9 @@ class BytecodeTableGeneratorTest {
         GeneratedTable table = (GeneratedTable) abstractTable;
 
         // Type code access should use direct array lookup
-        assertEquals(io.memris.spring.TypeCodes.TYPE_LONG, table.typeCodeAt(0));
-        assertEquals(io.memris.spring.TypeCodes.TYPE_STRING, table.typeCodeAt(1));
-        assertEquals(io.memris.spring.TypeCodes.TYPE_INT, table.typeCodeAt(2));
+        assertEquals(io.memris.core.TypeCodes.TYPE_LONG, table.typeCodeAt(0));
+        assertEquals(io.memris.core.TypeCodes.TYPE_STRING, table.typeCodeAt(1));
+        assertEquals(io.memris.core.TypeCodes.TYPE_INT, table.typeCodeAt(2));
     }
 
     @Test
@@ -165,9 +165,9 @@ class BytecodeTableGeneratorTest {
                 "Person",
                 "io.memris.test.Person",
                 java.util.List.of(
-                        new FieldMetadata("id", io.memris.spring.TypeCodes.TYPE_LONG, true, true),
-                        new FieldMetadata("name", io.memris.spring.TypeCodes.TYPE_STRING, false, false),
-                        new FieldMetadata("age", io.memris.spring.TypeCodes.TYPE_INT, false, false)
+                        new FieldMetadata("id", io.memris.core.TypeCodes.TYPE_LONG, true, true),
+                        new FieldMetadata("name", io.memris.core.TypeCodes.TYPE_STRING, false, false),
+                        new FieldMetadata("age", io.memris.core.TypeCodes.TYPE_INT, false, false)
                 )
         );
     }

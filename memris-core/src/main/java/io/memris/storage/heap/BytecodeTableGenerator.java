@@ -1,7 +1,7 @@
 package io.memris.storage.heap;
 
 import io.memris.kernel.RowId;
-import io.memris.spring.TypeCodes;
+import io.memris.core.TypeCodes;
 import io.memris.storage.Selection;
 import net.bytebuddy.ByteBuddy;
 import net.bytebuddy.description.modifier.FieldManifestation;

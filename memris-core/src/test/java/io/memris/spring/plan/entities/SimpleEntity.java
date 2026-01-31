@@ -1,4 +1,4 @@
-package io.memris.spring.plan.entities;
+package io.memris.query.entities;
 
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;

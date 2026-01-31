@@ -143,9 +143,9 @@ class TableGeneratorTest {
                 "Person",
                 "io.memris.test.Person",
                 List.of(
-                        new FieldMetadata("id", io.memris.spring.TypeCodes.TYPE_LONG, true, true),
-                        new FieldMetadata("name", io.memris.spring.TypeCodes.TYPE_STRING, false, false),
-                        new FieldMetadata("addressId", io.memris.spring.TypeCodes.TYPE_INT, false, false)
+                        new FieldMetadata("id", io.memris.core.TypeCodes.TYPE_LONG, true, true),
+                        new FieldMetadata("name", io.memris.core.TypeCodes.TYPE_STRING, false, false),
+                        new FieldMetadata("addressId", io.memris.core.TypeCodes.TYPE_INT, false, false)
                 )
         );
     }
@@ -159,9 +159,9 @@ class TableGeneratorTest {
                 "Address",
                 "io.memris.test.Address",
                 List.of(
-                        new FieldMetadata("zip", io.memris.spring.TypeCodes.TYPE_STRING, true, true),
-                        new FieldMetadata("street", io.memris.spring.TypeCodes.TYPE_STRING, false, false),
-                        new FieldMetadata("cityId", io.memris.spring.TypeCodes.TYPE_INT, false, false)
+                        new FieldMetadata("zip", io.memris.core.TypeCodes.TYPE_STRING, true, true),
+                        new FieldMetadata("street", io.memris.core.TypeCodes.TYPE_STRING, false, false),
+                        new FieldMetadata("cityId", io.memris.core.TypeCodes.TYPE_INT, false, false)
                 )
         );
     }

@@ -1,5 +1,6 @@
 package io.memris.spring;
 
+import io.memris.core.MemrisConfiguration;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;

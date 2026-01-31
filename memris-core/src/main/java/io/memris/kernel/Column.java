@@ -10,7 +10,7 @@ public interface Column<T> {
     /**
      * Returns the type code for this column.
      * Used for zero-overhead type switching in hot paths.
-     * @see io.memris.spring.TypeCodes
+     * @see io.memris.core.TypeCodes
      */
     byte typeCode();
 }

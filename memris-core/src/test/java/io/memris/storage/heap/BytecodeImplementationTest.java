@@ -53,9 +53,9 @@ class BytecodeImplementationTest {
                 "Person",
                 "io.memris.test.Person",
                 List.of(
-                        new FieldMetadata("id", io.memris.spring.TypeCodes.TYPE_LONG, true, true),
-                        new FieldMetadata("name", io.memris.spring.TypeCodes.TYPE_STRING, false, false),
-                        new FieldMetadata("addressId", io.memris.spring.TypeCodes.TYPE_INT, false, false)
+                        new FieldMetadata("id", io.memris.core.TypeCodes.TYPE_LONG, true, true),
+                        new FieldMetadata("name", io.memris.core.TypeCodes.TYPE_STRING, false, false),
+                        new FieldMetadata("addressId", io.memris.core.TypeCodes.TYPE_INT, false, false)
                 )
         );
     }

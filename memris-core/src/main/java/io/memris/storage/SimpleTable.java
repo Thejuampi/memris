@@ -3,7 +3,7 @@ package io.memris.storage;
 import io.memris.kernel.Column;
 import io.memris.kernel.RowId;
 import io.memris.kernel.Table;
-import io.memris.spring.TypeCodes;
+import io.memris.core.TypeCodes;
 
 import java.util.ArrayList;
 import java.util.Arrays;

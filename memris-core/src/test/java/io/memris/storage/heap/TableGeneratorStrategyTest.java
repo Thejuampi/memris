@@ -1,6 +1,6 @@
 package io.memris.storage.heap;
 
-import io.memris.spring.MemrisConfiguration;
+import io.memris.core.MemrisConfiguration;
 import io.memris.storage.GeneratedTable;
 import org.junit.jupiter.api.Test;
 
@@ -20,8 +20,8 @@ class TableGeneratorStrategyTest {
                 "Person",
                 "io.memris.test.Person",
                 java.util.List.of(
-                        new FieldMetadata("id", io.memris.spring.TypeCodes.TYPE_LONG, true, true),
-                        new FieldMetadata("name", io.memris.spring.TypeCodes.TYPE_STRING, false, false)
+                        new FieldMetadata("id", io.memris.core.TypeCodes.TYPE_LONG, true, true),
+                        new FieldMetadata("name", io.memris.core.TypeCodes.TYPE_STRING, false, false)
                 )
         );
         
@@ -58,8 +58,8 @@ class TableGeneratorStrategyTest {
                 "Person",
                 "io.memris.test.Person",
                 java.util.List.of(
-                        new FieldMetadata("id", io.memris.spring.TypeCodes.TYPE_LONG, true, true),
-                        new FieldMetadata("name", io.memris.spring.TypeCodes.TYPE_STRING, false, false)
+                        new FieldMetadata("id", io.memris.core.TypeCodes.TYPE_LONG, true, true),
+                        new FieldMetadata("name", io.memris.core.TypeCodes.TYPE_STRING, false, false)
                 )
         );
         
@@ -84,8 +84,8 @@ class TableGeneratorStrategyTest {
                 "Person",
                 "io.memris.test.Person",
                 java.util.List.of(
-                        new FieldMetadata("id", io.memris.spring.TypeCodes.TYPE_LONG, true, true),
-                        new FieldMetadata("name", io.memris.spring.TypeCodes.TYPE_STRING, false, false)
+                        new FieldMetadata("id", io.memris.core.TypeCodes.TYPE_LONG, true, true),
+                        new FieldMetadata("name", io.memris.core.TypeCodes.TYPE_STRING, false, false)
                 )
         );
         

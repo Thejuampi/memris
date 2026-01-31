@@ -1,4 +1,4 @@
-package io.memris.spring.plan;
+package io.memris.query;
 
 import static org.assertj.core.api.Assertions.*;
 import static org.junit.jupiter.api.Assertions.*;
@@ -9,8 +9,8 @@ import java.util.Map;
 
 import org.junit.jupiter.api.Test;
 
-import io.memris.spring.scaffold.RepositoryMethodIntrospector.MethodKey;
-import io.memris.spring.plan.OpCode;
+import io.memris.repository.RepositoryMethodIntrospector.MethodKey;
+import io.memris.query.OpCode;
 
 /**
  * Tests for built-in operation resolution with tie-breaking.

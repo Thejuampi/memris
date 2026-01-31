@@ -203,23 +203,23 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
             Object column = getter.invoke(obj);
             
             byte typeCode = fieldInfo.typeCode();
-            if (typeCode == io.memris.spring.TypeCodes.TYPE_LONG
-                || typeCode == io.memris.spring.TypeCodes.TYPE_DOUBLE
-                || typeCode == io.memris.spring.TypeCodes.TYPE_INSTANT
-                || typeCode == io.memris.spring.TypeCodes.TYPE_LOCAL_DATE
-                || typeCode == io.memris.spring.TypeCodes.TYPE_LOCAL_DATE_TIME
-                || typeCode == io.memris.spring.TypeCodes.TYPE_DATE) {
+            if (typeCode == io.memris.core.TypeCodes.TYPE_LONG
+                || typeCode == io.memris.core.TypeCodes.TYPE_DOUBLE
+                || typeCode == io.memris.core.TypeCodes.TYPE_INSTANT
+                || typeCode == io.memris.core.TypeCodes.TYPE_LOCAL_DATE
+                || typeCode == io.memris.core.TypeCodes.TYPE_LOCAL_DATE_TIME
+                || typeCode == io.memris.core.TypeCodes.TYPE_DATE) {
                 return ((PageColumnLong) column).get(rowIndex);
-            } else if (typeCode == io.memris.spring.TypeCodes.TYPE_INT
-                || typeCode == io.memris.spring.TypeCodes.TYPE_FLOAT
-                || typeCode == io.memris.spring.TypeCodes.TYPE_BOOLEAN
-                || typeCode == io.memris.spring.TypeCodes.TYPE_BYTE
-                || typeCode == io.memris.spring.TypeCodes.TYPE_SHORT
-                || typeCode == io.memris.spring.TypeCodes.TYPE_CHAR) {
+            } else if (typeCode == io.memris.core.TypeCodes.TYPE_INT
+                || typeCode == io.memris.core.TypeCodes.TYPE_FLOAT
+                || typeCode == io.memris.core.TypeCodes.TYPE_BOOLEAN
+                || typeCode == io.memris.core.TypeCodes.TYPE_BYTE
+                || typeCode == io.memris.core.TypeCodes.TYPE_SHORT
+                || typeCode == io.memris.core.TypeCodes.TYPE_CHAR) {
                 return ((PageColumnInt) column).get(rowIndex);
-            } else if (typeCode == io.memris.spring.TypeCodes.TYPE_STRING
-                || typeCode == io.memris.spring.TypeCodes.TYPE_BIG_DECIMAL
-                || typeCode == io.memris.spring.TypeCodes.TYPE_BIG_INTEGER) {
+            } else if (typeCode == io.memris.core.TypeCodes.TYPE_STRING
+                || typeCode == io.memris.core.TypeCodes.TYPE_BIG_DECIMAL
+                || typeCode == io.memris.core.TypeCodes.TYPE_BIG_INTEGER) {
                 return ((PageColumnString) column).get(rowIndex);
             } else {
                 throw new IllegalStateException("Unknown type code: " + typeCode);
@@ -249,23 +249,23 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
             Object column = getter.invoke(obj);
 
             byte typeCode = fieldInfo.typeCode();
-            if (typeCode == io.memris.spring.TypeCodes.TYPE_LONG
-                || typeCode == io.memris.spring.TypeCodes.TYPE_DOUBLE
-                || typeCode == io.memris.spring.TypeCodes.TYPE_INSTANT
-                || typeCode == io.memris.spring.TypeCodes.TYPE_LOCAL_DATE
-                || typeCode == io.memris.spring.TypeCodes.TYPE_LOCAL_DATE_TIME
-                || typeCode == io.memris.spring.TypeCodes.TYPE_DATE) {
+            if (typeCode == io.memris.core.TypeCodes.TYPE_LONG
+                || typeCode == io.memris.core.TypeCodes.TYPE_DOUBLE
+                || typeCode == io.memris.core.TypeCodes.TYPE_INSTANT
+                || typeCode == io.memris.core.TypeCodes.TYPE_LOCAL_DATE
+                || typeCode == io.memris.core.TypeCodes.TYPE_LOCAL_DATE_TIME
+                || typeCode == io.memris.core.TypeCodes.TYPE_DATE) {
                 return ((PageColumnLong) column).isPresent(rowIndex);
-            } else if (typeCode == io.memris.spring.TypeCodes.TYPE_INT
-                || typeCode == io.memris.spring.TypeCodes.TYPE_FLOAT
-                || typeCode == io.memris.spring.TypeCodes.TYPE_BOOLEAN
-                || typeCode == io.memris.spring.TypeCodes.TYPE_BYTE
-                || typeCode == io.memris.spring.TypeCodes.TYPE_SHORT
-                || typeCode == io.memris.spring.TypeCodes.TYPE_CHAR) {
+            } else if (typeCode == io.memris.core.TypeCodes.TYPE_INT
+                || typeCode == io.memris.core.TypeCodes.TYPE_FLOAT
+                || typeCode == io.memris.core.TypeCodes.TYPE_BOOLEAN
+                || typeCode == io.memris.core.TypeCodes.TYPE_BYTE
+                || typeCode == io.memris.core.TypeCodes.TYPE_SHORT
+                || typeCode == io.memris.core.TypeCodes.TYPE_CHAR) {
                 return ((PageColumnInt) column).isPresent(rowIndex);
-            } else if (typeCode == io.memris.spring.TypeCodes.TYPE_STRING
-                || typeCode == io.memris.spring.TypeCodes.TYPE_BIG_DECIMAL
-                || typeCode == io.memris.spring.TypeCodes.TYPE_BIG_INTEGER) {
+            } else if (typeCode == io.memris.core.TypeCodes.TYPE_STRING
+                || typeCode == io.memris.core.TypeCodes.TYPE_BIG_DECIMAL
+                || typeCode == io.memris.core.TypeCodes.TYPE_BIG_INTEGER) {
                 return ((PageColumnString) column).isPresent(rowIndex);
             } else {
                 throw new IllegalStateException("Unknown type code: " + typeCode);
@@ -719,19 +719,19 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
                 Object value = values[i];
                 
                 byte typeCode = fieldInfo.typeCode();
-                if (typeCode == io.memris.spring.TypeCodes.TYPE_LONG
-                    || typeCode == io.memris.spring.TypeCodes.TYPE_INSTANT
-                    || typeCode == io.memris.spring.TypeCodes.TYPE_LOCAL_DATE
-                    || typeCode == io.memris.spring.TypeCodes.TYPE_LOCAL_DATE_TIME
-                    || typeCode == io.memris.spring.TypeCodes.TYPE_DATE
-                    || typeCode == io.memris.spring.TypeCodes.TYPE_DOUBLE) {
+                if (typeCode == io.memris.core.TypeCodes.TYPE_LONG
+                    || typeCode == io.memris.core.TypeCodes.TYPE_INSTANT
+                    || typeCode == io.memris.core.TypeCodes.TYPE_LOCAL_DATE
+                    || typeCode == io.memris.core.TypeCodes.TYPE_LOCAL_DATE_TIME
+                    || typeCode == io.memris.core.TypeCodes.TYPE_DATE
+                    || typeCode == io.memris.core.TypeCodes.TYPE_DOUBLE) {
                     PageColumnLong col = (PageColumnLong) column;
                     if (value == null) {
                         col.setNull(rowIndex);
                         continue;
                     }
                     long longValue;
-                    if (typeCode == io.memris.spring.TypeCodes.TYPE_DOUBLE) {
+                    if (typeCode == io.memris.core.TypeCodes.TYPE_DOUBLE) {
                         if (value instanceof Double) {
                             longValue = Double.doubleToLongBits((Double) value);
                         } else if (value instanceof Number) {
@@ -749,19 +749,19 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
                         throw new IllegalArgumentException("Expected Long for column " + i);
                     }
                     col.set(rowIndex, longValue);
-                } else if (typeCode == io.memris.spring.TypeCodes.TYPE_INT
-                    || typeCode == io.memris.spring.TypeCodes.TYPE_FLOAT
-                    || typeCode == io.memris.spring.TypeCodes.TYPE_BOOLEAN
-                    || typeCode == io.memris.spring.TypeCodes.TYPE_BYTE
-                    || typeCode == io.memris.spring.TypeCodes.TYPE_SHORT
-                    || typeCode == io.memris.spring.TypeCodes.TYPE_CHAR) {
+                } else if (typeCode == io.memris.core.TypeCodes.TYPE_INT
+                    || typeCode == io.memris.core.TypeCodes.TYPE_FLOAT
+                    || typeCode == io.memris.core.TypeCodes.TYPE_BOOLEAN
+                    || typeCode == io.memris.core.TypeCodes.TYPE_BYTE
+                    || typeCode == io.memris.core.TypeCodes.TYPE_SHORT
+                    || typeCode == io.memris.core.TypeCodes.TYPE_CHAR) {
                     PageColumnInt col = (PageColumnInt) column;
                     if (value == null) {
                         col.setNull(rowIndex);
                         continue;
                     }
                     int intValue;
-                    if (typeCode == io.memris.spring.TypeCodes.TYPE_FLOAT) {
+                    if (typeCode == io.memris.core.TypeCodes.TYPE_FLOAT) {
                         if (value instanceof Float) {
                             intValue = Float.floatToIntBits((Float) value);
                         } else if (value instanceof Number) {
@@ -769,13 +769,13 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
                         } else {
                             throw new IllegalArgumentException("Expected Float for column " + i);
                         }
-                    } else if (typeCode == io.memris.spring.TypeCodes.TYPE_BOOLEAN) {
+                    } else if (typeCode == io.memris.core.TypeCodes.TYPE_BOOLEAN) {
                         if (value instanceof Boolean) {
                             intValue = (Boolean) value ? 1 : 0;
                         } else {
                             throw new IllegalArgumentException("Expected Boolean for column " + i);
                         }
-                    } else if (typeCode == io.memris.spring.TypeCodes.TYPE_CHAR) {
+                    } else if (typeCode == io.memris.core.TypeCodes.TYPE_CHAR) {
                         if (value instanceof Character) {
                             intValue = (Character) value;
                         } else {
@@ -791,9 +791,9 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
                         throw new IllegalArgumentException("Expected Integer for column " + i);
                     }
                     col.set(rowIndex, intValue);
-                } else if (typeCode == io.memris.spring.TypeCodes.TYPE_STRING
-                    || typeCode == io.memris.spring.TypeCodes.TYPE_BIG_DECIMAL
-                    || typeCode == io.memris.spring.TypeCodes.TYPE_BIG_INTEGER) {
+                } else if (typeCode == io.memris.core.TypeCodes.TYPE_STRING
+                    || typeCode == io.memris.core.TypeCodes.TYPE_BIG_DECIMAL
+                    || typeCode == io.memris.core.TypeCodes.TYPE_BIG_INTEGER) {
                     PageColumnString col = (PageColumnString) column;
                     if (value == null) {
                         col.setNull(rowIndex);
@@ -825,25 +825,25 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
                 Object column = getter.invoke(obj);
                 
                 byte typeCode = fieldInfo.typeCode();
-                if (typeCode == io.memris.spring.TypeCodes.TYPE_LONG
-                    || typeCode == io.memris.spring.TypeCodes.TYPE_DOUBLE
-                    || typeCode == io.memris.spring.TypeCodes.TYPE_INSTANT
-                    || typeCode == io.memris.spring.TypeCodes.TYPE_LOCAL_DATE
-                    || typeCode == io.memris.spring.TypeCodes.TYPE_LOCAL_DATE_TIME
-                    || typeCode == io.memris.spring.TypeCodes.TYPE_DATE) {
+                if (typeCode == io.memris.core.TypeCodes.TYPE_LONG
+                    || typeCode == io.memris.core.TypeCodes.TYPE_DOUBLE
+                    || typeCode == io.memris.core.TypeCodes.TYPE_INSTANT
+                    || typeCode == io.memris.core.TypeCodes.TYPE_LOCAL_DATE
+                    || typeCode == io.memris.core.TypeCodes.TYPE_LOCAL_DATE_TIME
+                    || typeCode == io.memris.core.TypeCodes.TYPE_DATE) {
                     PageColumnLong col = (PageColumnLong) column;
                     col.publish(rowIndex + 1);
-                } else if (typeCode == io.memris.spring.TypeCodes.TYPE_INT
-                    || typeCode == io.memris.spring.TypeCodes.TYPE_FLOAT
-                    || typeCode == io.memris.spring.TypeCodes.TYPE_BOOLEAN
-                    || typeCode == io.memris.spring.TypeCodes.TYPE_BYTE
-                    || typeCode == io.memris.spring.TypeCodes.TYPE_SHORT
-                    || typeCode == io.memris.spring.TypeCodes.TYPE_CHAR) {
+                } else if (typeCode == io.memris.core.TypeCodes.TYPE_INT
+                    || typeCode == io.memris.core.TypeCodes.TYPE_FLOAT
+                    || typeCode == io.memris.core.TypeCodes.TYPE_BOOLEAN
+                    || typeCode == io.memris.core.TypeCodes.TYPE_BYTE
+                    || typeCode == io.memris.core.TypeCodes.TYPE_SHORT
+                    || typeCode == io.memris.core.TypeCodes.TYPE_CHAR) {
                     PageColumnInt col = (PageColumnInt) column;
                     col.publish(rowIndex + 1);
-                } else if (typeCode == io.memris.spring.TypeCodes.TYPE_STRING
-                    || typeCode == io.memris.spring.TypeCodes.TYPE_BIG_DECIMAL
-                    || typeCode == io.memris.spring.TypeCodes.TYPE_BIG_INTEGER) {
+                } else if (typeCode == io.memris.core.TypeCodes.TYPE_STRING
+                    || typeCode == io.memris.core.TypeCodes.TYPE_BIG_DECIMAL
+                    || typeCode == io.memris.core.TypeCodes.TYPE_BIG_INTEGER) {
                     PageColumnString col = (PageColumnString) column;
                     col.publish(rowIndex + 1);
                 }

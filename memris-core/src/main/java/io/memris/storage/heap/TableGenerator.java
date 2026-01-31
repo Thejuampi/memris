@@ -1,6 +1,6 @@
 package io.memris.storage.heap;
 
-import io.memris.spring.MemrisConfiguration;
+import io.memris.core.MemrisConfiguration;
 import net.bytebuddy.ByteBuddy;
 import net.bytebuddy.description.modifier.FieldManifestation;
 import net.bytebuddy.description.modifier.TypeManifestation;
@@ -19,7 +19,7 @@ import java.lang.invoke.MethodHandles;
 import java.util.ArrayList;
 import java.util.List;
 
-import io.memris.spring.TypeCodes;
+import io.memris.core.TypeCodes;
 
 public final class TableGenerator {
 
@@ -153,21 +153,21 @@ public final class TableGenerator {
      */
     private static Class<?> getColumnType(byte typeCode) {
         return switch (typeCode) {
-            case io.memris.spring.TypeCodes.TYPE_LONG -> PageColumnLong.class;
-            case io.memris.spring.TypeCodes.TYPE_INT -> PageColumnInt.class;
-            case io.memris.spring.TypeCodes.TYPE_STRING -> PageColumnString.class;
-            case io.memris.spring.TypeCodes.TYPE_DOUBLE -> PageColumnLong.class;
-            case io.memris.spring.TypeCodes.TYPE_FLOAT -> PageColumnInt.class;
-            case io.memris.spring.TypeCodes.TYPE_BOOLEAN -> PageColumnInt.class;
-            case io.memris.spring.TypeCodes.TYPE_BYTE -> PageColumnInt.class;
-            case io.memris.spring.TypeCodes.TYPE_SHORT -> PageColumnInt.class;
-            case io.memris.spring.TypeCodes.TYPE_CHAR -> PageColumnInt.class;
-            case io.memris.spring.TypeCodes.TYPE_INSTANT -> PageColumnLong.class;
-            case io.memris.spring.TypeCodes.TYPE_LOCAL_DATE -> PageColumnLong.class;
-            case io.memris.spring.TypeCodes.TYPE_LOCAL_DATE_TIME -> PageColumnLong.class;
-            case io.memris.spring.TypeCodes.TYPE_DATE -> PageColumnLong.class;
-            case io.memris.spring.TypeCodes.TYPE_BIG_DECIMAL -> PageColumnString.class;
-            case io.memris.spring.TypeCodes.TYPE_BIG_INTEGER -> PageColumnString.class;
+            case io.memris.core.TypeCodes.TYPE_LONG -> PageColumnLong.class;
+            case io.memris.core.TypeCodes.TYPE_INT -> PageColumnInt.class;
+            case io.memris.core.TypeCodes.TYPE_STRING -> PageColumnString.class;
+            case io.memris.core.TypeCodes.TYPE_DOUBLE -> PageColumnLong.class;
+            case io.memris.core.TypeCodes.TYPE_FLOAT -> PageColumnInt.class;
+            case io.memris.core.TypeCodes.TYPE_BOOLEAN -> PageColumnInt.class;
+            case io.memris.core.TypeCodes.TYPE_BYTE -> PageColumnInt.class;
+            case io.memris.core.TypeCodes.TYPE_SHORT -> PageColumnInt.class;
+            case io.memris.core.TypeCodes.TYPE_CHAR -> PageColumnInt.class;
+            case io.memris.core.TypeCodes.TYPE_INSTANT -> PageColumnLong.class;
+            case io.memris.core.TypeCodes.TYPE_LOCAL_DATE -> PageColumnLong.class;
+            case io.memris.core.TypeCodes.TYPE_LOCAL_DATE_TIME -> PageColumnLong.class;
+            case io.memris.core.TypeCodes.TYPE_DATE -> PageColumnLong.class;
+            case io.memris.core.TypeCodes.TYPE_BIG_DECIMAL -> PageColumnString.class;
+            case io.memris.core.TypeCodes.TYPE_BIG_INTEGER -> PageColumnString.class;
             default -> throw new IllegalArgumentException("Unsupported type code: " + typeCode);
         };
     }
@@ -177,9 +177,9 @@ public final class TableGenerator {
      */
     private static Class<?> getIdIndexType(byte typeCode) {
         return switch (typeCode) {
-            case io.memris.spring.TypeCodes.TYPE_LONG -> LongIdIndex.class;
-            case io.memris.spring.TypeCodes.TYPE_INT -> LongIdIndex.class;
-            case io.memris.spring.TypeCodes.TYPE_STRING -> StringIdIndex.class;
+            case io.memris.core.TypeCodes.TYPE_LONG -> LongIdIndex.class;
+            case io.memris.core.TypeCodes.TYPE_INT -> LongIdIndex.class;
+            case io.memris.core.TypeCodes.TYPE_STRING -> StringIdIndex.class;
             default -> throw new IllegalArgumentException("Unsupported ID type code: " + typeCode);
         };
     }

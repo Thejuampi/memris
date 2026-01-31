@@ -1,11 +1,11 @@
-package io.memris.spring.plan;
+package io.memris.query;
 
-import io.memris.spring.EntityMetadata;
-import io.memris.spring.MetadataExtractor;
-import io.memris.spring.Param;
-import io.memris.spring.Query;
-import io.memris.spring.plan.jpql.JpqlAst;
-import io.memris.spring.plan.jpql.JpqlLexer;
+import io.memris.core.EntityMetadata;
+import io.memris.core.MetadataExtractor;
+import io.memris.core.Param;
+import io.memris.core.Query;
+import io.memris.query.jpql.JpqlAst;
+import io.memris.query.jpql.JpqlLexer;
 
 import java.lang.reflect.Method;
 import java.lang.reflect.Parameter;

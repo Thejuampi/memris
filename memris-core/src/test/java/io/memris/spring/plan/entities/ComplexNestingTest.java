@@ -1,6 +1,6 @@
-package io.memris.spring.plan.entities;
+package io.memris.query.entities;
 
-import io.memris.spring.plan.*;
+import io.memris.query.*;
 import org.junit.jupiter.api.*;
 import static org.assertj.core.api.Assertions.*;
 

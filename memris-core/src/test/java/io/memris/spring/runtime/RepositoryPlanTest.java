@@ -1,11 +1,11 @@
-package io.memris.spring.runtime;
+package io.memris.runtime;
 
-import io.memris.spring.EntityMetadata;
-import io.memris.spring.MetadataExtractor;
-import io.memris.spring.scaffold.EntitySaverGenerator;
+import io.memris.core.EntityMetadata;
+import io.memris.core.MetadataExtractor;
+import io.memris.repository.EntitySaverGenerator;
 import io.memris.storage.GeneratedTable;
 import io.memris.storage.heap.AbstractTable;
-import io.memris.spring.plan.CompiledQuery;
+import io.memris.query.CompiledQuery;
 import org.junit.jupiter.api.Test;
 
 import java.lang.invoke.MethodHandle;

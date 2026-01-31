@@ -1,5 +1,22 @@
 package io.memris.spring;
 
+import io.memris.repository.MemrisRepositoryFactory;
+import io.memris.core.MemrisArena;
+import io.memris.repository.MemrisRepository;
+import io.memris.core.Entity;
+import io.memris.core.GeneratedValue;
+import io.memris.core.GenerationType;
+import io.memris.core.Index;
+
+import io.memris.core.Entity;
+import io.memris.core.GeneratedValue;
+import io.memris.core.GenerationType;
+import io.memris.core.Index;
+
+import io.memris.repository.MemrisRepositoryFactory;
+import io.memris.core.MemrisArena;
+import io.memris.repository.MemrisRepository;
+
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;

@@ -1,9 +1,9 @@
-package io.memris.spring.plan.entities;
+package io.memris.query.entities;
 
-import io.memris.spring.plan.*;
+import io.memris.query.*;
 import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.*;
-import static io.memris.spring.plan.LogicalQuery.*;
+import static io.memris.query.LogicalQuery.*;
 
 import java.lang.reflect.Method;
 import java.util.Date;
