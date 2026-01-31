@@ -171,27 +171,33 @@ public final class PageColumnString {
 
     /**
      * Scan for values IN a collection.
+     * <p>
+     * Uses HashSet for O(1) target lookup instead of O(n*m) nested loop.
      *
      * @param targets the target values
      * @param limit   maximum offset to scan (published count)
      * @return array of matching offsets
      */
     public int[] scanIn(String[] targets, int limit) {
-        int count = Math.min(published, limit);
+        if (targets == null || targets.length == 0) {
+            return new int[0];
+        }
 
+        // Use HashSet for O(1) lookup - more efficient for large target sets
+        java.util.HashSet<String> targetSet = new java.util.HashSet<>(targets.length * 2);
+        for (String target : targets) {
+            if (target != null) {
+                targetSet.add(target);
+            }
+        }
+
+        int count = Math.min(published, limit);
         int[] results = new int[count];
         int found = 0;
 
         for (int i = 0; i < count; i++) {
-            if (present[i] == 0) {
-                continue;
-            }
-            String value = data[i];
-            for (String target : targets) {
-                if (target != null && target.equals(value)) {
-                    results[found++] = i;
-                    break;
-                }
+            if (present[i] != 0 && targetSet.contains(data[i])) {
+                results[found++] = i;
             }
         }
 
