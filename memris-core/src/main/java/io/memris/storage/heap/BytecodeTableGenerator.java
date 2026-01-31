@@ -876,30 +876,33 @@ public final class BytecodeTableGenerator {
             int rowIndex = (int) (rowId.page() * table.pageSize() + rowId.offset());
             long generation = table.rowGeneration(rowIndex);
 
-            // Write values to columns
-            for (int i = 0; i < columnFields.size(); i++) {
-                ColumnFieldInfo fieldInfo = columnFields.get(i);
-                Field field = obj.getClass().getDeclaredField(fieldInfo.fieldName());
-                field.setAccessible(true);
-                Object column = field.get(obj);
-                Object value = values[i];
+            // Begin seqlock - mark row as being written (odd)
+            table.beginSeqLock(rowIndex);
+            try {
+                // Write values to columns
+                for (int i = 0; i < columnFields.size(); i++) {
+                    ColumnFieldInfo fieldInfo = columnFields.get(i);
+                    Field field = obj.getClass().getDeclaredField(fieldInfo.fieldName());
+                    field.setAccessible(true);
+                    Object column = field.get(obj);
+                    Object value = values[i];
 
-                byte typeCode = fieldInfo.typeCode();
-                if (typeCode == TypeCodes.TYPE_LONG
-                        || typeCode == TypeCodes.TYPE_INSTANT
-                        || typeCode == TypeCodes.TYPE_LOCAL_DATE
-                        || typeCode == TypeCodes.TYPE_LOCAL_DATE_TIME
-                        || typeCode == TypeCodes.TYPE_DATE
-                        || typeCode == TypeCodes.TYPE_DOUBLE) {
-                    PageColumnLong col = (PageColumnLong) column;
-                    if (value == null) {
-                        col.setNull(rowIndex);
-                        continue;
-                    }
-                    long longValue;
-                    if (typeCode == TypeCodes.TYPE_DOUBLE) {
-                        if (value instanceof Double) {
-                            longValue = Double.doubleToLongBits((Double) value);
+                    byte typeCode = fieldInfo.typeCode();
+                    if (typeCode == TypeCodes.TYPE_LONG
+                            || typeCode == TypeCodes.TYPE_INSTANT
+                            || typeCode == TypeCodes.TYPE_LOCAL_DATE
+                            || typeCode == TypeCodes.TYPE_LOCAL_DATE_TIME
+                            || typeCode == TypeCodes.TYPE_DATE
+                            || typeCode == TypeCodes.TYPE_DOUBLE) {
+                        PageColumnLong col = (PageColumnLong) column;
+                        if (value == null) {
+                            col.setNull(rowIndex);
+                            continue;
+                        }
+                        long longValue;
+                        if (typeCode == TypeCodes.TYPE_DOUBLE) {
+                            if (value instanceof Double) {
+                                longValue = Double.doubleToLongBits((Double) value);
                         } else if (value instanceof Number) {
                             longValue = Double.doubleToLongBits(((Number) value).doubleValue());
                         } else {
@@ -1012,9 +1015,16 @@ public final class BytecodeTableGenerator {
                 }
             }
 
+            // End seqlock - mark row as stable (even)
+            table.endSeqLock(rowIndex);
+
             table.incrementRowCount();
             return Selection.pack(rowIndex, generation);
+        } finally {
+            // Ensure seqlock is ended even if exception occurs
+            table.endSeqLock(rowIndex);
         }
+    }
     }
 
     public static class TombstoneInterceptor {
