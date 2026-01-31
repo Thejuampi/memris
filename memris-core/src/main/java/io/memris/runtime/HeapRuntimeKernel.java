@@ -187,17 +187,23 @@ public final class HeapRuntimeKernel {
             }
             return result;
         }
-        if (value instanceof Iterable<?> iterable) {
-            java.util.ArrayList<Long> list = new java.util.ArrayList<>();
-            for (Object item : iterable) {
-                list.add(convertToLong(typeCode, item));
-            }
-            return toLongArray(list);
-        }
         if (value instanceof Object[] objects) {
             long[] result = new long[objects.length];
             for (int i = 0; i < objects.length; i++) {
                 result[i] = convertToLong(typeCode, objects[i]);
+            }
+            return result;
+        }
+        if (value instanceof Iterable<?> iterable) {
+            // Optimized: two-pass to avoid ArrayList allocation
+            int size = 0;
+            for (Object ignored : iterable) {
+                size++;
+            }
+            long[] result = new long[size];
+            int i = 0;
+            for (Object item : iterable) {
+                result[i++] = convertToLong(typeCode, item);
             }
             return result;
         }
@@ -208,17 +214,23 @@ public final class HeapRuntimeKernel {
         if (value instanceof int[] ints) {
             return ints;
         }
-        if (value instanceof Iterable<?> iterable) {
-            java.util.ArrayList<Integer> list = new java.util.ArrayList<>();
-            for (Object item : iterable) {
-                list.add(convertToInt(typeCode, item));
-            }
-            return toIntArray(list);
-        }
         if (value instanceof Object[] objects) {
             int[] result = new int[objects.length];
             for (int i = 0; i < objects.length; i++) {
                 result[i] = convertToInt(typeCode, objects[i]);
+            }
+            return result;
+        }
+        if (value instanceof Iterable<?> iterable) {
+            // Optimized: two-pass to avoid ArrayList allocation
+            int size = 0;
+            for (Object ignored : iterable) {
+                size++;
+            }
+            int[] result = new int[size];
+            int i = 0;
+            for (Object item : iterable) {
+                result[i++] = convertToInt(typeCode, item);
             }
             return result;
         }
@@ -229,13 +241,6 @@ public final class HeapRuntimeKernel {
         if (value instanceof String[] strings) {
             return strings;
         }
-        if (value instanceof Iterable<?> iterable) {
-            java.util.ArrayList<String> list = new java.util.ArrayList<>();
-            for (Object item : iterable) {
-                list.add(item != null ? item.toString() : null);
-            }
-            return list.toArray(new String[0]);
-        }
         if (value instanceof Object[] objects) {
             String[] result = new String[objects.length];
             for (int i = 0; i < objects.length; i++) {
@@ -243,23 +248,20 @@ public final class HeapRuntimeKernel {
             }
             return result;
         }
+        if (value instanceof Iterable<?> iterable) {
+            // Optimized: two-pass to avoid ArrayList allocation
+            int size = 0;
+            for (Object ignored : iterable) {
+                size++;
+            }
+            String[] result = new String[size];
+            int i = 0;
+            for (Object item : iterable) {
+                result[i++] = item != null ? item.toString() : null;
+            }
+            return result;
+        }
         return new String[]{value.toString()};
-    }
-
-    private long[] toLongArray(java.util.ArrayList<Long> values) {
-        long[] result = new long[values.size()];
-        for (int i = 0; i < values.size(); i++) {
-            result[i] = values.get(i);
-        }
-        return result;
-    }
-
-    private int[] toIntArray(java.util.ArrayList<Integer> values) {
-        int[] result = new int[values.size()];
-        for (int i = 0; i < values.size(); i++) {
-            result[i] = values.get(i);
-        }
-        return result;
     }
 
     private long convertToLong(byte typeCode, Object value) {
