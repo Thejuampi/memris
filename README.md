@@ -400,7 +400,7 @@ Memris is currently in SNAPSHOT version (1.0.0-SNAPSHOT). Build locally to use:
 
 ## Acknowledgements
 
-If you use this project in your own work, a mention or credit to the author (**Juan Lescano**) would be greatly appreciated!
+If you use this project in your own work, a mention or credit to the author (**Juan Pablo Abelardo Lescano**) would be greatly appreciated!
 
 ## License
 
