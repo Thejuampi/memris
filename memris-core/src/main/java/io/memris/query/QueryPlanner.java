@@ -252,6 +252,9 @@ public final class QueryPlanner {
             throw new IllegalArgumentException("Top/First is only supported for find/read/query/get methods: " + methodName);
         }
         String parseName = limitParse.normalizedName();
+        DistinctParseResult distinctParse = parseDistinct(parseName);
+        parseName = distinctParse.normalizedName();
+        boolean distinct = distinctParse.distinct();
 
         // Tokenize using context-aware lexer
         List<QueryMethodToken> tokens = QueryMethodLexer.tokenize(entityClass, parseName);
@@ -311,9 +314,13 @@ public final class QueryPlanner {
 
         return LogicalQuery.of(opCode, returnKind,
                                conditions.toArray(new LogicalQuery.Condition[0]),
+                               new LogicalQuery.UpdateAssignment[0],
                                new LogicalQuery.Join[0],
                                orderBy,
                                limitParse.limit(),
+                               distinct,
+                               new Object[0],
+                               new int[0],
                                state.argIndex);
     }
 
@@ -558,6 +565,9 @@ public final class QueryPlanner {
     private record LimitParseResult(int limit, String normalizedName) {
     }
 
+    private record DistinctParseResult(boolean distinct, String normalizedName) {
+    }
+
     private static LimitParseResult parseLimit(String methodName) {
         String prefix = extractPrefix(methodName);
         String remaining = methodName.substring(prefix.length());
@@ -569,6 +579,15 @@ public final class QueryPlanner {
             return parseLimitAfterPrefix(methodName, prefix, remaining, 5);
         }
         return new LimitParseResult(0, methodName);
+    }
+
+    private static DistinctParseResult parseDistinct(String methodName) {
+        String prefix = extractPrefix(methodName);
+        String remaining = methodName.substring(prefix.length());
+        if (remaining.startsWith("Distinct")) {
+            return new DistinctParseResult(true, prefix + remaining.substring("Distinct".length()));
+        }
+        return new DistinctParseResult(false, methodName);
     }
 
     private static LimitParseResult parseLimitAfterPrefix(String methodName, String prefix, String remaining, int keywordLength) {

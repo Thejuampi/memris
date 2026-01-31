@@ -22,6 +22,7 @@ public record LogicalQuery(
         OpCode opCode,
         ReturnKind returnKind,
         Condition[] conditions,
+        UpdateAssignment[] updateAssignments,
         Join[] joins,
         OrderBy[] orderBy,
         int limit,
@@ -36,7 +37,7 @@ public record LogicalQuery(
             ReturnKind returnKind,
             Condition[] conditions,
             OrderBy[] orderBy) {
-        return new LogicalQuery(opCode, returnKind, conditions, new Join[0], orderBy, 0, false, new Object[0], new int[0], conditions.length);
+        return new LogicalQuery(opCode, returnKind, conditions, new UpdateAssignment[0], new Join[0], orderBy, 0, false, new Object[0], new int[0], conditions.length);
     }
 
     public static LogicalQuery of(
@@ -46,7 +47,7 @@ public record LogicalQuery(
             Join[] joins,
             OrderBy[] orderBy,
             int parameterCount) {
-        return new LogicalQuery(opCode, returnKind, conditions, joins, orderBy, 0, false, new Object[0], new int[0], parameterCount);
+        return new LogicalQuery(opCode, returnKind, conditions, new UpdateAssignment[0], joins, orderBy, 0, false, new Object[0], new int[0], parameterCount);
     }
 
     public static LogicalQuery of(
@@ -57,13 +58,14 @@ public record LogicalQuery(
             OrderBy[] orderBy,
             int limit,
             int parameterCount) {
-        return new LogicalQuery(opCode, returnKind, conditions, joins, orderBy, limit, false, new Object[0], new int[0], parameterCount);
+        return new LogicalQuery(opCode, returnKind, conditions, new UpdateAssignment[0], joins, orderBy, limit, false, new Object[0], new int[0], parameterCount);
     }
 
     public static LogicalQuery of(
             OpCode opCode,
             ReturnKind returnKind,
             Condition[] conditions,
+            UpdateAssignment[] updateAssignments,
             Join[] joins,
             OrderBy[] orderBy,
             int limit,
@@ -71,7 +73,7 @@ public record LogicalQuery(
             Object[] boundValues,
             int[] parameterIndices,
             int parameterCount) {
-        return new LogicalQuery(opCode, returnKind, conditions, joins, orderBy, limit, distinct, boundValues, parameterIndices, parameterCount);
+        return new LogicalQuery(opCode, returnKind, conditions, updateAssignments, joins, orderBy, limit, distinct, boundValues, parameterIndices, parameterCount);
     }
 
     /**
@@ -83,7 +85,7 @@ public record LogicalQuery(
             Condition[] conditions,
             OrderBy[] orderBy,
             int parameterCount) {
-        return new LogicalQuery(opCode, returnKind, conditions, new Join[0], orderBy, 0, false, new Object[0], new int[0], parameterCount);
+        return new LogicalQuery(opCode, returnKind, conditions, new UpdateAssignment[0], new Join[0], orderBy, 0, false, new Object[0], new int[0], parameterCount);
     }
 
     /**
@@ -97,7 +99,7 @@ public record LogicalQuery(
      * @return a LogicalQuery for the CRUD operation
      */
     public static LogicalQuery crud(OpCode opCode, ReturnKind returnKind, int parameterCount) {
-        return new LogicalQuery(opCode, returnKind, new Condition[0], new Join[0], null, 0, false, new Object[0], new int[0], parameterCount);
+        return new LogicalQuery(opCode, returnKind, new Condition[0], new UpdateAssignment[0], new Join[0], null, 0, false, new Object[0], new int[0], parameterCount);
     }
 
     /**
@@ -162,7 +164,19 @@ public record LogicalQuery(
         /** CRUD: Delete all entities (deleteAll) */
         DELETE_ALL,
         /** CRUD: Delete by ID (deleteById) */
-        DELETE_BY_ID
+        DELETE_BY_ID,
+        /** Modifying: Update/Delete returns int */
+        MODIFYING_INT,
+        /** Modifying: Update/Delete returns long */
+        MODIFYING_LONG,
+        /** Modifying: Update/Delete returns void */
+        MODIFYING_VOID
+    }
+
+    public record UpdateAssignment(
+            String propertyPath,
+            int argumentIndex
+    ) {
     }
 
     /**

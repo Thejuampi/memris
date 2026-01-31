@@ -23,6 +23,8 @@ public record CompiledQuery(
         LogicalQuery.ReturnKind returnKind,
         /** Pre-compiled conditions with resolved column indices */
         CompiledCondition[] conditions,
+        /** Pre-compiled update assignments */
+        CompiledUpdateAssignment[] updateAssignments,
         /** Pre-compiled joins */
         CompiledJoin[] joins,
         /** Pre-compiled order by (optional) */
@@ -51,7 +53,7 @@ public record CompiledQuery(
             OpCode opCode,
             LogicalQuery.ReturnKind returnKind,
             CompiledCondition[] conditions) {
-        return new CompiledQuery(opCode, returnKind, conditions, new CompiledJoin[0], null, 0, false, new Object[0], new int[0], conditions.length);
+        return new CompiledQuery(opCode, returnKind, conditions, new CompiledUpdateAssignment[0], new CompiledJoin[0], null, 0, false, new Object[0], new int[0], conditions.length);
     }
 
     public static CompiledQuery of(
@@ -62,13 +64,14 @@ public record CompiledQuery(
             CompiledOrderBy[] orderBy,
             int limit,
             int arity) {
-        return new CompiledQuery(opCode, returnKind, conditions, joins, orderBy, limit, false, new Object[0], new int[0], arity);
+        return new CompiledQuery(opCode, returnKind, conditions, new CompiledUpdateAssignment[0], joins, orderBy, limit, false, new Object[0], new int[0], arity);
     }
 
     public static CompiledQuery of(
             OpCode opCode,
             LogicalQuery.ReturnKind returnKind,
             CompiledCondition[] conditions,
+            CompiledUpdateAssignment[] updateAssignments,
             CompiledJoin[] joins,
             CompiledOrderBy[] orderBy,
             int limit,
@@ -76,11 +79,20 @@ public record CompiledQuery(
             Object[] boundValues,
             int[] parameterIndices,
             int arity) {
-        return new CompiledQuery(opCode, returnKind, conditions, joins, orderBy, limit, distinct, boundValues, parameterIndices, arity);
+        return new CompiledQuery(opCode, returnKind, conditions, updateAssignments, joins, orderBy, limit, distinct, boundValues, parameterIndices, arity);
     }
 
     public CompiledQuery withJoins(CompiledJoin[] joins) {
-        return new CompiledQuery(opCode, returnKind, conditions, joins, orderBy, limit, distinct, boundValues, parameterIndices, arity);
+        return new CompiledQuery(opCode, returnKind, conditions, updateAssignments, joins, orderBy, limit, distinct, boundValues, parameterIndices, arity);
+    }
+
+    /**
+     * Pre-compiled update assignment.
+     */
+    public record CompiledUpdateAssignment(
+            int columnIndex,
+            int argumentIndex
+    ) {
     }
 
     /**

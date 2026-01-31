@@ -83,7 +83,8 @@ public final class RepositoryEmitter {
         java.util.Map<Class<?>, io.memris.storage.GeneratedTable> tablesByEntity = buildJoinTables(metadata, arena);
         java.util.Map<Class<?>, io.memris.runtime.HeapRuntimeKernel> kernelsByEntity = buildJoinKernels(tablesByEntity);
         java.util.Map<Class<?>, io.memris.runtime.EntityMaterializer<?>> materializersByEntity = buildJoinMaterializers(tablesByEntity);
-        compiledQueries = wireJoinRuntime(compiledQueries, metadata, tablesByEntity, kernelsByEntity, materializersByEntity);
+        java.util.Map<String, io.memris.storage.SimpleTable> joinTables = buildManyToManyJoinTables(metadata);
+        compiledQueries = wireJoinRuntime(compiledQueries, metadata, tablesByEntity, kernelsByEntity, materializersByEntity, joinTables);
         
         // Extract column metadata for RepositoryPlan
         String[] columnNames = extractColumnNames(metadata);
@@ -119,6 +120,7 @@ public final class RepositoryEmitter {
                 tablesByEntity,
                 kernelsByEntity,
                 materializersByEntity,
+                joinTables,
                 entitySaver
         );
         
@@ -169,12 +171,62 @@ public final class RepositoryEmitter {
         return java.util.Map.copyOf(materializers);
     }
 
+    private static <T> java.util.Map<String, io.memris.storage.SimpleTable> buildManyToManyJoinTables(
+        io.memris.core.EntityMetadata<T> metadata
+    ) {
+        java.util.Map<String, io.memris.storage.SimpleTable> joinTables = new java.util.HashMap<>();
+        for (io.memris.core.EntityMetadata.FieldMapping field : metadata.fields()) {
+            if (!field.isRelationship() || field.relationshipType() != io.memris.core.EntityMetadata.FieldMapping.RelationshipType.MANY_TO_MANY) {
+                continue;
+            }
+            if (field.joinTable() == null || field.joinTable().isBlank()) {
+                continue;
+            }
+
+            io.memris.core.EntityMetadata<?> targetMetadata = io.memris.core.MetadataExtractor.extractEntityMetadata(field.targetEntity());
+            io.memris.core.EntityMetadata.FieldMapping sourceId = findIdField(metadata);
+            io.memris.core.EntityMetadata.FieldMapping targetId = findIdField(targetMetadata);
+
+            if (sourceId == null || targetId == null) {
+                continue;
+            }
+
+            String joinColumn = field.columnName();
+            if (joinColumn == null || joinColumn.isBlank()) {
+                joinColumn = metadata.entityClass().getSimpleName().toLowerCase() + "_" + metadata.idColumnName();
+            }
+            String inverseJoinColumn = field.referencedColumnName();
+            if (inverseJoinColumn == null || inverseJoinColumn.isBlank()) {
+                inverseJoinColumn = field.targetEntity().getSimpleName().toLowerCase() + "_" + targetMetadata.idColumnName();
+            }
+
+            joinTables.computeIfAbsent(field.joinTable(), name -> {
+                java.util.List<io.memris.storage.SimpleTable.ColumnSpec<?>> specs = java.util.List.of(
+                    new io.memris.storage.SimpleTable.ColumnSpec<>(joinColumn, sourceId.javaType()),
+                    new io.memris.storage.SimpleTable.ColumnSpec<>(inverseJoinColumn, targetId.javaType())
+                );
+                return new io.memris.storage.SimpleTable(name, specs);
+            });
+        }
+        return java.util.Map.copyOf(joinTables);
+    }
+
+    private static io.memris.core.EntityMetadata.FieldMapping findIdField(io.memris.core.EntityMetadata<?> metadata) {
+        for (io.memris.core.EntityMetadata.FieldMapping field : metadata.fields()) {
+            if (field.name().equals(metadata.idColumnName())) {
+                return field;
+            }
+        }
+        return null;
+    }
+
     private static <T> io.memris.query.CompiledQuery[] wireJoinRuntime(
         io.memris.query.CompiledQuery[] compiledQueries,
         io.memris.core.EntityMetadata<T> metadata,
         java.util.Map<Class<?>, io.memris.storage.GeneratedTable> tablesByEntity,
         java.util.Map<Class<?>, io.memris.runtime.HeapRuntimeKernel> kernelsByEntity,
-        java.util.Map<Class<?>, io.memris.runtime.EntityMaterializer<?>> materializersByEntity
+        java.util.Map<Class<?>, io.memris.runtime.EntityMaterializer<?>> materializersByEntity,
+        java.util.Map<String, io.memris.storage.SimpleTable> joinTables
     ) {
         io.memris.query.CompiledQuery[] wired = new io.memris.query.CompiledQuery[compiledQueries.length];
         for (int i = 0; i < compiledQueries.length; i++) {
@@ -190,26 +242,151 @@ public final class RepositoryEmitter {
                 var targetTable = tablesByEntity.get(join.targetEntity());
                 var targetKernel = kernelsByEntity.get(join.targetEntity());
                 var targetMaterializer = materializersByEntity.get(join.targetEntity());
-                io.memris.runtime.JoinExecutor executor = new io.memris.runtime.JoinExecutorImpl(
-                    join.sourceColumnIndex(),
-                    join.targetColumnIndex(),
-                    join.targetColumnIsId(),
-                    join.fkTypeCode(),
-                    join.joinType()
-                );
+                io.memris.core.EntityMetadata<?> targetMetadata = io.memris.core.MetadataExtractor.extractEntityMetadata(join.targetEntity());
+                java.lang.invoke.MethodHandle postLoadHandle = targetMetadata.postLoadHandle();
+                io.memris.core.EntityMetadata.FieldMapping fieldMapping = findFieldMapping(metadata, join.relationshipFieldName());
+                io.memris.runtime.JoinExecutor executor = buildJoinExecutor(metadata, targetMetadata, join, fieldMapping, joinTables);
                 java.lang.invoke.MethodHandle setter = metadata.fieldSetters().get(join.relationshipFieldName());
-                io.memris.runtime.JoinMaterializer materializer = new io.memris.runtime.JoinMaterializerImpl(
-                    join.sourceColumnIndex(),
-                    join.targetColumnIndex(),
-                    join.targetColumnIsId(),
-                    join.fkTypeCode(),
-                    setter
-                );
+                io.memris.runtime.JoinMaterializer materializer = buildJoinMaterializer(fieldMapping, join, setter, postLoadHandle);
                 updated[j] = join.withRuntime(targetTable, targetKernel, targetMaterializer, executor, materializer);
             }
             wired[i] = query.withJoins(updated);
         }
         return wired;
+    }
+
+    private static io.memris.runtime.JoinExecutor buildJoinExecutor(io.memris.core.EntityMetadata<?> metadata,
+                                                                    io.memris.core.EntityMetadata<?> targetMetadata,
+                                                                    io.memris.query.CompiledQuery.CompiledJoin join,
+                                                                    io.memris.core.EntityMetadata.FieldMapping fieldMapping,
+                                                                    java.util.Map<String, io.memris.storage.SimpleTable> joinTables) {
+        if (fieldMapping != null && fieldMapping.relationshipType() == io.memris.core.EntityMetadata.FieldMapping.RelationshipType.MANY_TO_MANY) {
+            JoinTableInfo joinInfo = resolveJoinTableInfo(metadata, fieldMapping, joinTables);
+            if (joinInfo == null) {
+                return new io.memris.runtime.JoinExecutorManyToMany(null, null, null,
+                    join.sourceColumnIndex(), join.fkTypeCode(), join.targetColumnIndex(), join.fkTypeCode(), join.joinType());
+            }
+            io.memris.core.EntityMetadata.FieldMapping sourceId = findIdField(metadata);
+            io.memris.core.EntityMetadata.FieldMapping targetId = findIdField(targetMetadata);
+            int sourceIdColumnIndex = metadata.resolveColumnPosition(metadata.idColumnName());
+            int targetIdColumnIndex = targetMetadata.resolveColumnPosition(targetMetadata.idColumnName());
+            byte sourceIdTypeCode = sourceId != null ? sourceId.typeCode() : join.fkTypeCode();
+            byte targetIdTypeCode = targetId != null ? targetId.typeCode() : join.fkTypeCode();
+            return new io.memris.runtime.JoinExecutorManyToMany(
+                joinInfo.table,
+                joinInfo.joinColumn,
+                joinInfo.inverseJoinColumn,
+                sourceIdColumnIndex,
+                sourceIdTypeCode,
+                targetIdColumnIndex,
+                targetIdTypeCode,
+                join.joinType()
+            );
+        }
+        return new io.memris.runtime.JoinExecutorImpl(
+            join.sourceColumnIndex(),
+            join.targetColumnIndex(),
+            join.targetColumnIsId(),
+            join.fkTypeCode(),
+            join.joinType()
+        );
+    }
+
+    private static io.memris.runtime.JoinMaterializer buildJoinMaterializer(io.memris.core.EntityMetadata.FieldMapping fieldMapping,
+                                                                            io.memris.query.CompiledQuery.CompiledJoin join,
+                                                                            java.lang.invoke.MethodHandle setter,
+                                                                            java.lang.invoke.MethodHandle postLoadHandle) {
+        if (fieldMapping != null && fieldMapping.isCollection()) {
+            if (fieldMapping.relationshipType() == io.memris.core.EntityMetadata.FieldMapping.RelationshipType.MANY_TO_MANY) {
+                return new io.memris.runtime.NoopJoinMaterializer();
+            }
+            Class<?> collectionType = fieldMapping.javaType();
+            return new io.memris.runtime.JoinCollectionMaterializer(
+                join.sourceColumnIndex(),
+                join.targetColumnIndex(),
+                join.fkTypeCode(),
+                setter,
+                postLoadHandle,
+                collectionType
+            );
+        }
+        return new io.memris.runtime.JoinMaterializerImpl(
+            join.sourceColumnIndex(),
+            join.targetColumnIndex(),
+            join.targetColumnIsId(),
+            join.fkTypeCode(),
+            setter,
+            postLoadHandle
+        );
+    }
+
+    private record JoinTableInfo(String joinColumn, String inverseJoinColumn, io.memris.storage.SimpleTable table) {
+    }
+
+    private static JoinTableInfo resolveJoinTableInfo(io.memris.core.EntityMetadata<?> sourceMetadata,
+                                                      io.memris.core.EntityMetadata.FieldMapping field,
+                                                      java.util.Map<String, io.memris.storage.SimpleTable> joinTables) {
+        if (field.joinTable() != null && !field.joinTable().isBlank()) {
+            return buildJoinTableInfo(field, sourceMetadata,
+                io.memris.core.MetadataExtractor.extractEntityMetadata(field.targetEntity()), false, joinTables);
+        }
+        if (field.mappedBy() != null && !field.mappedBy().isBlank()) {
+            io.memris.core.EntityMetadata<?> targetMetadata = io.memris.core.MetadataExtractor.extractEntityMetadata(field.targetEntity());
+            io.memris.core.EntityMetadata.FieldMapping ownerField = findFieldMapping(targetMetadata, field.mappedBy());
+            if (ownerField == null || ownerField.joinTable() == null || ownerField.joinTable().isBlank()) {
+                return null;
+            }
+            return buildJoinTableInfo(ownerField, targetMetadata, sourceMetadata, true, joinTables);
+        }
+        return null;
+    }
+
+    private static JoinTableInfo buildJoinTableInfo(io.memris.core.EntityMetadata.FieldMapping ownerField,
+                                                    io.memris.core.EntityMetadata<?> ownerMetadata,
+                                                    io.memris.core.EntityMetadata<?> inverseMetadata,
+                                                    boolean inverseSide,
+                                                    java.util.Map<String, io.memris.storage.SimpleTable> joinTables) {
+        String joinTableName = ownerField.joinTable();
+        if (joinTableName == null || joinTableName.isBlank()) {
+            return null;
+        }
+        io.memris.storage.SimpleTable table = joinTables.get(joinTableName);
+        if (table == null) {
+            return null;
+        }
+
+        String joinColumn;
+        String inverseJoinColumn;
+        if (!inverseSide) {
+            joinColumn = ownerField.columnName();
+            if (joinColumn == null || joinColumn.isBlank()) {
+                joinColumn = ownerMetadata.entityClass().getSimpleName().toLowerCase() + "_" + ownerMetadata.idColumnName();
+            }
+            inverseJoinColumn = ownerField.referencedColumnName();
+            if (inverseJoinColumn == null || inverseJoinColumn.isBlank()) {
+                inverseJoinColumn = inverseMetadata.entityClass().getSimpleName().toLowerCase() + "_" + inverseMetadata.idColumnName();
+            }
+            return new JoinTableInfo(joinColumn, inverseJoinColumn, table);
+        }
+
+        joinColumn = ownerField.referencedColumnName();
+        if (joinColumn == null || joinColumn.isBlank()) {
+            joinColumn = inverseMetadata.entityClass().getSimpleName().toLowerCase() + "_" + inverseMetadata.idColumnName();
+        }
+        inverseJoinColumn = ownerField.columnName();
+        if (inverseJoinColumn == null || inverseJoinColumn.isBlank()) {
+            inverseJoinColumn = ownerMetadata.entityClass().getSimpleName().toLowerCase() + "_" + ownerMetadata.idColumnName();
+        }
+        return new JoinTableInfo(joinColumn, inverseJoinColumn, table);
+    }
+
+    private static io.memris.core.EntityMetadata.FieldMapping findFieldMapping(io.memris.core.EntityMetadata<?> metadata, String fieldName) {
+        for (io.memris.core.EntityMetadata.FieldMapping field : metadata.fields()) {
+            if (field.name().equals(fieldName)) {
+                return field;
+            }
+        }
+        return null;
     }
     
     /**

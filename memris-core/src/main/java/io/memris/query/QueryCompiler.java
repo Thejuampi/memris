@@ -29,6 +29,7 @@ public class QueryCompiler {
         java.util.Map<String, CompiledQuery.CompiledJoin> joinsByPath = new java.util.LinkedHashMap<>();
         java.util.Map<String, LogicalQuery.Join.JoinType> joinTypes = new java.util.HashMap<>();
         CompiledQuery.CompiledOrderBy[] compiledOrderBy = null;
+        CompiledQuery.CompiledUpdateAssignment[] compiledUpdates = new CompiledQuery.CompiledUpdateAssignment[0];
 
         if (logicalQuery.joins() != null) {
             for (LogicalQuery.Join join : logicalQuery.joins()) {
@@ -84,10 +85,21 @@ public class QueryCompiler {
             }
         }
 
+        LogicalQuery.UpdateAssignment[] updates = logicalQuery.updateAssignments();
+        if (updates != null && updates.length > 0) {
+            compiledUpdates = new CompiledQuery.CompiledUpdateAssignment[updates.length];
+            for (int i = 0; i < updates.length; i++) {
+                LogicalQuery.UpdateAssignment update = updates[i];
+                int columnIndex = resolveColumnIndex(update.propertyPath(), metadata);
+                compiledUpdates[i] = new CompiledQuery.CompiledUpdateAssignment(columnIndex, update.argumentIndex());
+            }
+        }
+
         return CompiledQuery.of(
             logicalQuery.opCode(),
             logicalQuery.returnKind(),
             baseConditions.toArray(new CompiledQuery.CompiledCondition[0]),
+            compiledUpdates,
             attachJoinPredicates(joinsByPath, joinPredicates),
             compiledOrderBy,
             logicalQuery.limit(),
@@ -132,7 +144,6 @@ public class QueryCompiler {
             if (relationship == null) {
                 break;
             }
-
             if (joinPathBuilder.length() > 0) {
                 joinPathBuilder.append('.');
             }
@@ -140,20 +151,38 @@ public class QueryCompiler {
             String joinPath = joinPathBuilder.toString();
 
             EntityMetadata<?> targetMetadata = resolveMetadata(relationship.targetEntity());
-            int sourceColumnIndex = currentMetadata.resolveColumnPosition(relationship.columnName());
-            int targetColumnIndex = targetMetadata.resolveColumnPosition(
-                relationship.referencedColumnName() != null ? relationship.referencedColumnName() : targetMetadata.idColumnName()
-            );
-            String referencedColumn = relationship.referencedColumnName() != null
-                ? relationship.referencedColumnName()
-                : targetMetadata.idColumnName();
-            boolean targetColumnIsId = referencedColumn.equals(targetMetadata.idColumnName());
+            int sourceColumnIndex;
+            int targetColumnIndex;
+            boolean targetColumnIsId;
+            String referencedColumn;
+
+            if (relationship.isCollection()) {
+                sourceColumnIndex = currentMetadata.resolveColumnPosition(currentMetadata.idColumnName());
+                if (relationship.relationshipType() == EntityMetadata.FieldMapping.RelationshipType.MANY_TO_MANY) {
+                    referencedColumn = targetMetadata.idColumnName();
+                    targetColumnIndex = targetMetadata.resolveColumnPosition(referencedColumn);
+                    targetColumnIsId = true;
+                } else {
+                    referencedColumn = relationship.columnName();
+                    targetColumnIndex = targetMetadata.resolveColumnPosition(referencedColumn);
+                    targetColumnIsId = false;
+                }
+            } else {
+                sourceColumnIndex = currentMetadata.resolveColumnPosition(relationship.columnName());
+                referencedColumn = relationship.referencedColumnName() != null
+                    ? relationship.referencedColumnName()
+                    : targetMetadata.idColumnName();
+                targetColumnIndex = targetMetadata.resolveColumnPosition(referencedColumn);
+                targetColumnIsId = referencedColumn.equals(targetMetadata.idColumnName());
+            }
 
             byte fkTypeCode = relationship.typeCode();
             if (fkTypeCode != io.memris.core.TypeCodes.TYPE_LONG
                 && fkTypeCode != io.memris.core.TypeCodes.TYPE_INT
                 && fkTypeCode != io.memris.core.TypeCodes.TYPE_SHORT
-                && fkTypeCode != io.memris.core.TypeCodes.TYPE_BYTE) {
+                && fkTypeCode != io.memris.core.TypeCodes.TYPE_BYTE
+                && (relationship.relationshipType() != EntityMetadata.FieldMapping.RelationshipType.MANY_TO_MANY
+                    || fkTypeCode != io.memris.core.TypeCodes.TYPE_STRING)) {
                 throw new IllegalArgumentException("Unsupported FK type for join: " + fkTypeCode);
             }
             if (!joinsByPath.containsKey(joinPath)) {

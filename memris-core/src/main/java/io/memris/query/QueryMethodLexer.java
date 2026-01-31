@@ -173,8 +173,12 @@ public final class QueryMethodLexer {
                 boolean isRelationship =
                         field.isAnnotationPresent(ManyToOne.class) ||
                         field.isAnnotationPresent(OneToOne.class) ||
+                        field.isAnnotationPresent(jakarta.persistence.OneToMany.class) ||
+                        field.isAnnotationPresent(jakarta.persistence.ManyToMany.class) ||
                         field.isAnnotationPresent(io.memris.core.ManyToOne.class) ||
-                        field.isAnnotationPresent(io.memris.core.OneToOne.class);
+                        field.isAnnotationPresent(io.memris.core.OneToOne.class) ||
+                        field.isAnnotationPresent(io.memris.core.OneToMany.class) ||
+                        field.isAnnotationPresent(io.memris.core.ManyToMany.class);
 
                 // Embedded/value-object traversal support
                 boolean isEmbedded =
@@ -186,7 +190,10 @@ public final class QueryMethodLexer {
                         || fieldType.isAnnotationPresent(io.memris.core.Entity.class);
 
                 if (isRelationship || isEmbedded || isEntityType) {
-                    relatedTypes.put(fieldName.toLowerCase(), fieldType.getName());
+                    Class<?> relatedType = resolveRelatedType(field, fieldType);
+                    if (relatedType != null) {
+                        relatedTypes.put(fieldName.toLowerCase(), relatedType.getName());
+                    }
                 }
             }
 
@@ -207,6 +214,20 @@ public final class QueryMethodLexer {
         }
 
         return fields.toArray(new Field[0]);
+    }
+
+    private static Class<?> resolveRelatedType(Field field, Class<?> fieldType) {
+        if (java.util.Collection.class.isAssignableFrom(fieldType)) {
+            java.lang.reflect.Type genericType = field.getGenericType();
+            if (genericType instanceof java.lang.reflect.ParameterizedType pt) {
+                java.lang.reflect.Type[] args = pt.getActualTypeArguments();
+                if (args.length > 0 && args[0] instanceof Class<?>) {
+                    return (Class<?>) args[0];
+                }
+            }
+            return null;
+        }
+        return fieldType;
     }
 
     public static List<QueryMethodToken> tokenize(String methodName) {

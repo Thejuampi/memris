@@ -28,12 +28,16 @@ public final class MemrisConfiguration {
     private final boolean enableParallelSorting;
     private final int parallelSortThreshold;
 
+    // Audit configuration
+    private final AuditProvider auditProvider;
+
     private MemrisConfiguration(Builder builder) {
         this.tableImplementation = builder.tableImplementation;
         this.defaultPageSize = builder.defaultPageSize;
         this.defaultMaxPages = builder.defaultMaxPages;
         this.enableParallelSorting = builder.enableParallelSorting;
         this.parallelSortThreshold = builder.parallelSortThreshold;
+        this.auditProvider = builder.auditProvider;
     }
 
     /**
@@ -92,6 +96,13 @@ public final class MemrisConfiguration {
     }
 
     /**
+     * Get the audit provider (used for @CreatedBy/@LastModifiedBy).
+     */
+    public AuditProvider auditProvider() {
+        return auditProvider;
+    }
+
+    /**
      * Table implementation strategy enum.
      */
     public enum TableImplementation {
@@ -119,6 +130,7 @@ public final class MemrisConfiguration {
         private int defaultMaxPages = 1024;
         private boolean enableParallelSorting = true;
         private int parallelSortThreshold = 1000;
+        private AuditProvider auditProvider;
 
         private Builder() {
         }
@@ -175,6 +187,14 @@ public final class MemrisConfiguration {
          */
         public Builder parallelSortThreshold(int parallelSortThreshold) {
             this.parallelSortThreshold = parallelSortThreshold;
+            return this;
+        }
+
+        /**
+         * Set the audit provider for @CreatedBy/@LastModifiedBy.
+         */
+        public Builder auditProvider(AuditProvider auditProvider) {
+            this.auditProvider = auditProvider;
             return this;
         }
 

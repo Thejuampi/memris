@@ -31,5 +31,6 @@ public enum OpCode {
     FIND,           // findByXxx(...), findByXxxAndYyy(...)
     COUNT,          // countByXxx(...)
     EXISTS,         // existsByXxx(...)
-    DELETE_QUERY    // deleteByXxx(...)
+    DELETE_QUERY,   // deleteByXxx(...)
+    UPDATE_QUERY    // @Query update
 }

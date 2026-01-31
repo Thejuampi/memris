@@ -32,6 +32,9 @@ public class EntityMetadata<T> {
     private final MethodHandle postLoadHandle;
     private final MethodHandle preUpdateHandle;
 
+    // Audit fields
+    private final List<AuditField> auditFields;
+
     // Pre-compiled field accessor MethodHandles (NO reflection at runtime!)
     // Supports both JavaBean style (get/set) and Kotlin-style (property name) accessors
     private final Map<String, MethodHandle> fieldGetters;
@@ -54,6 +57,7 @@ public class EntityMetadata<T> {
         MethodHandle prePersistHandle,
         MethodHandle postLoadHandle,
         MethodHandle preUpdateHandle,
+        List<AuditField> auditFields,
         Map<String, MethodHandle> fieldGetters,
         Map<String, MethodHandle> fieldSetters,
         boolean isRecord
@@ -67,6 +71,7 @@ public class EntityMetadata<T> {
         this.prePersistHandle = prePersistHandle;
         this.postLoadHandle = postLoadHandle;
         this.preUpdateHandle = preUpdateHandle;
+        this.auditFields = auditFields != null ? auditFields : List.of();
         this.fieldGetters = fieldGetters;
         this.fieldSetters = fieldSetters;
         this.isRecord = isRecord;
@@ -93,6 +98,7 @@ public class EntityMetadata<T> {
     public MethodHandle prePersistHandle() { return prePersistHandle; }
     public MethodHandle postLoadHandle() { return postLoadHandle; }
     public MethodHandle preUpdateHandle() { return preUpdateHandle; }
+    public List<AuditField> auditFields() { return auditFields; }
     public Map<String, MethodHandle> fieldGetters() { return fieldGetters; }
     public Map<String, MethodHandle> fieldSetters() { return fieldSetters; }
     public boolean isRecord() { return isRecord; }
@@ -141,6 +147,7 @@ public class EntityMetadata<T> {
         Class<?> targetEntity,    // Target entity class
         String joinTable,         // Join table name (for @ManyToMany)
         String referencedColumnName, // Referenced column on target entity (e.g., "id")
+        String mappedBy,          // mappedBy for collection relationships
         boolean isCollection,     // Is this a collection field?
         boolean isEmbedded        // Is this @Embedded?
     ) {
@@ -155,6 +162,7 @@ public class EntityMetadata<T> {
                 targetEntity = null;
                 joinTable = null;
                 referencedColumnName = null;
+                mappedBy = null;
                 isCollection = false;
             }
         }
@@ -169,7 +177,21 @@ public class EntityMetadata<T> {
             byte typeCode
         ) {
             this(name, columnName, javaType, storageType, columnPosition, typeCode,
-                 false, RelationshipType.NONE, null, null, null, false, false);
+                 false, RelationshipType.NONE, null, null, null, null, false, false);
         }
+    }
+
+    public enum AuditFieldType {
+        CREATED_DATE,
+        LAST_MODIFIED_DATE,
+        CREATED_BY,
+        LAST_MODIFIED_BY
+    }
+
+    public record AuditField(
+        String name,
+        AuditFieldType type,
+        Class<?> javaType
+    ) {
     }
 }

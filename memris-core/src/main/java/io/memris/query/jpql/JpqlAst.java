@@ -6,6 +6,9 @@ public final class JpqlAst {
     private JpqlAst() {
     }
 
+    public sealed interface Statement permits Query, Update, Delete {
+    }
+
     public record Query(
             boolean count,
             boolean distinct,
@@ -14,7 +17,22 @@ public final class JpqlAst {
             List<Join> joins,
             Expression where,
             List<OrderBy> orderBy
-    ) {
+    ) implements Statement {
+    }
+
+    public record Update(
+            String entityName,
+            String rootAlias,
+            List<Assignment> assignments,
+            Expression where
+    ) implements Statement {
+    }
+
+    public record Delete(
+            String entityName,
+            String rootAlias,
+            Expression where
+    ) implements Statement {
     }
 
     public record Join(
@@ -30,6 +48,9 @@ public final class JpqlAst {
     }
 
     public record OrderBy(String path, boolean ascending) {
+    }
+
+    public record Assignment(String path, Value value) {
     }
 
     public sealed interface Expression permits And, Or, Not, PredicateExpr {

@@ -18,7 +18,10 @@ public final class JpqlLexer {
         PARAM_NAMED,
         PARAM_POSITIONAL,
         SELECT,
+        UPDATE,
+        DELETE,
         FROM,
+        SET,
         WHERE,
         AND,
         OR,
@@ -61,7 +64,10 @@ public final class JpqlLexer {
 
     static {
         KEYWORDS.put("SELECT", TokenType.SELECT);
+        KEYWORDS.put("UPDATE", TokenType.UPDATE);
+        KEYWORDS.put("DELETE", TokenType.DELETE);
         KEYWORDS.put("FROM", TokenType.FROM);
+        KEYWORDS.put("SET", TokenType.SET);
         KEYWORDS.put("WHERE", TokenType.WHERE);
         KEYWORDS.put("AND", TokenType.AND);
         KEYWORDS.put("OR", TokenType.OR);

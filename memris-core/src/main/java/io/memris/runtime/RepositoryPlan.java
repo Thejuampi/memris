@@ -2,6 +2,7 @@ package io.memris.runtime;
 
 import io.memris.query.CompiledQuery;
 import io.memris.storage.GeneratedTable;
+import io.memris.storage.SimpleTable;
 
 import java.lang.invoke.MethodHandle;
 
@@ -25,6 +26,7 @@ public final class RepositoryPlan<T> {
     private final java.util.Map<Class<?>, GeneratedTable> tablesByEntity;
     private final java.util.Map<Class<?>, HeapRuntimeKernel> kernelsByEntity;
     private final java.util.Map<Class<?>, EntityMaterializer<?>> materializersByEntity;
+    private final java.util.Map<String, SimpleTable> joinTables;
     private final EntitySaver<T> entitySaver;
 
     private RepositoryPlan(Builder<T> builder) {
@@ -38,6 +40,7 @@ public final class RepositoryPlan<T> {
         this.tablesByEntity = builder.tablesByEntity;
         this.kernelsByEntity = builder.kernelsByEntity;
         this.materializersByEntity = builder.materializersByEntity;
+        this.joinTables = builder.joinTables;
         this.entitySaver = builder.entitySaver;
     }
 
@@ -51,6 +54,7 @@ public final class RepositoryPlan<T> {
     public java.util.Map<Class<?>, GeneratedTable> tablesByEntity() { return tablesByEntity; }
     public java.util.Map<Class<?>, HeapRuntimeKernel> kernelsByEntity() { return kernelsByEntity; }
     public java.util.Map<Class<?>, EntityMaterializer<?>> materializersByEntity() { return materializersByEntity; }
+    public java.util.Map<String, SimpleTable> joinTables() { return joinTables; }
     public EntitySaver<T> entitySaver() { return entitySaver; }
 
     /**
@@ -69,6 +73,7 @@ public final class RepositoryPlan<T> {
             java.util.Map<Class<?>, GeneratedTable> tablesByEntity,
             java.util.Map<Class<?>, HeapRuntimeKernel> kernelsByEntity,
             java.util.Map<Class<?>, EntityMaterializer<?>> materializersByEntity,
+            java.util.Map<String, SimpleTable> joinTables,
             EntitySaver<T> entitySaver) {
 
         HeapRuntimeKernel kernel = new HeapRuntimeKernel(table);
@@ -84,6 +89,7 @@ public final class RepositoryPlan<T> {
                 .tablesByEntity(tablesByEntity)
                 .kernelsByEntity(kernelsByEntity)
                 .materializersByEntity(materializersByEntity)
+                .joinTables(joinTables)
                 .entitySaver(entitySaver)
                 .build();
     }
@@ -103,6 +109,7 @@ public final class RepositoryPlan<T> {
         private java.util.Map<Class<?>, GeneratedTable> tablesByEntity = java.util.Map.of();
         private java.util.Map<Class<?>, HeapRuntimeKernel> kernelsByEntity = java.util.Map.of();
         private java.util.Map<Class<?>, EntityMaterializer<?>> materializersByEntity = java.util.Map.of();
+        private java.util.Map<String, SimpleTable> joinTables = java.util.Map.of();
         private EntitySaver<T> entitySaver;
 
         public Builder<T> entityClass(Class<T> entityClass) {
@@ -152,6 +159,11 @@ public final class RepositoryPlan<T> {
 
         public Builder<T> materializersByEntity(java.util.Map<Class<?>, EntityMaterializer<?>> materializersByEntity) {
             this.materializersByEntity = materializersByEntity;
+            return this;
+        }
+
+        public Builder<T> joinTables(java.util.Map<String, SimpleTable> joinTables) {
+            this.joinTables = joinTables;
             return this;
         }
 

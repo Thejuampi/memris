@@ -147,7 +147,10 @@ public final class RepositoryRuntime<T> {
                 return null;
             case DELETE_QUERY:
                 queryArgs = buildQueryArgs(query, args);
-                return executeDeleteQuery(query, queryArgs);
+                return formatModifyingResult(executeDeleteQuery(query, queryArgs), query.returnKind());
+            case UPDATE_QUERY:
+                queryArgs = buildQueryArgs(query, args);
+                return formatModifyingResult(executeUpdateQuery(query, queryArgs), query.returnKind());
             case DELETE_ALL_BY_ID:
                 return executeDeleteAllById(args);
             default:
@@ -196,6 +199,11 @@ public final class RepositoryRuntime<T> {
             if (entitySaver != null) {
                 entitySaver.setId(entity, id);
             }
+            invokeLifecycle(metadata != null ? metadata.prePersistHandle() : null, entity);
+            applyAuditFields(entity, true);
+        } else {
+            invokeLifecycle(metadata != null ? metadata.preUpdateHandle() : null, entity);
+            applyAuditFields(entity, false);
         }
 
         // EntitySaver handles all field extraction, converters, and relationships
@@ -220,11 +228,140 @@ public final class RepositoryRuntime<T> {
         }
         updateIndexesOnInsert(indexValues, rowIndex);
 
+        persistManyToMany(entity);
+
         return savedEntity;
     }
 
     private Long generateNextId() {
         return idCounter.getAndIncrement();
+    }
+
+    private void applyPostLoad(T entity) {
+        invokeLifecycle(metadata != null ? metadata.postLoadHandle() : null, entity);
+    }
+
+    private void invokeLifecycle(MethodHandle handle, Object entity) {
+        if (handle == null || entity == null) {
+            return;
+        }
+        try {
+            handle.invoke(entity);
+        } catch (Throwable e) {
+            throw new RuntimeException("Failed to invoke lifecycle method", e);
+        }
+    }
+
+    private void applyAuditFields(T entity, boolean isNew) {
+        if (metadata == null) {
+            return;
+        }
+        var auditFields = metadata.auditFields();
+        if (auditFields.isEmpty()) {
+            return;
+        }
+        Object currentUser = currentAuditUser();
+        for (io.memris.core.EntityMetadata.AuditField auditField : auditFields) {
+            Object value = null;
+            switch (auditField.type()) {
+                case CREATED_DATE -> {
+                    if (!isNew) {
+                        continue;
+                    }
+                    if (hasValue(entity, auditField.name())) {
+                        continue;
+                    }
+                    value = nowForType(auditField.javaType());
+                }
+                case LAST_MODIFIED_DATE -> value = nowForType(auditField.javaType());
+                case CREATED_BY -> {
+                    if (!isNew || currentUser == null) {
+                        continue;
+                    }
+                    if (hasValue(entity, auditField.name())) {
+                        continue;
+                    }
+                    value = coerceUser(currentUser, auditField.javaType());
+                }
+                case LAST_MODIFIED_BY -> {
+                    if (currentUser == null) {
+                        continue;
+                    }
+                    value = coerceUser(currentUser, auditField.javaType());
+                }
+            }
+            if (value == null) {
+                continue;
+            }
+            setFieldValue(entity, auditField.name(), value);
+        }
+    }
+
+    private Object currentAuditUser() {
+        if (factory == null) {
+            return null;
+        }
+        io.memris.core.MemrisConfiguration config = factory.getConfiguration();
+        if (config == null || config.auditProvider() == null) {
+            return null;
+        }
+        return config.auditProvider().currentUser();
+    }
+
+    private boolean hasValue(Object entity, String fieldName) {
+        MethodHandle getter = metadata.fieldGetters().get(fieldName);
+        if (getter == null) {
+            return false;
+        }
+        try {
+            return getter.invoke(entity) != null;
+        } catch (Throwable e) {
+            return false;
+        }
+    }
+
+    private void setFieldValue(Object entity, String fieldName, Object value) {
+        MethodHandle setter = metadata.fieldSetters().get(fieldName);
+        if (setter == null) {
+            return;
+        }
+        try {
+            setter.invoke(entity, value);
+        } catch (Throwable e) {
+            throw new RuntimeException("Failed to set audit field: " + fieldName, e);
+        }
+    }
+
+    private Object nowForType(Class<?> type) {
+        if (type == java.time.Instant.class) {
+            return java.time.Instant.now();
+        }
+        if (type == java.time.LocalDate.class) {
+            return java.time.LocalDate.now();
+        }
+        if (type == java.time.LocalDateTime.class) {
+            return java.time.LocalDateTime.now();
+        }
+        if (type == java.util.Date.class) {
+            return new java.util.Date();
+        }
+        if (type == long.class || type == Long.class) {
+            return System.currentTimeMillis();
+        }
+        return null;
+    }
+
+    private Object coerceUser(Object user, Class<?> targetType) {
+        if (user == null) {
+            return null;
+        }
+        if (targetType.isAssignableFrom(user.getClass())) {
+            return user;
+        }
+        if (targetType == String.class) {
+            return user.toString();
+        }
+        return null;
     }
 
     private boolean isZeroId(Object id) {
@@ -267,6 +404,8 @@ public final class RepositoryRuntime<T> {
 
         int rowIndex = io.memris.storage.Selection.index(packedRef);
         T entity = materializer.materialize(plan.kernel(), rowIndex);
+        applyPostLoad(entity);
+        hydrateCollections(entity, rowIndex);
         return Optional.of(entity);
     }
 
@@ -276,7 +415,10 @@ public final class RepositoryRuntime<T> {
 
         List<T> results = new ArrayList<>(rowIndices.length);
         for (int rowIndex : rowIndices) {
-            results.add(materializer.materialize(plan.kernel(), rowIndex));
+            T entity = materializer.materialize(plan.kernel(), rowIndex);
+            applyPostLoad(entity);
+            hydrateCollections(entity, rowIndex);
+            results.add(entity);
         }
         return results;
     }
@@ -303,7 +445,9 @@ public final class RepositoryRuntime<T> {
         for (int i = 0; i < max; i++) {
             int rowIndex = rows[i];
             T entity = materializer.materialize(plan.kernel(), rowIndex);
+            applyPostLoad(entity);
             hydrateJoins(entity, rowIndex, query);
+            hydrateCollections(entity, rowIndex);
             results.add(entity);
         }
 
@@ -335,7 +479,11 @@ public final class RepositoryRuntime<T> {
 
     private long executeCount(CompiledQuery query, Object[] args) {
         Selection selection = executeConditions(query, args);
-        return selection.size();
+        if (!query.distinct()) {
+            return selection.size();
+        }
+        int[] rows = selection.toIntArray();
+        return distinctRows(rows).length;
     }
 
     private long executeCountAll() {
@@ -431,6 +579,9 @@ public final class RepositoryRuntime<T> {
      * Uses a counter-based approach while still handling AND/OR logic correctly.
      */
     private long executeCountFast(CompiledQuery query, Object[] args) {
+        if (query.distinct()) {
+            return executeCount(query, args);
+        }
         CompiledQuery.CompiledCondition[] conditions = query.conditions();
 
         if (conditions.length == 0) {
@@ -742,6 +893,132 @@ public final class RepositoryRuntime<T> {
             count++;
         }
         return count;
+    }
+
+    private long executeUpdateQuery(CompiledQuery query, Object[] args) {
+        CompiledQuery.CompiledUpdateAssignment[] updates = query.updateAssignments();
+        if (updates == null || updates.length == 0) {
+            throw new IllegalArgumentException("@Query update requires SET assignments");
+        }
+
+        Selection selection = executeConditions(query, args);
+        GeneratedTable table = plan.table();
+
+        long count = 0;
+        long[] refs = selection.toRefArray();
+        for (long packedRef : refs) {
+            int rowIndex = io.memris.storage.Selection.index(packedRef);
+            Object[] values = buildRowValues(table, rowIndex);
+            applyUpdateAssignments(values, updates, args);
+
+            Object idValue = values[metadata.resolveColumnPosition(metadata.idColumnName())];
+            updateIndexesOnDelete(rowIndex);
+            table.tombstone(packedRef);
+
+            table.insertFrom(values);
+            int newRowIndex = resolveRowIndexById(table, idValue);
+            if (newRowIndex >= 0) {
+                updateIndexesOnInsert(readIndexValues(newRowIndex), newRowIndex);
+            }
+            count++;
+        }
+
+        return count;
+    }
+
+    private Object formatModifyingResult(long count, LogicalQuery.ReturnKind returnKind) {
+        return switch (returnKind) {
+            case MODIFYING_VOID -> null;
+            case MODIFYING_INT -> (int) count;
+            case MODIFYING_LONG, COUNT_LONG -> count;
+            default -> count;
+        };
+    }
+
+    private Object[] buildRowValues(GeneratedTable table, int rowIndex) {
+        int columnCount = table.columnCount();
+        Object[] values = new Object[columnCount];
+        for (int i = 0; i < columnCount; i++) {
+            if (!table.isPresent(i, rowIndex)) {
+                values[i] = null;
+                continue;
+            }
+            byte typeCode = plan.typeCodes()[i];
+            values[i] = readStorageValue(table, i, typeCode, rowIndex);
+        }
+        return values;
+    }
+
+    private void applyUpdateAssignments(Object[] values, CompiledQuery.CompiledUpdateAssignment[] updates, Object[] args) {
+        for (CompiledQuery.CompiledUpdateAssignment update : updates) {
+            int columnIndex = update.columnIndex();
+            io.memris.core.EntityMetadata.FieldMapping field = findFieldByColumnIndex(columnIndex);
+            Object value = update.argumentIndex() < args.length ? args[update.argumentIndex()] : null;
+            if (field != null) {
+                TypeConverter<?, ?> converter = metadata.converters().get(field.name());
+                if (converter != null) {
+                    @SuppressWarnings("unchecked")
+                    TypeConverter<Object, Object> typed = (TypeConverter<Object, Object>) converter;
+                    value = typed.toStorage(value);
+                }
+            }
+            values[columnIndex] = value;
+        }
+    }
+
+    private Object readStorageValue(GeneratedTable table, int columnIndex, byte typeCode, int rowIndex) {
+        return switch (typeCode) {
+            case TypeCodes.TYPE_STRING,
+                 TypeCodes.TYPE_BIG_DECIMAL,
+                 TypeCodes.TYPE_BIG_INTEGER -> table.readString(columnIndex, rowIndex);
+            case TypeCodes.TYPE_LONG,
+                 TypeCodes.TYPE_INSTANT,
+                 TypeCodes.TYPE_LOCAL_DATE,
+                 TypeCodes.TYPE_LOCAL_DATE_TIME,
+                 TypeCodes.TYPE_DATE,
+                 TypeCodes.TYPE_DOUBLE -> table.readLong(columnIndex, rowIndex);
+            default -> table.readInt(columnIndex, rowIndex);
+        };
+    }
+
+    private int resolveRowIndexById(GeneratedTable table, Object idValue) {
+        if (idValue == null) {
+            return -1;
+        }
+        long packedRef;
+        if (idValue instanceof String stringId) {
+            packedRef = table.lookupByIdString(stringId);
+        } else if (idValue instanceof Number number) {
+            packedRef = table.lookupById(number.longValue());
+        } else {
+            return -1;
+        }
+        return packedRef < 0 ? -1 : io.memris.storage.Selection.index(packedRef);
+    }
+
+    private Object[] readIndexValues(int rowIndex) {
+        int maxColumnPos = metadata.fields().stream()
+            .filter(f -> f.columnPosition() >= 0)
+            .mapToInt(io.memris.core.EntityMetadata.FieldMapping::columnPosition)
+            .max()
+            .orElse(0);
+        Object[] indexValues = new Object[maxColumnPos + 1];
+        for (io.memris.core.EntityMetadata.FieldMapping field : metadata.fields()) {
+            if (field.columnPosition() < 0) {
+                continue;
+            }
+            indexValues[field.columnPosition()] = readIndexValue(field, rowIndex);
+        }
+        return indexValues;
+    }
+
+    private io.memris.core.EntityMetadata.FieldMapping findFieldByColumnIndex(int columnIndex) {
+        for (io.memris.core.EntityMetadata.FieldMapping field : metadata.fields()) {
+            if (field.columnPosition() == columnIndex) {
+                return field;
+            }
+        }
+        return null;
     }
 
     private void updateIndexesOnInsert(Object[] indexValues, int rowIndex) {
@@ -1824,6 +2101,345 @@ public final class RepositoryRuntime<T> {
         for (CompiledQuery.CompiledJoin join : joins) {
             join.materializer().hydrate(entity, rowIndex, plan.table(), join.targetTable(), join.targetKernel(), join.targetMaterializer());
         }
+    }
+
+    private void hydrateCollections(T entity, int rowIndex) {
+        if (metadata == null) {
+            return;
+        }
+        for (io.memris.core.EntityMetadata.FieldMapping field : metadata.fields()) {
+            if (!field.isRelationship() || !field.isCollection()) {
+                continue;
+            }
+            if (field.relationshipType() == io.memris.core.EntityMetadata.FieldMapping.RelationshipType.ONE_TO_MANY) {
+                hydrateOneToMany(entity, rowIndex, field);
+            } else if (field.relationshipType() == io.memris.core.EntityMetadata.FieldMapping.RelationshipType.MANY_TO_MANY) {
+                hydrateManyToMany(entity, rowIndex, field);
+            }
+        }
+    }
+
+    private void hydrateOneToMany(T entity, int rowIndex, io.memris.core.EntityMetadata.FieldMapping field) {
+        if (field.targetEntity() == null) {
+            return;
+        }
+        io.memris.storage.GeneratedTable targetTable = plan.tablesByEntity().get(field.targetEntity());
+        if (targetTable == null) {
+            return;
+        }
+        io.memris.runtime.HeapRuntimeKernel targetKernel = plan.kernelsByEntity().get(field.targetEntity());
+        io.memris.runtime.EntityMaterializer<?> targetMaterializer = plan.materializersByEntity().get(field.targetEntity());
+        if (targetKernel == null || targetMaterializer == null) {
+            return;
+        }
+
+        io.memris.core.EntityMetadata<?> targetMetadata = io.memris.core.MetadataExtractor.extractEntityMetadata(field.targetEntity());
+        int fkColumnIndex = targetMetadata.resolveColumnPosition(field.columnName());
+
+        int idColumnIndex = metadata.resolveColumnPosition(metadata.idColumnName());
+        long sourceId = readSourceId(plan.table(), idColumnIndex, field.typeCode(), rowIndex);
+
+        int[] matches = switch (field.typeCode()) {
+            case io.memris.core.TypeCodes.TYPE_LONG -> targetTable.scanEqualsLong(fkColumnIndex, sourceId);
+            case io.memris.core.TypeCodes.TYPE_INT,
+                 io.memris.core.TypeCodes.TYPE_SHORT,
+                 io.memris.core.TypeCodes.TYPE_BYTE -> targetTable.scanEqualsInt(fkColumnIndex, (int) sourceId);
+            default -> targetTable.scanEqualsLong(fkColumnIndex, sourceId);
+        };
+
+        java.util.Collection<Object> collection = createCollection(field.javaType(), matches.length);
+        for (int targetRow : matches) {
+            Object related = targetMaterializer.materialize(targetKernel, targetRow);
+            invokeLifecycle(targetMetadata.postLoadHandle(), related);
+            collection.add(related);
+        }
+
+        MethodHandle setter = metadata.fieldSetters().get(field.name());
+        if (setter == null) {
+            return;
+        }
+        try {
+            setter.invoke(entity, collection);
+        } catch (Throwable e) {
+            throw new RuntimeException("Failed to set collection field: " + field.name(), e);
+        }
+    }
+
+    private long readSourceId(io.memris.storage.GeneratedTable table, int idColumnIndex, byte typeCode, int rowIndex) {
+        return switch (typeCode) {
+            case io.memris.core.TypeCodes.TYPE_LONG -> table.readLong(idColumnIndex, rowIndex);
+            case io.memris.core.TypeCodes.TYPE_INT,
+                 io.memris.core.TypeCodes.TYPE_SHORT,
+                 io.memris.core.TypeCodes.TYPE_BYTE -> table.readInt(idColumnIndex, rowIndex);
+            default -> table.readLong(idColumnIndex, rowIndex);
+        };
+    }
+
+    private java.util.Collection<Object> createCollection(Class<?> fieldType, int expectedSize) {
+        if (java.util.Set.class.isAssignableFrom(fieldType)) {
+            return new java.util.LinkedHashSet<>(Math.max(expectedSize, 16));
+        }
+        return new java.util.ArrayList<>(Math.max(expectedSize, 10));
+    }
+
+    private void hydrateManyToMany(T entity, int rowIndex, io.memris.core.EntityMetadata.FieldMapping field) {
+        JoinTableInfo joinInfo = resolveJoinTable(field);
+        if (joinInfo == null || joinInfo.table == null) {
+            return;
+        }
+
+        io.memris.core.EntityMetadata<?> targetMetadata = io.memris.core.MetadataExtractor.extractEntityMetadata(field.targetEntity());
+        io.memris.runtime.HeapRuntimeKernel targetKernel = plan.kernelsByEntity().get(field.targetEntity());
+        io.memris.runtime.EntityMaterializer<?> targetMaterializer = plan.materializersByEntity().get(field.targetEntity());
+        if (targetKernel == null || targetMaterializer == null) {
+            return;
+        }
+
+        io.memris.core.EntityMetadata.FieldMapping targetId = findIdField(targetMetadata);
+        if (targetId == null) {
+            return;
+        }
+
+        int sourceIdColumnIndex = metadata.resolveColumnPosition(metadata.idColumnName());
+        Object sourceIdValue = readSourceIdValue(plan.table(), sourceIdColumnIndex, field.typeCode(), rowIndex);
+        if (sourceIdValue == null) {
+            return;
+        }
+
+        io.memris.storage.SimpleTable joinTable = joinInfo.table;
+        io.memris.kernel.Column<?> joinColumn = joinTable.column(joinInfo.joinColumn);
+        io.memris.kernel.Column<?> inverseColumn = joinTable.column(joinInfo.inverseJoinColumn);
+
+        long rowCount = joinTable.rowCount();
+        java.util.Collection<Object> collection = createCollection(field.javaType(), (int) Math.min(rowCount, Integer.MAX_VALUE));
+
+        for (int i = 0; i < rowCount; i++) {
+            io.memris.kernel.RowId rowId = new io.memris.kernel.RowId(i >>> 16, i & 0xFFFF);
+            Object joinValue = joinColumn.get(rowId);
+            if (joinValue == null || !joinValue.equals(sourceIdValue)) {
+                continue;
+            }
+            Object targetIdValue = inverseColumn.get(rowId);
+            if (targetIdValue == null) {
+                continue;
+            }
+
+            int[] matches = scanTargetById(joinInfo.targetTable, targetId, targetIdValue);
+            for (int targetRow : matches) {
+                Object related = targetMaterializer.materialize(targetKernel, targetRow);
+                invokeLifecycle(targetMetadata.postLoadHandle(), related);
+                collection.add(related);
+            }
+        }
+
+        MethodHandle setter = metadata.fieldSetters().get(field.name());
+        if (setter == null) {
+            return;
+        }
+        try {
+            setter.invoke(entity, collection);
+        } catch (Throwable e) {
+            throw new RuntimeException("Failed to set many-to-many collection: " + field.name(), e);
+        }
+    }
+
+    private int[] scanTargetById(io.memris.storage.GeneratedTable targetTable,
+                                 io.memris.core.EntityMetadata.FieldMapping targetId,
+                                 Object targetIdValue) {
+        return switch (targetId.typeCode()) {
+            case io.memris.core.TypeCodes.TYPE_LONG -> targetTable.scanEqualsLong(
+                targetId.columnPosition(), ((Number) targetIdValue).longValue());
+            case io.memris.core.TypeCodes.TYPE_INT,
+                 io.memris.core.TypeCodes.TYPE_SHORT,
+                 io.memris.core.TypeCodes.TYPE_BYTE -> targetTable.scanEqualsInt(
+                targetId.columnPosition(), ((Number) targetIdValue).intValue());
+            case io.memris.core.TypeCodes.TYPE_STRING -> targetTable.scanEqualsString(
+                targetId.columnPosition(), targetIdValue.toString());
+            default -> targetTable.scanEqualsLong(targetId.columnPosition(), ((Number) targetIdValue).longValue());
+        };
+    }
+
+    private Object readSourceIdValue(io.memris.storage.GeneratedTable table, int idColumnIndex, byte typeCode, int rowIndex) {
+        return switch (typeCode) {
+            case io.memris.core.TypeCodes.TYPE_LONG -> Long.valueOf(table.readLong(idColumnIndex, rowIndex));
+            case io.memris.core.TypeCodes.TYPE_INT -> Integer.valueOf(table.readInt(idColumnIndex, rowIndex));
+            case io.memris.core.TypeCodes.TYPE_SHORT -> Short.valueOf((short) table.readInt(idColumnIndex, rowIndex));
+            case io.memris.core.TypeCodes.TYPE_BYTE -> Byte.valueOf((byte) table.readInt(idColumnIndex, rowIndex));
+            default -> Long.valueOf(table.readLong(idColumnIndex, rowIndex));
+        };
+    }
+
+    private void persistManyToMany(T entity) {
+        if (metadata == null) {
+            return;
+        }
+        for (io.memris.core.EntityMetadata.FieldMapping field : metadata.fields()) {
+            if (!field.isRelationship() || field.relationshipType() != io.memris.core.EntityMetadata.FieldMapping.RelationshipType.MANY_TO_MANY) {
+                continue;
+            }
+            if (field.joinTable() == null || field.joinTable().isBlank()) {
+                continue;
+            }
+            JoinTableInfo joinInfo = resolveJoinTable(field);
+            if (joinInfo == null || joinInfo.table == null) {
+                continue;
+            }
+            Object collectionValue = readFieldValue(entity, metadata, field.name());
+            if (!(collectionValue instanceof Iterable<?> iterable)) {
+                continue;
+            }
+
+            io.memris.core.EntityMetadata<?> targetMetadata = io.memris.core.MetadataExtractor.extractEntityMetadata(field.targetEntity());
+            io.memris.core.EntityMetadata.FieldMapping targetId = findIdField(targetMetadata);
+            if (targetId == null) {
+                continue;
+            }
+
+            Object sourceIdValue = readFieldValue(entity, metadata, metadata.idColumnName());
+            if (sourceIdValue == null) {
+                continue;
+            }
+
+            java.util.Set<JoinKey> existing = loadJoinKeys(joinInfo);
+
+            for (Object related : iterable) {
+                if (related == null) {
+                    continue;
+                }
+                Object targetIdValue = readFieldValue(related, targetMetadata, targetMetadata.idColumnName());
+                if (targetIdValue == null) {
+                    continue;
+                }
+                JoinKey key = new JoinKey(sourceIdValue, targetIdValue);
+                if (existing.add(key)) {
+                    joinInfo.table.insert(sourceIdValue, targetIdValue);
+                }
+            }
+        }
+    }
+
+    private java.util.Set<JoinKey> loadJoinKeys(JoinTableInfo joinInfo) {
+        java.util.Set<JoinKey> keys = new java.util.HashSet<>();
+        io.memris.storage.SimpleTable table = joinInfo.table;
+        io.memris.kernel.Column<?> joinColumn = table.column(joinInfo.joinColumn);
+        io.memris.kernel.Column<?> inverseColumn = table.column(joinInfo.inverseJoinColumn);
+        if (joinColumn == null || inverseColumn == null) {
+            return keys;
+        }
+        long rowCount = table.rowCount();
+        for (int i = 0; i < rowCount; i++) {
+            io.memris.kernel.RowId rowId = new io.memris.kernel.RowId(i >>> 16, i & 0xFFFF);
+            Object joinValue = joinColumn.get(rowId);
+            Object inverseValue = inverseColumn.get(rowId);
+            if (joinValue == null || inverseValue == null) {
+                continue;
+            }
+            keys.add(new JoinKey(joinValue, inverseValue));
+        }
+        return keys;
+    }
+
+    private Object readFieldValue(Object entity, io.memris.core.EntityMetadata<?> entityMetadata, String fieldName) {
+        if (entity == null || entityMetadata == null) {
+            return null;
+        }
+        MethodHandle getter = entityMetadata.fieldGetters().get(fieldName);
+        if (getter != null) {
+            try {
+                return getter.invoke(entity);
+            } catch (Throwable ignored) {
+                return null;
+            }
+        }
+        try {
+            java.lang.reflect.Field field = entity.getClass().getDeclaredField(fieldName);
+            if (!field.canAccess(entity)) {
+                field.setAccessible(true);
+            }
+            return field.get(entity);
+        } catch (ReflectiveOperationException ignored) {
+            return null;
+        }
+    }
+
+    private io.memris.core.EntityMetadata.FieldMapping findIdField(io.memris.core.EntityMetadata<?> targetMetadata) {
+        for (io.memris.core.EntityMetadata.FieldMapping field : targetMetadata.fields()) {
+            if (field.name().equals(targetMetadata.idColumnName())) {
+                return field;
+            }
+        }
+        return null;
+    }
+
+    private JoinTableInfo resolveJoinTable(io.memris.core.EntityMetadata.FieldMapping field) {
+        if (field.joinTable() != null && !field.joinTable().isBlank()) {
+            return buildJoinTableInfo(field, metadata, io.memris.core.MetadataExtractor.extractEntityMetadata(field.targetEntity()), false);
+        }
+        if (field.mappedBy() != null && !field.mappedBy().isBlank()) {
+            io.memris.core.EntityMetadata<?> targetMetadata = io.memris.core.MetadataExtractor.extractEntityMetadata(field.targetEntity());
+            io.memris.core.EntityMetadata.FieldMapping ownerField = findFieldByName(targetMetadata, field.mappedBy());
+            if (ownerField == null || ownerField.joinTable() == null || ownerField.joinTable().isBlank()) {
+                return null;
+            }
+            return buildJoinTableInfo(ownerField, targetMetadata, metadata, true);
+        }
+        return null;
+    }
+
+    private JoinTableInfo buildJoinTableInfo(io.memris.core.EntityMetadata.FieldMapping ownerField,
+                                             io.memris.core.EntityMetadata<?> ownerMetadata,
+                                             io.memris.core.EntityMetadata<?> inverseMetadata,
+                                             boolean inverseSide) {
+        String joinTableName = ownerField.joinTable();
+        io.memris.storage.SimpleTable joinTable = plan.joinTables().get(joinTableName);
+        if (joinTable == null) {
+            return null;
+        }
+
+        String joinColumn;
+        String inverseJoinColumn;
+        if (!inverseSide) {
+            joinColumn = ownerField.columnName();
+            if (joinColumn == null || joinColumn.isBlank()) {
+                joinColumn = ownerMetadata.entityClass().getSimpleName().toLowerCase() + "_" + ownerMetadata.idColumnName();
+            }
+            inverseJoinColumn = ownerField.referencedColumnName();
+            if (inverseJoinColumn == null || inverseJoinColumn.isBlank()) {
+                inverseJoinColumn = inverseMetadata.entityClass().getSimpleName().toLowerCase() + "_" + inverseMetadata.idColumnName();
+            }
+            return new JoinTableInfo(joinTableName, joinColumn, inverseJoinColumn, joinTable, plan.tablesByEntity().get(ownerField.targetEntity()));
+        }
+
+        joinColumn = ownerField.referencedColumnName();
+        if (joinColumn == null || joinColumn.isBlank()) {
+            joinColumn = inverseMetadata.entityClass().getSimpleName().toLowerCase() + "_" + inverseMetadata.idColumnName();
+        }
+        inverseJoinColumn = ownerField.columnName();
+        if (inverseJoinColumn == null || inverseJoinColumn.isBlank()) {
+            inverseJoinColumn = ownerMetadata.entityClass().getSimpleName().toLowerCase() + "_" + ownerMetadata.idColumnName();
+        }
+        return new JoinTableInfo(joinTableName, joinColumn, inverseJoinColumn, joinTable, plan.tablesByEntity().get(ownerMetadata.entityClass()));
+    }
+
+    private io.memris.core.EntityMetadata.FieldMapping findFieldByName(io.memris.core.EntityMetadata<?> targetMetadata, String name) {
+        for (io.memris.core.EntityMetadata.FieldMapping field : targetMetadata.fields()) {
+            if (field.name().equals(name)) {
+                return field;
+            }
+        }
+        return null;
+    }
+
+    private record JoinTableInfo(
+        String name,
+        String joinColumn,
+        String inverseJoinColumn,
+        io.memris.storage.SimpleTable table,
+        io.memris.storage.GeneratedTable targetTable
+    ) {
+    }
+
+    private record JoinKey(Object left, Object right) {
     }
 
     public RepositoryPlan<T> plan() {

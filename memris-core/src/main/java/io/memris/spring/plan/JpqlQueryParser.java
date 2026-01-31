@@ -29,59 +29,139 @@ public final class JpqlQueryParser {
         }
         String jpql = annotation.value();
         Parser parser = new Parser(jpql);
-        JpqlAst.Query ast = parser.parseQuery();
+        JpqlAst.Statement statement = parser.parseStatement();
 
-        validateEntity(ast.entityName(), entityClass);
+        if (statement instanceof JpqlAst.Query ast) {
+            validateEntity(ast.entityName(), entityClass);
 
-        LogicalQuery.ReturnKind returnKind = resolveReturnKind(method);
-        if (ast.count() && returnKind != LogicalQuery.ReturnKind.COUNT_LONG) {
-            throw new IllegalArgumentException("@Query count must return long: " + method.getName());
-        }
-        if (!ast.count() && returnKind == LogicalQuery.ReturnKind.COUNT_LONG) {
-            throw new IllegalArgumentException("@Query return type long requires count: " + method.getName());
-        }
-
-        Map<String, String> aliasMap = buildAliasMap(ast);
-        LogicalQuery.Join[] joins = buildJoins(ast, aliasMap, entityClass);
-        BindingContext bindingContext = new BindingContext(method);
-        List<LogicalQuery.Condition> flattened = flattenConditions(ast.where(), aliasMap, bindingContext);
-
-        LogicalQuery.OrderBy[] orderBy = null;
-        if (!ast.orderBy().isEmpty()) {
-            orderBy = new LogicalQuery.OrderBy[ast.orderBy().size()];
-            for (int i = 0; i < ast.orderBy().size(); i++) {
-                JpqlAst.OrderBy order = ast.orderBy().get(i);
-                String path = resolvePath(order.path(), aliasMap);
-                orderBy[i] = LogicalQuery.OrderBy.of(path, order.ascending());
+            LogicalQuery.ReturnKind returnKind = resolveReturnKind(method);
+            if (ast.count() && returnKind != LogicalQuery.ReturnKind.COUNT_LONG) {
+                throw new IllegalArgumentException("@Query count must return long: " + method.getName());
             }
+            if (!ast.count() && returnKind == LogicalQuery.ReturnKind.COUNT_LONG) {
+                throw new IllegalArgumentException("@Query return type long requires count: " + method.getName());
+            }
+
+            Map<String, String> aliasMap = buildAliasMap(ast);
+            LogicalQuery.Join[] joins = buildJoins(ast, aliasMap, entityClass);
+            BindingContext bindingContext = new BindingContext(method);
+            List<LogicalQuery.Condition> flattened = flattenConditions(ast.where(), aliasMap, bindingContext);
+
+            LogicalQuery.OrderBy[] orderBy = null;
+            if (!ast.orderBy().isEmpty()) {
+                orderBy = new LogicalQuery.OrderBy[ast.orderBy().size()];
+                for (int i = 0; i < ast.orderBy().size(); i++) {
+                    JpqlAst.OrderBy order = ast.orderBy().get(i);
+                    String path = resolvePath(order.path(), aliasMap);
+                    orderBy[i] = LogicalQuery.OrderBy.of(path, order.ascending());
+                }
+            }
+
+            OpCode opCode = switch (returnKind) {
+                case COUNT_LONG -> flattened.isEmpty() ? OpCode.COUNT_ALL : OpCode.COUNT;
+                case EXISTS_BOOL -> OpCode.EXISTS;
+                default -> OpCode.FIND;
+            };
+
+            LogicalQuery.Condition[] conditions = flattened.toArray(new LogicalQuery.Condition[0]);
+            Object[] boundValues = bindingContext.boundValues();
+            int[] parameterIndices = bindingContext.parameterIndices();
+            int arity = parameterIndices.length;
+
+            // Extract limit from method name (e.g., findTop3By...)
+            int limit = parseLimitFromMethodName(method.getName());
+
+            return LogicalQuery.of(
+                opCode,
+                returnKind,
+                conditions,
+                new LogicalQuery.UpdateAssignment[0],
+                joins,
+                orderBy,
+                limit,
+                ast.distinct(),
+                boundValues,
+                parameterIndices,
+                arity
+            );
         }
 
-        OpCode opCode = switch (returnKind) {
-            case COUNT_LONG -> flattened.isEmpty() ? OpCode.COUNT_ALL : OpCode.COUNT;
-            case EXISTS_BOOL -> OpCode.EXISTS;
-            default -> OpCode.FIND;
-        };
+        if (statement instanceof JpqlAst.Delete deleteAst) {
+            validateEntity(deleteAst.entityName(), entityClass);
+            ensureModifying(method);
 
-        LogicalQuery.Condition[] conditions = flattened.toArray(new LogicalQuery.Condition[0]);
-        Object[] boundValues = bindingContext.boundValues();
-        int[] parameterIndices = bindingContext.parameterIndices();
-        int arity = parameterIndices.length;
+            BindingContext bindingContext = new BindingContext(method);
+            Map<String, String> aliasMap = Map.of(deleteAst.rootAlias(), "");
+            List<LogicalQuery.Condition> flattened = flattenConditions(deleteAst.where(), aliasMap, bindingContext);
 
-        // Extract limit from method name (e.g., findTop3By...)
-        int limit = parseLimitFromMethodName(method.getName());
+            LogicalQuery.ReturnKind returnKind = resolveModifyingReturnKind(method);
+            LogicalQuery.Condition[] conditions = flattened.toArray(new LogicalQuery.Condition[0]);
+            Object[] boundValues = bindingContext.boundValues();
+            int[] parameterIndices = bindingContext.parameterIndices();
+            int arity = parameterIndices.length;
 
-        return LogicalQuery.of(
-            opCode,
-            returnKind,
-            conditions,
-            joins,
-            orderBy,
-            limit,
-            ast.distinct(),
-            boundValues,
-            parameterIndices,
-            arity
-        );
+            return LogicalQuery.of(
+                OpCode.DELETE_QUERY,
+                returnKind,
+                conditions,
+                new LogicalQuery.UpdateAssignment[0],
+                new LogicalQuery.Join[0],
+                null,
+                0,
+                false,
+                boundValues,
+                parameterIndices,
+                arity
+            );
+        }
+
+        if (statement instanceof JpqlAst.Update updateAst) {
+            validateEntity(updateAst.entityName(), entityClass);
+            ensureModifying(method);
+            if (updateAst.assignments() == null || updateAst.assignments().isEmpty()) {
+                throw new IllegalArgumentException("@Query update requires SET assignments: " + method.getName());
+            }
+
+            BindingContext bindingContext = new BindingContext(method);
+            Map<String, String> aliasMap = Map.of(updateAst.rootAlias(), "");
+            List<LogicalQuery.Condition> flattened = flattenConditions(updateAst.where(), aliasMap, bindingContext);
+
+            List<LogicalQuery.UpdateAssignment> assignments = new ArrayList<>(updateAst.assignments().size());
+            EntityMetadata<?> metadata = MetadataExtractor.extractEntityMetadata(entityClass);
+            for (JpqlAst.Assignment assignment : updateAst.assignments()) {
+                String path = resolvePath(assignment.path(), aliasMap);
+                if (path.contains(".")) {
+                    throw new IllegalArgumentException("@Query update does not support nested paths: " + assignment.path());
+                }
+                if (path.equals(metadata.idColumnName())) {
+                    throw new IllegalArgumentException("@Query update cannot modify ID column: " + assignment.path());
+                }
+                int argIndex = bindingContext.bindValue(assignment.value());
+                assignments.add(new LogicalQuery.UpdateAssignment(path, argIndex));
+            }
+
+            LogicalQuery.ReturnKind returnKind = resolveModifyingReturnKind(method);
+            LogicalQuery.Condition[] conditions = flattened.toArray(new LogicalQuery.Condition[0]);
+            Object[] boundValues = bindingContext.boundValues();
+            int[] parameterIndices = bindingContext.parameterIndices();
+            int arity = parameterIndices.length;
+
+            return LogicalQuery.of(
+                OpCode.UPDATE_QUERY,
+                returnKind,
+                conditions,
+                assignments.toArray(new LogicalQuery.UpdateAssignment[0]),
+                new LogicalQuery.Join[0],
+                null,
+                0,
+                false,
+                boundValues,
+                parameterIndices,
+                arity
+            );
+        }
+
+        throw new IllegalArgumentException("Unsupported @Query statement: " + jpql);
     }
 
     private static int parseLimitFromMethodName(String methodName) {
@@ -128,6 +208,39 @@ public final class JpqlQueryParser {
             return LogicalQuery.ReturnKind.COUNT_LONG;
         }
         return LogicalQuery.ReturnKind.MANY_LIST;
+    }
+
+    private static LogicalQuery.ReturnKind resolveModifyingReturnKind(Method method) {
+        Class<?> returnType = method.getReturnType();
+        if (returnType == void.class || returnType == Void.class) {
+            return LogicalQuery.ReturnKind.MODIFYING_VOID;
+        }
+        if (returnType == int.class || returnType == Integer.class) {
+            return LogicalQuery.ReturnKind.MODIFYING_INT;
+        }
+        if (returnType == long.class || returnType == Long.class) {
+            return LogicalQuery.ReturnKind.MODIFYING_LONG;
+        }
+        throw new IllegalArgumentException("@Modifying query must return void, int, or long: " + method.getName());
+    }
+
+    private static void ensureModifying(Method method) {
+        if (hasAnnotationByName(method, "io.memris.core.Modifying", "org.springframework.data.jpa.repository.Modifying")) {
+            return;
+        }
+        throw new IllegalArgumentException("@Query update/delete requires @Modifying: " + method.getName());
+    }
+
+    private static boolean hasAnnotationByName(Method method, String... names) {
+        for (var annotation : method.getAnnotations()) {
+            String type = annotation.annotationType().getName();
+            for (String name : names) {
+                if (name.equals(type)) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     private static void validateEntity(String entityName, Class<?> entityClass) {
@@ -523,7 +636,20 @@ public final class JpqlQueryParser {
             this.position = 0;
         }
 
-        JpqlAst.Query parseQuery() {
+        JpqlAst.Statement parseStatement() {
+            if (peek(JpqlLexer.TokenType.SELECT)) {
+                return parseQuery();
+            }
+            if (peek(JpqlLexer.TokenType.UPDATE)) {
+                return parseUpdate();
+            }
+            if (peek(JpqlLexer.TokenType.DELETE)) {
+                return parseDelete();
+            }
+            throw new IllegalArgumentException("Unsupported @Query statement");
+        }
+
+        private JpqlAst.Query parseQuery() {
             expect(JpqlLexer.TokenType.SELECT);
             boolean distinct = match(JpqlLexer.TokenType.DISTINCT);
             boolean count = false;
@@ -585,6 +711,65 @@ public final class JpqlQueryParser {
 
             expect(JpqlLexer.TokenType.EOF);
             return new JpqlAst.Query(count, distinct, entity, alias, joins, where, orderBy);
+        }
+
+        private JpqlAst.Update parseUpdate() {
+            expect(JpqlLexer.TokenType.UPDATE);
+            String entity = expectIdent();
+            String alias = null;
+            if (match(JpqlLexer.TokenType.AS)) {
+                alias = expectIdent();
+            } else if (peek(JpqlLexer.TokenType.IDENT)) {
+                alias = expectIdent();
+            } else {
+                alias = entity;
+            }
+
+            expect(JpqlLexer.TokenType.SET);
+            List<JpqlAst.Assignment> assignments = new ArrayList<>();
+            assignments.add(parseAssignment());
+            while (match(JpqlLexer.TokenType.COMMA)) {
+                assignments.add(parseAssignment());
+            }
+
+            JpqlAst.Expression where = null;
+            if (match(JpqlLexer.TokenType.WHERE)) {
+                where = parseExpression();
+            }
+
+            expect(JpqlLexer.TokenType.EOF);
+            return new JpqlAst.Update(entity, alias, assignments, where);
+        }
+
+        private JpqlAst.Delete parseDelete() {
+            expect(JpqlLexer.TokenType.DELETE);
+            if (match(JpqlLexer.TokenType.FROM)) {
+                // optional FROM
+            }
+            String entity = expectIdent();
+            String alias = null;
+            if (match(JpqlLexer.TokenType.AS)) {
+                alias = expectIdent();
+            } else if (peek(JpqlLexer.TokenType.IDENT)) {
+                alias = expectIdent();
+            } else {
+                alias = entity;
+            }
+
+            JpqlAst.Expression where = null;
+            if (match(JpqlLexer.TokenType.WHERE)) {
+                where = parseExpression();
+            }
+
+            expect(JpqlLexer.TokenType.EOF);
+            return new JpqlAst.Delete(entity, alias, where);
+        }
+
+        private JpqlAst.Assignment parseAssignment() {
+            String path = parsePath();
+            expect(JpqlLexer.TokenType.EQ);
+            JpqlAst.Value value = parseValue();
+            return new JpqlAst.Assignment(path, value);
         }
 
         private JpqlAst.OrderBy parseOrderBy() {

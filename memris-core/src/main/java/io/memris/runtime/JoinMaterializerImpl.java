@@ -11,13 +11,16 @@ public final class JoinMaterializerImpl implements JoinMaterializer {
     private final boolean targetColumnIsId;
     private final byte fkTypeCode;
     private final MethodHandle setter;
+    private final MethodHandle postLoadHandle;
 
-    public JoinMaterializerImpl(int sourceColumnIndex, int targetColumnIndex, boolean targetColumnIsId, byte fkTypeCode, MethodHandle setter) {
+    public JoinMaterializerImpl(int sourceColumnIndex, int targetColumnIndex, boolean targetColumnIsId, byte fkTypeCode,
+                                MethodHandle setter, MethodHandle postLoadHandle) {
         this.sourceColumnIndex = sourceColumnIndex;
         this.targetColumnIndex = targetColumnIndex;
         this.targetColumnIsId = targetColumnIsId;
         this.fkTypeCode = fkTypeCode;
         this.setter = setter;
+        this.postLoadHandle = postLoadHandle;
     }
 
     @Override
@@ -35,10 +38,22 @@ public final class JoinMaterializerImpl implements JoinMaterializer {
             return;
         }
         Object related = targetMaterializer.materialize(targetKernel, targetRow);
+        invokePostLoad(related);
         try {
             setter.invoke(sourceEntity, related);
         } catch (Throwable e) {
             throw new RuntimeException("Failed to set joined entity", e);
+        }
+    }
+
+    private void invokePostLoad(Object entity) {
+        if (postLoadHandle == null || entity == null) {
+            return;
+        }
+        try {
+            postLoadHandle.invoke(entity);
+        } catch (Throwable e) {
+            throw new RuntimeException("Failed to invoke postLoad", e);
         }
     }
 

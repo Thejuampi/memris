@@ -21,37 +21,41 @@ class RepositoryRuntimeIdConcurrencyTest {
         int idsPerThread = 1000;
         int totalIds = threadCount * idsPerThread;
 
-        ExecutorService executor = Executors.newFixedThreadPool(threadCount);
-        CountDownLatch startLatch = new CountDownLatch(1);
-        CountDownLatch completeLatch = new CountDownLatch(threadCount);
-        ConcurrentHashMap<Long, Integer> idCounts = new ConcurrentHashMap<>();
-        AtomicInteger duplicateCount = new AtomicInteger(0);
-        AtomicReference<Long> firstDuplicate = new AtomicReference<>();
+        ConcurrentHashMap<Long, Integer> idCounts;
+        AtomicInteger duplicateCount;
+        AtomicReference<Long> firstDuplicate;
+        try (ExecutorService executor = Executors.newFixedThreadPool(threadCount)) {
+            CountDownLatch startLatch = new CountDownLatch(1);
+            CountDownLatch completeLatch = new CountDownLatch(threadCount);
+            idCounts = new ConcurrentHashMap<>();
+            duplicateCount = new AtomicInteger(0);
+            firstDuplicate = new AtomicReference<>();
 
-        for (int t = 0; t < threadCount; t++) {
-            executor.submit(() -> {
-                try {
-                    startLatch.await();
-                    for (int i = 0; i < idsPerThread; i++) {
-                        // Simulate ID generation using same pattern as RepositoryRuntime
-                        long id = IdGenerator.generateNextId();
-                        Integer previous = idCounts.put(id, 1);
-                        if (previous != null) {
-                            duplicateCount.incrementAndGet();
-                            firstDuplicate.compareAndSet(null, id);
+            for (int t = 0; t < threadCount; t++) {
+                executor.submit(() -> {
+                    try {
+                        startLatch.await();
+                        for (int i = 0; i < idsPerThread; i++) {
+                            // Simulate ID generation using same pattern as RepositoryRuntime
+                            long id = IdGenerator.generateNextId();
+                            Integer previous = idCounts.put(id, 1);
+                            if (previous != null) {
+                                duplicateCount.incrementAndGet();
+                                firstDuplicate.compareAndSet(null, id);
+                            }
                         }
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                    } finally {
+                        completeLatch.countDown();
                     }
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                } finally {
-                    completeLatch.countDown();
-                }
-            });
-        }
+                });
+            }
 
-        startLatch.countDown();
-        assertTrue(completeLatch.await(30, TimeUnit.SECONDS), "Threads should complete within timeout");
-        executor.shutdown();
+            startLatch.countDown();
+            assertTrue(completeLatch.await(30, TimeUnit.SECONDS), "Threads should complete within timeout");
+            executor.shutdown();
+        }
 
         assertEquals(0, duplicateCount.get(),
             "Found " + duplicateCount.get() + " duplicate IDs. First duplicate: " + firstDuplicate.get());
@@ -65,29 +69,31 @@ class RepositoryRuntimeIdConcurrencyTest {
         int threadCount = 4;
         int idsPerThread = 100;
 
-        ExecutorService executor = Executors.newFixedThreadPool(threadCount);
-        CountDownLatch startLatch = new CountDownLatch(1);
-        CountDownLatch completeLatch = new CountDownLatch(threadCount);
-        ConcurrentLinkedQueue<Long> allIds = new ConcurrentLinkedQueue<>();
+        ConcurrentLinkedQueue<Long> allIds;
+        try (ExecutorService executor = Executors.newFixedThreadPool(threadCount)) {
+            CountDownLatch startLatch = new CountDownLatch(1);
+            CountDownLatch completeLatch = new CountDownLatch(threadCount);
+            allIds = new ConcurrentLinkedQueue<>();
 
-        for (int t = 0; t < threadCount; t++) {
-            executor.submit(() -> {
-                try {
-                    startLatch.await();
-                    for (int i = 0; i < idsPerThread; i++) {
-                        allIds.add(IdGenerator.generateNextId());
+            for (int t = 0; t < threadCount; t++) {
+                executor.submit(() -> {
+                    try {
+                        startLatch.await();
+                        for (int i = 0; i < idsPerThread; i++) {
+                            allIds.add(IdGenerator.generateNextId());
+                        }
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                    } finally {
+                        completeLatch.countDown();
                     }
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                } finally {
-                    completeLatch.countDown();
-                }
-            });
-        }
+                });
+            }
 
-        startLatch.countDown();
-        assertTrue(completeLatch.await(30, TimeUnit.SECONDS));
-        executor.shutdown();
+            startLatch.countDown();
+            assertTrue(completeLatch.await(30, TimeUnit.SECONDS));
+            executor.shutdown();
+        }
 
         // Verify all IDs are positive
         for (Long id : allIds) {
