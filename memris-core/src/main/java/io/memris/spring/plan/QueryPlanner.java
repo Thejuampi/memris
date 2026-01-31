@@ -225,6 +225,10 @@ public final class QueryPlanner {
         Class<?> returnType = method.getReturnType();
         Class<?>[] paramTypes = method.getParameterTypes();
 
+        if (method.isAnnotationPresent(io.memris.spring.Query.class)) {
+            return JpqlQueryParser.parse(method, entityClass);
+        }
+
         // Fast path: Check for built-in operations using MethodKey signature matching
         // This correctly handles overloads like deleteById(Long) vs deleteById(UUID)
         // Uses BuiltInResolver for deterministic tie-breaking and ambiguity detection

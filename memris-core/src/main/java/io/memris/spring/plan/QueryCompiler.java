@@ -81,6 +81,8 @@ public class QueryCompiler {
             attachJoinPredicates(joinsByPath, joinPredicates),
             compiledOrderBy,
             logicalQuery.limit(),
+            logicalQuery.boundValues(),
+            logicalQuery.parameterIndices(),
             logicalQuery.arity()
         );
     }
