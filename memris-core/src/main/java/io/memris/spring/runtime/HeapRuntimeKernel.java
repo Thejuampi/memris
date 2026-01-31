@@ -88,7 +88,19 @@ public final class HeapRuntimeKernel {
     public Selection executeCondition(CompiledQuery.CompiledCondition cc, Object[] args) {
         int columnIndex = cc.columnIndex();
         LogicalQuery.Operator operator = cc.operator();
-        Object value = args[cc.argumentIndex()];
+        Object value = null;
+        if (operator != LogicalQuery.Operator.IS_NULL && operator != LogicalQuery.Operator.NOT_NULL) {
+            value = args[cc.argumentIndex()];
+        }
+
+        if (operator == LogicalQuery.Operator.IN || operator == LogicalQuery.Operator.NOT_IN) {
+            Selection inSelection = executeInList(columnIndex, value);
+            if (operator == LogicalQuery.Operator.NOT_IN) {
+                int[] all = table.scanAll();
+                return subtractSelections(all, inSelection);
+            }
+            return inSelection;
+        }
 
         if (operator == LogicalQuery.Operator.BETWEEN) {
             return executeBetween(columnIndex, cc.argumentIndex(), args);
@@ -137,6 +149,152 @@ public final class HeapRuntimeKernel {
             }
             default -> throw new UnsupportedOperationException("BETWEEN not supported for type code: " + typeCode);
         };
+    }
+
+    private Selection executeInList(int columnIndex, Object value) {
+        if (value == null) {
+            return createSelection(table, new int[0]);
+        }
+        byte typeCode = table.typeCodeAt(columnIndex);
+        return switch (typeCode) {
+            case io.memris.spring.TypeCodes.TYPE_STRING,
+                io.memris.spring.TypeCodes.TYPE_BIG_DECIMAL,
+                io.memris.spring.TypeCodes.TYPE_BIG_INTEGER -> createSelection(table, table.scanInString(columnIndex, toStringArray(value)));
+            case io.memris.spring.TypeCodes.TYPE_LONG,
+                io.memris.spring.TypeCodes.TYPE_INSTANT,
+                io.memris.spring.TypeCodes.TYPE_LOCAL_DATE,
+                io.memris.spring.TypeCodes.TYPE_LOCAL_DATE_TIME,
+                io.memris.spring.TypeCodes.TYPE_DATE,
+                io.memris.spring.TypeCodes.TYPE_DOUBLE -> createSelection(table, table.scanInLong(columnIndex, toLongArray(typeCode, value)));
+            case io.memris.spring.TypeCodes.TYPE_INT,
+                io.memris.spring.TypeCodes.TYPE_BOOLEAN,
+                io.memris.spring.TypeCodes.TYPE_BYTE,
+                io.memris.spring.TypeCodes.TYPE_SHORT,
+                io.memris.spring.TypeCodes.TYPE_CHAR,
+                io.memris.spring.TypeCodes.TYPE_FLOAT -> createSelection(table, table.scanInInt(columnIndex, toIntArray(typeCode, value)));
+            default -> throw new UnsupportedOperationException("IN not supported for type code: " + typeCode);
+        };
+    }
+
+    private long[] toLongArray(byte typeCode, Object value) {
+        if (value instanceof long[] longs) {
+            return longs;
+        }
+        if (value instanceof int[] ints) {
+            long[] result = new long[ints.length];
+            for (int i = 0; i < ints.length; i++) {
+                result[i] = ints[i];
+            }
+            return result;
+        }
+        if (value instanceof Iterable<?> iterable) {
+            java.util.ArrayList<Long> list = new java.util.ArrayList<>();
+            for (Object item : iterable) {
+                list.add(convertToLong(typeCode, item));
+            }
+            return toLongArray(list);
+        }
+        if (value instanceof Object[] objects) {
+            long[] result = new long[objects.length];
+            for (int i = 0; i < objects.length; i++) {
+                result[i] = convertToLong(typeCode, objects[i]);
+            }
+            return result;
+        }
+        return new long[]{convertToLong(typeCode, value)};
+    }
+
+    private int[] toIntArray(byte typeCode, Object value) {
+        if (value instanceof int[] ints) {
+            return ints;
+        }
+        if (value instanceof Iterable<?> iterable) {
+            java.util.ArrayList<Integer> list = new java.util.ArrayList<>();
+            for (Object item : iterable) {
+                list.add(convertToInt(typeCode, item));
+            }
+            return toIntArray(list);
+        }
+        if (value instanceof Object[] objects) {
+            int[] result = new int[objects.length];
+            for (int i = 0; i < objects.length; i++) {
+                result[i] = convertToInt(typeCode, objects[i]);
+            }
+            return result;
+        }
+        return new int[]{convertToInt(typeCode, value)};
+    }
+
+    private String[] toStringArray(Object value) {
+        if (value instanceof String[] strings) {
+            return strings;
+        }
+        if (value instanceof Iterable<?> iterable) {
+            java.util.ArrayList<String> list = new java.util.ArrayList<>();
+            for (Object item : iterable) {
+                list.add(item != null ? item.toString() : null);
+            }
+            return list.toArray(new String[0]);
+        }
+        if (value instanceof Object[] objects) {
+            String[] result = new String[objects.length];
+            for (int i = 0; i < objects.length; i++) {
+                result[i] = objects[i] != null ? objects[i].toString() : null;
+            }
+            return result;
+        }
+        return new String[]{value.toString()};
+    }
+
+    private long[] toLongArray(java.util.ArrayList<Long> values) {
+        long[] result = new long[values.size()];
+        for (int i = 0; i < values.size(); i++) {
+            result[i] = values.get(i);
+        }
+        return result;
+    }
+
+    private int[] toIntArray(java.util.ArrayList<Integer> values) {
+        int[] result = new int[values.size()];
+        for (int i = 0; i < values.size(); i++) {
+            result[i] = values.get(i);
+        }
+        return result;
+    }
+
+    private long convertToLong(byte typeCode, Object value) {
+        if (value == null) {
+            return 0L;
+        }
+        return switch (typeCode) {
+            case io.memris.spring.TypeCodes.TYPE_INSTANT -> ((java.time.Instant) value).toEpochMilli();
+            case io.memris.spring.TypeCodes.TYPE_LOCAL_DATE -> ((java.time.LocalDate) value).toEpochDay();
+            case io.memris.spring.TypeCodes.TYPE_LOCAL_DATE_TIME -> ((java.time.LocalDateTime) value).toInstant(java.time.ZoneOffset.UTC).toEpochMilli();
+            case io.memris.spring.TypeCodes.TYPE_DATE -> ((java.util.Date) value).getTime();
+            case io.memris.spring.TypeCodes.TYPE_DOUBLE -> Double.doubleToLongBits(((Number) value).doubleValue());
+            default -> ((Number) value).longValue();
+        };
+    }
+
+    private int convertToInt(byte typeCode, Object value) {
+        if (value == null) {
+            return 0;
+        }
+        return switch (typeCode) {
+            case io.memris.spring.TypeCodes.TYPE_BOOLEAN -> (value instanceof Boolean b && b) ? 1 : 0;
+            case io.memris.spring.TypeCodes.TYPE_CHAR -> (value instanceof Character c) ? c : (int) value.toString().charAt(0);
+            case io.memris.spring.TypeCodes.TYPE_FLOAT -> Float.floatToIntBits(((Number) value).floatValue());
+            default -> ((Number) value).intValue();
+        };
+    }
+
+    private Selection subtractSelections(int[] allRows, Selection toRemove) {
+        long[] packed = new long[allRows.length];
+        long gen = table.currentGeneration();
+        for (int i = 0; i < allRows.length; i++) {
+            packed[i] = io.memris.storage.Selection.pack(allRows[i], gen);
+        }
+        return new io.memris.storage.SelectionImpl(packed).subtract(toRemove);
     }
 
     private static long convertToEpochLong(byte typeCode, Object value) {
