@@ -288,15 +288,12 @@ public final class RepositoryEmitter {
                 .name(implClassName)
                 .modifiers(Visibility.PUBLIC, TypeManifestation.FINAL);
 
-        // Intercept all methods from the repository interface
-        for (Method method : repositoryInterface.getMethods()) {
-            if (method.isDefault() || java.lang.reflect.Modifier.isStatic(method.getModifiers())) {
-                continue; // Skip default and static methods
-            }
-            
+        Method[] queryMethods = RepositoryMethodIntrospector.extractQueryMethods(repositoryInterface);
+        for (int i = 0; i < queryMethods.length; i++) {
+            Method method = queryMethods[i];
             builder = builder.method(ElementMatchers.named(method.getName())
                     .and(ElementMatchers.takesArguments(method.getParameterCount())))
-                    .intercept(MethodDelegation.to(new RepositoryMethodInterceptor<>(runtime, method)));
+                    .intercept(MethodDelegation.to(new RepositoryMethodIndexInterceptor<>(runtime, i)));
         }
 
         try (DynamicType.Unloaded<?> unloaded = builder.make()) {
@@ -321,6 +318,22 @@ public final class RepositoryEmitter {
                 @net.bytebuddy.implementation.bind.annotation.AllArguments Object[] args) {
             // Delegate to runtime based on method name and arguments
             return runtime.executeMethod(method, args);
+        }
+    }
+
+    public static class RepositoryMethodIndexInterceptor<T> {
+        private final RepositoryRuntime<T> runtime;
+        private final int methodIndex;
+
+        public RepositoryMethodIndexInterceptor(RepositoryRuntime<T> runtime, int methodIndex) {
+            this.runtime = runtime;
+            this.methodIndex = methodIndex;
+        }
+
+        @net.bytebuddy.implementation.bind.annotation.RuntimeType
+        public Object intercept(
+                @net.bytebuddy.implementation.bind.annotation.AllArguments Object[] args) {
+            return runtime.executeMethodIndex(methodIndex, args);
         }
     }
 }

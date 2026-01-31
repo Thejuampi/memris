@@ -76,11 +76,22 @@ public final class RepositoryRuntime<T> {
      * Execute a method call based on the compiled query plan.
      */
     public Object executeMethod(Method method, Object[] args) {
+        if (Boolean.getBoolean("memris.fail.method.lookup")) {
+            throw new IllegalStateException("Method lookup dispatch is disabled for tests");
+        }
         int methodIndex = findMethodIndex(method);
         if (methodIndex < 0) {
             throw new UnsupportedOperationException("Method not found in plan: " + method.getName());
         }
 
+        CompiledQuery query = plan.queries()[methodIndex];
+        return executeCompiledQuery(query, args);
+    }
+
+    public Object executeMethodIndex(int methodIndex, Object[] args) {
+        if (methodIndex < 0 || methodIndex >= plan.queries().length) {
+            throw new UnsupportedOperationException("Method index out of range: " + methodIndex);
+        }
         CompiledQuery query = plan.queries()[methodIndex];
         return executeCompiledQuery(query, args);
     }
@@ -363,6 +374,9 @@ public final class RepositoryRuntime<T> {
         Selection selection = executeConditions(query, args);
 
         int[] rows = selection.toIntArray();
+        if (query.distinct()) {
+            rows = distinctRows(rows);
+        }
         rows = applyOrderBy(query, rows);
 
         int limit = query.limit();
@@ -381,6 +395,25 @@ public final class RepositoryRuntime<T> {
             case MANY_LIST -> results;
             default -> throw new IllegalStateException("Unexpected return kind for FIND: " + query.returnKind());
         };
+    }
+
+    private int[] distinctRows(int[] rows) {
+        if (rows.length < 2) {
+            return rows;
+        }
+        java.util.Arrays.sort(rows);
+        int unique = 1;
+        for (int i = 1; i < rows.length; i++) {
+            if (rows[i] != rows[i - 1]) {
+                rows[unique++] = rows[i];
+            }
+        }
+        if (unique == rows.length) {
+            return rows;
+        }
+        int[] result = new int[unique];
+        System.arraycopy(rows, 0, result, 0, unique);
+        return result;
     }
 
     private long executeCount(CompiledQuery query, Object[] args) {
@@ -741,10 +774,19 @@ public final class RepositoryRuntime<T> {
     }
 
     private int[] applyOrderBy(CompiledQuery query, int[] rows) {
-        CompiledQuery.CompiledOrderBy orderBy = query.orderBy();
-        if (orderBy == null || rows.length < 2) {
+        CompiledQuery.CompiledOrderBy[] orderBy = query.orderBy();
+        if (orderBy == null || orderBy.length == 0 || rows.length < 2) {
             return rows;
         }
+
+        if (orderBy.length == 1) {
+            return applySingleOrderBy(rows, orderBy[0]);
+        }
+
+        return sortByMultipleColumns(rows, orderBy);
+    }
+
+    private int[] applySingleOrderBy(int[] rows, CompiledQuery.CompiledOrderBy orderBy) {
 
         int columnIndex = orderBy.columnIndex();
         boolean ascending = orderBy.ascending();
@@ -768,6 +810,202 @@ public final class RepositoryRuntime<T> {
                 TypeCodes.TYPE_BIG_INTEGER -> sortByStringColumn(rows, columnIndex, ascending);
             default -> throw new UnsupportedOperationException("Unsupported sort type code: " + typeCode);
         };
+    }
+
+    private int[] sortByMultipleColumns(int[] rows, CompiledQuery.CompiledOrderBy[] orderBy) {
+        int[] result = rows.clone();
+        OrderKey[] keys = buildOrderKeys(result, orderBy);
+        quickSortMulti(result, keys, 0, result.length - 1);
+        return result;
+    }
+
+    private OrderKey[] buildOrderKeys(int[] rows, CompiledQuery.CompiledOrderBy[] orderBy) {
+        GeneratedTable table = plan.table();
+        OrderKey[] keys = new OrderKey[orderBy.length];
+        for (int i = 0; i < orderBy.length; i++) {
+            int columnIndex = orderBy[i].columnIndex();
+            boolean ascending = orderBy[i].ascending();
+            byte typeCode = table.typeCodeAt(columnIndex);
+            boolean[] present = new boolean[rows.length];
+            OrderKey key = new OrderKey(typeCode, ascending, present);
+            switch (typeCode) {
+                case TypeCodes.TYPE_INT,
+                    TypeCodes.TYPE_BOOLEAN,
+                    TypeCodes.TYPE_BYTE,
+                    TypeCodes.TYPE_SHORT,
+                    TypeCodes.TYPE_CHAR -> {
+                    int[] values = new int[rows.length];
+                    for (int r = 0; r < rows.length; r++) {
+                        int row = rows[r];
+                        present[r] = table.isPresent(columnIndex, row);
+                        values[r] = table.readInt(columnIndex, row);
+                    }
+                    key.intKeys = values;
+                }
+                case TypeCodes.TYPE_FLOAT -> {
+                    float[] values = new float[rows.length];
+                    for (int r = 0; r < rows.length; r++) {
+                        int row = rows[r];
+                        present[r] = table.isPresent(columnIndex, row);
+                        values[r] = Float.intBitsToFloat(table.readInt(columnIndex, row));
+                    }
+                    key.floatKeys = values;
+                }
+                case TypeCodes.TYPE_LONG,
+                    TypeCodes.TYPE_INSTANT,
+                    TypeCodes.TYPE_LOCAL_DATE,
+                    TypeCodes.TYPE_LOCAL_DATE_TIME,
+                    TypeCodes.TYPE_DATE -> {
+                    long[] values = new long[rows.length];
+                    for (int r = 0; r < rows.length; r++) {
+                        int row = rows[r];
+                        present[r] = table.isPresent(columnIndex, row);
+                        values[r] = table.readLong(columnIndex, row);
+                    }
+                    key.longKeys = values;
+                }
+                case TypeCodes.TYPE_DOUBLE -> {
+                    double[] values = new double[rows.length];
+                    for (int r = 0; r < rows.length; r++) {
+                        int row = rows[r];
+                        present[r] = table.isPresent(columnIndex, row);
+                        values[r] = Double.longBitsToDouble(table.readLong(columnIndex, row));
+                    }
+                    key.doubleKeys = values;
+                }
+                case TypeCodes.TYPE_STRING,
+                    TypeCodes.TYPE_BIG_DECIMAL,
+                    TypeCodes.TYPE_BIG_INTEGER -> {
+                    String[] values = new String[rows.length];
+                    for (int r = 0; r < rows.length; r++) {
+                        int row = rows[r];
+                        values[r] = table.readString(columnIndex, row);
+                        present[r] = values[r] != null;
+                    }
+                    key.stringKeys = values;
+                }
+                default -> throw new UnsupportedOperationException("Unsupported sort type code: " + typeCode);
+            }
+            keys[i] = key;
+        }
+        return keys;
+    }
+
+    private static void quickSortMulti(int[] rows, OrderKey[] keys, int low, int high) {
+        int i = low;
+        int j = high;
+        int pivotIndex = low + ((high - low) >>> 1);
+
+        while (i <= j) {
+            while (compareMulti(i, pivotIndex, rows, keys) < 0) {
+                i++;
+            }
+            while (compareMulti(j, pivotIndex, rows, keys) > 0) {
+                j--;
+            }
+            if (i <= j) {
+                swap(rows, i, j);
+                for (OrderKey key : keys) {
+                    key.swap(i, j);
+                }
+                i++;
+                j--;
+            }
+        }
+
+        if (low < j) quickSortMulti(rows, keys, low, j);
+        if (i < high) quickSortMulti(rows, keys, i, high);
+    }
+
+    private static int compareMulti(int left, int right, int[] rows, OrderKey[] keys) {
+        if (left == right) {
+            return 0;
+        }
+        for (OrderKey key : keys) {
+            int cmp = key.compare(left, right);
+            if (cmp != 0) {
+                return cmp;
+            }
+        }
+        return Integer.compare(rows[left], rows[right]);
+    }
+
+    private static final class OrderKey {
+        private final byte typeCode;
+        private final boolean ascending;
+        private final boolean[] present;
+        private int[] intKeys;
+        private long[] longKeys;
+        private float[] floatKeys;
+        private double[] doubleKeys;
+        private String[] stringKeys;
+
+        OrderKey(byte typeCode, boolean ascending, boolean[] present) {
+            this.typeCode = typeCode;
+            this.ascending = ascending;
+            this.present = present;
+        }
+
+        int compare(int left, int right) {
+            int cmp = compareNullable(present[left], present[right]);
+            if (cmp == 0) {
+                cmp = switch (typeCode) {
+                    case TypeCodes.TYPE_INT,
+                        TypeCodes.TYPE_BOOLEAN,
+                        TypeCodes.TYPE_BYTE,
+                        TypeCodes.TYPE_SHORT,
+                        TypeCodes.TYPE_CHAR -> Integer.compare(intKeys[left], intKeys[right]);
+                    case TypeCodes.TYPE_FLOAT -> Float.compare(floatKeys[left], floatKeys[right]);
+                    case TypeCodes.TYPE_LONG,
+                        TypeCodes.TYPE_INSTANT,
+                        TypeCodes.TYPE_LOCAL_DATE,
+                        TypeCodes.TYPE_LOCAL_DATE_TIME,
+                        TypeCodes.TYPE_DATE -> Long.compare(longKeys[left], longKeys[right]);
+                    case TypeCodes.TYPE_DOUBLE -> Double.compare(doubleKeys[left], doubleKeys[right]);
+                    case TypeCodes.TYPE_STRING,
+                        TypeCodes.TYPE_BIG_DECIMAL,
+                        TypeCodes.TYPE_BIG_INTEGER -> compareStringValue(stringKeys[left], stringKeys[right]);
+                    default -> 0;
+                };
+            }
+            return ascending ? cmp : -cmp;
+        }
+
+        void swap(int i, int j) {
+            RepositoryRuntime.swap(present, i, j);
+            switch (typeCode) {
+                case TypeCodes.TYPE_INT,
+                    TypeCodes.TYPE_BOOLEAN,
+                    TypeCodes.TYPE_BYTE,
+                    TypeCodes.TYPE_SHORT,
+                    TypeCodes.TYPE_CHAR -> RepositoryRuntime.swap(intKeys, i, j);
+                case TypeCodes.TYPE_FLOAT -> RepositoryRuntime.swap(floatKeys, i, j);
+                case TypeCodes.TYPE_LONG,
+                    TypeCodes.TYPE_INSTANT,
+                    TypeCodes.TYPE_LOCAL_DATE,
+                    TypeCodes.TYPE_LOCAL_DATE_TIME,
+                    TypeCodes.TYPE_DATE -> RepositoryRuntime.swap(longKeys, i, j);
+                case TypeCodes.TYPE_DOUBLE -> RepositoryRuntime.swap(doubleKeys, i, j);
+                case TypeCodes.TYPE_STRING,
+                    TypeCodes.TYPE_BIG_DECIMAL,
+                    TypeCodes.TYPE_BIG_INTEGER -> RepositoryRuntime.swap(stringKeys, i, j);
+                default -> {
+                }
+            }
+        }
+
+        private static int compareStringValue(String left, String right) {
+            if (left == null && right == null) {
+                return 0;
+            }
+            if (left == null) {
+                return 1;
+            }
+            if (right == null) {
+                return -1;
+            }
+            return left.compareTo(right);
+        }
     }
 
     private int[] sortByIntColumn(int[] rows, int columnIndex, boolean ascending) {
