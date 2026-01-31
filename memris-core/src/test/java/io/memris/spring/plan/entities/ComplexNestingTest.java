@@ -105,7 +105,7 @@ class ComplexNestingTest {
 
         assertThat(tokens).hasSize(2);
         assertThat(tokens.get(1).type()).isEqualTo(QueryMethodTokenType.PROPERTY_PATH);
-        assertThat(tokens.get(1).value()).isEqualTo("profile.firstname");
+        assertThat(tokens.get(1).value()).isEqualTo("profile.firstName");
     }
 
     @Test
@@ -116,7 +116,7 @@ class ComplexNestingTest {
 
         assertThat(tokens).hasSize(2);
         assertThat(tokens.get(1).type()).isEqualTo(QueryMethodTokenType.PROPERTY_PATH);
-        assertThat(tokens.get(1).value()).isEqualTo("profile.lastname");
+        assertThat(tokens.get(1).value()).isEqualTo("profile.lastName");
     }
 
     @Test
@@ -297,7 +297,8 @@ class ComplexNestingTest {
     @Order(23)
     void tokenizeOrderBy_MultipleDeepNesting() {
         Class<DeepNestedEntity> entityClass = DeepNestedEntity.class;
-        var tokens = QueryMethodLexer.tokenize(entityClass, "findByDepartmentNameOrderByDepartmentAddressCityAscAndAccountEmailDesc");
+        var tokens = QueryMethodLexer.tokenize(entityClass,
+                "findByDepartmentNameOrderByDepartmentAddressCityAscAndAccountEmailDesc");
 
         assertThat(tokens).hasSize(8);
         assertThat(tokens.get(3).value()).isEqualTo("department.address.city");
