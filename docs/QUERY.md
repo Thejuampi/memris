@@ -75,6 +75,52 @@ This document provides a complete query operator reference for Memris.
 | long | `countByXxx` | ✅ |
 | boolean | `existsByXxx` | ✅ |
 
+## @Query (JPQL-like)
+
+Memris supports a JPQL-like subset for annotated queries:
+
+```java
+@Query("select p from Product p where p.sku = :sku")
+Optional<Product> findBySku(@Param("sku") String sku);
+
+@Query("select p from Product p where p.name ilike :name and p.price between :min and :max")
+List<Product> findByNameAndPrice(@Param("name") String name, @Param("min") long min, @Param("max") long max);
+```
+
+**Supported clauses:**
+- `SELECT` / `FROM` / `WHERE` / `ORDER BY`
+- `JOIN` / `LEFT JOIN` (aliases supported)
+
+**Supported predicates:**
+- Comparisons: `=`, `!=`, `<>`, `>`, `>=`, `<`, `<=`
+- String matching: `LIKE`, `ILIKE` (ILIKE = case-insensitive LIKE)
+- Sets: `IN` / `NOT IN`
+- Ranges: `BETWEEN`
+- Null checks: `IS NULL` / `IS NOT NULL`
+- Boolean literals: `true` / `false`
+- Parentheses + `AND` / `OR` (AND binds tighter)
+
+**Parameter binding:**
+- Named: `:name` with `@Param("name")`
+- Positional: `?1`, `?2`
+- If compiled with `-parameters`, unannotated names are also matched
+
+**Return types:**
+- `List<T>`, `Optional<T>`, `boolean`, `long`
+- `select count(x)` must return `long`
+
+**Literal handling:**
+- Integer literals are stored as `Long`
+- Decimal literals are stored as `BigDecimal`
+
+**Limitations (current):**
+- No `DISTINCT`
+- No projections (`select new ...`), no aggregates beyond `count`
+- No `GROUP BY` / `HAVING`
+- No subqueries
+- No `UPDATE` / `DELETE` queries
+- Single-column `ORDER BY` only
+
 ## Field Type Support
 
 **Primitive + String types:**

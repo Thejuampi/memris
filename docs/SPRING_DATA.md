@@ -65,6 +65,13 @@ Memris uses **custom annotations** (not Jakarta/JPA):
 - Marks a one-to-one relationship
 - Supports cascade operations
 
+**@Query** (`io.memris.spring.Query`)
+- Declares a JPQL-like query string on repository methods
+- Supports `SELECT`/`FROM`/`WHERE`/`ORDER BY` and `JOIN`/`LEFT JOIN`
+
+**@Param** (`io.memris.spring.Param`)
+- Binds a named `:param` in `@Query` to a method parameter
+
 **GenerationType** (`io.memris.spring.GenerationType`)
 - `AUTO` - Automatic strategy selection
 - `IDENTITY` - Database identity (auto-increment)
