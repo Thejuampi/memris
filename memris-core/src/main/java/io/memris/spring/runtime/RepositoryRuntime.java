@@ -125,12 +125,12 @@ public final class RepositoryRuntime<T> {
                 return executeFind(query, queryArgs);
             case COUNT:
                 queryArgs = buildQueryArgs(query, args);
-                return executeCount(query, queryArgs);
+                return executeCountFast(query, queryArgs);
             case COUNT_ALL:
                 return executeCountAll();
             case EXISTS:
                 queryArgs = buildQueryArgs(query, args);
-                return executeExists(query, queryArgs);
+                return executeExistsFast(query, queryArgs);
             case EXISTS_BY_ID:
                 return executeExistsById(args);
             case DELETE_ONE:
@@ -434,6 +434,271 @@ public final class RepositoryRuntime<T> {
     private boolean executeExists(CompiledQuery query, Object[] args) {
         Selection selection = executeConditions(query, args);
         return selection.size() > 0;
+    }
+
+    /**
+     * Fast EXISTS that short-circuits without building full selections.
+     * <p>
+     * For AND groups: if any condition returns empty, immediately return false.
+     * For OR groups: if any condition returns non-empty, immediately return true.
+     */
+    private boolean executeExistsFast(CompiledQuery query, Object[] args) {
+        CompiledQuery.CompiledCondition[] conditions = query.conditions();
+
+        if (conditions.length == 0) {
+            // No conditions - check if table has any rows
+            return plan.table().liveCount() > 0;
+        }
+
+        // For single condition, just check if it matches anything
+        if (conditions.length == 1) {
+            Selection selection = selectWithIndex(conditions[0], args);
+            return selection.size() > 0;
+        }
+
+        // Process conditions with short-circuiting
+        // Track rows matched by current AND group
+        IntAccumulator currentGroup = null;
+
+        for (int i = 0; i < conditions.length; i++) {
+            CompiledQuery.CompiledCondition condition = conditions[i];
+            Selection next = selectWithIndex(condition, args);
+            int nextSize = next.size();
+
+            if (currentGroup == null) {
+                // First condition in this group
+                if (nextSize == 0) {
+                    // Empty result at start of group - check if this is standalone or AND group
+                    // If next combinator is AND, the whole group will be empty
+                    // If next combinator is OR, we can continue to next group
+                    if (condition.nextCombinator() == LogicalQuery.Combinator.AND) {
+                        // This AND group will be empty, skip to next OR group
+                        // Fast-forward past all AND conditions
+                        while (i < conditions.length - 1 && conditions[i].nextCombinator() == LogicalQuery.Combinator.AND) {
+                            i++;
+                        }
+                        currentGroup = null;
+                        continue;
+                    }
+                    // This is a standalone OR condition with empty result - continue
+                    currentGroup = null;
+                    continue;
+                }
+                // Non-empty result, start tracking this group
+                currentGroup = new IntAccumulator(next.toIntArray());
+            } else {
+                // Intersect with current AND group
+                currentGroup.intersect(next.toIntArray());
+                if (currentGroup.isEmpty()) {
+                    // AND group became empty - if followed by more ANDs, skip them
+                    if (condition.nextCombinator() == LogicalQuery.Combinator.AND) {
+                        while (i < conditions.length - 1 && conditions[i].nextCombinator() == LogicalQuery.Combinator.AND) {
+                            i++;
+                        }
+                    }
+                    currentGroup = null;
+                    continue;
+                }
+            }
+
+            LogicalQuery.Combinator combinator = condition.nextCombinator();
+            if (combinator == LogicalQuery.Combinator.OR) {
+                // End of AND group - if we have matches, return true
+                if (currentGroup != null && !currentGroup.isEmpty()) {
+                    return true;
+                }
+                currentGroup = null;
+            }
+        }
+
+        // Check final group
+        return currentGroup != null && !currentGroup.isEmpty();
+    }
+
+    /**
+     * Fast COUNT that counts matches without building full selection arrays.
+     * Uses a counter-based approach while still handling AND/OR logic correctly.
+     */
+    private long executeCountFast(CompiledQuery query, Object[] args) {
+        CompiledQuery.CompiledCondition[] conditions = query.conditions();
+
+        if (conditions.length == 0) {
+            // No conditions - count all rows
+            return plan.table().liveCount();
+        }
+
+        // For single condition, just return its count
+        if (conditions.length == 1) {
+            Selection selection = selectWithIndex(conditions[0], args);
+            return selection.size();
+        }
+
+        // Need to build proper intersection/union for accurate count
+        // But we use IntAccumulator which is more memory-efficient than Selection
+        IntAccumulator combined = null;
+        IntAccumulator currentGroup = null;
+
+        for (int i = 0; i < conditions.length; i++) {
+            CompiledQuery.CompiledCondition condition = conditions[i];
+            Selection next = selectWithIndex(condition, args);
+            int[] nextRows = next.toIntArray();
+
+            if (currentGroup == null) {
+                currentGroup = new IntAccumulator(nextRows);
+            } else {
+                currentGroup.intersect(nextRows);
+            }
+
+            LogicalQuery.Combinator combinator = condition.nextCombinator();
+            if (combinator == LogicalQuery.Combinator.OR) {
+                // Union this group with combined result
+                if (combined == null) {
+                    combined = currentGroup;
+                } else {
+                    combined.union(currentGroup);
+                }
+                currentGroup = null;
+            }
+        }
+
+        // Handle final group
+        if (currentGroup != null) {
+            if (combined == null) {
+                combined = currentGroup;
+            } else {
+                combined.union(currentGroup);
+            }
+        }
+
+        return combined != null ? combined.size() : 0;
+    }
+
+    /**
+     * Memory-efficient accumulator for row indices.
+     * Used by fast EXISTS and COUNT to avoid creating full Selection objects.
+     */
+    private static final class IntAccumulator {
+        private int[] rows;
+        private int size;
+        private java.util.BitSet bitSet; // Used for efficient intersection/union
+
+        IntAccumulator(int[] initialRows) {
+            if (initialRows.length <= 64) {
+                // Small sets: use sorted array
+                this.rows = initialRows.clone();
+                java.util.Arrays.sort(this.rows);
+                this.size = this.rows.length;
+            } else {
+                // Large sets: use BitSet for efficient operations
+                this.bitSet = new java.util.BitSet();
+                for (int row : initialRows) {
+                    this.bitSet.set(row);
+                }
+                this.size = initialRows.length;
+            }
+        }
+
+        boolean isEmpty() {
+            return size == 0;
+        }
+
+        int size() {
+            return size;
+        }
+
+        void intersect(int[] other) {
+            if (size == 0) {
+                return;
+            }
+
+            if (bitSet != null) {
+                // BitSet intersection
+                java.util.BitSet otherBits = new java.util.BitSet();
+                for (int row : other) {
+                    otherBits.set(row);
+                }
+                bitSet.and(otherBits);
+                size = bitSet.cardinality();
+            } else if (other.length <= 64) {
+                // Array intersection (both small)
+                java.util.Arrays.sort(other);
+                int newSize = 0;
+                int i = 0, j = 0;
+                while (i < size && j < other.length) {
+                    if (rows[i] == other[j]) {
+                        rows[newSize++] = rows[i];
+                        i++;
+                        j++;
+                    } else if (rows[i] < other[j]) {
+                        i++;
+                    } else {
+                        j++;
+                    }
+                }
+                size = newSize;
+            } else {
+                // Other is large, convert to BitSet
+                java.util.BitSet otherBits = new java.util.BitSet();
+                for (int row : other) {
+                    otherBits.set(row);
+                }
+                bitSet = new java.util.BitSet();
+                for (int i = 0; i < size; i++) {
+                    if (otherBits.get(rows[i])) {
+                        bitSet.set(rows[i]);
+                    }
+                }
+                rows = null;
+                size = bitSet.cardinality();
+            }
+        }
+
+        void union(IntAccumulator other) {
+            if (other.size == 0) {
+                return;
+            }
+            if (size == 0) {
+                if (other.bitSet != null) {
+                    bitSet = (java.util.BitSet) other.bitSet.clone();
+                } else {
+                    rows = other.rows.clone();
+                    size = other.size;
+                }
+                return;
+            }
+
+            // Convert both to BitSet for union
+            if (bitSet == null) {
+                bitSet = new java.util.BitSet();
+                for (int i = 0; i < size; i++) {
+                    bitSet.set(rows[i]);
+                }
+                rows = null;
+            }
+
+            if (other.bitSet != null) {
+                bitSet.or(other.bitSet);
+            } else {
+                for (int i = 0; i < other.size; i++) {
+                    bitSet.set(other.rows[i]);
+                }
+            }
+            size = bitSet.cardinality();
+        }
+
+        int[] toIntArray() {
+            if (bitSet != null) {
+                int[] result = new int[size];
+                int idx = 0;
+                for (int i = bitSet.nextSetBit(0); i >= 0; i = bitSet.nextSetBit(i + 1)) {
+                    result[idx++] = i;
+                }
+                return result;
+            }
+            int[] result = new int[size];
+            System.arraycopy(rows, 0, result, 0, size);
+            return result;
+        }
     }
 
     private boolean executeExistsById(Object[] args) {
