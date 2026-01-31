@@ -760,7 +760,7 @@ Performance benchmarks.
 ### Phase 5: FFM Removal
 
 - [ ] **Remove FFM dependencies:**
-  - [ ] Remove `jdk.incubator.vector` module requirement
+  - [x] Remove `jdk.incubator.vector` module requirement
   - [ ] Remove `java.base` FFM module requirement
   - [ ] Remove `--enable-native-access=ALL-UNNAMED` flag
   - [ ] Remove `--enable-preview` flag (if no other preview features)

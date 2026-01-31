@@ -119,7 +119,7 @@
                         <parameters>true</parameters>
                         <compilerArgs>
                             <arg>--add-modules</arg>
-                            <arg>jdk.incubator.vector</arg>
+                            <arg>java.base</arg>
                         </compilerArgs>
                         <annotationProcessorPaths>
                             <path>
@@ -135,7 +135,7 @@
                     <artifactId>maven-surefire-plugin</artifactId>
                     <version>3.2.2</version>
                     <configuration>
-                        <argLine>--add-modules jdk.incubator.vector --enable-native-access=ALL-UNNAMED</argLine>
+                        <argLine>--enable-native-access=ALL-UNNAMED</argLine>
                     </configuration>
                 </plugin>
                 <plugin>
