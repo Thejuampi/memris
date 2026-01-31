@@ -398,6 +398,10 @@ Memris is currently in SNAPSHOT version (1.0.0-SNAPSHOT). Build locally to use:
 - No composite keys
 - Schema evolution (online changes)
 
+## Acknowledgements
+
+If you use this project in your own work, a mention or credit to the author (**Juan / Thejuampi**) would be greatly appreciated!
+
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
