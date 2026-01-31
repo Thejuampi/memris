@@ -16,6 +16,7 @@ Built on 100% Java heap storage with ByteBuddy bytecode generation, Memris deliv
 - **Spring Data-Compatible**: Use familiar JPA query method patterns
 - **Zero Reflection**: Compile-time query derivation with type-safe dispatch
 - **Custom Annotations**: `@Entity`, `@Index`, `@GeneratedValue` (not Jakarta/JPA)
+- **Future**: FFM off-heap storage planned for large datasets (see [docs/ROADMAP.md](docs/ROADMAP.md))
 
 ## Quick Start
 
@@ -74,8 +75,9 @@ Query Method → QueryMethodLexer → QueryPlanner → HeapRuntimeKernel
 ```
 
 ### Storage Layer
-- **PageColumnInt**: int[] with SIMD-capable scans
-- **PageColumnLong**: long[] with hash index lookups  
+- **PageColumnInt**: int[] with direct array scans
+- **PageColumnLong**: long[] with hash index lookups
+- **RangeIndex**: ConcurrentSkipListMap for O(log n) range queries  
 - **PageColumnString**: String[] with range queries
 - **AbstractTable**: Base class for generated tables
 

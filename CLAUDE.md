@@ -17,6 +17,33 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ---
 
+## Future Roadmap: FFM Off-Heap Storage
+
+**Planned Feature**: Off-heap storage using Java Foreign Function & Memory (FFM) API to replace current heap-based storage.
+
+**Benefits:**
+- Reduced GC pressure for large datasets
+- Direct memory control for predictable latency
+- Potential for SIMD vectorization via Vector API
+- Memory-mapped file persistence
+
+**Current Design**: Heap-based storage with primitive arrays is sufficient for most use cases and provides:
+- Simpler deployment (no `--enable-native-access` required)
+- Better Java integration and debugging
+- JIT-optimized primitive arrays
+- Zero configuration overhead
+
+**Implementation Complexity**: HIGH
+- Requires Arena lifecycle management
+- String pooling for off-heap storage
+- Coordination across threads for Arena access
+- Module system integration
+
+**Bytecode Implementation**: Default table generation strategy with ~1ns overhead
+**MethodHandle Implementation**: Fallback strategy with ~5ns overhead
+
+---
+
 ## Build Commands
 
 ```bash
@@ -119,14 +146,14 @@ public final class TypeCodes {
 | Package | Purpose |
 |---------|---------|
 | `io.memris.storage` | Core storage interfaces (Table, GeneratedTable, Selection) |
-| `io.memris.storage.heap` | Heap-based implementation (TableGenerator, PageColumn*, AbstractTable) |
+| `io.memris.storage.heap` | Heap-based implementation (TableGenerator, AbstractTable, PageColumn*, *IdIndex) |
 | `io.memris.kernel` | Selection vectors, predicates, plan nodes, executor |
 | `io.memris.kernel.selection` | SelectionVector implementations (IntSelection) |
-| `io.memris.index` | HashIndex, RangeIndex, LongIdIndex, StringIdIndex |
-| `io.memris.spring` | Custom annotations, TypeCodes, BuiltInResolver |
-| `io.memris.spring.plan` | Query planning (QueryMethodLexer, QueryPlanner, CompiledQuery, OpCode) |
-| `io.memris.spring.runtime` | Query execution (HeapRuntimeKernel, EntityMaterializer, EntityExtractor) |
-| `io.memris.spring.scaffold` | Repository scaffolding (RepositoryMethodIntrospector) |
+| `io.memris.index` | Index implementations (HashIndex, RangeIndex, LongIdIndex, StringIdIndex) |
+| `io.memris.core` | Custom annotations, TypeCodes, BuiltInResolver |
+| `io.memris.query` | Query planning (QueryMethodLexer, QueryPlanner, CompiledQuery, OpCode) |
+| `io.memris.runtime` | Query execution (HeapRuntimeKernel, EntityMaterializer, EntityExtractor) |
+| `io.memris.repository` | Repository scaffolding (RepositoryMethodIntrospector) |
 
 **Note:** ByteBuddy generates table classes in `io.memris.storage.generated` package (created at runtime).
 
@@ -155,10 +182,10 @@ public final class TypeCodes {
 
 Memris uses **custom annotations** (not Jakarta/JPA):
 
-- `@Entity` (io.memris.spring.Entity) - Marks entity classes
-- `@Index` (io.memris.spring.Index) - Marks fields for indexing
-- `@GeneratedValue` (io.memris.spring.GeneratedValue) - Auto ID generation
-- `@OneToOne` (io.memris.spring.OneToOne) - Relationship marker
+- `@Entity` (io.memris.Entity) - Marks entity classes
+- `@Index` (io.memris.Index) - Marks fields for indexing
+- `@GeneratedValue` (io.memris.GeneratedValue) - Auto ID generation
+- `@OneToOne` (io.memris.OneToOne) - Relationship marker
 - `GenerationType` - ID generation strategies (AUTO, IDENTITY, UUID, CUSTOM)
 
 **Note:** Test entities may use Jakarta annotations, but main code uses custom annotations.
@@ -172,6 +199,29 @@ When implementing join tables (@OneToMany, @ManyToMany):
 - **UUID IDs**: store as two long columns (128 bits total)
 - **String IDs**: store in String columns with proper indexing
 - **Current limitation**: Only numeric IDs fully supported
+
+**Note:** @OneToMany and @ManyToMany are NOT implemented yet. Use manual foreign key fields (long) for relationships.
+
+## Concurrency Model
+
+**Current Implementation:**
+- **Multi-reader**: Thread-safe concurrent queries (via HashIndex, RangeIndex)
+- **Single-writer**: External synchronization required for concurrent saves
+- **Read-write**: No coordination, potential inconsistency
+- **Isolation**: Best-effort (no MVCC, no transactions)
+
+**Thread-Safe Operations:**
+- ID generation: `AtomicLong` per entity class (lock-free)
+- ID indexes: `ConcurrentHashMap` for lock-free lookups
+- Query execution: Thread-safe reads on published data
+- Index updates: `ConcurrentHashMap.compute()` / `ConcurrentSkipListMap.compute()`
+
+**NOT Thread-Safe (External Sync Required):**
+- Entity saves: Multiple concurrent saves can corrupt column state
+- Entity deletes: Tombstone BitSet operations not synchronized
+- Row allocation: Unsynchronized free-list
+
+**See Also:** [CONCURRENCY.md](CONCURRENCY.md) for detailed concurrency model and improvement roadmap.
 
 ---
 

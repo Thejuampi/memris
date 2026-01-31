@@ -18,6 +18,28 @@ Memris is a high-performance in-memory storage engine with the following princip
 - HeapRuntimeKernel executes queries, not RepositoryRuntime
 - Custom annotations (not Jakarta/JPA) mark entities and indexes
 
+## Future Roadmap: FFM-Based Storage
+
+**Planned Feature**: Off-heap storage using Java Foreign Function & Memory (FFM) API to replace current heap-based storage.
+
+**Benefits:**
+- Reduced GC pressure for large datasets
+- Direct memory control for predictable latency
+- Potential for SIMD vectorization via Vector API
+- Memory-mapped file persistence
+
+**Current Design**: Heap-based storage with primitive arrays is sufficient for most use cases and provides:
+- Simpler deployment (no `--enable-native-access` required)
+- Better Java integration and debugging
+- JIT-optimized primitive arrays
+- Zero configuration overhead
+
+**Implementation Complexity**: HIGH
+- Requires Arena lifecycle management
+- String pooling for off-heap storage
+- Coordination across threads for Arena access
+- Module system integration
+
 ## High-Level Architecture
 
 ```
@@ -63,15 +85,15 @@ Memris is a high-performance in-memory storage engine with the following princip
 | `io.memris.storage` | Storage interfaces | `GeneratedTable`, `Table`, `Selection` |
 | `io.memris.storage.heap` | Heap-based implementation | `TableGenerator`, `AbstractTable`, `PageColumn*`, `*IdIndex` |
 | `io.memris.index` | Index implementations | `HashIndex`, `RangeIndex`, `LongIdIndex`, `StringIdIndex` |
-| `io.memris.spring` | Custom annotations & types | `@Entity`, `@Index`, `@GeneratedValue`, `TypeCodes` |
-| `io.memris.spring.plan` | Query parsing & planning | `QueryMethodLexer`, `QueryPlanner`, `CompiledQuery`, `OpCode` |
-| `io.memris.spring.runtime` | Query execution | `HeapRuntimeKernel`, `EntityMaterializer`, `EntityExtractor` |
-| `io.memris.spring.scaffold` | Repository scaffolding | `RepositoryMethodIntrospector` |
+| `io.memris.core` | Custom annotations & types | `@Entity`, `@Index`, `@GeneratedValue`, `TypeCodes` |
+| `io.memris.query` | Query parsing & planning | `QueryMethodLexer`, `QueryPlanner`, `CompiledQuery`, `OpCode` |
+| `io.memris.runtime` | Query execution | `HeapRuntimeKernel`, `EntityMaterializer`, `EntityExtractor` |
+| `io.memris.repository` | Repository scaffolding | `RepositoryMethodIntrospector` |
 
 ## Layer Responsibilities
 
 ### Layer 1: Domain Layer
-**Package:** `io.memris.spring`
+**Package:** `io.memris.core`
 
 Custom annotations for entity marking:
 - `@Entity` - Marks a class as an entity
@@ -82,7 +104,7 @@ Custom annotations for entity marking:
 **Note:** These are NOT Jakarta/JPA annotations. Memris uses its own annotation system.
 
 ### Layer 2: Parser Layer
-**Package:** `io.memris.spring.plan`
+**Package:** `io.memris.query`
 
 **QueryMethodLexer** (`QueryMethodLexer.java:213`)
 - Tokenizes query method names (findByLastname → tokens)
@@ -95,7 +117,7 @@ Custom annotations for entity marking:
 - `QueryMethodTokenType.java` - Token type enum
 
 ### Layer 3: Compiler/Planner Layer
-**Package:** `io.memris.spring.plan`
+**Package:** `io.memris.query`
 
 **QueryPlanner** (`QueryPlanner.java`)
 - Creates `LogicalQuery` from tokens
@@ -119,7 +141,7 @@ Custom annotations for entity marking:
 - `BuiltInResolver.java` - Built-in method resolution
 
 ### Layer 4: Runtime Layer
-**Package:** `io.memris.spring.runtime`
+**Package:** `io.memris.runtime`
 
 **HeapRuntimeKernel** (`HeapRuntimeKernel.java:9`)
 - Zero-reflection query execution
@@ -154,7 +176,7 @@ Custom annotations for entity marking:
 - Primary key index: `lookupById()`, `removeById()`
 
 **PageColumn Implementations**
-- `PageColumnInt` - int[] column with SIMD-capable scans
+- `PageColumnInt` - int[] column with direct array scans
 - `PageColumnLong` - long[] column
 - `PageColumnString` - String[] column
 
@@ -303,15 +325,21 @@ public final class PersonTable extends AbstractTable implements GeneratedTable {
 | `BuiltInResolver.java` | 57 | Built-in method resolution |
 | `QueryMethodLexer.java` | 213 | Method name tokenization |
 | `QueryPlanner.java` | 1 | Query planning |
+| `CompiledQuery.java` | 1 | Compiled query structure |
 | `GeneratedTable.java` | 15 | Table interface |
 | `AbstractTable.java` | 26 | Base table class |
 | `PageColumnInt.java` | 16 | int column storage |
 | `PageColumnLong.java` | 16 | long column storage |
 | `PageColumnString.java` | 16 | String column storage |
+| `RangeIndex.java` | 1 | Range index (O(log n)) |
+| `HashIndex.java` | 1 | Hash index (O(1)) |
 
 ## Notes
 
-- **No FFM/Foreign Memory**: All storage uses Java heap (int[], long[], String[])
-- **No SIMD yet**: Flags configured but not actively used (plain loops)
+- **Current Storage**: 100% heap-based using primitive arrays (int[], long[], String[])
+- **Future Roadmap**: FFM off-heap storage planned for large dataset scenarios
+- **SIMD Not Implemented**: Plain loops used; JIT may auto-vectorize but no explicit Vector API
 - **Custom annotations**: Uses `@Entity`, `@Index`, etc. (not Jakarta/JPA)
 - **No Repository generation**: Generates tables, caller implements repository pattern
+- **Relationship Support**: @OneToOne and @ManyToOne fully implemented; @OneToMany and @ManyToMany not implemented
+- **RangeIndex Exists**: O(log n) operations via ConcurrentSkipListMap

@@ -270,18 +270,18 @@ GeneratedTable.scan*()
 
 ### Key Components
 
-**QueryMethodLexer** (`io.memris.spring.plan.QueryMethodLexer`)
+**QueryMethodLexer** (`io.memris.query.QueryMethodLexer`)
 - Tokenizes method names into structured tokens
 - Handles 20+ operators and combinators
 - Supports nested properties (account.email)
 - Built-in detection for parameterless methods (findAll, count, deleteAll)
 
-**QueryPlanner** (`io.memris.spring.plan.QueryPlanner`)
+**QueryPlanner** (`io.memris.query.QueryPlanner`)
 - Converts tokens into executable LogicalQuery
 - Validates property existence against entity class
 - Resolves operators to Predicate types
 
-**BuiltInResolver** (`io.memris.spring.plan.BuiltInResolver`)
+**BuiltInResolver** (`io.memris.query.BuiltInResolver`)
 - Signature-based built-in method resolution
 - Matches methods like `findById(ID)`, `save(T)`, `delete(T)`
 - Deterministic tie-breaking using inheritance distance

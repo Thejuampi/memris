@@ -29,7 +29,7 @@ Memris provides a lightweight, high-performance Spring Data-compatible API for i
 | **Core** | Auto-generated ID (@GeneratedValue) | ✅ Done | ✅ Integrated |
 | **Core** | Basic CRUD (save, findAll, findBy) | ✅ Done | ✅ Tests |
 | **Core** | Field caching (O(1) lookup) | ✅ Done | ✅ Verified |
-| **Relationships** | @OneToOne | ✅ Done | ✅ Tests |
+| **Relationships** | @OneToOne, @ManyToOne | ✅ Done | ✅ Tests |
 | **Queries** | Query predicates (EQ, IN, BETWEEN, GT, LT, etc.) | ✅ Done | ✅ 50+ tests |
 | **Queries** | String operators (Like, Contains, StartsWith, etc.) | ✅ Done | ✅ Tests |
 | **Queries** | Boolean operators (IsTrue, IsFalse) | ✅ Done | ✅ Tests |
@@ -47,32 +47,32 @@ Memris uses **custom annotations** (not Jakarta/JPA):
 
 ### Core Annotations
 
-**@Entity** (`io.memris.spring.Entity`)
+**@Entity** (`io.memris.core.Entity`)
 - Marks a class as a persistable entity
 - Used by TableGenerator to create table metadata
 
-**@Index** (`io.memris.spring.Index`)
+**@Index** (`io.memris.core.Index`)
 - Marks a field for indexing
 - Supports HASH or BTREE index types
 - Improves query performance for indexed fields
 
-**@GeneratedValue** (`io.memris.spring.GeneratedValue`)
+**@GeneratedValue** (`io.memris.core.GeneratedValue`)
 - Marks an ID field for automatic generation
 - Strategy: AUTO, IDENTITY, UUID, CUSTOM
 - Used with `@Id` (Jakarta) in tests, but custom `@Entity` in main code
 
-**@OneToOne** (`io.memris.spring.OneToOne`)
+**@OneToOne** (`io.memris.core.OneToOne`)
 - Marks a one-to-one relationship
 - Supports cascade operations
 
-**@Query** (`io.memris.spring.Query`)
+**@Query** (`io.memris.core.Query`)
 - Declares a JPQL-like query string on repository methods
 - Supports `SELECT`/`FROM`/`WHERE`/`ORDER BY` and `JOIN`/`LEFT JOIN`
 
-**@Param** (`io.memris.spring.Param`)
+**@Param** (`io.memris.core.Param`)
 - Binds a named `:param` in `@Query` to a method parameter
 
-**GenerationType** (`io.memris.spring.GenerationType`)
+**GenerationType** (`io.memris.core.GenerationType`)
 - `AUTO` - Automatic strategy selection
 - `IDENTITY` - Database identity (auto-increment)
 - `UUID` - UUID generation
@@ -81,10 +81,10 @@ Memris uses **custom annotations** (not Jakarta/JPA):
 ### Usage Example
 
 ```java
-import io.memris.spring.Entity;
-import io.memris.spring.Index;
-import io.memris.spring.GeneratedValue;
-import io.memris.spring.GenerationType;
+import io.memris.core.Entity;
+import io.memris.core.Index;
+import io.memris.core.GeneratedValue;
+import io.memris.core.GenerationType;
 
 @Entity
 public class User {
@@ -189,25 +189,25 @@ GeneratedTable.scan*() methods
 
 **Key Components:**
 
-**QueryMethodLexer** (`io.memris.spring.plan.QueryMethodLexer`)
+**QueryMethodLexer** (`io.memris.query.QueryMethodLexer`)
 - Tokenizes query method names
 - Extracts prefix (find/count/exists/delete)
 - Identifies operators (GreaterThan, Between, Like, etc.)
 - Handles combinators (And, Or)
 - Detects built-ins (findAll, count, deleteAll)
 
-**QueryPlanner** (`io.memris.spring.plan.QueryPlanner`)
+**QueryPlanner** (`io.memris.query.QueryPlanner`)
 - Creates LogicalQuery from tokens
 - Validates property paths against entity metadata
 - Resolves operators to Predicate types
 - Uses BuiltInResolver for built-in methods
 
-**BuiltInResolver** (`io.memris.spring.plan.BuiltInResolver`)
+**BuiltInResolver** (`io.memris.query.BuiltInResolver`)
 - Signature-based built-in method resolution
 - Handles findById, save, delete, findAll, count, existsById
 - Deterministic tie-breaking for ambiguous matches
 
-**HeapRuntimeKernel** (`io.memris.spring.runtime.HeapRuntimeKernel`)
+**HeapRuntimeKernel** (`io.memris.runtime.HeapRuntimeKernel`)
 - Zero-reflection query execution
 - TypeCode switch dispatch
 - Delegates to GeneratedTable scan methods
@@ -251,41 +251,67 @@ public final class UserTable extends AbstractTable implements GeneratedTable {
 
 *For detailed architecture diagrams and package structure, see [ARCHITECTURE.md](ARCHITECTURE.md)*
 
-## Roadmap
+## Current Status
 
-### Phase 1 — Core Storage ✅ COMPLETE
+### Implemented Features
+
+**Core Storage:**
 - Table + row layout with primitive arrays
-- Hash index + range index
+- Hash index (O(1)) + Range index (O(log n))
 - Filter execution with index selection
-- Heap-based columnar storage
+- Heap-based columnar storage (100% Java heap)
 
-### Phase 2 — Joins ✅ COMPLETE
-- Hash join (HashJoin.java)
-- Foreign key support
-- Relationship handling
+**Relationships:**
+- @OneToOne relationships
+- @ManyToOne relationships
 
-### Phase 3 — Query Planning ✅ COMPLETE
+**Query Planning:**
 - QueryMethodLexer tokenization ✅
 - QueryPlanner logical query creation ✅
 - BuiltInResolver for built-ins ✅
 - HeapRuntimeKernel execution ✅
 - All operators implemented ✅
 
-### Phase 4 — Advanced Query Features ⏳ FUTURE
-- Sorting support (OrderBy)
-- Paging/limit support (Top/First)
-- Query optimization with cost model
+**Query Features:**
+- Sorting (OrderBy)
+- Paging/limit (Top/First)
+- @Query with JPQL-like syntax
 
-### Phase 5 — Complex Entity Features ⏳ FUTURE
+### Not Yet Implemented
+
+- @OneToMany and @ManyToMany relationships
+- CASCADE delete / orphan removal
+- CASCADE operations on @OneToOne relationships
+- Transaction support
+- DISTINCT query modifier (tokenized, execution incomplete)
 - Inheritance hierarchies
 - Composite keys
-- Cascade delete / orphan removal
-- Optimistic locking
+- @Embeddable components
+- @Enumerated types
+- Lifecycle callbacks (@PrePersist, @PostLoad, @PreUpdate, @PostUpdate)
 
-### Phase 6 — Enterprise Features ⏳ FUTURE
+### Concurrency Model
+
+**Current Implementation:**
+- **Multi-reader**: Thread-safe concurrent queries (via HashIndex, RangeIndex)
+- **Single-writer**: External synchronization required for concurrent saves
+- **Read-write**: No coordination, potential inconsistency
+- **Isolation**: Best-effort (no MVCC, no transactions)
+
+**Thread-Safe Operations:**
+- ID generation: `AtomicLong` per entity class (lock-free)
+- ID indexes: `ConcurrentHashMap` for lock-free lookups
+- Query execution: Thread-safe reads on published data
+- Index updates: `ConcurrentHashMap.compute()` / `ConcurrentSkipListMap.compute()`
+
+**NOT Thread-Safe (External Sync Required):**
+- Entity saves: Multiple concurrent saves can corrupt column state
+- Entity deletes: Tombstone BitSet operations not synchronized
+- Row allocation: Unsynchronized free-list
+
+**See Also:** [CONCURRENCY.md](CONCURRENCY.md) for detailed concurrency model and improvement roadmap.
+- Cascade delete / orphan removal
 - Transaction support
-- Schema evolution
-- Named queries
 
 ## Performance Optimizations
 

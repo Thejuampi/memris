@@ -42,7 +42,7 @@ mvn.cmd -q -e -pl memris-core test -Dtest=ClassName#methodName
 **Architecture Notes:**
 - Generates **TABLE** classes via ByteBuddy, not repository classes
 - Storage is 100% Java heap (no FFM, no MemorySegment, no off-heap)
-- SIMD flags configured but not actively used (plain loops with JIT auto-vectorization)
+- SIMD not implemented; plain loops used (JIT may auto-vectorize)
 - Custom annotations (`@Entity`, `@Index`, etc.) instead of Jakarta/JPA
 
 ## Critical Design Principles
@@ -318,3 +318,38 @@ When implementing join tables (@OneToMany, @ManyToMany):
 *For detailed architecture and package structure, see [ARCHITECTURE.md](ARCHITECTURE.md)*
 *For Spring Data integration details, see [SPRING_DATA.md](SPRING_DATA.md)*
 *For query method reference, see [QUERY.md](QUERY.md)*
+*For current implementation status, see [IMPLEMENTATION.md](IMPLEMENTATION.md)*
+
+## Concurrency Guidelines
+
+### Current Concurrency Model
+
+- **Multi-reader**: Thread-safe concurrent queries
+- **Single-writer**: External synchronization required for concurrent saves
+- **Read-write**: No coordination, potential inconsistency
+- **Isolation**: Best-effort (no MVCC, no transactions)
+
+### When to Use External Synchronization
+
+Use external synchronization (synchronized, locks) when:
+1. Multiple threads save entities concurrently
+2. Multiple threads delete entities concurrently
+3. Read-write coordination is required
+
+### Best Practices
+
+1. Prefer query-only workloads (thread-safe)
+2. Use single-writer thread pattern for writes
+3. Partition repositories by entity type for isolation
+4. Avoid concurrent saves to same table
+
+### Current Limitations
+
+- Free-list race condition (can corrupt data with concurrent saves)
+- Tombstone BitSet not thread-safe for concurrent deletes
+- Column writes not atomic (readers see torn state)
+- SeqLock not implemented (design gap)
+- No MVCC or snapshot isolation
+- No optimistic locking support
+
+See [CONCURRENCY.md](CONCURRENCY.md) for detailed concurrency model and improvement roadmap.

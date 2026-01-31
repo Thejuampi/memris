@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document describes the real-world e-commerce domain model implemented in `ECommerceRealWorldTest.java`. It demonstrates Memris's support for complex JPA-style relationships and dynamic queries.
+This document describes the real-world e-commerce domain model implemented in `ECommerceRealWorldTest.java`. It demonstrates Memris's support for @ManyToOne and @OneToOne relationships using manual foreign key fields (long) for relationship storage.
 
 ## Entity Relationship Diagram
 
@@ -27,10 +27,9 @@ class Account {
 
 class Customer {
   +int id
-  +String firstName
-  +String lastName
-  +String phone <<INDEX>>
-  -String fullName <<TRANSIENT>>
+   +String firstName
+   +String lastName
+   +String phone <<INDEX>>
 }
 
 class Category {
@@ -41,16 +40,14 @@ class Category {
 }
 
 class Product {
-  +int id
-  +String name <<INDEX>>
-  +String sku <<INDEX>>
-  +String barcode <<INDEX>>
-  +String description
-  +BigDecimal price
-  +int stockQuantity
-  +double weightKg
-  -Dimensions dimensions <<EMBEDDABLE>>
-  -BigDecimal discountedPrice <<TRANSIENT>>
+   +int id
+   +String name <<INDEX>>
+   +String sku <<INDEX>>
+   +String barcode <<INDEX>>
+   +String description
+   +BigDecimal price
+   +int stockQuantity
+   +double weightKg
 }
 
 class Supplier {
@@ -73,18 +70,18 @@ class Address {
 }
 
 class Order {
-  +int id
-  +String orderNumber
-  +LocalDateTime orderDate
-  +LocalDateTime shippedAt
-  +LocalDateTime deliveredAt
-  +OrderStatus status <<ENUM(STRING)>>
-  +PaymentType paymentType <<ENUM(ORDINAL)>>
-  +BigDecimal subtotal
-  +BigDecimal taxAmount
-  +BigDecimal shippingCost
-  +BigDecimal discountAmount
-  +BigDecimal totalAmount
+   +int id
+   +String orderNumber
+   +LocalDateTime orderDate
+   +LocalDateTime shippedAt
+   +LocalDateTime deliveredAt
+   +OrderStatus status
+   +PaymentType paymentType
+   +BigDecimal subtotal
+   +BigDecimal taxAmount
+   +BigDecimal shippingCost
+   +BigDecimal discountAmount
+   +BigDecimal totalAmount
 }
 
 class OrderItem {
@@ -128,17 +125,17 @@ enum PaymentType {
 
 ' Relationships
 Account "1" --> "1" Customer : One-to-One
-Customer "1" --> "*" Order : One-to-Many
+Customer "1" --> "*" Order : NOT IMPLEMENTED
 Customer "1" --> "1" Address : Many-to-One (billing)
 Customer "1" --> "1" Address : Many-to-One (shipping)
 Category "1" --> "0..1" Category : self (parent)
 Category "*" --> "1" Category : children
 Product "*" --> "1" Supplier : Many-to-One
-Product "*" --> "*" Category : Many-to-Many
+Product "*" --> "*" Category : NOT IMPLEMENTED
 Supplier "1" --> "1" Address : Many-to-One
 Order "*" --> "1" Customer : Many-to-One
-Order "*" --> "*" Coupon : Many-to-Many
-Order "1" --> "*" OrderItem : One-to-Many
+Order "*" --> "*" Coupon : NOT IMPLEMENTED
+Order "1" --> "*" OrderItem : NOT IMPLEMENTED
 OrderItem "*" --> "1" Product : Many-to-One
 OrderItem "*" --> "1" Order : Many-to-One
 
@@ -211,7 +208,7 @@ List<Order> findByOrderDateBetween(LocalDateTime start, LocalDateTime end);
 ### Pattern Matching
 
 ```java
-// LIKE queries - O(n) scan with SIMD optimization
+// LIKE queries - O(n) scan
 List<Category> findBySlug(String slug);              // Exact match
 List<Category> findByNameContaining(String keyword); // LIKE %keyword%
 List<Product> findBySkuStartingWith(String prefix);  // LIKE prefix%
@@ -240,24 +237,24 @@ List<Order> findByPaymentType(PaymentType type); // WHERE payment_type = 0
 |-------|------------|----------|
 | `sku`, `barcode`, `code` | HASH | Exact match lookups |
 | `email`, `phone` | HASH | Customer lookup by contact |
-| `price`, `stockQuantity` | BTREE | Range queries, sorting |
-| `orderDate`, `totalAmount` | BTREE | Date/amount range queries |
 | `slug`, `name` | HASH | Category/product lookup |
+
+**Note:** RangeIndex (O(log n)) is available but not demonstrated in this example.
 
 ## Performance Characteristics
 
 | Query Type | Without Index | With Index |
 |------------|---------------|------------|
-| `findBySku("PRO-LP-001")` | O(n) scan | O(1) hash |
-| `findByPriceBetween(100, 500)` | O(n) scan | O(log n) btree |
-| `findByStatus(SHIPPED)` | O(n) scan | O(1) if selective |
+| `findBySku("PRO-LP-001")` | O(n) scan | O(1) HashIndex |
+| `findByPriceBetween(100, 500)` | O(n) scan | O(log n) RangeIndex |
+| `findByStatus(SHIPPED)` | O(n) scan | O(1) if HashIndex exists |
 
 ## Test Coverage
 
-The `ECommerceRealWorldTest` includes 15 comprehensive query tests:
+The `ECommerceRealWorldTest` includes 12 comprehensive query tests:
 
 1. ✅ Find by indexed SKU
-2. ✅ Price range query (BTREE)
+2. ✅ Price range query
 3. ✅ Low stock detection
 4. ✅ Order status filtering
 5. ✅ Amount-based filtering
@@ -267,32 +264,9 @@ The `ECommerceRealWorldTest` includes 15 comprehensive query tests:
 9. ✅ Self-referential hierarchy
 10. ✅ Combined status + amount query
 11. ✅ Name contains + price constraint
-12. ✅ @PostLoad transient field
-13. ✅ Date range queries
-14. ✅ Enum mapping (STRING + ORDINAL)
-15. ✅ Related entity field queries
+12. ✅ Related entity field queries
 
-## Lifecycle Callbacks
-
-```java
-@PrePersist
-void onCreate() {
-    createdAt = LocalDateTime.now();
-}
-
-@PostLoad
-void onLoad() {
-    fullName = firstName + " " + lastName;
-}
-
-@PrePersist
-void generateOrderNumber() {
-    if (orderNumber == null) {
-        orderNumber = "ORD-" + Year.now().getValue() + "-" + 
-            String.format("%06d", new Random().nextInt(999999));
-    }
-}
-```
+**Note:** @Embeddable, @Enumerated, and lifecycle callbacks (@PrePersist, @PostLoad) are NOT implemented. Entities use manual foreign key fields (long) for relationships.
 
 ## Usage Example
 

@@ -22,7 +22,7 @@
 - **Rationale**:
   - No boxing overhead (5-10x memory savings)
   - Cache-friendly sequential access
-  - SIMD-friendly for batch predicates
+  - Direct array access for O(1) operations
 - **Note**: Not thread-safe for concurrent writes (use synchronization in Phase 2)
 
 ### HashIndex (Concurrent Hash + RoaringBitmap)
@@ -59,66 +59,35 @@
 | HashIndexTest | Concurrent hash index | PASS |
 | MemrisStoreTest | Store operations + 10M rows | PASS |
 
-## JMH Benchmarks (Performance Validation)
-
-| Benchmark | Target | Status |
-|-----------|--------|--------|
-| insert_100k_rows | TBD | Pending |
-| lookup_by_row_id | <0.05ms/op | Pending |
-| scan_all_rows | <10ms total | Pending |
-| create_hash_index | TBD | Pending |
-
 ## Trade-offs
 
 | Decision | Chosen | Alternative | Reason |
-|----------|--------|-------------|--------|
-| Row storage | Columnar | Row-major | Cache locality, SIMD |
+|----------|--------|-------------|-------|
+| Row storage | Columnar | Row-major | Cache locality, direct array access |
 | Index type | RoaringBitmap | TreeSet | 10x memory, set ops |
 | Write lock | StampedLock | synchronized | Readers don't block |
 | Capacity | Dynamic | Fixed | Simplicity, no tuning |
 | Concurrent writes | Single-threaded | Fine-grained locking | v1.0 simplicity |
 
-## Known Limitations (Phase 2)
+## Current Limitations
 
-- [ ] **Concurrent writes**: ColumnarBatch not thread-safe for concurrent inserts
-- [ ] **MVCC**: No snapshot isolation yet
-- [ ] **B+Tree**: Custom range index not implemented
-- [ ] **Vectorized predicates**: Panama Vector API not used yet
-- [ ] **Dynamic class gen**: ASM/ByteBuddy not integrated
-- [ ] **Adaptive indexing**: Auto-create indexes not implemented
-
-## Phase 2 Roadmap
-
-1. **Concurrent Writes**
-   - Fine-grained locking for ColumnarBatch
-   - Lock-free row allocation with CAS
-
-2. **MVCC Snapshots**
-   - Versioned row snapshots
-   - Snapshot isolation for reads
-
-3. **B+Tree Index**
-   - Custom implementation for range queries
-   - Copy-on-write for snapshots
-
-4. **Vectorized Execution**
-   - Panama Vector API for batch predicates
-   - SIMD-optimized scans
+- **Concurrent writes**: ColumnarBatch is single-threaded for inserts
+- **MVCC**: No snapshot isolation
+- **@OneToMany and @ManyToMany**: Only @OneToOne and @ManyToOne relationships implemented
+- **DISTINCT query modifier**: Tokenized but execution not complete
 
 ## Decisions Log
 
 ### 2026-01-20
 - Target runtime: Java 21
-- SIMD path uses the incubating Vector API (`jdk.incubator.vector`)
-- Storage prototype uses FFM `MemorySegment` columns (on-heap later if needed)
-- Selection pipeline first-class: vector masks -> SelectionVector (bitset or int list)
+- Storage uses Java heap (int[], long[], String[] columns)
+- Selection pipeline: primitive array access -> SelectionVector (bitset or int list)
 
 ### 2026-01-21
 - **Design Principle**: O(1) operations preferred, O(log n) second, O(n) forbidden
 - All iteration uses primitive enumerators (IntEnumerator, LongEnumerator) - no boxing
 - SelectionVector interface with O(1) `contains()` and O(1) upgrade from sparse to dense
-- FfmTable with FfmIntColumn and FfmLongColumn using SIMD vector scans
-- Simple benchmark runner for performance validation
+- HeapRuntimeKernel with direct array access for scans
 - Primitive-only APIs: no Iterator, no Iterable, no boxed types in hot paths
 
 ### Design Principles

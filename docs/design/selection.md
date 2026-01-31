@@ -44,18 +44,16 @@ public MutableSelectionVector maybeUpgrade(MutableSelectionVector set) {
 }
 ```
 
-## SIMD Scan Path
+## Scan Path
 
 ```
-FFM MemorySegment -> VectorMask -> mask.toLong() -> enumerate bits -> SelectionVector
+Primitive Array -> Value Comparison -> SelectionVector
 ```
 
-1. Load vector from off-heap segment
+1. Read value from primitive array (int[], long[], String[])
 2. Compare with predicate value
-3. Convert mask to long (64 lanes packed)
-4. Extract set bits using trailing zero tricks
-5. Add to SelectionVector
-6. Upgrade if needed
+3. Add matching row index to SelectionVector
+4. Upgrade from IntSelection to BitsetSelection if threshold reached
 
 ## Primitive Enumerators
 
@@ -87,7 +85,7 @@ public interface LongEnumerator {
 
 ## Forbidden Patterns
 
-- ❌ Linear scan for filtering (use SIMD vector masks)
+- ❌ Linear scan without early termination
 - ❌ `for (Object o : collection)` iteration (use IntEnumerator)
 - ❌ `Collection.contains()` on large sets (use BitsetSelection)
 - ❌ Boxing primitives in hot paths (Integer, Long, Boolean)

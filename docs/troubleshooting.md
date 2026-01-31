@@ -77,16 +77,9 @@ Join tables are hardcoded with `int.class` columns for storing entity references
    List<User> users = repo.findByAgeGreaterThan(18);  // No index on age
    ```
 
-2. **Verify SIMD vectorization is enabled:**
-   - Check Java 21 preview features: `--enable-preview --add-modules jdk.incubator.vector`
-   - Vector API requires proper module loading
-
-3. **Profile with JMH:**
-   ```bash
-   java --enable-preview --add-modules jdk.incubator.vector \
-     -cp memris-core/target/classes:jmh-benchmarks.jar \
-     io.memris.benchmarks.MemrisBenchmarks
-   ```
+2. **Check index usage:**
+   - Verify indexed fields are used in equality queries for O(1) lookups
+   - For range queries, verify RangeIndex is available on the field
 
 **Problem:** OutOfMemoryError or excessive memory usage
 
@@ -173,24 +166,11 @@ Join tables are hardcoded with `int.class` columns for storing entity references
    }
    ```
 
-## Known Limitations
-
-### Query System Architecture
-
-The codebase contains two parallel query parsing systems:
-
-1. **Zero-Reflection Runtime** (new architecture): QueryPlanner + QueryCompiler + RepositoryRuntime
-   - Parses: EQ, NE, GT, LT, GTE, LTE, BETWEEN, IGNORE_CASE
-   - Does NOT parse: IN, LIKE, STARTING_WITH, ENDING_WITH, CONTAINING, OR, ORDER_BY, DISTINCT
-
-2. **QueryMethodLexer + QueryPlanner**: Full JPA specification coverage
-   - Parses all 24+ JPA operators including IN, LIKE, ORDER BY, etc.
-   - Used by HeapRuntimeKernel for query execution
-
-### Current Blockers
+## Current Limitations
 
 1. **Join Tables with UUID/String IDs** - Only numeric IDs supported
-2. **Advanced Query Operators** - IN, LIKE, ORDER BY not implemented in QueryPlanner
+2. **@OneToMany and @ManyToMany relationships** - Not implemented yet
+3. **DISTINCT query modifier** - Tokenized but execution not complete
 
 ### Test Coverage
 
