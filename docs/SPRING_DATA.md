@@ -305,9 +305,14 @@ public final class UserTable extends AbstractTable implements GeneratedTable {
 - Index updates: `ConcurrentHashMap.compute()` / `ConcurrentSkipListMap.compute()`
 
 **NOT Thread-Safe (External Sync Required):**
-- Entity saves: Multiple concurrent saves can corrupt column state
-- Entity deletes: Tombstone BitSet operations not synchronized
-- Row allocation: Unsynchronized free-list
+- Column writes: No atomicity between writes (torn reads possible)
+- Index updates: Can race with column writes
+
+**Now Thread-Safe (Previously Not Thread-Safe):**
+- Entity saves: Lock-free free-list with CAS
+- Entity deletes: AtomicIntegerArray with CAS loops
+- Row allocation: LockFreeFreeList operations
+- RepositoryRuntime ID generation: AtomicLong
 
 **See Also:** [CONCURRENCY.md](CONCURRENCY.md) for detailed concurrency model and improvement roadmap.
 - Cascade delete / orphan removal

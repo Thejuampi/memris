@@ -10,6 +10,9 @@
 - ✅ RangeIndex (O(log n)) range queries via ConcurrentSkipListMap
 - ✅ LongIdIndex and StringIdIndex
 
+### Concurrency
+- ✅ Seqlock for row-level write atomicity
+
 ### Query Support
 - ✅ All comparison operators (EQ, NE, GT, GTE, LT, LTE, BETWEEN)
 - ✅ String operators (LIKE, NOT_LIKE, STARTING_WITH, ENDING_WITH, CONTAINING)
@@ -20,6 +23,7 @@
 - ✅ OrderBy sorting
 - ✅ Top/First limiting
 - ✅ @Query with JPQL-like syntax (limited)
+- ✅ Scan methods (scanLessThan, scanGreaterThanOrEqual, scanLessThanOrEqual)
 
 ### Relationships
 - ✅ @OneToOne (FULLY IMPLEMENTED)
@@ -76,6 +80,7 @@ See [ROADMAP.md](ROADMAP.md) for detailed roadmap including:
 | HashIndex lookup | O(1) | ConcurrentHashMap |
 | RangeIndex lookup | O(log n) | ConcurrentSkipListMap |
 | Table scan | O(n) | Direct array iteration |
+| scanIn operation | O(n) | HashSet lookup (optimized from O(n*m)) |
 | Bytecode field access | ~1ns | Direct bytecode generation |
 | MethodHandle field access | ~5ns | Pre-compiled MethodHandle |
 | TypeCode dispatch | O(1) | tableswitch bytecode |
@@ -87,7 +92,11 @@ See [ROADMAP.md](ROADMAP.md) for detailed roadmap including:
 | ID generation | ✅ | AtomicLong |
 | Query reads | ✅ | Volatile published |
 | Index lookups | ✅ | ConcurrentHashMap / ConcurrentSkipListMap |
-| Entity saves | ❌ | External sync required |
-| Entity deletes | ❌ | External sync required |
+| Entity saves | ✅ | LockFreeFreeList (CAS) |
+| Entity deletes | ✅ | AtomicIntegerArray (CAS) |
+| Row allocation | ✅ | LockFreeFreeList (CAS) |
+| SeqLock operations | ✅ | AtomicLongArray |
+| Column writes | ❌ | External sync required |
+| Index updates | ❌ | External sync required |
 
 See [CONCURRENCY.md](CONCURRENCY.md) for detailed concurrency analysis and improvement opportunities.

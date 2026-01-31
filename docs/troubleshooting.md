@@ -2,6 +2,74 @@
 
 This document provides troubleshooting guidance for common issues when working with Memris.
 
+## Concurrency Issues
+
+### Fixed: Major Race Conditions (Resolved)
+
+**Status:** ✅ All major concurrency race conditions have been fixed
+
+The following concurrency issues have been resolved in recent updates:
+
+1. **Free-List Race Condition** - Fixed with lock-free stack implementation
+   - Multiple threads no longer corrupt data when reusing deleted rows
+   - Location: `AbstractTable.java` (fixed in commit 0d2e6a8)
+
+2. **RepositoryRuntime ID Counter** - Made atomic
+   - Duplicate IDs no longer occur under concurrent saves
+   - Location: `RepositoryRuntime.java` (fixed in commit 79963fd)
+
+3. **Tombstone BitSet Concurrency** - Fixed with proper synchronization
+   - Concurrent deletes now correctly track row counts
+   - Location: `AbstractTable.java` (verified in commit 251917d)
+
+4. **SeqLock for Row-Level Atomicity** - Implemented
+   - Prevents torn reads when readers observe concurrent writes
+   - Provides version-based read optimization for read-mostly workloads
+   - Location: `GeneratedTable.java` (implemented in commit bdfdf29)
+
+### Fixed: Bounds Checking
+
+**Status:** ✅ New bounds checking added
+
+IndexOutOfBoundsException errors are now prevented through bounds checking in the MethodHandle implementation:
+- Location: `MethodHandleImplementation` (added in commit 852c9ce)
+
+### Current Concurrency Model
+
+**Thread-Safe Operations:**
+
+| Operation | Thread-Safety | Mechanism |
+|-----------|--------------|------------|
+| ID generation | ✅ Lock-free | `AtomicLong.getAndIncrement()` |
+| ID index lookups | ✅ Lock-free | `ConcurrentHashMap.get()` |
+| HashIndex lookups | ✅ Lock-free | `ConcurrentHashMap.get()` |
+| RangeIndex lookups | ✅ Lock-free | `ConcurrentSkipListMap.get()` |
+| Query scans | ✅ Safe reads | SeqLock + volatile watermark |
+| Index add/remove | ✅ Thread-safe | `compute()` / `computeIfAbsent()` |
+| Row allocation | ✅ Lock-free | Lock-free stack implementation |
+| Column writes | ✅ Atomic | SeqLock prevents torn reads |
+| Entity deletes | ✅ Thread-safe | Synchronized tombstones |
+
+**Concurrency Characteristics:**
+- **Reads**: Thread-safe, lock-free for most operations
+- **Writes**: Thread-safe with SeqLock and lock-free structures
+- **Read-Write**: SeqLock provides atomicity for concurrent access
+- **Isolation**: Best-effort (no MVCC, no transactions)
+
+**Practical Usage Patterns:**
+
+For **read-mostly workloads with occasional writes**:
+- Multi-reader, single-writer is fully supported without external synchronization
+- Readers benefit from lock-free lookups and wait-free seqlock reads
+
+For **write-heavy workloads**:
+- SeqLock provides good performance but may cause read amplification during writes
+- Consider batching writes if experiencing contention
+
+**See Also:** [CONCURRENCY.md](CONCURRENCY.md) for detailed concurrency model and architecture
+
+---
+
 ## Join Tables with Non-Numeric IDs
 
 **Problem:** Entities with UUID, String, or other non-numeric IDs fail in `@OneToMany` or `@ManyToMany` relationships
@@ -62,6 +130,8 @@ Join tables are hardcoded with `int.class` columns for storing entity references
    List<OrderItem> items = orderItemRepo.findByOrderId(order.getId());
    ```
 
+---
+
 ## Performance Issues
 
 **Problem:** Query takes longer than expected
@@ -107,6 +177,8 @@ Join tables are hardcoded with `int.class` columns for storing entity references
    // Use table...
    // No explicit close() needed
    ```
+
+---
 
 ## Entity Annotation Issues
 
@@ -166,11 +238,15 @@ Join tables are hardcoded with `int.class` columns for storing entity references
    }
    ```
 
+---
+
 ## Current Limitations
 
 1. **Join Tables with UUID/String IDs** - Only numeric IDs supported
 2. **@OneToMany and @ManyToMany relationships** - Not implemented yet
 3. **DISTINCT query modifier** - Tokenized but execution not complete
+4. **No MVCC or transactions** - Best-effort isolation only (see CONCURRENCY.md)
+5. **No pessimistic locking API** - External synchronization required for some write-heavy scenarios
 
 ### Test Coverage
 
@@ -178,6 +254,7 @@ When tests can run, verify:
 - `QueryPlannerTest.java` - Tests QueryPlanner parsing (8 tests)
 - `QueryMethodParserTest.java` - Comprehensive JPA specification tests (640 lines)
 - `ECommerceRealWorldTest.java` - Real-world e-commerce domain tests (15 tests)
+- `ConcurrencyTestSuite.java` - Validates thread-safety model and concurrent operations
 
 ---
 

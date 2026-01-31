@@ -83,7 +83,7 @@ Memris is a high-performance in-memory storage engine with the following princip
 |---------|---------|-------------|
 | `io.memris.kernel` | Core execution primitives | `SelectionVector`, `Predicate`, `PlanNode`, `Executor`, `HashJoin` |
 | `io.memris.storage` | Storage interfaces | `GeneratedTable`, `Table`, `Selection` |
-| `io.memris.storage.heap` | Heap-based implementation | `TableGenerator`, `AbstractTable`, `PageColumn*`, `*IdIndex` |
+| `io.memris.storage.heap` | Heap-based implementation | `TableGenerator`, `AbstractTable`, `PageColumn*`, `*IdIndex`, `LockFreeFreeList` |
 | `io.memris.index` | Index implementations | `HashIndex`, `RangeIndex`, `LongIdIndex`, `StringIdIndex` |
 | `io.memris.core` | Custom annotations & types | `@Entity`, `@Index`, `@GeneratedValue`, `TypeCodes` |
 | `io.memris.query` | Query parsing & planning | `QueryMethodLexer`, `QueryPlanner`, `CompiledQuery`, `OpCode` |
@@ -169,6 +169,13 @@ Custom annotations for entity marking:
 - Creates table classes extending `AbstractTable`
 - Generates typed columns and ID indexes
 
+**AbstractTable** (`AbstractTable.java:28`)
+- Base class for all generated tables
+- Manages row allocation with `LockFreeFreeList` for O(1) reuse
+- Provides seqlock infrastructure via `rowSeqLocks` (AtomicLongArray) for row-level atomicity
+- Tracks tombstones, row counts, and generations
+- Implements row-level sequence locking (even = stable, odd = writing)
+
 **GeneratedTable Interface** (`GeneratedTable.java:15`)
 - Low-level table interface
 - Typed scans: `scanEqualsLong()`, `scanBetweenInt()`
@@ -184,12 +191,16 @@ Custom annotations for entity marking:
 - `LongIdIndex` - Long-based primary key index
 - `StringIdIndex` - String-based primary key index
 
+**Concurrency Primitives**
+- `LockFreeFreeList` - Lock-free Treiber stack for row ID reuse with CAS-based push/pop operations
+
 **Key Files:**
 - `TableGenerator.java` - ByteBuddy generation
 - `AbstractTable.java` - Base class for tables
 - `GeneratedTable.java` - Table interface
 - `PageColumn*.java` - Column implementations
 - `*IdIndex.java` - ID indexes
+- `LockFreeFreeList.java` - Lock-free free-list implementation
 
 ### Layer 6: Index Layer
 **Package:** `io.memris.index`
@@ -209,6 +220,7 @@ All hot path operations are O(1):
 - Hash-based ID lookups
 - BitSet for dense row sets
 - TypeCode switch dispatch (tableswitch bytecode)
+- Lock-free row allocation via `LockFreeFreeList`
 
 ### 2. Primitive-Only APIs
 Never use boxed types in hot paths:
@@ -235,6 +247,10 @@ JVM inlines these constants and compiles switch to tableswitch (direct jump).
 - Column indices resolved at compile time
 - queryId-based dispatch (int lookup, not string)
 - No `Class.forName()`, no `Method.invoke()` in hot path
+
+### 5. Lock-Free Concurrency Primitives
+- `LockFreeFreeList`: Treiber stack with CAS-based push/pop for O(1) row reuse
+- `rowSeqLocks`: AtomicLongArray seqlock per row for atomic read-write transactions
 
 ## Build-Time vs Runtime
 
@@ -327,10 +343,11 @@ public final class PersonTable extends AbstractTable implements GeneratedTable {
 | `QueryPlanner.java` | 1 | Query planning |
 | `CompiledQuery.java` | 1 | Compiled query structure |
 | `GeneratedTable.java` | 15 | Table interface |
-| `AbstractTable.java` | 26 | Base table class |
+| `AbstractTable.java` | 28 | Base table class with seqlocks |
 | `PageColumnInt.java` | 16 | int column storage |
 | `PageColumnLong.java` | 16 | long column storage |
 | `PageColumnString.java` | 16 | String column storage |
+| `LockFreeFreeList.java` | 13 | Lock-free Treiber stack for row reuse |
 | `RangeIndex.java` | 1 | Range index (O(log n)) |
 | `HashIndex.java` | 1 | Hash index (O(1)) |
 
@@ -343,3 +360,5 @@ public final class PersonTable extends AbstractTable implements GeneratedTable {
 - **No Repository generation**: Generates tables, caller implements repository pattern
 - **Relationship Support**: @OneToOne and @ManyToOne fully implemented; @OneToMany and @ManyToMany not implemented
 - **RangeIndex Exists**: O(log n) operations via ConcurrentSkipListMap
+- **Lock-Free Data Structures**: `LockFreeFreeList` uses Treiber stack algorithm with CAS for O(1) row allocation/deallocation
+- **Seqlock Support**: `rowSeqLocks` in AbstractTable provides per-row atomic read-write transactions

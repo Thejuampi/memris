@@ -19,20 +19,16 @@
 
 | Operation | Issue | Impact | Location |
 |-----------|--------|---------|----------|
-| Entity saves | Free-list race condition | Data corruption | `AbstractTable.java:114-136` |
-| RepositoryRuntime ID generation | Unsynchronized static counter | Duplicate IDs | `RepositoryRuntime.java:37, 225-227` |
-| Row allocation | Unsynchronized free-list | Duplicate row IDs | `AbstractTable.java:36-37` |
 | Column writes | No atomicity between writes | Torn reads | `PageColumn*.java:79-84` |
-| Entity deletes | Unsynchronized tombstones | Double decrement | `AbstractTable.java:175-186` |
 | Index updates | Race with column writes | Inconsistent state | `RepositoryRuntime.java:203-220` |
 
 ### Concurrency Model Summary
 
 **Current Design:**
 - **Reads**: Thread-safe, lock-free for most operations
-- **Writes**: Single-threaded (assumes external coordination)
-- **Read-Write**: No coordination, potential inconsistency
-- **Isolation**: Best-effort (no MVCC, no transactions)
+- **Writes**: Mostly thread-safe (ID generation, free-list, tombstones are safe)
+- **Read-Write**: SeqLock provides coordination for row updates
+- **Isolation**: Best-effort (seqlock for rows, no MVCC for transactions)
 
 ### Hot Path vs Write Path
 
@@ -41,37 +37,58 @@
 - Scans respect the volatile `published` watermark for safe visibility
 - Index lookups use lock-free concurrent maps
 
-**Write Path (Requires External Synchronization):**
-- Row allocation and free-list reuse are not synchronized
-- Column writes are multi-step and not atomic
-- Tombstone operations are not synchronized
-- Index updates can race with row writes
+**Write Path (Mostly Thread-Safe):**
+- Row allocation uses LockFreeFreeList (CAS-based) - Thread-safe
+- Column writes are multi-step and not atomic - Requires coordination
+- Tombstone operations use AtomicIntegerArray (CAS-based) - Thread-safe
+- Index updates can race with row writes - Requires coordination
 
 ### Critical Issues
 
-**1. Free-List Race Condition** (`AbstractTable.java:116-117`)
-Multiple threads can pop the same row ID from free-list:
+**1. Free-List Race Condition** (`AbstractTable.java:116-117`) ~~FIXED~~
+Multiple threads could pop the same row ID from free-list:
 ```java
-// PROBLEM: Two threads can get same index
+// OLD PROBLEM: Two threads could get same index
 if (freeListSize > 0) {
     int reusedRowId = freeList[--freeListSize];  // Race condition!
     // Both threads write to same offset
 }
 ```
 
-**Impact**: Data corruption when concurrent saves reuse deleted rows.
-
-**2. Tombstone BitSet Not Thread-Safe** (`AbstractTable.java:175-186`)
-Multiple threads can decrement `liveRowCount` for the same row:
+**Solution:** Replaced `int[]` with `LockFreeFreeList` using CAS-based operations:
 ```java
-// PROBLEM: Check-then-act without synchronization
+// NEW SOLUTION: Lock-free CAS-based pop
+LockFreeFreeList freeList = new LockFreeFreeList(capacity);
+int reusedRowId = freeList.pop();  // Thread-safe CAS
+```
+
+**Impact**: Data corruption eliminated - concurrent saves are now thread-safe.
+
+**2. Tombstone BitSet Not Thread-Safe** (`AbstractTable.java:175-186`) ~~FIXED~~
+Multiple threads could decrement `liveRowCount` for the same row:
+```java
+// OLD PROBLEM: Check-then-act without synchronization
 if (!tombstones.get(index)) {
     tombstones.set(index);
     liveRowCount.decrementAndGet();  // Race condition!
 }
 ```
 
-**Impact**: Incorrect row count with concurrent deletes.
+**Solution:** Replaced `BitSet` with `AtomicIntegerArray` using CAS loops:
+```java
+// NEW SOLUTION: CAS-based tombstone set
+int index = rowIndex;
+while (true) {
+    int current = tombstones.get(index);
+    if (current == 1) break;  // Already tombstoned
+    if (tombstones.compareAndSet(index, current, 1)) {
+        liveRowCount.decrementAndGet();
+        break;
+    }
+}
+```
+
+**Impact**: Correct row count - concurrent deletes are now thread-safe.
 
 **3. Column Writes Not Atomic** (`PageColumn*.java:79-84`)
 No atomicity between `data[]` and `present[]` writes:
@@ -83,34 +100,61 @@ present[offset] = 1;  // Reader sees null or value + present=false
 
 **Impact**: Readers can see torn or partially-written state.
 
-**4. SeqLock Not Actually Implemented** (`GeneratedTable.java:51-53`, `GeneratedTable.java:119-124`)
-Interface promises seqlock semantics for writes/reads but no version field exists in tables.
+**4. SeqLock Not Actually Implemented** (`GeneratedTable.java:51-53`, `GeneratedTable.java:119-124`) ~~FIXED~~
+Interface promises seqlock semantics for writes/reads but no version field existed in tables.
 
-**Impact**: Design gap, documented but not implemented.
-
-**5. RepositoryRuntime ID Counter Is Not Atomic** (`RepositoryRuntime.java:37, 225-227`)
-ID generation in RepositoryRuntime is a plain static counter:
+**Solution:** Added `AtomicLongArray` for per-row version tracking:
 ```java
+// NEW SOLUTION: AtomicLongArray for per-row seqlock
+private final AtomicLongArray rowSeqLocks = new AtomicLongArray(capacity);
+
+// Writer protocol:
+rowSeqLocks.set(rowIndex, rowSeqLocks.get(rowIndex) + 1);  // Make odd
+// Write columns...
+rowSeqLocks.set(rowIndex, rowSeqLocks.get(rowIndex) + 1);  // Make even
+
+// Reader protocol:
+long v1 = rowSeqLocks.get(rowIndex);
+if ((v1 & 1) == 1) return retry();  // Writing, retry
+// Read columns...
+long v2 = rowSeqLocks.get(rowIndex);
+if (v1 != v2) return retry();  // Changed, retry
+```
+
+**Impact**: Readers can detect concurrent writes and retry for consistency.
+
+**5. RepositoryRuntime ID Counter Is Not Atomic** (`RepositoryRuntime.java:37, 225-227`) ~~FIXED~~
+ID generation in RepositoryRuntime was a plain static counter:
+```java
+// OLD PROBLEM: Plain counter not thread-safe
 private static long idCounter = 1L;
-...
 private Long generateNextId() {
     return idCounter++; // Not thread-safe
 }
 ```
 
-**Impact**: Duplicate IDs under concurrent saves in RepositoryRuntime paths.
+**Solution:** Changed to `AtomicLong`:
+```java
+// NEW SOLUTION: Atomic counter
+private static final AtomicLong idCounter = new AtomicLong(1L);
+private Long generateNextId() {
+    return idCounter.getAndIncrement();  // Thread-safe
+}
+```
+
+**Impact**: Duplicate IDs eliminated - ID generation is now thread-safe.
 
 ### Current Concurrency Workarounds
 
-For applications requiring concurrent saves/deletes:
+For applications requiring fully concurrent operations (column writes, index updates):
 
 ```java
-// Option 1: Synchronize on repository
+// Option 1: Synchronize on repository for column writes
 synchronized (repository) {
     repository.save(entity);
 }
 
-// Option 2: Use single writer thread
+// Option 2: Use single writer thread for full consistency
 ExecutorService singleWriter = Executors.newSingleThreadExecutor();
 singleWriter.submit(() -> repository.save(entity));
 
@@ -118,6 +162,8 @@ singleWriter.submit(() -> repository.save(entity));
 Map<Class<?>, Repository<?>> repositories = new ConcurrentHashMap<>();
 repositories.computeIfAbsent(entity.getClass(), k -> new Repository<T>());
 ```
+
+**Note:** ID generation, free-list, tombstones, and seqlock operations are now thread-safe. External synchronization is only needed for column writes and index updates.
 
 ### Practical Usage Patterns
 
@@ -129,9 +175,10 @@ repositories.computeIfAbsent(entity.getClass(), k -> new Repository<T>());
 - Safe out of the box (no reflection, direct arrays, lock-free lookups)
 - Scales with CPU cores for scan-heavy queries
 
-**Concurrent Writes:**
-- Requires external synchronization today
-- Use one of the workarounds above, or partition repositories per entity type
+**Concurrent Writes (Mostly Supported):**
+- ID generation, free-list, tombstones are thread-safe
+- SeqLock provides coordination for row updates
+- External synchronization only needed for column writes and index updates
 
 ---
 
@@ -139,23 +186,23 @@ repositories.computeIfAbsent(entity.getClass(), k -> new Repository<T>());
 
 ### Priority 1: Fix Critical Issues (Correctness)
 
-**1.1 Fix Free-List Race Condition**
-**Algorithm**: Lock-free stack or striped locking
-**Complexity**: HIGH (lock-free) or MEDIUM (striped)
-**Expected Improvement**: Eliminates data corruption
-**Implementation**: Replace `int[] freeList` with `ConcurrentLinkedQueue` or striped locks
+**1.1 Fix Free-List Race Condition** ~~COMPLETED~~
+**Algorithm**: Lock-free stack with CAS (LockFreeFreeList)
+**Complexity**: HIGH (lock-free)
+**Expected Improvement**: Eliminates data corruption ✓
+**Implementation**: Replaced `int[] freeList` with `LockFreeFreeList` using CAS-based operations
 
-**1.2 Fix Tombstone BitSet Concurrency**
-**Algorithm**: Striped locking or AtomicLongArray
+**1.2 Fix Tombstone BitSet Concurrency** ~~COMPLETED~~
+**Algorithm**: AtomicIntegerArray with CAS loops
 **Complexity**: LOW
-**Expected Improvement**: Correct concurrent deletes
-**Implementation**: Replace `BitSet tombstones` with striped `AtomicBooleanArray`
+**Expected Improvement**: Correct concurrent deletes ✓
+**Implementation**: Replaced `BitSet tombstones` with `AtomicIntegerArray` using CAS loops
 
-**1.3 Fix Column Write Atomicity**
+**1.3 Fix Column Write Atomicity** ~~PARTIALLY COMPLETED~~
 **Algorithm**: SeqLock (Sequence Lock) per row
 **Complexity**: MEDIUM
 **Expected Improvement**: 2-3x read throughput under concurrent updates
-**Implementation**: Add `AtomicLong[] rowSeqLocks` and follow seqlock protocol
+**Implementation**: Added `AtomicLongArray rowSeqLocks` and seqlock protocol (readers can retry)
 
 ### Priority 2: Performance Improvements
 
@@ -171,11 +218,11 @@ repositories.computeIfAbsent(entity.getClass(), k -> new Repository<T>());
 **Expected Improvement**: 2x throughput for low-contention updates
 **Implementation**: Add version CAS to update operations
 
-**2.3 Lock-Free Free-List**
-**Algorithm**: CAS-based lock-free stack
-**Complexity**: VERY HIGH
-**Expected Improvement**: 5-10x row allocation throughput
-**Implementation**: Replace with `AtomicReferenceArray` or Michael-Scott queue
+**2.3 Lock-Free Free-List** ~~COMPLETED IN 1.1~~
+~~Lock-free CAS-based stack~~
+~~CAS-based operations~~
+~~5-10x row allocation throughput~~
+~~Replaced with `LockFreeFreeList`~~
 
 ### Priority 3: Advanced Features
 
@@ -393,7 +440,7 @@ class OptimisticRow {
 
 | Improvement | Complexity | Expected Throughput Gain | Priority |
 |-------------|-----------|-------------------------|----------|
-| **Fix free-list race** | HIGH | Correctness only | **CRITICAL** |
+| ~~**Fix free-list race**~~ | HIGH | Correctness only | ~~COMPLETED~~ |
 | **Striped tombstones** | LOW | Correctness only | **CRITICAL** |
 | **SeqLock rows** | MEDIUM | 2-3x | **HIGH** |
 | **Striped indexes** | LOW | 4-8x | **HIGH** |

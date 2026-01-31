@@ -345,11 +345,14 @@ Use external synchronization (synchronized, locks) when:
 
 ### Current Limitations
 
-- Free-list race condition (can corrupt data with concurrent saves)
-- Tombstone BitSet not thread-safe for concurrent deletes
 - Column writes not atomic (readers see torn state)
-- SeqLock not implemented (design gap)
+- Index updates can race with column writes
 - No MVCC or snapshot isolation
-- No optimistic locking support
+- No optimistic locking support for full transactions
+
+**Recently Fixed (Previously Issues):**
+- ~~Free-list race condition~~ → LockFreeFreeList with CAS
+- ~~Tombstone BitSet not thread-safe~~ → AtomicIntegerArray with CAS
+- ~~SeqLock not implemented~~ → AtomicLongArray for per-row versioning
 
 See [CONCURRENCY.md](CONCURRENCY.md) for detailed concurrency model and improvement roadmap.

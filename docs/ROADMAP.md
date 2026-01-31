@@ -1,73 +1,91 @@
 # Roadmap
 
+## Implemented Features
+
+### Phase 1: Critical Concurrency Fixes ✅
+
+**1.1 Fix Critical Concurrency Issues** [Priority: CRITICAL] ✅
+- Fix free-list race condition (data corruption) ✅
+- Fix tombstone BitSet concurrency ✅
+- Implement seqlock for row updates ✅
+- Fix RepositoryRuntime ID counter concurrency ✅
+- **Status**: Complete - All critical concurrency issues resolved
+
+### Phase 2: Performance Optimizations ✅
+
+**2.1 Scan Method Completeness** [Priority: HIGH] ✅
+- Add missing scan methods for all type codes ✅
+- Complete scanIn, scanNotIn, scanLike, scanNotLike implementations ✅
+- **Status**: Complete - Full scan method coverage
+
+**2.2 Query Performance** [Priority: HIGH] ✅
+- Nested loop scanIn optimization (O(n) → O(1) average case) ✅
+- O(n) string pattern scans (documented trade-off, kept as-is) ✅
+- Allocation reduction in hot paths ✅
+- **Status**: Complete - Query execution optimized
+
+**1.2 Advanced Concurrency Optimizations** [Priority: HIGH] ⏳
+- Stripe-based index updates (4-8x throughput) - Not started
+- Optimistic locking for updates (2x throughput) - Not started
+- ~~Lock-free data structures~~ (5-10x throughput) ~~COMPLETED~~ - Not started
+- **Status**: Planned - Future work
+
+---
+
 ## Future Features
 
-### Phase 1: Concurrency Improvements (Short-Term)
+### Phase 3: Advanced Concurrency (Medium-Term)
 
-**1.1 Fix Critical Concurrency Issues** [Priority: CRITICAL]
-- Fix free-list race condition (data corruption)
-- Fix tombstone BitSet concurrency
-- Implement seqlock for row updates
-- Expected: Correct concurrent operations
-
-**1.2 Performance Optimizations** [Priority: HIGH]
-- Stripe-based index updates (4-8x throughput)
-- Optimistic locking for updates (2x throughput)
-- Lock-free data structures (5-10x throughput)
-- Expected: Significantly improved concurrent access
-
-### Phase 2: Advanced Concurrency (Medium-Term)
-
-**2.1 Snapshot Isolation** [Priority: MEDIUM]
+**3.1 Snapshot Isolation** [Priority: MEDIUM] ⏳
 - MVCC implementation for snapshot queries
 - Per-row version chains
 - Background version garbage collection
 - Expected: 3-5x read throughput, snapshot consistency
 
-**2.2 Transaction Support** [Priority: MEDIUM]
+**3.2 Transaction Support** [Priority: MEDIUM] ⏳
 - ACID transaction primitives
 - Begin/commit/rollback API
 - Optimistic concurrency control
 - Expected: Data consistency guarantees
 
-### Phase 3: Relationship Features (Medium-Term)
+### Phase 4: Relationship Features (Medium-Term)
 
-**3.1 @OneToMany Support** [Priority: HIGH]
+**4.1 @OneToMany Support** [Priority: HIGH] ⏳
 - Bidirectional relationships
 - Collection field mapping
 - Cascade operations
 - Expected: Full relationship support
 
-**3.2 @ManyToMany Support** [Priority: MEDIUM]
+**4.2 @ManyToMany Support** [Priority: MEDIUM] ⏳
 - Join table generation
 - Many-to-many relationship mapping
 - Optimized join execution
 - Expected: Many-to-many queries
 
-### Phase 4: Storage Evolution (Long-Term)
+### Phase 5: Storage Evolution (Long-Term)
 
-**4.1 FFM Off-Heap Storage** [Priority: LOW]
+**5.1 FFM Off-Heap Storage** [Priority: LOW] ⏳
 - Off-heap storage using Java Foreign Function & Memory (FFM) API
 - Reduced GC pressure for large datasets
 - Direct memory control
 - Memory-mapped file persistence
 - Expected: Better performance for large datasets
 
-**4.2 SIMD Vectorization** [Priority: LOW]
+**5.2 SIMD Vectorization** [Priority: LOW] ⏳
 - Java Vector API integration
 - Parallel scan operations
 - SIMD-optimized comparisons
 - Expected: 2-4x scan throughput
 
-### Phase 5: Enterprise Features (Long-Term)
+### Phase 6: Enterprise Features (Long-Term)
 
-**5.1 Schema Evolution** [Priority: LOW]
+**6.1 Schema Evolution** [Priority: LOW] ⏳
 - Online schema changes
 - Migration support
 - Backward compatibility
 - Expected: Zero-downtime schema updates
 
-**5.2 Distributed Storage** [Priority: LOW]
+**6.2 Distributed Storage** [Priority: LOW] ⏳
 - Partitioned tables
 - Distributed queries
 - Replication

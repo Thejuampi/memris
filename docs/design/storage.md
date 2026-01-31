@@ -23,7 +23,7 @@
   - No boxing overhead (5-10x memory savings)
   - Cache-friendly sequential access
   - Direct array access for O(1) operations
-- **Note**: Not thread-safe for concurrent writes (use synchronization in Phase 2)
+- **Note**: Mostly thread-safe - free-list, tombstones, seqlock operations use CAS
 
 ### HashIndex (Concurrent Hash + RoaringBitmap)
 - **Structure**: `ConcurrentHashMap<K, RoaringBitmap>`
@@ -40,7 +40,8 @@
 - **No max rows limit**: Grows dynamically
 - **Thread Safety**: 
   - Reads: Thread-safe via atomic rowCounter
-  - Writes: Single-threaded in v1.0 (Phase 2: concurrent writes)
+  - Writes: Mostly thread-safe via CAS (free-list, tombstones, seqlock)
+  - Column writes: Require external coordination
 
 ## Performance Optimizations
 
@@ -67,11 +68,11 @@
 | Index type | RoaringBitmap | TreeSet | 10x memory, set ops |
 | Write lock | StampedLock | synchronized | Readers don't block |
 | Capacity | Dynamic | Fixed | Simplicity, no tuning |
-| Concurrent writes | Single-threaded | Fine-grained locking | v1.0 simplicity |
+| Concurrent writes | CAS-based | Fine-grained locking | Thread-safe operations (v1.1) |
 
 ## Current Limitations
 
-- **Concurrent writes**: ColumnarBatch is single-threaded for inserts
+- **Column write atomicity**: Still requires coordination for full consistency
 - **MVCC**: No snapshot isolation
 - **@OneToMany and @ManyToMany**: Only @OneToOne and @ManyToOne relationships implemented
 - **DISTINCT query modifier**: Tokenized but execution not complete
