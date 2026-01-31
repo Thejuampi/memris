@@ -26,7 +26,7 @@ mvn.cmd -q -e -pl memris-core test -Dtest=ClassName#methodName
 ### Java Runtime Requirements
 
 - **Java Version**: 21 (required)
-- **Preview Features**: `--enable-preview`
+
 - **Native Access**: `--enable-native-access=ALL-UNNAMED`
 - **Storage**: 100% heap-based (primitive arrays, no FFM/MemorySegment)
 

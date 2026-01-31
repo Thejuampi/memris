@@ -118,7 +118,6 @@
                         <target>${java.version}</target>
                         <parameters>true</parameters>
                         <compilerArgs>
-                            <arg>--enable-preview</arg>
                             <arg>--add-modules</arg>
                             <arg>jdk.incubator.vector</arg>
                         </compilerArgs>
@@ -136,7 +135,7 @@
                     <artifactId>maven-surefire-plugin</artifactId>
                     <version>3.2.2</version>
                     <configuration>
-                        <argLine>--enable-preview --add-modules jdk.incubator.vector --enable-native-access=ALL-UNNAMED</argLine>
+                        <argLine>--add-modules jdk.incubator.vector --enable-native-access=ALL-UNNAMED</argLine>
                     </configuration>
                 </plugin>
                 <plugin>

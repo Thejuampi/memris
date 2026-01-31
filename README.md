@@ -119,7 +119,7 @@ mvn.cmd pmd:check
 
 ## Requirements
 
-- Java 21 (with --enable-preview)
+- Java 21
 - Maven 3.8+
 - Windows/Linux/Mac
 
