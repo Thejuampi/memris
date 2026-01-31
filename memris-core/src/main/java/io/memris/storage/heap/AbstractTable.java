@@ -3,7 +3,9 @@ package io.memris.storage.heap;
 import io.memris.kernel.RowId;
 
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicIntegerArray;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicLongArray;
 
 /**
  * Base class for generated tables with typed column storage.
@@ -30,15 +32,17 @@ public abstract class AbstractTable {
     private final int maxPages;
     private final AtomicLong nextRowId;
     private final AtomicInteger liveRowCount;
-    private final java.util.BitSet tombstones;
-    
-    // Free-list for row reuse (O(1) allocation)
-    private int[] freeList = new int[16];
-    private int freeListSize = 0;
-    
+    private final AtomicIntegerArray tombstones;
+
+    // Lock-free free-list for row reuse (O(1) allocation)
+    private final LockFreeFreeList freeList = new LockFreeFreeList();
+
     // Generation tracking for stale ref detection
     private final AtomicLong globalGeneration = new AtomicLong(1);
     private long[] rowGenerations;
+
+    // SeqLock for row-level atomicity (even = stable, odd = writing)
+    private final AtomicLongArray rowSeqLocks;
 
     /**
      * Create an AbstractTable.
@@ -62,8 +66,9 @@ public abstract class AbstractTable {
         this.maxPages = maxPages;
         this.nextRowId = new AtomicLong(0);
         this.liveRowCount = new AtomicInteger(0);
-        this.tombstones = new java.util.BitSet(maxPages * pageSize);
+        this.tombstones = new AtomicIntegerArray(maxPages * pageSize);
         this.rowGenerations = new long[maxPages * pageSize];
+        this.rowSeqLocks = new AtomicLongArray(maxPages * pageSize);
     }
 
     /**
@@ -112,9 +117,9 @@ public abstract class AbstractTable {
      * @throws IllegalStateException if capacity exceeded
      */
     protected RowId allocateRowId() {
-        // Try free-list first (O(1) pop from end)
-        if (freeListSize > 0) {
-            int reusedRowId = freeList[--freeListSize];
+        // Try lock-free free-list first (O(1) pop)
+        int reusedRowId = freeList.pop();
+        if (reusedRowId >= 0) {
             long generation = globalGeneration.incrementAndGet();
             rowGenerations[reusedRowId] = generation;
             clearTombstoneInternal(reusedRowId);
@@ -122,7 +127,7 @@ public abstract class AbstractTable {
             int offset = reusedRowId % pageSize;
             return new RowId(pageId, offset);
         }
-        
+
         // Monotonic allocation
         long rowId = nextRowId.getAndIncrement();
         if (rowId >= capacity()) {
@@ -134,15 +139,12 @@ public abstract class AbstractTable {
         int offset = (int) (rowId % pageSize);
         return new RowId(pageId, offset);
     }
-    
+
     /**
-     * Deallocate a row ID and add to free-list.
+     * Deallocate a row ID and add to lock-free free-list.
      */
     protected void deallocateRowId(int rowId) {
-        if (freeListSize >= freeList.length) {
-            freeList = java.util.Arrays.copyOf(freeList, freeList.length * 2);
-        }
-        freeList[freeListSize++] = rowId;
+        freeList.push(rowId);
     }
     
     /**
@@ -158,11 +160,65 @@ public abstract class AbstractTable {
     public long rowGeneration(int rowId) {
         return rowGenerations[rowId];
     }
-    
-    private void clearTombstoneInternal(int rowId) {
-        if (tombstones.get(rowId)) {
-            tombstones.clear(rowId);
+
+    /**
+     * Begin seqlock for writing to a row.
+     * Increments the seqlock to make it odd (writing in progress).
+     *
+     * @param rowIndex the row index
+     * @return the seqlock value before incrementing
+     */
+    public long beginSeqLock(int rowIndex) {
+        return rowSeqLocks.getAndIncrement(rowIndex);
+    }
+
+    /**
+     * End seqlock for writing to a row.
+     * Increments the seqlock to make it even (write complete).
+     *
+     * @param rowIndex the row index
+     */
+    public void endSeqLock(int rowIndex) {
+        rowSeqLocks.incrementAndGet(rowIndex);
+    }
+
+    /**
+     * Read seqlock value for a row.
+     *
+     * @param rowIndex the row index
+     * @return the current seqlock value
+     */
+    public long getSeqLock(int rowIndex) {
+        return rowSeqLocks.get(rowIndex);
+    }
+
+    /**
+     * Read a value with seqlock validation.
+     * Retries if the seqlock changes during the read (indicating concurrent write).
+     *
+     * @param rowIndex the row index
+     * @param reader the function to read the value
+     * @param <T> the value type
+     * @return the consistently read value
+     */
+    public <T> T readWithSeqLock(int rowIndex, java.util.function.Supplier<T> reader) {
+        while (true) {
+            long seqBefore = rowSeqLocks.get(rowIndex);
+            if ((seqBefore & 1) == 1) {
+                // Writer active, retry
+                continue;
+            }
+            T value = reader.get();
+            long seqAfter = rowSeqLocks.get(rowIndex);
+            if (seqBefore == seqAfter) {
+                return value;
+            }
+            // Seqlock changed, retry
         }
+    }
+
+    private void clearTombstoneInternal(int rowId) {
+        tombstones.set(rowId, 0);
     }
 
     /**
@@ -178,23 +234,38 @@ public abstract class AbstractTable {
         if (rowGenerations[index] != generation) {
             return false;
         }
-        if (!tombstones.get(index)) {
-            tombstones.set(index);
-            liveRowCount.decrementAndGet();
-            deallocateRowId(index);
+        // CAS loop to ensure exactly one decrement
+        while (true) {
+            int current = tombstones.get(index);
+            if (current != 0) {
+                return true; // Already tombstoned
+            }
+            if (tombstones.compareAndSet(index, 0, 1)) {
+                liveRowCount.decrementAndGet();
+                deallocateRowId(index);
+                return true;
+            }
+            // CAS failed, retry
         }
-        return true;
     }
-    
+
     /**
      * Legacy tombstone without generation check (for migration).
      */
     public void tombstone(RowId rowId) {
         int index = toIndex(rowId);
-        if (!tombstones.get(index)) {
-            tombstones.set(index);
-            liveRowCount.decrementAndGet();
-            deallocateRowId(index);
+        // CAS loop to ensure exactly one decrement
+        while (true) {
+            int current = tombstones.get(index);
+            if (current != 0) {
+                return; // Already tombstoned
+            }
+            if (tombstones.compareAndSet(index, 0, 1)) {
+                liveRowCount.decrementAndGet();
+                deallocateRowId(index);
+                return;
+            }
+            // CAS failed, retry
         }
     }
 
@@ -205,14 +276,22 @@ public abstract class AbstractTable {
      * @return true if tombstoned
      */
     public boolean isTombstone(RowId rowId) {
-        return tombstones.get(toIndex(rowId));
+        return tombstones.get(toIndex(rowId)) != 0;
     }
 
     public void clearTombstone(RowId rowId) {
         int index = toIndex(rowId);
-        if (tombstones.get(index)) {
-            tombstones.clear(index);
-            liveRowCount.incrementAndGet();
+        // CAS loop to ensure exactly one increment
+        while (true) {
+            int current = tombstones.get(index);
+            if (current == 0) {
+                return; // Not tombstoned
+            }
+            if (tombstones.compareAndSet(index, 1, 0)) {
+                liveRowCount.incrementAndGet();
+                return;
+            }
+            // CAS failed, retry
         }
     }
 
