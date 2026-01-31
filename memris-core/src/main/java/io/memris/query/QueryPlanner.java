@@ -10,12 +10,14 @@ import java.util.Map;
 import java.util.Optional;
 
 /**
- * Enum of Spring Data JPA query method operators with their LogicalQuery mappings.
+ * Enum of Spring Data JPA query method operators with their LogicalQuery
+ * mappings.
  * <p>
  * This enum provides fast, type-safe mapping from method name strings to
  * LogicalQuery.Operator values, replacing the switch statement approach.
  * <p>
- * Each enum value knows its string keyword(s) and the corresponding LogicalQuery.Operator.
+ * Each enum value knows its string keyword(s) and the corresponding
+ * LogicalQuery.Operator.
  */
 enum QueryOperator {
     // Equality operators
@@ -64,15 +66,15 @@ enum QueryOperator {
     }
 
     QueryOperator(String keyword1, String keyword2, LogicalQuery.Operator logicalOperator) {
-        this(new String[]{keyword1, keyword2}, logicalOperator, false);
+        this(new String[] { keyword1, keyword2 }, logicalOperator, false);
     }
 
     QueryOperator(String keyword1, String keyword2, LogicalQuery.Operator logicalOperator, boolean supportsIgnoreCase) {
-        this(new String[]{keyword1, keyword2}, logicalOperator, supportsIgnoreCase);
+        this(new String[] { keyword1, keyword2 }, logicalOperator, supportsIgnoreCase);
     }
 
     QueryOperator(String keyword, LogicalQuery.Operator logicalOperator, boolean supportsIgnoreCase) {
-        this(new String[]{keyword}, logicalOperator, supportsIgnoreCase);
+        this(new String[] { keyword }, logicalOperator, supportsIgnoreCase);
     }
 
     QueryOperator(String[] keywords, LogicalQuery.Operator logicalOperator, boolean supportsIgnoreCase) {
@@ -83,7 +85,8 @@ enum QueryOperator {
 
     /**
      * Get the LogicalQuery.Operator for this query operator.
-     * If ignoreCase is true and this operator supports it, returns the case-insensitive variant.
+     * If ignoreCase is true and this operator supports it, returns the
+     * case-insensitive variant.
      */
     LogicalQuery.Operator getLogicalOperator(boolean ignoreCase) {
         if (ignoreCase && supportsIgnoreCase) {
@@ -154,7 +157,8 @@ enum QueryOperator {
  * - findById → ReturnKind.ONE_OPTIONAL, Condition(id, EQ, arg0)
  * - findAll → ReturnKind.MANY_LIST, no conditions
  * - findByXxx → ReturnKind.MANY_LIST, Condition(xxx, EQ, arg0)
- * - findByXxxAndYyy → ReturnKind.MANY_LIST, Condition(xxx, EQ, arg0), Condition(yyy, EQ, arg1)
+ * - findByXxxAndYyy → ReturnKind.MANY_LIST, Condition(xxx, EQ, arg0),
+ * Condition(yyy, EQ, arg1)
  * - findByXxxOrYyy → ReturnKind.MANY_LIST, OR conditions
  * - countByXxx → ReturnKind.COUNT_LONG, Condition(xxx, EQ, arg0)
  * - existsById → ReturnKind.EXISTS_BOOL, Condition(id, EQ, arg0)
@@ -218,8 +222,8 @@ public final class QueryPlanner {
     /**
      * Parse a repository method into a LogicalQuery.
      *
-     * @param method repository method to parse
-     * @param entityClass entity class for context-aware property resolution
+     * @param method       repository method to parse
+     * @param entityClass  entity class for context-aware property resolution
      * @param idColumnName name of ID column (e.g., "id")
      * @return a LogicalQuery representing the semantic meaning of the method
      */
@@ -256,7 +260,8 @@ public final class QueryPlanner {
         // Otherwise: derived query parsing
         LimitParseResult limitParse = parseLimit(methodName);
         if (limitParse.limit() > 0 && !isFindPrefix(extractPrefix(methodName))) {
-            throw new IllegalArgumentException("Top/First is only supported for find/read/query/get methods: " + methodName);
+            throw new IllegalArgumentException(
+                    "Top/First is only supported for find/read/query/get methods: " + methodName);
         }
         String parseName = limitParse.normalizedName();
         DistinctParseResult distinctParse = parseDistinct(parseName);
@@ -283,7 +288,8 @@ public final class QueryPlanner {
                     // Query method prefix tokens - skip
                 }
                 case OPERATION -> {
-                    // "no nice" Built-in operations - should not reach here since we handle them earlier
+                    // "no nice" Built-in operations - should not reach here since we handle them
+                    // earlier
                     // But if we do, skip the token
                 }
             }
@@ -300,18 +306,19 @@ public final class QueryPlanner {
 
         // Finalize last condition if pending
         if (state.pendingProperty != null && !state.inOrderBy) {
-            state.argIndex = finalizeCondition(state.pendingProperty, state.pendingOperatorValue, state.pendingIgnoreCase, state.argIndex, conditions, state.nextCombinator, state);
+            state.argIndex = finalizeCondition(state.pendingProperty, state.pendingOperatorValue,
+                    state.pendingIgnoreCase, state.argIndex, conditions, state.nextCombinator, state);
         }
 
         // Finalize OrderBy
         if (state.inOrderBy && state.pendingProperty != null) {
             if (state.orderByDirection != null) {
-                orderBy = new LogicalQuery.OrderBy[]{
-                    LogicalQuery.OrderBy.of(state.pendingProperty, state.orderByDirection)
+                orderBy = new LogicalQuery.OrderBy[] {
+                        LogicalQuery.OrderBy.of(state.pendingProperty, state.orderByDirection)
                 };
             } else {
-                orderBy = new LogicalQuery.OrderBy[]{
-                    LogicalQuery.OrderBy.asc(state.pendingProperty)
+                orderBy = new LogicalQuery.OrderBy[] {
+                        LogicalQuery.OrderBy.asc(state.pendingProperty)
                 };
             }
         }
@@ -320,16 +327,16 @@ public final class QueryPlanner {
         OpCode opCode = determineOpCodeForDerived(parseName, returnKind);
 
         return LogicalQuery.of(opCode, returnKind,
-                               conditions.toArray(new LogicalQuery.Condition[0]),
-                               new LogicalQuery.UpdateAssignment[0],
-                               null,
-                               new LogicalQuery.Join[0],
-                               orderBy,
-                               limitParse.limit(),
-                               distinct,
-                               new Object[0],
-                               new int[0],
-                               state.argIndex);
+                conditions.toArray(new LogicalQuery.Condition[0]),
+                new LogicalQuery.UpdateAssignment[0],
+                null,
+                new LogicalQuery.Join[0],
+                orderBy,
+                limitParse.limit(),
+                distinct,
+                new Object[0],
+                new int[0],
+                state.argIndex);
     }
 
     /**
@@ -361,17 +368,18 @@ public final class QueryPlanner {
      * - Other operators consume 1 parameter
      */
     private static int finalizeCondition(String propertyPath, String operatorValue,
-                                       boolean ignoreCase, int argIndex,
-                                       List<LogicalQuery.Condition> conditions,
-                                       LogicalQuery.Combinator combinator,
-                                       ParseState state) {
+            boolean ignoreCase, int argIndex,
+            List<LogicalQuery.Condition> conditions,
+            LogicalQuery.Combinator combinator,
+            ParseState state) {
         LogicalQuery.Operator operator = (operatorValue == null)
                 ? LogicalQuery.Operator.EQ
                 : mapToOperator(operatorValue, ignoreCase);
 
         conditions.add(LogicalQuery.Condition.of(propertyPath, operator, argIndex, ignoreCase, combinator));
 
-        // Reset combinator to default (AND) after using it - each combinator only applies once
+        // Reset combinator to default (AND) after using it - each combinator only
+        // applies once
         if (state != null) {
             state.nextCombinator = LogicalQuery.Combinator.AND;
         }
@@ -388,13 +396,14 @@ public final class QueryPlanner {
      * Handle a PROPERTY_PATH token.
      */
     private static void handlePropertyToken(QueryMethodToken token, ParseState state,
-                                            String methodName, List<LogicalQuery.Condition> conditions) {
+            String methodName, List<LogicalQuery.Condition> conditions) {
         state.hasPropertyAfterBy = true;
         if (state.inOrderBy) {
             state.pendingProperty = token.value();
         } else if (state.pendingProperty != null) {
             validatePropertyAfterOperator(state.pendingOperatorValue, methodName, token.value());
-            state.argIndex = finalizeCondition(state.pendingProperty, state.pendingOperatorValue, state.pendingIgnoreCase, state.argIndex, conditions, state.nextCombinator, state);
+            state.argIndex = finalizeCondition(state.pendingProperty, state.pendingOperatorValue,
+                    state.pendingIgnoreCase, state.argIndex, conditions, state.nextCombinator, state);
             state.pendingProperty = token.value();
             state.pendingOperatorValue = null;
             state.pendingIgnoreCase = false;
@@ -409,12 +418,13 @@ public final class QueryPlanner {
      * Handle an OPERATOR token.
      */
     private static void handleOperatorToken(QueryMethodToken token, ParseState state,
-                                            String methodName, List<LogicalQuery.Condition> conditions) {
+            String methodName, List<LogicalQuery.Condition> conditions) {
         String value = token.value();
         if (value.equals("OrderBy")) {
             state.inOrderBy = true;
             if (state.pendingProperty != null) {
-                state.argIndex = finalizeCondition(state.pendingProperty, state.pendingOperatorValue, state.pendingIgnoreCase, state.argIndex, conditions, state.nextCombinator, state);
+                state.argIndex = finalizeCondition(state.pendingProperty, state.pendingOperatorValue,
+                        state.pendingIgnoreCase, state.argIndex, conditions, state.nextCombinator, state);
                 state.pendingProperty = null;
                 state.pendingOperatorValue = null;
                 state.pendingIgnoreCase = false;
@@ -433,15 +443,16 @@ public final class QueryPlanner {
      * Handle an AND or OR combinator token.
      */
     private static void handleCombinatorToken(QueryMethodTokenType tokenType, ParseState state, String methodName,
-                                               List<LogicalQuery.Condition> conditions) {
+            List<LogicalQuery.Condition> conditions) {
         validateNoConsecutiveCombinators(state.lastTokenWasCombinator, methodName);
         // Set combinator for the next condition
-        state.nextCombinator = (tokenType == QueryMethodTokenType.AND) 
-            ? LogicalQuery.Combinator.AND 
-            : LogicalQuery.Combinator.OR;
+        state.nextCombinator = (tokenType == QueryMethodTokenType.AND)
+                ? LogicalQuery.Combinator.AND
+                : LogicalQuery.Combinator.OR;
         if (state.pendingProperty != null) {
             // Finalize current condition with the combinator that follows it
-            state.argIndex = finalizeCondition(state.pendingProperty, state.pendingOperatorValue, state.pendingIgnoreCase, state.argIndex, conditions, state.nextCombinator, state);
+            state.argIndex = finalizeCondition(state.pendingProperty, state.pendingOperatorValue,
+                    state.pendingIgnoreCase, state.argIndex, conditions, state.nextCombinator, state);
             state.pendingProperty = null;
             state.pendingOperatorValue = null;
             state.pendingIgnoreCase = false;
@@ -457,7 +468,8 @@ public final class QueryPlanner {
      */
     private static void validateNoConsecutiveCombinators(boolean lastTokenWasCombinator, String methodName) {
         if (lastTokenWasCombinator) {
-            throw new IllegalArgumentException("Invalid query method '%s': consecutive combinators (And/Or)".formatted(methodName));
+            throw new IllegalArgumentException(
+                    "Invalid query method '%s': consecutive combinators (And/Or)".formatted(methodName));
         }
     }
 
@@ -465,19 +477,23 @@ public final class QueryPlanner {
      * Validate that there are no consecutive operators.
      */
     private static void validateNoConsecutiveOperators(boolean lastTokenWasOperator, String pendingOperatorValue,
-                                                        String methodName, String value) {
+            String methodName, String value) {
         if (lastTokenWasOperator && pendingOperatorValue != null) {
-            throw new IllegalArgumentException("Invalid query method '%s': consecutive operators '%s' and '%s'".formatted(methodName, pendingOperatorValue, value));
+            throw new IllegalArgumentException("Invalid query method '%s': consecutive operators '%s' and '%s'"
+                    .formatted(methodName, pendingOperatorValue, value));
         }
     }
 
     /**
-     * Validate that a property doesn't appear after an operator without a combinator.
+     * Validate that a property doesn't appear after an operator without a
+     * combinator.
      */
     private static void validatePropertyAfterOperator(String pendingOperatorValue, String methodName,
-                                                      String property) {
+            String property) {
         if (pendingOperatorValue != null) {
-            throw new IllegalArgumentException("Invalid query method '%s': property '%s' appears after operator '%s' without combinator (And/Or)".formatted(methodName, property, pendingOperatorValue));
+            throw new IllegalArgumentException(
+                    "Invalid query method '%s': property '%s' appears after operator '%s' without combinator (And/Or)"
+                            .formatted(methodName, property, pendingOperatorValue));
         }
     }
 
@@ -486,7 +502,8 @@ public final class QueryPlanner {
      */
     private static void validateHasPropertyAfterBy(boolean hasPropertyAfterBy, boolean inOrderBy, String methodName) {
         if (!hasPropertyAfterBy && !inOrderBy) {
-            throw new IllegalArgumentException("Invalid query method '%s': no property specified after 'By'".formatted(methodName));
+            throw new IllegalArgumentException(
+                    "Invalid query method '%s': no property specified after 'By'".formatted(methodName));
         }
     }
 
@@ -495,7 +512,9 @@ public final class QueryPlanner {
      */
     private static void validateNotEndingWithCombinator(boolean lastTokenWasCombinator, String methodName) {
         if (lastTokenWasCombinator) {
-            throw new IllegalArgumentException("Invalid query method '%s': method ends with combinator (And/Or) without property".formatted(methodName));
+            throw new IllegalArgumentException(
+                    "Invalid query method '%s': method ends with combinator (And/Or) without property"
+                            .formatted(methodName));
         }
     }
 
@@ -504,14 +523,16 @@ public final class QueryPlanner {
      */
     private static void validateOrderByHasProperty(boolean inOrderBy, String pendingProperty, String methodName) {
         if (inOrderBy && pendingProperty == null) {
-            throw new IllegalArgumentException("Invalid query method '%s': OrderBy specified without property".formatted(methodName));
+            throw new IllegalArgumentException(
+                    "Invalid query method '%s': OrderBy specified without property".formatted(methodName));
         }
     }
 
     /**
      * Determines the return kind based on method name pattern and return type.
      * <p>
-     * Uses pattern matching on method name (same approach as QueryMethodLexer.classifyOperation)
+     * Uses pattern matching on method name (same approach as
+     * QueryMethodLexer.classifyOperation)
      * to support both query and CRUD operations dynamically.
      */
     private static LogicalQuery.ReturnKind determineReturnKind(String methodName, Class<?> returnType, int paramCount) {
@@ -522,26 +543,31 @@ public final class QueryPlanner {
 
         return switch (prefix.toLowerCase()) {
             case "find", "read", "query", "get" -> {
-                if (isAll || remaining.isEmpty()) yield LogicalQuery.ReturnKind.MANY_LIST; // findAll()
+                if (isAll || remaining.isEmpty())
+                    yield LogicalQuery.ReturnKind.MANY_LIST; // findAll()
                 if (hasBy) {
                     // findById() vs findByXxx()
                     yield returnType.equals(java.util.Optional.class)
-                        ? LogicalQuery.ReturnKind.ONE_OPTIONAL
-                        : LogicalQuery.ReturnKind.MANY_LIST;
+                            ? LogicalQuery.ReturnKind.ONE_OPTIONAL
+                            : LogicalQuery.ReturnKind.MANY_LIST;
                 }
                 throw new IllegalArgumentException("Invalid find method: " + methodName);
             }
-            case "count" -> LogicalQuery.ReturnKind.COUNT_LONG;  // count() or countByXxx()
-            case "exists" -> LogicalQuery.ReturnKind.EXISTS_BOOL;  // existsByXxx()
+            case "count" -> LogicalQuery.ReturnKind.COUNT_LONG; // count() or countByXxx()
+            case "exists" -> LogicalQuery.ReturnKind.EXISTS_BOOL; // existsByXxx()
             case "delete" -> {
-                if (hasBy && remaining.startsWith("ById")) yield LogicalQuery.ReturnKind.DELETE_BY_ID;
-                if (hasBy) yield LogicalQuery.ReturnKind.MANY_LIST;  // deleteByXxx()
-                if (isAll) yield LogicalQuery.ReturnKind.DELETE_ALL;  // deleteAll()
-                yield LogicalQuery.ReturnKind.DELETE;  // delete(T)
+                if (hasBy && remaining.startsWith("ById"))
+                    yield LogicalQuery.ReturnKind.DELETE_BY_ID;
+                if (hasBy)
+                    yield LogicalQuery.ReturnKind.MANY_LIST; // deleteByXxx()
+                if (isAll)
+                    yield LogicalQuery.ReturnKind.DELETE_ALL; // deleteAll()
+                yield LogicalQuery.ReturnKind.DELETE; // delete(T)
             }
             case "save" -> {
-                if (isAll) yield LogicalQuery.ReturnKind.SAVE_ALL;  // saveAll()
-                yield LogicalQuery.ReturnKind.SAVE;  // save()
+                if (isAll)
+                    yield LogicalQuery.ReturnKind.SAVE_ALL; // saveAll()
+                yield LogicalQuery.ReturnKind.SAVE; // save()
             }
             default -> throw new IllegalArgumentException("Unknown prefix: " + prefix);
         };
@@ -613,7 +639,8 @@ public final class QueryPlanner {
         return new DistinctParseResult(false, methodName);
     }
 
-    private static LimitParseResult parseLimitAfterPrefix(String methodName, String prefix, String remaining, int keywordLength) {
+    private static LimitParseResult parseLimitAfterPrefix(String methodName, String prefix, String remaining,
+            int keywordLength) {
         int idx = keywordLength;
         int startDigits = idx;
         while (idx < remaining.length() && Character.isDigit(remaining.charAt(idx))) {
@@ -632,7 +659,7 @@ public final class QueryPlanner {
      * <p>
      * Uses the QueryOperator enum for fast, type-safe mapping.
      *
-     * @param operator the operator keyword from the method name
+     * @param operator   the operator keyword from the method name
      * @param ignoreCase whether to use case-insensitive matching
      * @return the corresponding LogicalQuery.Operator
      * @throws IllegalArgumentException if the operator is unknown
@@ -665,7 +692,7 @@ public final class QueryPlanner {
             case FIND_BY_ID -> LogicalQuery.of(
                     op,
                     LogicalQuery.ReturnKind.ONE_OPTIONAL,
-                    new LogicalQuery.Condition[]{LogicalQuery.Condition.idCondition(0)},
+                    new LogicalQuery.Condition[] { LogicalQuery.Condition.idCondition(0) },
                     null,
                     arity);
 
@@ -679,11 +706,11 @@ public final class QueryPlanner {
             case FIND_ALL_BY_ID -> LogicalQuery.of(
                     op,
                     LogicalQuery.ReturnKind.MANY_LIST,
-                    new LogicalQuery.Condition[]{
-                        LogicalQuery.Condition.of(
-                            LogicalQuery.Condition.ID_PROPERTY,
-                            LogicalQuery.Operator.IN,
-                            0)
+                    new LogicalQuery.Condition[] {
+                            LogicalQuery.Condition.of(
+                                    LogicalQuery.Condition.ID_PROPERTY,
+                                    LogicalQuery.Operator.IN,
+                                    0)
                     },
                     null,
                     arity);
@@ -691,7 +718,7 @@ public final class QueryPlanner {
             case EXISTS_BY_ID -> LogicalQuery.of(
                     op,
                     LogicalQuery.ReturnKind.EXISTS_BOOL,
-                    new LogicalQuery.Condition[]{LogicalQuery.Condition.idCondition(0)},
+                    new LogicalQuery.Condition[] { LogicalQuery.Condition.idCondition(0) },
                     null,
                     arity);
 
@@ -726,18 +753,18 @@ public final class QueryPlanner {
             case DELETE_BY_ID -> LogicalQuery.of(
                     op,
                     LogicalQuery.ReturnKind.DELETE_BY_ID,
-                    new LogicalQuery.Condition[]{LogicalQuery.Condition.idCondition(0)},
+                    new LogicalQuery.Condition[] { LogicalQuery.Condition.idCondition(0) },
                     null,
                     arity);
 
             case DELETE_ALL_BY_ID -> LogicalQuery.of(
                     op,
                     LogicalQuery.ReturnKind.MANY_LIST,
-                    new LogicalQuery.Condition[]{
-                        LogicalQuery.Condition.of(
-                            LogicalQuery.Condition.ID_PROPERTY,
-                            LogicalQuery.Operator.IN,
-                            0)
+                    new LogicalQuery.Condition[] {
+                            LogicalQuery.Condition.of(
+                                    LogicalQuery.Condition.ID_PROPERTY,
+                                    LogicalQuery.Operator.IN,
+                                    0)
                     },
                     null,
                     arity);

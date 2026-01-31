@@ -30,8 +30,8 @@
         
         <!-- Code Quality Tools -->
         <spotbugs.version>4.8.3.1</spotbugs.version>
-        <checkstyle.version>3.3.1</checkstyle.version>
-        <pmd.version>3.21.2</pmd.version>
+        <checkstyle.version>3.4.0</checkstyle.version>
+        <pmd.version>3.26.0</pmd.version>
     </properties>
 
     <modules>
@@ -155,7 +155,7 @@
                         <xmlOutput>true</xmlOutput>
                         <htmlOutput>true</htmlOutput>
                         <spotbugsXmlOutputDirectory>${project.build.directory}/spotbugs</spotbugsXmlOutputDirectory>
-                        <excludeFilterFile>${project.parent.basedir}/spotbugs-exclude.xml</excludeFilterFile>
+                        <excludeFilterFile>${maven.multiModuleProjectDirectory}/spotbugs-exclude.xml</excludeFilterFile>
                     </configuration>
                     <executions>
                         <execution>
@@ -172,11 +172,18 @@
                     <artifactId>maven-checkstyle-plugin</artifactId>
                     <version>${checkstyle.version}</version>
                     <configuration>
-                        <configLocation>${project.parent.basedir}/checkstyle.xml</configLocation>
+                        <configLocation>${maven.multiModuleProjectDirectory}/checkstyle.xml</configLocation>
                         <consoleOutput>true</consoleOutput>
                         <failsOnError>true</failsOnError>
                         <linkXRef>false</linkXRef>
                     </configuration>
+                    <dependencies>
+                        <dependency>
+                            <groupId>com.puppycrawl.tools</groupId>
+                            <artifactId>checkstyle</artifactId>
+                            <version>10.14.2</version>
+                        </dependency>
+                    </dependencies>
                     <executions>
                         <execution>
                             <id>validate</id>
@@ -195,7 +202,7 @@
                     <version>${pmd.version}</version>
                     <configuration>
                         <rulesets>
-                            <ruleset>${project.parent.basedir}/pmd-rules.xml</ruleset>
+                            <ruleset>${maven.multiModuleProjectDirectory}/pmd-rules.xml</ruleset>
                         </rulesets>
                         <printFailingErrors>true</printFailingErrors>
                         <failOnViolation>true</failOnViolation>

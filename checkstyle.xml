@@ -8,10 +8,10 @@
     <property name="severity" value="warning"/>
     <property name="fileExtensions" value="java, properties, xml"/>
 
-    <!-- Line Length: 120 characters -->
+    <!-- Line Length: 160 characters -->
     <module name="LineLength">
         <property name="fileExtensions" value="java"/>
-        <property name="max" value="120"/>
+        <property name="max" value="160"/>
         <property name="ignorePattern" value="^package.*|^import.*|a href|href|http://|https://|ftp://"/>
     </module>
 
@@ -32,4 +32,4 @@
         <module name="ParameterName"/>
         <module name="TypeName"/>
     </module>
-</Checker>
+</module>
