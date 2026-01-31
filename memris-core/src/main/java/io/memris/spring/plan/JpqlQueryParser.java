@@ -67,18 +67,50 @@ public final class JpqlQueryParser {
         int[] parameterIndices = bindingContext.parameterIndices();
         int arity = parameterIndices.length;
 
+        // Extract limit from method name (e.g., findTop3By...)
+        int limit = parseLimitFromMethodName(method.getName());
+
         return LogicalQuery.of(
             opCode,
             returnKind,
             conditions,
             joins,
             orderBy,
-            0,
+            limit,
             ast.distinct(),
             boundValues,
             parameterIndices,
             arity
         );
+    }
+
+    private static int parseLimitFromMethodName(String methodName) {
+        // Check for TopN or FirstN patterns (similar to QueryPlanner)
+        String[] prefixes = {"find", "read", "query", "get", "search"};
+        for (String prefix : prefixes) {
+            if (methodName.startsWith(prefix)) {
+                String remaining = methodName.substring(prefix.length());
+                if (remaining.startsWith("Top")) {
+                    return extractNumber(remaining, 3);
+                }
+                if (remaining.startsWith("First")) {
+                    return extractNumber(remaining, 5);
+                }
+            }
+        }
+        return 0;
+    }
+
+    private static int extractNumber(String str, int prefixLength) {
+        int idx = prefixLength;
+        int start = idx;
+        while (idx < str.length() && Character.isDigit(str.charAt(idx))) {
+            idx++;
+        }
+        if (idx > start) {
+            return Integer.parseInt(str.substring(start, idx));
+        }
+        return 1; // First or Top without number defaults to 1
     }
 
     private static LogicalQuery.ReturnKind resolveReturnKind(Method method) {

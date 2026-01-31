@@ -377,9 +377,15 @@ public final class RepositoryRuntime<T> {
         if (query.distinct()) {
             rows = distinctRows(rows);
         }
-        rows = applyOrderBy(query, rows);
 
         int limit = query.limit();
+        // Use top-k optimization when limit is small relative to result set
+        if (limit > 0 && limit < rows.length && query.orderBy() != null && query.orderBy().length > 0) {
+            rows = applyTopKOrderBy(query, rows, limit);
+        } else {
+            rows = applyOrderBy(query, rows);
+        }
+
         int max = (limit > 0 && limit < rows.length) ? limit : rows.length;
 
         List<T> results = new ArrayList<>(max);
@@ -812,6 +818,244 @@ public final class RepositoryRuntime<T> {
         };
     }
 
+    private int[] applyTopKOrderBy(CompiledQuery query, int[] rows, int k) {
+        CompiledQuery.CompiledOrderBy[] orderBy = query.orderBy();
+        if (orderBy.length == 1) {
+            return topKSingleColumn(rows, orderBy[0], k);
+        }
+        // For multi-column, fall back to full sort then limit (optimization: could use bounded heap)
+        rows = sortByMultipleColumns(rows, orderBy);
+        if (k < rows.length) {
+            int[] limited = new int[k];
+            System.arraycopy(rows, 0, limited, 0, k);
+            return limited;
+        }
+        return rows;
+    }
+
+    private int[] topKSingleColumn(int[] rows, CompiledQuery.CompiledOrderBy orderBy, int k) {
+        int columnIndex = orderBy.columnIndex();
+        boolean ascending = orderBy.ascending();
+        byte typeCode = plan.table().typeCodeAt(columnIndex);
+
+        return switch (typeCode) {
+            case TypeCodes.TYPE_INT,
+                TypeCodes.TYPE_BOOLEAN,
+                TypeCodes.TYPE_BYTE,
+                TypeCodes.TYPE_SHORT,
+                TypeCodes.TYPE_CHAR -> topKInt(rows, columnIndex, ascending, k);
+            case TypeCodes.TYPE_LONG,
+                TypeCodes.TYPE_INSTANT,
+                TypeCodes.TYPE_LOCAL_DATE,
+                TypeCodes.TYPE_LOCAL_DATE_TIME,
+                TypeCodes.TYPE_DATE -> topKLong(rows, columnIndex, ascending, k);
+            case TypeCodes.TYPE_STRING,
+                TypeCodes.TYPE_BIG_DECIMAL,
+                TypeCodes.TYPE_BIG_INTEGER -> topKString(rows, columnIndex, ascending, k);
+            default -> {
+                // Fall back to full sort for unsupported types
+                int[] sorted = sortBySingleColumn(rows, orderBy);
+                if (k < sorted.length) {
+                    int[] limited = new int[k];
+                    System.arraycopy(sorted, 0, limited, 0, k);
+                    yield limited;
+                }
+                yield sorted;
+            }
+        };
+    }
+
+    private int[] topKInt(int[] rows, int columnIndex, boolean ascending, int k) {
+        GeneratedTable table = plan.table();
+        // Use quickselect-like approach: partial sort to find top k
+        int[] result = rows.clone();
+        int[] keys = new int[result.length];
+        boolean[] present = new boolean[result.length];
+        for (int i = 0; i < result.length; i++) {
+            int row = result[i];
+            present[i] = table.isPresent(columnIndex, row);
+            keys[i] = table.readInt(columnIndex, row);
+        }
+        // Use heap-based selection for top-k
+        topKHeapInt(result, keys, present, k, ascending);
+        // Sort the top k results
+        quickSortInt(result, keys, present, 0, k - 1, ascending);
+        // Trim to k elements
+        int[] trimmed = new int[k];
+        System.arraycopy(result, 0, trimmed, 0, k);
+        return trimmed;
+    }
+
+    private void topKHeapInt(int[] rows, int[] keys, boolean[] present, int k, boolean ascending) {
+        // Build a max-heap (if ascending) or min-heap (if descending) for the first k elements
+        // Then for remaining elements, compare with heap root and replace if better
+        int n = rows.length;
+        // Build heap for first k elements
+        for (int i = k / 2 - 1; i >= 0; i--) {
+            heapifyInt(rows, keys, present, i, k, ascending);
+        }
+        // Process remaining elements
+        for (int i = k; i < n; i++) {
+            int rootCompare = compareIntForTopK(keys[i], present[i], keys[0], present[0], ascending);
+            if (rootCompare < 0) {
+                // Current element is better than heap root, replace it
+                rows[0] = rows[i];
+                keys[0] = keys[i];
+                present[0] = present[i];
+                heapifyInt(rows, keys, present, 0, k, ascending);
+            }
+        }
+    }
+
+    private void heapifyInt(int[] rows, int[] keys, boolean[] present, int i, int size, boolean maxHeap) {
+        int largest = i;
+        int left = 2 * i + 1;
+        int right = 2 * i + 2;
+
+        if (left < size && compareIntForTopK(keys[left], present[left], keys[largest], present[largest], maxHeap) > 0) {
+            largest = left;
+        }
+        if (right < size && compareIntForTopK(keys[right], present[right], keys[largest], present[largest], maxHeap) > 0) {
+            largest = right;
+        }
+
+        if (largest != i) {
+            swap(rows, i, largest);
+            swap(keys, i, largest);
+            swap(present, i, largest);
+            heapifyInt(rows, keys, present, largest, size, maxHeap);
+        }
+    }
+
+    private int compareIntForTopK(int keyA, boolean presentA, int keyB, boolean presentB, boolean ascending) {
+        int cmp = compareNullable(presentA, presentB);
+        if (cmp == 0) {
+            cmp = Integer.compare(keyA, keyB);
+        }
+        return ascending ? cmp : -cmp;
+    }
+
+    private int[] topKLong(int[] rows, int columnIndex, boolean ascending, int k) {
+        GeneratedTable table = plan.table();
+        int[] result = rows.clone();
+        long[] keys = new long[result.length];
+        boolean[] present = new boolean[result.length];
+        for (int i = 0; i < result.length; i++) {
+            int row = result[i];
+            present[i] = table.isPresent(columnIndex, row);
+            keys[i] = table.readLong(columnIndex, row);
+        }
+        topKHeapLong(result, keys, present, k, ascending);
+        quickSortLong(result, keys, present, 0, k - 1, ascending);
+        int[] trimmed = new int[k];
+        System.arraycopy(result, 0, trimmed, 0, k);
+        return trimmed;
+    }
+
+    private void topKHeapLong(int[] rows, long[] keys, boolean[] present, int k, boolean ascending) {
+        int n = rows.length;
+        for (int i = k / 2 - 1; i >= 0; i--) {
+            heapifyLong(rows, keys, present, i, k, ascending);
+        }
+        for (int i = k; i < n; i++) {
+            int rootCompare = compareLongForTopK(keys[i], present[i], keys[0], present[0], ascending);
+            if (rootCompare < 0) {
+                rows[0] = rows[i];
+                keys[0] = keys[i];
+                present[0] = present[i];
+                heapifyLong(rows, keys, present, 0, k, ascending);
+            }
+        }
+    }
+
+    private void heapifyLong(int[] rows, long[] keys, boolean[] present, int i, int size, boolean maxHeap) {
+        int largest = i;
+        int left = 2 * i + 1;
+        int right = 2 * i + 2;
+
+        if (left < size && compareLongForTopK(keys[left], present[left], keys[largest], present[largest], maxHeap) > 0) {
+            largest = left;
+        }
+        if (right < size && compareLongForTopK(keys[right], present[right], keys[largest], present[largest], maxHeap) > 0) {
+            largest = right;
+        }
+
+        if (largest != i) {
+            swap(rows, i, largest);
+            swap(keys, i, largest);
+            swap(present, i, largest);
+            heapifyLong(rows, keys, present, largest, size, maxHeap);
+        }
+    }
+
+    private int compareLongForTopK(long keyA, boolean presentA, long keyB, boolean presentB, boolean ascending) {
+        int cmp = compareNullable(presentA, presentB);
+        if (cmp == 0) {
+            cmp = Long.compare(keyA, keyB);
+        }
+        return ascending ? cmp : -cmp;
+    }
+
+    private int[] topKString(int[] rows, int columnIndex, boolean ascending, int k) {
+        GeneratedTable table = plan.table();
+        int[] result = rows.clone();
+        String[] keys = new String[result.length];
+        for (int i = 0; i < result.length; i++) {
+            keys[i] = table.readString(columnIndex, result[i]);
+        }
+        topKHeapString(result, keys, k, ascending);
+        quickSortString(result, keys, 0, k - 1, ascending);
+        int[] trimmed = new int[k];
+        System.arraycopy(result, 0, trimmed, 0, k);
+        return trimmed;
+    }
+
+    private void topKHeapString(int[] rows, String[] keys, int k, boolean ascending) {
+        int n = rows.length;
+        for (int i = k / 2 - 1; i >= 0; i--) {
+            heapifyString(rows, keys, i, k, ascending);
+        }
+        for (int i = k; i < n; i++) {
+            int rootCompare = compareStringForTopK(keys[i], keys[0], ascending);
+            if (rootCompare < 0) {
+                rows[0] = rows[i];
+                keys[0] = keys[i];
+                heapifyString(rows, keys, 0, k, ascending);
+            }
+        }
+    }
+
+    private void heapifyString(int[] rows, String[] keys, int i, int size, boolean maxHeap) {
+        int largest = i;
+        int left = 2 * i + 1;
+        int right = 2 * i + 2;
+
+        if (left < size && compareStringForTopK(keys[left], keys[largest], maxHeap) > 0) {
+            largest = left;
+        }
+        if (right < size && compareStringForTopK(keys[right], keys[largest], maxHeap) > 0) {
+            largest = right;
+        }
+
+        if (largest != i) {
+            swap(rows, i, largest);
+            swap(keys, i, largest);
+            heapifyString(rows, keys, largest, size, maxHeap);
+        }
+    }
+
+    private int compareStringForTopK(String keyA, String keyB, boolean ascending) {
+        int cmp = compareStringValue(keyA, keyB);
+        return ascending ? cmp : -cmp;
+    }
+
+    private int compareStringValue(String a, String b) {
+        if (a == null && b == null) return 0;
+        if (a == null) return 1; // nulls last
+        if (b == null) return -1;
+        return a.compareTo(b);
+    }
+
     private int[] sortByMultipleColumns(int[] rows, CompiledQuery.CompiledOrderBy[] orderBy) {
         int[] result = rows.clone();
         OrderKey[] keys = buildOrderKeys(result, orderBy);
@@ -1006,6 +1250,31 @@ public final class RepositoryRuntime<T> {
             }
             return left.compareTo(right);
         }
+    }
+
+    private int[] sortBySingleColumn(int[] rows, CompiledQuery.CompiledOrderBy orderBy) {
+        int columnIndex = orderBy.columnIndex();
+        boolean ascending = orderBy.ascending();
+        byte typeCode = plan.table().typeCodeAt(columnIndex);
+
+        return switch (typeCode) {
+            case TypeCodes.TYPE_INT,
+                TypeCodes.TYPE_BOOLEAN,
+                TypeCodes.TYPE_BYTE,
+                TypeCodes.TYPE_SHORT,
+                TypeCodes.TYPE_CHAR -> sortByIntColumn(rows, columnIndex, ascending);
+            case TypeCodes.TYPE_LONG,
+                TypeCodes.TYPE_INSTANT,
+                TypeCodes.TYPE_LOCAL_DATE,
+                TypeCodes.TYPE_LOCAL_DATE_TIME,
+                TypeCodes.TYPE_DATE -> sortByLongColumn(rows, columnIndex, ascending);
+            case TypeCodes.TYPE_FLOAT -> sortByFloatColumn(rows, columnIndex, ascending);
+            case TypeCodes.TYPE_DOUBLE -> sortByDoubleColumn(rows, columnIndex, ascending);
+            case TypeCodes.TYPE_STRING,
+                TypeCodes.TYPE_BIG_DECIMAL,
+                TypeCodes.TYPE_BIG_INTEGER -> sortByStringColumn(rows, columnIndex, ascending);
+            default -> throw new IllegalArgumentException("Unsupported type for sorting: " + typeCode);
+        };
     }
 
     private int[] sortByIntColumn(int[] rows, int columnIndex, boolean ascending) {
