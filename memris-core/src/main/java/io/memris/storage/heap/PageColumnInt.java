@@ -156,6 +156,69 @@ public final class PageColumnInt {
     }
 
     /**
+     * Scan for values less than target.
+     *
+     * @param target  the target value
+     * @param limit   maximum offset to scan (published count)
+     * @return array of matching offsets
+     */
+    public int[] scanLessThan(int target, int limit) {
+        int count = Math.min(published, limit);
+        int[] results = new int[count];
+        int found = 0;
+
+        for (int i = 0; i < count; i++) {
+            if (present[i] != 0 && data[i] < target) {
+                results[found++] = i;
+            }
+        }
+
+        return trimResults(results, found);
+    }
+
+    /**
+     * Scan for values greater than or equal to target.
+     *
+     * @param target  the target value
+     * @param limit   maximum offset to scan (published count)
+     * @return array of matching offsets
+     */
+    public int[] scanGreaterThanOrEqual(int target, int limit) {
+        int count = Math.min(published, limit);
+        int[] results = new int[count];
+        int found = 0;
+
+        for (int i = 0; i < count; i++) {
+            if (present[i] != 0 && data[i] >= target) {
+                results[found++] = i;
+            }
+        }
+
+        return trimResults(results, found);
+    }
+
+    /**
+     * Scan for values less than or equal to target.
+     *
+     * @param target  the target value
+     * @param limit   maximum offset to scan (published count)
+     * @return array of matching offsets
+     */
+    public int[] scanLessThanOrEqual(int target, int limit) {
+        int count = Math.min(published, limit);
+        int[] results = new int[count];
+        int found = 0;
+
+        for (int i = 0; i < count; i++) {
+            if (present[i] != 0 && data[i] <= target) {
+                results[found++] = i;
+            }
+        }
+
+        return trimResults(results, found);
+    }
+
+    /**
      * Scan for values in range [lower, upper] (inclusive).
      *
      * @param lower   lower bound (inclusive)
@@ -180,27 +243,31 @@ public final class PageColumnInt {
 
     /**
      * Scan for values IN a collection.
+     * <p>
+     * Uses HashSet for O(1) target lookup instead of O(n*m) nested loop.
      *
      * @param targets the target values
      * @param limit   maximum offset to scan (published count)
      * @return array of matching offsets
      */
     public int[] scanIn(int[] targets, int limit) {
-        int count = Math.min(published, limit);
+        if (targets == null || targets.length == 0) {
+            return new int[0];
+        }
 
+        // Use HashSet for O(1) lookup - more efficient for large target sets
+        java.util.HashSet<Integer> targetSet = new java.util.HashSet<>(targets.length * 2);
+        for (int target : targets) {
+            targetSet.add(target);
+        }
+
+        int count = Math.min(published, limit);
         int[] results = new int[count];
         int found = 0;
 
         for (int i = 0; i < count; i++) {
-            if (present[i] == 0) {
-                continue;
-            }
-            int value = data[i];
-            for (int target : targets) {
-                if (value == target) {
-                    results[found++] = i;
-                    break;
-                }
+            if (present[i] != 0 && targetSet.contains(data[i])) {
+                results[found++] = i;
             }
         }
 
