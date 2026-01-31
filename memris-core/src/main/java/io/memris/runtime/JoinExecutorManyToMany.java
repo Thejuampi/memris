@@ -99,7 +99,6 @@ public final class JoinExecutorManyToMany implements JoinExecutor<Object, Object
             return new SelectionImpl(new long[0]);
         }
 
-        long gen = sourceTable.currentGeneration();
         if (sourceSelection == null) {
             int[] rows = sourceTable.scanAll();
             long[] packed = new long[rows.length];
@@ -110,7 +109,7 @@ public final class JoinExecutorManyToMany implements JoinExecutor<Object, Object
                 }
                 Object sourceId = readId(sourceTable, sourceIdColumnIndex, sourceIdTypeCode, row);
                 if (sourceId != null && allowedSources.contains(sourceId)) {
-                    packed[count++] = io.memris.storage.Selection.pack(row, gen);
+                    packed[count++] = io.memris.storage.Selection.pack(row, sourceTable.rowGeneration(row));
                 }
             }
             return new SelectionImpl(trim(packed, count));
@@ -129,7 +128,7 @@ public final class JoinExecutorManyToMany implements JoinExecutor<Object, Object
             }
             Object sourceId = readId(sourceTable, sourceIdColumnIndex, sourceIdTypeCode, row);
             if (sourceId != null && allowedSources.contains(sourceId)) {
-                packed[count++] = io.memris.storage.Selection.pack(row, gen);
+                packed[count++] = io.memris.storage.Selection.pack(row, sourceTable.rowGeneration(row));
             }
         }
         return new SelectionImpl(trim(packed, count));
@@ -149,9 +148,9 @@ public final class JoinExecutorManyToMany implements JoinExecutor<Object, Object
     private Selection selectAll(GeneratedTable table) {
         int[] rows = table.scanAll();
         long[] packed = new long[rows.length];
-        long gen = table.currentGeneration();
         for (int i = 0; i < rows.length; i++) {
-            packed[i] = io.memris.storage.Selection.pack(rows[i], gen);
+            int rowIndex = rows[i];
+            packed[i] = io.memris.storage.Selection.pack(rowIndex, table.rowGeneration(rowIndex));
         }
         return new SelectionImpl(packed);
     }

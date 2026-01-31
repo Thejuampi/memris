@@ -292,9 +292,9 @@ public final class HeapRuntimeKernel {
 
     private Selection subtractSelections(int[] allRows, Selection toRemove) {
         long[] packed = new long[allRows.length];
-        long gen = table.currentGeneration();
         for (int i = 0; i < allRows.length; i++) {
-            packed[i] = io.memris.storage.Selection.pack(allRows[i], gen);
+            int rowIndex = allRows[i];
+            packed[i] = io.memris.storage.Selection.pack(rowIndex, table.rowGeneration(rowIndex));
         }
         return new io.memris.storage.SelectionImpl(packed).subtract(toRemove);
     }
@@ -311,9 +311,9 @@ public final class HeapRuntimeKernel {
 
     private Selection createSelection(GeneratedTable table, int[] indices) {
         long[] packed = new long[indices.length];
-        long gen = table.currentGeneration();
         for (int i = 0; i < indices.length; i++) {
-            packed[i] = io.memris.storage.Selection.pack(indices[i], gen);
+            int rowIndex = indices[i];
+            packed[i] = io.memris.storage.Selection.pack(rowIndex, table.rowGeneration(rowIndex));
         }
         return new io.memris.storage.SelectionImpl(packed);
     }

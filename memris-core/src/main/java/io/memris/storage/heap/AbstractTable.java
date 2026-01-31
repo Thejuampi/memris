@@ -6,6 +6,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicIntegerArray;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicLongArray;
+import java.util.concurrent.locks.LockSupport;
 
 /**
  * Base class for generated tables with typed column storage.
@@ -39,7 +40,7 @@ public abstract class AbstractTable {
 
     // Generation tracking for stale ref detection
     private final AtomicLong globalGeneration = new AtomicLong(1);
-    private long[] rowGenerations;
+    protected long[] rowGenerations;
 
     // SeqLock for row-level atomicity (even = stable, odd = writing)
     private final AtomicLongArray rowSeqLocks;
@@ -169,7 +170,18 @@ public abstract class AbstractTable {
      * @return the seqlock value before incrementing
      */
     public long beginSeqLock(int rowIndex) {
-        return rowSeqLocks.getAndIncrement(rowIndex);
+        int spins = 0;
+        while (true) {
+            long current = rowSeqLocks.get(rowIndex);
+            if ((current & 1L) != 0L) {
+                backoff(spins++);
+                continue;
+            }
+            if (rowSeqLocks.compareAndSet(rowIndex, current, current + 1L)) {
+                return current;
+            }
+            backoff(spins++);
+        }
     }
 
     /**
@@ -215,6 +227,18 @@ public abstract class AbstractTable {
             }
             // Seqlock changed, retry
         }
+    }
+
+    private static void backoff(int spins) {
+        if (spins < 10) {
+            Thread.onSpinWait();
+            return;
+        }
+        if (spins < 20) {
+            Thread.yield();
+            return;
+        }
+        LockSupport.parkNanos(1L);
     }
 
     private void clearTombstoneInternal(int rowId) {

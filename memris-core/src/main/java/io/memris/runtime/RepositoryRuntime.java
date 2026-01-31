@@ -852,7 +852,7 @@ public final class RepositoryRuntime<T> {
         int[] rowIndices = table.scanAll();
 
         for (int rowIndex : rowIndices) {
-            long packedRef = io.memris.storage.Selection.pack(rowIndex, table.currentGeneration());
+            long packedRef = io.memris.storage.Selection.pack(rowIndex, table.rowGeneration(rowIndex));
             table.tombstone(packedRef);
         }
     }
@@ -1119,11 +1119,7 @@ public final class RepositoryRuntime<T> {
 
         if (conditions.length == 0) {
             int[] allRows = plan.table().scanAll();
-            long[] packed = new long[allRows.length];
-            for (int i = 0; i < allRows.length; i++) {
-                packed[i] = io.memris.storage.Selection.pack(allRows[i], plan.table().currentGeneration());
-            }
-            return applyJoins(query, args, new io.memris.storage.SelectionImpl(packed));
+            return applyJoins(query, args, selectionFromRows(allRows));
         }
 
         Selection combined = null;
@@ -1246,12 +1242,22 @@ public final class RepositoryRuntime<T> {
     }
 
     private Selection selectionFromRows(int[] rows) {
+        GeneratedTable table = plan.table();
         long[] packed = new long[rows.length];
-        long gen = plan.table().currentGeneration();
-        for (int i = 0; i < rows.length; i++) {
-            packed[i] = io.memris.storage.Selection.pack(rows[i], gen);
+        int count = 0;
+        for (int rowIndex : rows) {
+            long generation = table.rowGeneration(rowIndex);
+            long ref = io.memris.storage.Selection.pack(rowIndex, generation);
+            if (table.isLive(ref)) {
+                packed[count++] = ref;
+            }
         }
-        return new SelectionImpl(packed);
+        if (count == packed.length) {
+            return new SelectionImpl(packed);
+        }
+        long[] trimmed = new long[count];
+        System.arraycopy(packed, 0, trimmed, 0, count);
+        return new SelectionImpl(trimmed);
     }
 
     private int[] applyOrderBy(CompiledQuery query, int[] rows) {

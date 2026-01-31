@@ -123,7 +123,8 @@ public abstract class AbstractTypeHandler<T> implements TypeHandler<T> {
     protected Selection createSelection(GeneratedTable table, int[] indices) {
         long[] packed = new long[indices.length];
         for (int i = 0; i < indices.length; i++) {
-            packed[i] = io.memris.storage.Selection.pack(indices[i], table.currentGeneration());
+            int rowIndex = indices[i];
+            packed[i] = io.memris.storage.Selection.pack(rowIndex, table.rowGeneration(rowIndex));
         }
         return new SelectionImpl(packed);
     }
@@ -134,7 +135,8 @@ public abstract class AbstractTypeHandler<T> implements TypeHandler<T> {
     protected Selection subtractSelections(GeneratedTable table, int[] all, Selection toRemove) {
         long[] allPacked = new long[all.length];
         for (int i = 0; i < all.length; i++) {
-            allPacked[i] = io.memris.storage.Selection.pack(all[i], table.currentGeneration());
+            int rowIndex = all[i];
+            allPacked[i] = io.memris.storage.Selection.pack(rowIndex, table.rowGeneration(rowIndex));
         }
         Selection allSel = new SelectionImpl(allPacked);
         return allSel.subtract(toRemove);

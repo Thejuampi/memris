@@ -14,20 +14,20 @@
 | RangeIndex lookups | ✅ Lock-free | `ConcurrentSkipListMap.get()` | `RangeIndex.java:51` |
 | Query scans | ✅ Safe reads | `volatile published` watermark | `PageColumn*.java:20` |
 | Index add/remove | ✅ Thread-safe | `compute()` / `computeIfAbsent()` | `HashIndex.java:31`, `RangeIndex.java:34` |
+| Column writes | ✅ Lock-free | Row seqlock (CAS) + publish ordering | `AbstractTable.java`, `MethodHandleImplementation.java` |
 
-**NOT Thread-Safe (External Synchronization Required):**
+**Concurrency Caveats (Eventual Consistency):**
 
-| Operation | Issue | Impact | Location |
-|-----------|--------|---------|----------|
-| Column writes | No atomicity between writes | Torn reads | `PageColumn*.java:79-84` |
-| Index updates | Race with column writes | Inconsistent state | `RepositoryRuntime.java:203-220` |
+| Operation | Behavior | Impact | Location |
+|-----------|----------|--------|----------|
+| Index updates | Eventually consistent with row writes | Stale index entries are filtered at query time | `RepositoryRuntime.java:203-220` |
 
 ### Concurrency Model Summary
 
 **Current Design:**
 - **Reads**: Thread-safe, lock-free for most operations
-- **Writes**: Mostly thread-safe (ID generation, free-list, tombstones are safe)
-- **Read-Write**: SeqLock provides coordination for row updates
+- **Writes**: Thread-safe with row seqlock + CAS (multi-writer supported)
+- **Read-Write**: SeqLock provides coordination for row updates and typed reads
 - **Isolation**: Best-effort (seqlock for rows, no MVCC for transactions)
 
 ### Hot Path vs Write Path
@@ -37,11 +37,11 @@
 - Scans respect the volatile `published` watermark for safe visibility
 - Index lookups use lock-free concurrent maps
 
-**Write Path (Mostly Thread-Safe):**
+**Write Path (Thread-Safe, Eventual Index Consistency):**
 - Row allocation uses LockFreeFreeList (CAS-based) - Thread-safe
-- Column writes are multi-step and not atomic - Requires coordination
+- Column writes are coordinated by row seqlock - Thread-safe
 - Tombstone operations use AtomicIntegerArray (CAS-based) - Thread-safe
-- Index updates can race with row writes - Requires coordination
+- Index updates can race with row writes - queries validate row liveness
 
 ### Critical Issues
 
@@ -90,28 +90,29 @@ while (true) {
 
 **Impact**: Correct row count - concurrent deletes are now thread-safe.
 
-**3. Column Writes Not Atomic** (`PageColumn*.java:79-84`)
-No atomicity between `data[]` and `present[]` writes:
+**3. Column Writes Coordinated via SeqLock** (`AbstractTable.java`, `MethodHandleImplementation.java`)
+Writes are guarded by a CAS-based row seqlock and published after the write completes:
 ```java
-// PROBLEM: Two-step write without coordination
-data[offset] = value;
-present[offset] = 1;  // Reader sees null or value + present=false
+beginSeqLock(rowIndex);
+// write columns
+endSeqLock(rowIndex);
+publish(rowIndex);
 ```
 
-**Impact**: Readers can see torn or partially-written state.
+**Impact**: Readers retry on concurrent writes; scans only see published rows.
 
 **4. SeqLock Not Actually Implemented** (`GeneratedTable.java:51-53`, `GeneratedTable.java:119-124`) ~~FIXED~~
 Interface promises seqlock semantics for writes/reads but no version field existed in tables.
 
-**Solution:** Added `AtomicLongArray` for per-row version tracking:
+**Solution:** Added `AtomicLongArray` for per-row version tracking with CAS-based writer acquisition:
 ```java
 // NEW SOLUTION: AtomicLongArray for per-row seqlock
 private final AtomicLongArray rowSeqLocks = new AtomicLongArray(capacity);
 
 // Writer protocol:
-rowSeqLocks.set(rowIndex, rowSeqLocks.get(rowIndex) + 1);  // Make odd
+// CAS even -> odd (retry if writer active)
 // Write columns...
-rowSeqLocks.set(rowIndex, rowSeqLocks.get(rowIndex) + 1);  // Make even
+rowSeqLocks.incrementAndGet(rowIndex);  // Make even
 
 // Reader protocol:
 long v1 = rowSeqLocks.get(rowIndex);
@@ -144,41 +145,26 @@ private Long generateNextId() {
 
 **Impact**: Duplicate IDs eliminated - ID generation is now thread-safe.
 
-### Current Concurrency Workarounds
+### Current Concurrency Guidance
 
-For applications requiring fully concurrent operations (column writes, index updates):
+Writes are lock-free and safe with row seqlock + CAS. Indexes are eventually consistent and validated at query time.
 
-```java
-// Option 1: Synchronize on repository for column writes
-synchronized (repository) {
-    repository.save(entity);
-}
-
-// Option 2: Use single writer thread for full consistency
-ExecutorService singleWriter = Executors.newSingleThreadExecutor();
-singleWriter.submit(() -> repository.save(entity));
-
-// Option 3: Partition repositories by entity type
-Map<Class<?>, Repository<?>> repositories = new ConcurrentHashMap<>();
-repositories.computeIfAbsent(entity.getClass(), k -> new Repository<T>());
-```
-
-**Note:** ID generation, free-list, tombstones, and seqlock operations are now thread-safe. External synchronization is only needed for column writes and index updates.
+**Note:** External synchronization is only required if you need strict index/row atomicity. Otherwise, concurrent saves/deletes are safe.
 
 ### Practical Usage Patterns
 
-**Single-Threaded Writes + Concurrent Reads (Recommended Default):**
-- Use a single writer thread (or external lock) for save/delete
+**Single-Threaded Writes + Concurrent Reads (Optional Optimization):**
+- Single writer can reduce contention under heavy write workloads
 - Readers can safely scan and use indexes concurrently
 
 **Read-Only Multi-Threaded Workloads:**
 - Safe out of the box (no reflection, direct arrays, lock-free lookups)
 - Scales with CPU cores for scan-heavy queries
 
-**Concurrent Writes (Mostly Supported):**
+**Concurrent Writes (Supported):**
 - ID generation, free-list, tombstones are thread-safe
-- SeqLock provides coordination for row updates
-- External synchronization only needed for column writes and index updates
+- SeqLock provides coordination for row updates and typed reads
+- Index queries validate row liveness (eventual consistency)
 
 ---
 

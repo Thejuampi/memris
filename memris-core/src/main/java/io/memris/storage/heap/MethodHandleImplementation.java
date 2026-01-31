@@ -68,8 +68,16 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
             throw new RuntimeException("Failed to find rowCount method", e);
         }
         
-        builder = builder.method(net.bytebuddy.matcher.ElementMatchers.named("currentGeneration"))
-                .intercept(FixedValue.value(0L));
+        try {
+            builder = builder.method(net.bytebuddy.matcher.ElementMatchers.named("currentGeneration"))
+                    .intercept(net.bytebuddy.implementation.MethodCall.invoke(
+                        AbstractTable.class.getDeclaredMethod("currentGeneration")).onSuper());
+        } catch (NoSuchMethodException e) {
+            throw new RuntimeException("Failed to find currentGeneration method", e);
+        }
+
+        builder = builder.method(net.bytebuddy.matcher.ElementMatchers.named("rowGeneration"))
+                .intercept(MethodDelegation.to(new RowGenerationInterceptor()));
         
         return builder;
     }
@@ -141,9 +149,12 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
         
         builder = builder.method(net.bytebuddy.matcher.ElementMatchers.named("insertFrom"))
                 .intercept(MethodDelegation.to(new InsertInterceptor(columnFields, idIndexType)));
-        
-        // Skip tombstone/isLive - AbstractTable has implementations that match GeneratedTable interface
-        // These don't need delegation since AbstractTable implements them correctly
+
+        builder = builder.method(net.bytebuddy.matcher.ElementMatchers.named("tombstone"))
+                .intercept(MethodDelegation.to(new TombstoneInterceptor(columnFields)));
+
+        builder = builder.method(net.bytebuddy.matcher.ElementMatchers.named("isLive"))
+                .intercept(MethodDelegation.to(new IsLiveInterceptor()));
         
         return builder;
     }
@@ -180,7 +191,14 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
             return typeCodes[columnIndex];
         }
     }
-    
+
+    public static class RowGenerationInterceptor {
+        @RuntimeType
+        public long intercept(@Argument(0) int rowIndex, @This AbstractTable table) {
+            return table.rowGenerations[rowIndex];
+        }
+    }
+
     public static class ReadInterceptor {
         private final List<ColumnFieldInfo> columnFields;
         private final MethodHandles.Lookup lookup = MethodHandles.lookup();
@@ -196,33 +214,46 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
             if (columnIndex < 0 || columnIndex >= columnFields.size()) {
                 throw new IndexOutOfBoundsException("Column index out of range: " + columnIndex);
             }
-            
-            ColumnFieldInfo fieldInfo = columnFields.get(columnIndex);
-            Field field = obj.getClass().getDeclaredField(fieldInfo.fieldName());
-            MethodHandle getter = lookup.unreflectGetter(field);
-            Object column = getter.invoke(obj);
-            
-            byte typeCode = fieldInfo.typeCode();
-            if (typeCode == io.memris.core.TypeCodes.TYPE_LONG
-                || typeCode == io.memris.core.TypeCodes.TYPE_DOUBLE
-                || typeCode == io.memris.core.TypeCodes.TYPE_INSTANT
-                || typeCode == io.memris.core.TypeCodes.TYPE_LOCAL_DATE
-                || typeCode == io.memris.core.TypeCodes.TYPE_LOCAL_DATE_TIME
-                || typeCode == io.memris.core.TypeCodes.TYPE_DATE) {
-                return ((PageColumnLong) column).get(rowIndex);
-            } else if (typeCode == io.memris.core.TypeCodes.TYPE_INT
-                || typeCode == io.memris.core.TypeCodes.TYPE_FLOAT
-                || typeCode == io.memris.core.TypeCodes.TYPE_BOOLEAN
-                || typeCode == io.memris.core.TypeCodes.TYPE_BYTE
-                || typeCode == io.memris.core.TypeCodes.TYPE_SHORT
-                || typeCode == io.memris.core.TypeCodes.TYPE_CHAR) {
-                return ((PageColumnInt) column).get(rowIndex);
-            } else if (typeCode == io.memris.core.TypeCodes.TYPE_STRING
-                || typeCode == io.memris.core.TypeCodes.TYPE_BIG_DECIMAL
-                || typeCode == io.memris.core.TypeCodes.TYPE_BIG_INTEGER) {
-                return ((PageColumnString) column).get(rowIndex);
-            } else {
-                throw new IllegalStateException("Unknown type code: " + typeCode);
+
+            try {
+                return ((AbstractTable) obj).readWithSeqLock(rowIndex, () -> {
+                    try {
+                        ColumnFieldInfo fieldInfo = columnFields.get(columnIndex);
+                        Field field = obj.getClass().getDeclaredField(fieldInfo.fieldName());
+                        MethodHandle getter = lookup.unreflectGetter(field);
+                        Object column = getter.invoke(obj);
+
+                        byte typeCode = fieldInfo.typeCode();
+                        if (typeCode == io.memris.core.TypeCodes.TYPE_LONG
+                            || typeCode == io.memris.core.TypeCodes.TYPE_DOUBLE
+                            || typeCode == io.memris.core.TypeCodes.TYPE_INSTANT
+                            || typeCode == io.memris.core.TypeCodes.TYPE_LOCAL_DATE
+                            || typeCode == io.memris.core.TypeCodes.TYPE_LOCAL_DATE_TIME
+                            || typeCode == io.memris.core.TypeCodes.TYPE_DATE) {
+                            return ((PageColumnLong) column).get(rowIndex);
+                        } else if (typeCode == io.memris.core.TypeCodes.TYPE_INT
+                            || typeCode == io.memris.core.TypeCodes.TYPE_FLOAT
+                            || typeCode == io.memris.core.TypeCodes.TYPE_BOOLEAN
+                            || typeCode == io.memris.core.TypeCodes.TYPE_BYTE
+                            || typeCode == io.memris.core.TypeCodes.TYPE_SHORT
+                            || typeCode == io.memris.core.TypeCodes.TYPE_CHAR) {
+                            return ((PageColumnInt) column).get(rowIndex);
+                        } else if (typeCode == io.memris.core.TypeCodes.TYPE_STRING
+                            || typeCode == io.memris.core.TypeCodes.TYPE_BIG_DECIMAL
+                            || typeCode == io.memris.core.TypeCodes.TYPE_BIG_INTEGER) {
+                            return ((PageColumnString) column).get(rowIndex);
+                        } else {
+                            throw new IllegalStateException("Unknown type code: " + typeCode);
+                        }
+                    } catch (Throwable e) {
+                        throw new RuntimeException(e);
+                    }
+                });
+            } catch (RuntimeException e) {
+                if (e.getCause() != null) {
+                    throw e.getCause();
+                }
+                throw e;
             }
         }
     }
@@ -243,32 +274,45 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
                 throw new IndexOutOfBoundsException("Column index out of range: " + columnIndex);
             }
 
-            ColumnFieldInfo fieldInfo = columnFields.get(columnIndex);
-            Field field = obj.getClass().getDeclaredField(fieldInfo.fieldName());
-            MethodHandle getter = lookup.unreflectGetter(field);
-            Object column = getter.invoke(obj);
+            try {
+                return ((AbstractTable) obj).readWithSeqLock(rowIndex, () -> {
+                    try {
+                        ColumnFieldInfo fieldInfo = columnFields.get(columnIndex);
+                        Field field = obj.getClass().getDeclaredField(fieldInfo.fieldName());
+                        MethodHandle getter = lookup.unreflectGetter(field);
+                        Object column = getter.invoke(obj);
 
-            byte typeCode = fieldInfo.typeCode();
-            if (typeCode == io.memris.core.TypeCodes.TYPE_LONG
-                || typeCode == io.memris.core.TypeCodes.TYPE_DOUBLE
-                || typeCode == io.memris.core.TypeCodes.TYPE_INSTANT
-                || typeCode == io.memris.core.TypeCodes.TYPE_LOCAL_DATE
-                || typeCode == io.memris.core.TypeCodes.TYPE_LOCAL_DATE_TIME
-                || typeCode == io.memris.core.TypeCodes.TYPE_DATE) {
-                return ((PageColumnLong) column).isPresent(rowIndex);
-            } else if (typeCode == io.memris.core.TypeCodes.TYPE_INT
-                || typeCode == io.memris.core.TypeCodes.TYPE_FLOAT
-                || typeCode == io.memris.core.TypeCodes.TYPE_BOOLEAN
-                || typeCode == io.memris.core.TypeCodes.TYPE_BYTE
-                || typeCode == io.memris.core.TypeCodes.TYPE_SHORT
-                || typeCode == io.memris.core.TypeCodes.TYPE_CHAR) {
-                return ((PageColumnInt) column).isPresent(rowIndex);
-            } else if (typeCode == io.memris.core.TypeCodes.TYPE_STRING
-                || typeCode == io.memris.core.TypeCodes.TYPE_BIG_DECIMAL
-                || typeCode == io.memris.core.TypeCodes.TYPE_BIG_INTEGER) {
-                return ((PageColumnString) column).isPresent(rowIndex);
-            } else {
-                throw new IllegalStateException("Unknown type code: " + typeCode);
+                        byte typeCode = fieldInfo.typeCode();
+                        if (typeCode == io.memris.core.TypeCodes.TYPE_LONG
+                            || typeCode == io.memris.core.TypeCodes.TYPE_DOUBLE
+                            || typeCode == io.memris.core.TypeCodes.TYPE_INSTANT
+                            || typeCode == io.memris.core.TypeCodes.TYPE_LOCAL_DATE
+                            || typeCode == io.memris.core.TypeCodes.TYPE_LOCAL_DATE_TIME
+                            || typeCode == io.memris.core.TypeCodes.TYPE_DATE) {
+                            return ((PageColumnLong) column).isPresent(rowIndex);
+                        } else if (typeCode == io.memris.core.TypeCodes.TYPE_INT
+                            || typeCode == io.memris.core.TypeCodes.TYPE_FLOAT
+                            || typeCode == io.memris.core.TypeCodes.TYPE_BOOLEAN
+                            || typeCode == io.memris.core.TypeCodes.TYPE_BYTE
+                            || typeCode == io.memris.core.TypeCodes.TYPE_SHORT
+                            || typeCode == io.memris.core.TypeCodes.TYPE_CHAR) {
+                            return ((PageColumnInt) column).isPresent(rowIndex);
+                        } else if (typeCode == io.memris.core.TypeCodes.TYPE_STRING
+                            || typeCode == io.memris.core.TypeCodes.TYPE_BIG_DECIMAL
+                            || typeCode == io.memris.core.TypeCodes.TYPE_BIG_INTEGER) {
+                            return ((PageColumnString) column).isPresent(rowIndex);
+                        } else {
+                            throw new IllegalStateException("Unknown type code: " + typeCode);
+                        }
+                    } catch (Throwable e) {
+                        throw new RuntimeException(e);
+                    }
+                });
+            } catch (RuntimeException e) {
+                if (e.getCause() != null) {
+                    throw e.getCause();
+                }
+                throw e;
             }
         }
     }
@@ -727,121 +771,115 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
             java.lang.reflect.Method rowGenMethod = AbstractTable.class.getDeclaredMethod("rowGeneration", int.class);
             rowGenMethod.setAccessible(true);
             long generation = (long) rowGenMethod.invoke(obj, rowIndex);
-            
-            // Write values to columns using MethodHandles
-            for (int i = 0; i < columnFields.size(); i++) {
-                ColumnFieldInfo fieldInfo = columnFields.get(i);
-                Field field = obj.getClass().getDeclaredField(fieldInfo.fieldName());
-                MethodHandle getter = lookup.unreflectGetter(field);
-                Object column = getter.invoke(obj);
-                Object value = values[i];
-                
-                byte typeCode = fieldInfo.typeCode();
-                if (typeCode == io.memris.core.TypeCodes.TYPE_LONG
-                    || typeCode == io.memris.core.TypeCodes.TYPE_INSTANT
-                    || typeCode == io.memris.core.TypeCodes.TYPE_LOCAL_DATE
-                    || typeCode == io.memris.core.TypeCodes.TYPE_LOCAL_DATE_TIME
-                    || typeCode == io.memris.core.TypeCodes.TYPE_DATE
-                    || typeCode == io.memris.core.TypeCodes.TYPE_DOUBLE) {
-                    PageColumnLong col = (PageColumnLong) column;
-                    if (value == null) {
-                        col.setNull(rowIndex);
-                        continue;
-                    }
-                    long longValue;
-                    if (typeCode == io.memris.core.TypeCodes.TYPE_DOUBLE) {
-                        if (value instanceof Double) {
-                            longValue = Double.doubleToLongBits((Double) value);
+
+            AbstractTable table = (AbstractTable) obj;
+            table.beginSeqLock(rowIndex);
+            try {
+                // Write values to columns using MethodHandles
+                for (int i = 0; i < columnFields.size(); i++) {
+                    ColumnFieldInfo fieldInfo = columnFields.get(i);
+                    Field field = obj.getClass().getDeclaredField(fieldInfo.fieldName());
+                    MethodHandle getter = lookup.unreflectGetter(field);
+                    Object column = getter.invoke(obj);
+                    Object value = values[i];
+
+                    byte typeCode = fieldInfo.typeCode();
+                    if (typeCode == io.memris.core.TypeCodes.TYPE_LONG
+                        || typeCode == io.memris.core.TypeCodes.TYPE_INSTANT
+                        || typeCode == io.memris.core.TypeCodes.TYPE_LOCAL_DATE
+                        || typeCode == io.memris.core.TypeCodes.TYPE_LOCAL_DATE_TIME
+                        || typeCode == io.memris.core.TypeCodes.TYPE_DATE
+                        || typeCode == io.memris.core.TypeCodes.TYPE_DOUBLE) {
+                        PageColumnLong col = (PageColumnLong) column;
+                        if (value == null) {
+                            col.setNull(rowIndex);
+                            continue;
+                        }
+                        long longValue;
+                        if (typeCode == io.memris.core.TypeCodes.TYPE_DOUBLE) {
+                            if (value instanceof Double) {
+                                longValue = Double.doubleToLongBits((Double) value);
+                            } else if (value instanceof Number) {
+                                longValue = Double.doubleToLongBits(((Number) value).doubleValue());
+                            } else {
+                                throw new IllegalArgumentException("Expected Double for column " + i);
+                            }
+                        } else if (value instanceof Long) {
+                            longValue = (Long) value;
+                        } else if (value instanceof Integer) {
+                            longValue = ((Integer) value).longValue();
                         } else if (value instanceof Number) {
-                            longValue = Double.doubleToLongBits(((Number) value).doubleValue());
+                            longValue = ((Number) value).longValue();
                         } else {
-                            throw new IllegalArgumentException("Expected Double for column " + i);
+                            throw new IllegalArgumentException("Expected Long for column " + i);
                         }
-                    } else if (value instanceof Long) {
-                        longValue = (Long) value;
-                    } else if (value instanceof Integer) {
-                        longValue = ((Integer) value).longValue();
-                    } else if (value instanceof Number) {
-                        longValue = ((Number) value).longValue();
-                    } else {
-                        throw new IllegalArgumentException("Expected Long for column " + i);
-                    }
-                    col.set(rowIndex, longValue);
-                } else if (typeCode == io.memris.core.TypeCodes.TYPE_INT
-                    || typeCode == io.memris.core.TypeCodes.TYPE_FLOAT
-                    || typeCode == io.memris.core.TypeCodes.TYPE_BOOLEAN
-                    || typeCode == io.memris.core.TypeCodes.TYPE_BYTE
-                    || typeCode == io.memris.core.TypeCodes.TYPE_SHORT
-                    || typeCode == io.memris.core.TypeCodes.TYPE_CHAR) {
-                    PageColumnInt col = (PageColumnInt) column;
-                    if (value == null) {
-                        col.setNull(rowIndex);
-                        continue;
-                    }
-                    int intValue;
-                    if (typeCode == io.memris.core.TypeCodes.TYPE_FLOAT) {
-                        if (value instanceof Float) {
-                            intValue = Float.floatToIntBits((Float) value);
+                        col.set(rowIndex, longValue);
+                    } else if (typeCode == io.memris.core.TypeCodes.TYPE_INT
+                        || typeCode == io.memris.core.TypeCodes.TYPE_FLOAT
+                        || typeCode == io.memris.core.TypeCodes.TYPE_BOOLEAN
+                        || typeCode == io.memris.core.TypeCodes.TYPE_BYTE
+                        || typeCode == io.memris.core.TypeCodes.TYPE_SHORT
+                        || typeCode == io.memris.core.TypeCodes.TYPE_CHAR) {
+                        PageColumnInt col = (PageColumnInt) column;
+                        if (value == null) {
+                            col.setNull(rowIndex);
+                            continue;
+                        }
+                        int intValue;
+                        if (typeCode == io.memris.core.TypeCodes.TYPE_FLOAT) {
+                            if (value instanceof Float) {
+                                intValue = Float.floatToIntBits((Float) value);
+                            } else if (value instanceof Number) {
+                                intValue = Float.floatToIntBits(((Number) value).floatValue());
+                            } else {
+                                throw new IllegalArgumentException("Expected Float for column " + i);
+                            }
+                        } else if (typeCode == io.memris.core.TypeCodes.TYPE_BOOLEAN) {
+                            if (value instanceof Boolean) {
+                                intValue = (Boolean) value ? 1 : 0;
+                            } else {
+                                throw new IllegalArgumentException("Expected Boolean for column " + i);
+                            }
+                        } else if (typeCode == io.memris.core.TypeCodes.TYPE_CHAR) {
+                            if (value instanceof Character) {
+                                intValue = (Character) value;
+                            } else {
+                                throw new IllegalArgumentException("Expected Character for column " + i);
+                            }
+                        } else if (value instanceof Integer) {
+                            intValue = (Integer) value;
+                        } else if (value instanceof Long) {
+                            intValue = ((Long) value).intValue();
                         } else if (value instanceof Number) {
-                            intValue = Float.floatToIntBits(((Number) value).floatValue());
+                            intValue = ((Number) value).intValue();
                         } else {
-                            throw new IllegalArgumentException("Expected Float for column " + i);
+                            throw new IllegalArgumentException("Expected Integer for column " + i);
                         }
-                    } else if (typeCode == io.memris.core.TypeCodes.TYPE_BOOLEAN) {
-                        if (value instanceof Boolean) {
-                            intValue = (Boolean) value ? 1 : 0;
+                        col.set(rowIndex, intValue);
+                    } else if (typeCode == io.memris.core.TypeCodes.TYPE_STRING
+                        || typeCode == io.memris.core.TypeCodes.TYPE_BIG_DECIMAL
+                        || typeCode == io.memris.core.TypeCodes.TYPE_BIG_INTEGER) {
+                        PageColumnString col = (PageColumnString) column;
+                        if (value == null) {
+                            col.setNull(rowIndex);
                         } else {
-                            throw new IllegalArgumentException("Expected Boolean for column " + i);
+                            col.set(rowIndex, value.toString());
                         }
-                    } else if (typeCode == io.memris.core.TypeCodes.TYPE_CHAR) {
-                        if (value instanceof Character) {
-                            intValue = (Character) value;
-                        } else {
-                            throw new IllegalArgumentException("Expected Character for column " + i);
-                        }
-                    } else if (value instanceof Integer) {
-                        intValue = (Integer) value;
-                    } else if (value instanceof Long) {
-                        intValue = ((Long) value).intValue();
-                    } else if (value instanceof Number) {
-                        intValue = ((Number) value).intValue();
                     } else {
-                        throw new IllegalArgumentException("Expected Integer for column " + i);
+                        throw new IllegalArgumentException("Unsupported type code: " + typeCode);
                     }
-                    col.set(rowIndex, intValue);
-                } else if (typeCode == io.memris.core.TypeCodes.TYPE_STRING
-                    || typeCode == io.memris.core.TypeCodes.TYPE_BIG_DECIMAL
-                    || typeCode == io.memris.core.TypeCodes.TYPE_BIG_INTEGER) {
-                    PageColumnString col = (PageColumnString) column;
-                    if (value == null) {
-                        col.setNull(rowIndex);
-                    } else {
-                        col.set(rowIndex, value.toString());
-                    }
-                } else {
-                    throw new IllegalArgumentException("Unsupported type code: " + typeCode);
                 }
+            } finally {
+                table.endSeqLock(rowIndex);
             }
-            
-            // Update ID index
-            Field idIndexField = obj.getClass().getDeclaredField("idIndex");
-            MethodHandle idIndexGetter = lookup.unreflectGetter(idIndexField);
-            Object idIndex = idIndexGetter.invoke(obj);
-            Object idValue = values[0];
-            
-            if (idIndex instanceof LongIdIndex longIdIndex && idValue instanceof Number) {
-                longIdIndex.put(((Number) idValue).longValue(), rowId, generation);
-            } else if (idIndex instanceof StringIdIndex stringIdIndex && idValue instanceof String) {
-                stringIdIndex.put((String) idValue, rowId, generation);
-            }
-            
+
             // Publish row to make data visible to scans
             for (int i = 0; i < columnFields.size(); i++) {
                 ColumnFieldInfo fieldInfo = columnFields.get(i);
                 Field field = obj.getClass().getDeclaredField(fieldInfo.fieldName());
                 MethodHandle getter = lookup.unreflectGetter(field);
                 Object column = getter.invoke(obj);
-                
+
                 byte typeCode = fieldInfo.typeCode();
                 if (typeCode == io.memris.core.TypeCodes.TYPE_LONG
                     || typeCode == io.memris.core.TypeCodes.TYPE_DOUBLE
@@ -866,19 +904,36 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
                     col.publish(rowIndex + 1);
                 }
             }
-            
+
+            // Update ID index
+            Field idIndexField = obj.getClass().getDeclaredField("idIndex");
+            MethodHandle idIndexGetter = lookup.unreflectGetter(idIndexField);
+            Object idIndex = idIndexGetter.invoke(obj);
+            Object idValue = values[0];
+
+            if (idIndex instanceof LongIdIndex longIdIndex && idValue instanceof Number) {
+                longIdIndex.put(((Number) idValue).longValue(), rowId, generation);
+            } else if (idIndex instanceof StringIdIndex stringIdIndex && idValue instanceof String) {
+                stringIdIndex.put((String) idValue, rowId, generation);
+            }
+
             // Increment row count
             java.lang.reflect.Method incrementMethod = AbstractTable.class.getDeclaredMethod("incrementRowCount");
             incrementMethod.setAccessible(true);
             incrementMethod.invoke(obj);
-            
+
             return io.memris.storage.Selection.pack(rowIndex, generation);
         }
     }
     
     public static class TombstoneInterceptor {
+        private final List<ColumnFieldInfo> columnFields;
         private final MethodHandles.Lookup lookup = MethodHandles.lookup();
-        
+
+        public TombstoneInterceptor(List<ColumnFieldInfo> columnFields) {
+            this.columnFields = columnFields;
+        }
+
         @RuntimeType
         public void intercept(@Argument(0) long ref, @This Object obj) throws Throwable {
             int rowIndex = io.memris.storage.Selection.index(ref);
@@ -886,66 +941,79 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
             int pageId = rowIndex / 1024;
             int offset = rowIndex % 1024;
             io.memris.kernel.RowId rowId = new io.memris.kernel.RowId(pageId, offset);
-            
-            // Read ID column (column 0) for index cleanup
-            Field idColumnField = obj.getClass().getDeclaredField("col0");
-            MethodHandle idColGetter = lookup.unreflectGetter(idColumnField);
-            Object idColumn = idColGetter.invoke(obj);
-            
-            // Read ID value based on column type
-            Object idValue;
-            if (idColumn instanceof PageColumnLong longCol) {
-                idValue = longCol.get(rowIndex);
-            } else if (idColumn instanceof PageColumnInt intCol) {
-                idValue = intCol.get(rowIndex);
-            } else if (idColumn instanceof PageColumnString stringCol) {
-                idValue = stringCol.get(rowIndex);
-            } else {
-                idValue = null;
+
+            AbstractTable table = (AbstractTable) obj;
+            table.beginSeqLock(rowIndex);
+            Object idValue = null;
+            try {
+                // Read ID column (first column) for index cleanup
+                if (!columnFields.isEmpty()) {
+                    ColumnFieldInfo idFieldInfo = columnFields.get(0);
+                    Field idColumnField = obj.getClass().getDeclaredField(idFieldInfo.fieldName());
+                    MethodHandle idColGetter = lookup.unreflectGetter(idColumnField);
+                    Object idColumn = idColGetter.invoke(obj);
+
+                    byte typeCode = idFieldInfo.typeCode();
+                    if (typeCode == io.memris.core.TypeCodes.TYPE_LONG
+                        || typeCode == io.memris.core.TypeCodes.TYPE_DOUBLE
+                        || typeCode == io.memris.core.TypeCodes.TYPE_INSTANT
+                        || typeCode == io.memris.core.TypeCodes.TYPE_LOCAL_DATE
+                        || typeCode == io.memris.core.TypeCodes.TYPE_LOCAL_DATE_TIME
+                        || typeCode == io.memris.core.TypeCodes.TYPE_DATE) {
+                        idValue = ((PageColumnLong) idColumn).get(rowIndex);
+                    } else if (typeCode == io.memris.core.TypeCodes.TYPE_INT
+                        || typeCode == io.memris.core.TypeCodes.TYPE_FLOAT
+                        || typeCode == io.memris.core.TypeCodes.TYPE_BOOLEAN
+                        || typeCode == io.memris.core.TypeCodes.TYPE_BYTE
+                        || typeCode == io.memris.core.TypeCodes.TYPE_SHORT
+                        || typeCode == io.memris.core.TypeCodes.TYPE_CHAR) {
+                        idValue = ((PageColumnInt) idColumn).get(rowIndex);
+                    } else if (typeCode == io.memris.core.TypeCodes.TYPE_STRING
+                        || typeCode == io.memris.core.TypeCodes.TYPE_BIG_DECIMAL
+                        || typeCode == io.memris.core.TypeCodes.TYPE_BIG_INTEGER) {
+                        idValue = ((PageColumnString) idColumn).get(rowIndex);
+                    }
+                }
+
+                // Use generation-validated tombstone
+                java.lang.reflect.Method tombstoneMethod = AbstractTable.class.getDeclaredMethod("tombstone", io.memris.kernel.RowId.class, long.class);
+                tombstoneMethod.setAccessible(true);
+                tombstoneMethod.invoke(obj, rowId, generation);
+            } finally {
+                table.endSeqLock(rowIndex);
             }
-            
-            // Remove from ID index before tombstoning
+
+            // Remove from ID index after tombstoning (eventual consistency)
             if (idValue != null) {
                 Field idIndexField = obj.getClass().getDeclaredField("idIndex");
                 MethodHandle idIndexGetter = lookup.unreflectGetter(idIndexField);
                 Object idIndex = idIndexGetter.invoke(obj);
-                
+
                 if (idIndex instanceof LongIdIndex longIdx && idValue instanceof Number) {
                     longIdx.remove(((Number) idValue).longValue());
                 } else if (idIndex instanceof StringIdIndex stringIdx && idValue instanceof String) {
                     stringIdx.remove((String) idValue);
                 }
             }
-            
-            // Use generation-validated tombstone
-            java.lang.reflect.Method tombstoneMethod = AbstractTable.class.getDeclaredMethod("tombstone", io.memris.kernel.RowId.class, long.class);
-            tombstoneMethod.setAccessible(true);
-            tombstoneMethod.invoke(obj, rowId, generation);
         }
     }
     
     public static class IsLiveInterceptor {
         @RuntimeType
-        public boolean intercept(@Argument(0) long ref, @This Object obj) throws Exception {
+        public boolean intercept(@Argument(0) long ref, @This AbstractTable table) {
             int rowIndex = io.memris.storage.Selection.index(ref);
             long generation = io.memris.storage.Selection.generation(ref);
             int pageId = rowIndex / 1024;
             int offset = rowIndex % 1024;
             io.memris.kernel.RowId rowId = new io.memris.kernel.RowId(pageId, offset);
-            
+
             // Check tombstone
-            java.lang.reflect.Method isTombstoneMethod = AbstractTable.class.getDeclaredMethod("isTombstone", io.memris.kernel.RowId.class);
-            isTombstoneMethod.setAccessible(true);
-            boolean isTombstoned = (boolean) isTombstoneMethod.invoke(obj, rowId);
-            if (isTombstoned) {
+            if (table.isTombstone(rowId)) {
                 return false;
             }
-            
-            // Check generation - stale ref detection
-            java.lang.reflect.Method rowGenMethod = AbstractTable.class.getDeclaredMethod("rowGeneration", int.class);
-            rowGenMethod.setAccessible(true);
-            long storedGen = (long) rowGenMethod.invoke(obj, rowIndex);
-            return storedGen == generation;
+
+            // Check generation - stale ref detection (direct field access)
+            return table.rowGenerations[rowIndex] == generation;
         }
     }
     

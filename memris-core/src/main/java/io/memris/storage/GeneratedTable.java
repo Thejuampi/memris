@@ -70,6 +70,11 @@ public interface GeneratedTable {
      * Get current generation counter.
      */
     long currentGeneration();
+
+    /**
+     * Get generation for a specific row index.
+     */
+    long rowGeneration(int rowIndex);
     
     // ===== TYPED SCANS (HOT PATH - int[] rowIndex, primitivo) =====
     

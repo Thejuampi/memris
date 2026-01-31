@@ -16,7 +16,7 @@ Built on 100% Java heap storage with ByteBuddy bytecode generation, Memris deliv
 - **Spring Data-Compatible**: Use familiar JPA query method patterns (findBy, countBy, existsBy)
 - **Zero Reflection**: Compile-time query derivation with type-safe dispatch
 - **Custom Annotations**: `@Entity`, `@Index`, `@GeneratedValue` (not Jakarta/JPA)
-- **Multi-Reader, Single-Writer**: Thread-safe concurrent reads with SeqLock coordination
+- **Multi-Reader, Multi-Writer**: Lock-free row writes with SeqLock coordination (eventual index consistency)
 
 ## Quick Start
 
@@ -267,12 +267,12 @@ Repository Method → QueryCompiler → HeapRuntimeKernel
 | RangeIndex lookups | ✅ | ConcurrentSkipListMap |
 | Query scans | ✅ | SeqLock + volatile watermark |
 | Row allocation | ✅ | LockFreeFreeList (CAS-based) |
-| Column writes | ❌ | External sync required |
-| Index updates | ❌ | External sync required |
+| Column writes | ✅ | Row seqlock (CAS) + publish ordering |
+| Index updates | ⚠️ | Eventual consistency + query validation |
 
 **Isolation Level:** Best-effort (no MVCC, no transactions)
 
-**Note:** Concurrent saves/deletes require external synchronization.
+**Note:** Concurrent saves/deletes are supported; external synchronization is only needed for strict index/row atomicity.
 
 ## Current Limitations
 

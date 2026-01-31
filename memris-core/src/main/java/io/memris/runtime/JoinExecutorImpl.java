@@ -50,15 +50,13 @@ public final class JoinExecutorImpl implements JoinExecutor<Object, Object> {
         if (sourceSelection == null) {
             int[] rows = sourceTable.scanAll();
             sourceRefs = new long[rows.length];
-            long gen = sourceTable.currentGeneration();
             for (int i = 0; i < rows.length; i++) {
-                sourceRefs[i] = io.memris.storage.Selection.pack(rows[i], gen);
+                int rowIndex = rows[i];
+                sourceRefs[i] = io.memris.storage.Selection.pack(rowIndex, sourceTable.rowGeneration(rowIndex));
             }
         } else {
             sourceRefs = sourceSelection.toRefArray();
         }
-
-        long gen = sourceTable.currentGeneration();
         long[] matched = new long[sourceRefs.length];
         int count = 0;
 
@@ -92,7 +90,7 @@ public final class JoinExecutorImpl implements JoinExecutor<Object, Object> {
                 }
             }
 
-            matched[count++] = io.memris.storage.Selection.pack(sourceRow, gen);
+            matched[count++] = io.memris.storage.Selection.pack(sourceRow, sourceTable.rowGeneration(sourceRow));
         }
 
         long[] packed = new long[count];
@@ -180,9 +178,9 @@ public final class JoinExecutorImpl implements JoinExecutor<Object, Object> {
     private Selection selectAll(GeneratedTable table) {
         int[] rows = table.scanAll();
         long[] packed = new long[rows.length];
-        long gen = table.currentGeneration();
         for (int i = 0; i < rows.length; i++) {
-            packed[i] = io.memris.storage.Selection.pack(rows[i], gen);
+            int rowIndex = rows[i];
+            packed[i] = io.memris.storage.Selection.pack(rowIndex, table.rowGeneration(rowIndex));
         }
         return new SelectionImpl(packed);
     }
