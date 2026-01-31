@@ -41,18 +41,18 @@ public interface TableImplementationStrategy {
      * Factory to create the appropriate strategy based on configuration.
      */
     static TableImplementationStrategy create() {
-        String impl = System.getProperty("memris.table.impl", "methodhandle");
+        String impl = System.getProperty("memris.table.impl", "bytecode");
         return switch (impl.toLowerCase()) {
             case "bytecode", "asm", "direct" -> {
-                System.err.println("[Memris] Using BYTECODE table implementation (preview/beta)");
+                System.out.println("[Memris] Using BYTECODE table implementation (default)");
                 yield new BytecodeImplementation();
             }
-            case "methodhandle", "mh", "default" -> {
-                System.out.println("[Memris] Using MethodHandle table implementation (default)");
+            case "methodhandle", "mh" -> {
+                System.out.println("[Memris] Using MethodHandle table implementation (fallback)");
                 yield new MethodHandleImplementation();
             }
             default -> throw new IllegalArgumentException(
-                    "Unknown table implementation: " + impl + ". Use 'methodhandle' or 'bytecode'");
+                    "Unknown table implementation: " + impl + ". Use 'bytecode' or 'methodhandle'");
         };
     }
 }
