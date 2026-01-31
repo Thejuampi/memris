@@ -344,6 +344,9 @@ mvn.cmd -q -e -pl memris-core test -Dtest=ClassName#methodName
 mvn.cmd spotbugs:check
 mvn.cmd checkstyle:check
 mvn.cmd pmd:check
+mvn.cmd modernizer:modernizer     # Legacy API check
+mvn.cmd dependency-check:check    # Security vulnerability scan
+mvn.cmd test -Dtest=ArchitectureTest # Architecture rule verification
 
 # Package and install
 mvn.cmd clean install
@@ -366,6 +369,9 @@ Memris is currently in SNAPSHOT version (1.0.0-SNAPSHOT). Build locally to use:
 - RoaringBitmap 1.0.0 (compressed indexes)
 - SparseBitSet 1.2 (sparse indexes)
 - Lombok 1.18.36 (compile-time annotation processing)
+- Error Prone 2.24.1 (compile-time bug detection)
+- Modernizer 3.0.0 (detect legacy API usage)
+- ArchUnit 1.2.1 (architectural rule enforcement)
 
 ## Documentation
 
@@ -394,4 +400,4 @@ Memris is currently in SNAPSHOT version (1.0.0-SNAPSHOT). Build locally to use:
 
 ## License
 
-[License information]
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.

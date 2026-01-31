@@ -21,6 +21,14 @@
             <artifactId>lombok</artifactId>
         </dependency>
 
+        <!-- ArchUnit for architectural testing -->
+        <dependency>
+            <groupId>com.tngtech.archunit</groupId>
+            <artifactId>archunit-junit5</artifactId>
+            <version>${archunit.version}</version>
+            <scope>test</scope>
+        </dependency>
+
         <!-- RoaringBitmap for compressed indexes -->
         <dependency>
             <groupId>org.roaringbitmap</groupId>

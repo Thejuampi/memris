@@ -15,6 +15,14 @@
     </description>
     <url>https://github.com/memris/memris</url>
 
+    <licenses>
+        <license>
+            <name>MIT License</name>
+            <url>https://opensource.org/licenses/MIT</url>
+            <distribution>repo</distribution>
+        </license>
+    </licenses>
+
     <properties>
         <maven.compiler.source>21</maven.compiler.source>
         <maven.compiler.target>21</maven.compiler.target>
@@ -32,6 +40,10 @@
         <spotbugs.version>4.8.3.1</spotbugs.version>
         <checkstyle.version>3.4.0</checkstyle.version>
         <pmd.version>3.26.0</pmd.version>
+        <error_prone.version>2.24.1</error_prone.version>
+        <modernizer.version>3.0.0</modernizer.version>
+        <dependency-check.version>12.1.0</dependency-check.version>
+        <archunit.version>1.2.1</archunit.version>
     </properties>
 
     <modules>
@@ -120,12 +132,30 @@
                         <compilerArgs>
                             <arg>--add-modules</arg>
                             <arg>java.base</arg>
+                            <arg>-XDcompilePolicy=simple</arg>
+                            <arg>-Xplugin:ErrorProne</arg>
+                            <arg>-J--add-exports=jdk.compiler/com.sun.tools.javac.api=ALL-UNNAMED</arg>
+                            <arg>-J--add-exports=jdk.compiler/com.sun.tools.javac.file=ALL-UNNAMED</arg>
+                            <arg>-J--add-exports=jdk.compiler/com.sun.tools.javac.main=ALL-UNNAMED</arg>
+                            <arg>-J--add-exports=jdk.compiler/com.sun.tools.javac.model=ALL-UNNAMED</arg>
+                            <arg>-J--add-exports=jdk.compiler/com.sun.tools.javac.parser=ALL-UNNAMED</arg>
+                            <arg>-J--add-exports=jdk.compiler/com.sun.tools.javac.processing=ALL-UNNAMED</arg>
+                            <arg>-J--add-exports=jdk.compiler/com.sun.tools.javac.tree=ALL-UNNAMED</arg>
+                            <arg>-J--add-exports=jdk.compiler/com.sun.tools.javac.util=ALL-UNNAMED</arg>
+                            <arg>-J--add-opens=jdk.compiler/com.sun.tools.javac.code=ALL-UNNAMED</arg>
+                            <arg>-J--add-opens=jdk.compiler/com.sun.tools.javac.comp=ALL-UNNAMED</arg>
                         </compilerArgs>
+                        <fork>true</fork>
                         <annotationProcessorPaths>
                             <path>
                                 <groupId>org.projectlombok</groupId>
                                 <artifactId>lombok</artifactId>
                                 <version>${lombok.version}</version>
+                            </path>
+                            <path>
+                                <groupId>com.google.errorprone</groupId>
+                                <artifactId>error_prone_core</artifactId>
+                                <version>${error_prone.version}</version>
                             </path>
                         </annotationProcessorPaths>
                     </configuration>
@@ -142,6 +172,40 @@
                     <groupId>org.codehaus.mojo</groupId>
                     <artifactId>jmh-maven-plugin</artifactId>
                     <version>1.37</version>
+                </plugin>
+
+                <plugin>
+                    <groupId>org.gaul</groupId>
+                    <artifactId>modernizer-maven-plugin</artifactId>
+                    <version>${modernizer.version}</version>
+                    <configuration>
+                        <javaVersion>${java.version}</javaVersion>
+                    </configuration>
+                    <executions>
+                        <execution>
+                            <id>modernizer</id>
+                            <phase>verify</phase>
+                            <goals>
+                                <goal>modernizer</goal>
+                            </goals>
+                        </execution>
+                    </executions>
+                </plugin>
+
+                <plugin>
+                    <groupId>org.owasp</groupId>
+                    <artifactId>dependency-check-maven</artifactId>
+                    <version>${dependency-check.version}</version>
+                    <configuration>
+                        <failBuildOnCVSS>7</failBuildOnCVSS>
+                    </configuration>
+                    <executions>
+                        <execution>
+                            <goals>
+                                <goal>check</goal>
+                            </goals>
+                        </execution>
+                    </executions>
                 </plugin>
 
                 <!-- SpotBugs - Static Analysis for Bug Detection -->
