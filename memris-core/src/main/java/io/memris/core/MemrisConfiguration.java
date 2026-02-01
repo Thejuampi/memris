@@ -23,6 +23,7 @@ public final class MemrisConfiguration {
     // Table sizing defaults
     private final int defaultPageSize;
     private final int defaultMaxPages;
+    private final int defaultInitialPages;
 
     // Sorting configuration
     private final boolean enableParallelSorting;
@@ -35,6 +36,7 @@ public final class MemrisConfiguration {
         this.tableImplementation = builder.tableImplementation;
         this.defaultPageSize = builder.defaultPageSize;
         this.defaultMaxPages = builder.defaultMaxPages;
+        this.defaultInitialPages = builder.defaultInitialPages;
         this.enableParallelSorting = builder.enableParallelSorting;
         this.parallelSortThreshold = builder.parallelSortThreshold;
         this.auditProvider = builder.auditProvider;
@@ -74,6 +76,15 @@ public final class MemrisConfiguration {
      */
     public int defaultMaxPages() {
         return defaultMaxPages;
+    }
+
+    /**
+     * Get the default initial number of pages for new tables.
+     *
+     * @return default initial pages
+     */
+    public int defaultInitialPages() {
+        return defaultInitialPages;
     }
 
     /**
@@ -128,6 +139,7 @@ public final class MemrisConfiguration {
         private TableImplementation tableImplementation = TableImplementation.BYTECODE;
         private int defaultPageSize = 1024;
         private int defaultMaxPages = 1024;
+        private int defaultInitialPages = 1024;
         private boolean enableParallelSorting = true;
         private int parallelSortThreshold = 1000;
         private AuditProvider auditProvider;
@@ -165,6 +177,17 @@ public final class MemrisConfiguration {
          */
         public Builder defaultMaxPages(int defaultMaxPages) {
             this.defaultMaxPages = defaultMaxPages;
+            return this;
+        }
+
+        /**
+         * Set the default initial number of pages for new tables.
+         *
+         * @param defaultInitialPages the initial number of pages
+         * @return this builder for method chaining
+         */
+        public Builder defaultInitialPages(int defaultInitialPages) {
+            this.defaultInitialPages = defaultInitialPages;
             return this;
         }
 

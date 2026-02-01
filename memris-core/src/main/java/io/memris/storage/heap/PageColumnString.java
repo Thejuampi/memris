@@ -15,10 +15,13 @@ package io.memris.storage.heap;
  */
 public final class PageColumnString {
 
-    private final String[] data;
-    private final byte[] present;
-    private volatile int published;
+    private final int pageSize;
+    private final int maxPages;
     private final int capacity;
+    private final String[][] dataPages;
+    private final byte[][] presentPages;
+    private volatile int published;
+    private final Object pageAllocationLock = new Object();
 
     /**
      * Create a PageColumnString.
@@ -29,10 +32,45 @@ public final class PageColumnString {
         if (capacity <= 0) {
             throw new IllegalArgumentException("capacity must be positive: " + capacity);
         }
-        this.data = new String[capacity];
-        this.present = new byte[capacity];
-        this.published = 0;
+        this.pageSize = capacity;
+        this.maxPages = 1;
         this.capacity = capacity;
+        this.dataPages = new String[1][];
+        this.presentPages = new byte[1][];
+        allocatePage(0);
+        this.published = 0;
+    }
+
+    public PageColumnString(int pageSize, int maxPages) {
+        this(pageSize, maxPages, 1);
+    }
+
+    public PageColumnString(int pageSize, int maxPages, int initialPages) {
+        if (pageSize <= 0) {
+            throw new IllegalArgumentException("pageSize must be positive: " + pageSize);
+        }
+        if (maxPages <= 0) {
+            throw new IllegalArgumentException("maxPages must be positive: " + maxPages);
+        }
+        if (initialPages <= 0) {
+            throw new IllegalArgumentException("initialPages must be positive: " + initialPages);
+        }
+        if (initialPages > maxPages) {
+            throw new IllegalArgumentException("initialPages exceeds maxPages: " + initialPages);
+        }
+        long total = (long) pageSize * (long) maxPages;
+        if (total > Integer.MAX_VALUE) {
+            throw new IllegalArgumentException("capacity exceeds Integer.MAX_VALUE: " + total);
+        }
+        this.pageSize = pageSize;
+        this.maxPages = maxPages;
+        this.capacity = (int) total;
+        this.dataPages = new String[maxPages][];
+        this.presentPages = new byte[maxPages][];
+        for (int pageId = 0; pageId < initialPages; pageId++) {
+            allocatePage(pageId);
+        }
+        this.published = 0;
     }
 
     /**
@@ -54,10 +92,13 @@ public final class PageColumnString {
         if (offset < 0 || offset >= capacity) {
             throw new IndexOutOfBoundsException("offset out of range: " + offset);
         }
-        if (present[offset] == 0) {
+        int pageId = offset / pageSize;
+        int pageOffset = offset % pageSize;
+        byte[] present = presentPages[pageId];
+        if (present == null || present[pageOffset] == 0) {
             return null;
         }
-        return data[offset];
+        return dataPages[pageId][pageOffset];
     }
 
     /**
@@ -67,7 +108,10 @@ public final class PageColumnString {
         if (offset < 0 || offset >= capacity) {
             throw new IndexOutOfBoundsException("offset out of range: " + offset);
         }
-        return present[offset] != 0;
+        int pageId = offset / pageSize;
+        int pageOffset = offset % pageSize;
+        byte[] present = presentPages[pageId];
+        return present != null && present[pageOffset] != 0;
     }
 
     /**
@@ -80,8 +124,11 @@ public final class PageColumnString {
         if (offset < 0 || offset >= capacity) {
             throw new IndexOutOfBoundsException("offset out of range: " + offset);
         }
-        data[offset] = value;
-        present[offset] = 1;
+        int pageId = offset / pageSize;
+        int pageOffset = offset % pageSize;
+        ensurePage(pageId);
+        dataPages[pageId][pageOffset] = value;
+        presentPages[pageId][pageOffset] = 1;
     }
 
     /**
@@ -91,8 +138,11 @@ public final class PageColumnString {
         if (offset < 0 || offset >= capacity) {
             throw new IndexOutOfBoundsException("offset out of range: " + offset);
         }
-        data[offset] = null;
-        present[offset] = 0;
+        int pageId = offset / pageSize;
+        int pageOffset = offset % pageSize;
+        ensurePage(pageId);
+        dataPages[pageId][pageOffset] = null;
+        presentPages[pageId][pageOffset] = 0;
     }
 
     /**
@@ -130,10 +180,22 @@ public final class PageColumnString {
         int[] results = new int[count];
         int found = 0;
 
-        for (int i = 0; i < count; i++) {
-            if (present[i] != 0 && target.equals(data[i])) {
-                results[found++] = i;
+        int remaining = count;
+        for (int pageId = 0; pageId < maxPages && remaining > 0; pageId++) {
+            int pageLimit = Math.min(pageSize, remaining);
+            int base = pageId * pageSize;
+            byte[] present = presentPages[pageId];
+            if (present == null) {
+                remaining -= pageLimit;
+                continue;
             }
+            String[] data = dataPages[pageId];
+            for (int i = 0; i < pageLimit; i++) {
+                if (present[i] != 0 && target.equals(data[i])) {
+                    results[found++] = base + i;
+                }
+            }
+            remaining -= pageLimit;
         }
 
         return trimResults(results, found);
@@ -156,14 +218,26 @@ public final class PageColumnString {
         int found = 0;
 
         String lowerTarget = target.toLowerCase();
-        for (int i = 0; i < count; i++) {
-            if (present[i] == 0) {
+        int remaining = count;
+        for (int pageId = 0; pageId < maxPages && remaining > 0; pageId++) {
+            int pageLimit = Math.min(pageSize, remaining);
+            int base = pageId * pageSize;
+            byte[] present = presentPages[pageId];
+            if (present == null) {
+                remaining -= pageLimit;
                 continue;
             }
-            String value = data[i];
-            if (value != null && value.toLowerCase().equals(lowerTarget)) {
-                results[found++] = i;
+            String[] data = dataPages[pageId];
+            for (int i = 0; i < pageLimit; i++) {
+                if (present[i] == 0) {
+                    continue;
+                }
+                String value = data[i];
+                if (value != null && value.toLowerCase().equals(lowerTarget)) {
+                    results[found++] = base + i;
+                }
             }
+            remaining -= pageLimit;
         }
 
         return trimResults(results, found);
@@ -195,10 +269,22 @@ public final class PageColumnString {
         int[] results = new int[count];
         int found = 0;
 
-        for (int i = 0; i < count; i++) {
-            if (present[i] != 0 && targetSet.contains(data[i])) {
-                results[found++] = i;
+        int remaining = count;
+        for (int pageId = 0; pageId < maxPages && remaining > 0; pageId++) {
+            int pageLimit = Math.min(pageSize, remaining);
+            int base = pageId * pageSize;
+            byte[] present = presentPages[pageId];
+            if (present == null) {
+                remaining -= pageLimit;
+                continue;
             }
+            String[] data = dataPages[pageId];
+            for (int i = 0; i < pageLimit; i++) {
+                if (present[i] != 0 && targetSet.contains(data[i])) {
+                    results[found++] = base + i;
+                }
+            }
+            remaining -= pageLimit;
         }
 
         return trimResults(results, found);
@@ -212,10 +298,21 @@ public final class PageColumnString {
         int[] results = new int[count];
         int found = 0;
 
-        for (int i = 0; i < count; i++) {
-            if (present[i] == 0) {
-                results[found++] = i;
+        int remaining = count;
+        for (int pageId = 0; pageId < maxPages && remaining > 0; pageId++) {
+            int pageLimit = Math.min(pageSize, remaining);
+            int base = pageId * pageSize;
+            byte[] present = presentPages[pageId];
+            if (present == null) {
+                remaining -= pageLimit;
+                continue;
             }
+            for (int i = 0; i < pageLimit; i++) {
+                if (present[i] == 0) {
+                    results[found++] = base + i;
+                }
+            }
+            remaining -= pageLimit;
         }
 
         return trimResults(results, found);
@@ -243,5 +340,29 @@ public final class PageColumnString {
      */
     public int capacity() {
         return capacity;
+    }
+
+    private void ensurePage(int pageId) {
+        if (dataPages[pageId] != null && presentPages[pageId] != null) {
+            return;
+        }
+        allocatePage(pageId);
+    }
+
+    private void allocatePage(int pageId) {
+        if (pageId < 0 || pageId >= maxPages) {
+            throw new IndexOutOfBoundsException("pageId out of range: " + pageId);
+        }
+        if (dataPages[pageId] != null && presentPages[pageId] != null) {
+            return;
+        }
+        synchronized (pageAllocationLock) {
+            if (dataPages[pageId] == null) {
+                dataPages[pageId] = new String[pageSize];
+            }
+            if (presentPages[pageId] == null) {
+                presentPages[pageId] = new byte[pageSize];
+            }
+        }
     }
 }

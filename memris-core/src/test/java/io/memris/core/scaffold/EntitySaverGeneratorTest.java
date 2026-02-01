@@ -41,7 +41,7 @@ class EntitySaverGeneratorTest {
                         new FieldMetadata("name", io.memris.core.TypeCodes.TYPE_STRING, false, false),
                         new FieldMetadata("email", io.memris.core.TypeCodes.TYPE_STRING, false, false)));
         Class<? extends AbstractTable> tableClass = TableGenerator.generate(tableMetadata);
-        GeneratedTable table = (GeneratedTable) tableClass.getConstructor(int.class, int.class).newInstance(32, 4);
+        GeneratedTable table = (GeneratedTable) tableClass.getConstructor(int.class, int.class, int.class).newInstance(32, 4, 1);
 
         // Create and save entity
         Customer customer = new Customer();

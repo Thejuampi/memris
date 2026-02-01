@@ -273,11 +273,11 @@ The `ECommerceRealWorldTest` includes 12 comprehensive query tests:
 ```java
 // Generate tables (build-time via TableGenerator)
 GeneratedTable productTable = TableGenerator.generate(productMetadata)
-    .getConstructor(int.class, int.class)
-    .newInstance(1024, 100);
+    .getConstructor(int.class, int.class, int.class)
+    .newInstance(1024, 100, 1);
 GeneratedTable orderTable = TableGenerator.generate(orderMetadata)
-    .getConstructor(int.class, int.class)
-    .newInstance(1024, 100);
+    .getConstructor(int.class, int.class, int.class)
+    .newInstance(1024, 100, 1);
 
 // Save entities
 productTable.insertFrom(new Object[]{1L, "PRO-LP-001", "Laptop", 999.99});

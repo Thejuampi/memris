@@ -32,8 +32,8 @@ class TableGeneratorTest {
         Class<? extends AbstractTable> tableClass = TableGenerator.generate(metadata);
 
         AbstractTable abstractTable = tableClass
-                .getConstructor(int.class, int.class)
-                .newInstance(32, 4);
+                .getConstructor(int.class, int.class, int.class)
+                .newInstance(32, 4, 1);
         GeneratedTable genTable = (GeneratedTable) abstractTable;
 
         // Verify table exists and has correct name
@@ -50,8 +50,8 @@ class TableGeneratorTest {
         Class<? extends AbstractTable> tableClass = TableGenerator.generate(metadata);
 
         AbstractTable abstractTable = tableClass
-                .getConstructor(int.class, int.class)
-                .newInstance(32, 4);
+                .getConstructor(int.class, int.class, int.class)
+                .newInstance(32, 4, 1);
         GeneratedTable table = (GeneratedTable) abstractTable;
 
         // Insert using GeneratedTable.insertFrom(Object[])
@@ -68,8 +68,8 @@ class TableGeneratorTest {
         Class<? extends AbstractTable> tableClass = TableGenerator.generate(metadata);
 
         AbstractTable abstractTable = tableClass
-                .getConstructor(int.class, int.class)
-                .newInstance(32, 4);
+                .getConstructor(int.class, int.class, int.class)
+                .newInstance(32, 4, 1);
         GeneratedTable table = (GeneratedTable) abstractTable;
 
         // Insert
@@ -96,8 +96,8 @@ class TableGeneratorTest {
         Class<? extends AbstractTable> tableClass = TableGenerator.generate(metadata);
 
         AbstractTable abstractTable = tableClass
-                .getConstructor(int.class, int.class)
-                .newInstance(32, 4);
+                .getConstructor(int.class, int.class, int.class)
+                .newInstance(32, 4, 1);
         GeneratedTable table = (GeneratedTable) abstractTable;
 
         // Insert with String ID using insertFrom
@@ -117,8 +117,8 @@ class TableGeneratorTest {
         Class<? extends AbstractTable> tableClass = TableGenerator.generate(metadata);
 
         AbstractTable abstractTable = tableClass
-                .getConstructor(int.class, int.class)
-                .newInstance(32, 4);
+                .getConstructor(int.class, int.class, int.class)
+                .newInstance(32, 4, 1);
         GeneratedTable table = (GeneratedTable) abstractTable;
 
         // Insert multiple rows

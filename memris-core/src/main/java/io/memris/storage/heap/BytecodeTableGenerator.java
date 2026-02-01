@@ -134,12 +134,13 @@ public final class BytecodeTableGenerator {
             String entityName) {
         try {
             return builder.defineConstructor(Visibility.PUBLIC)
-                    .withParameters(int.class, int.class)
+                    .withParameters(int.class, int.class, int.class)
                     .intercept(MethodCall
-                            .invoke(AbstractTable.class.getDeclaredConstructor(String.class, int.class, int.class))
+                            .invoke(AbstractTable.class.getDeclaredConstructor(String.class, int.class, int.class, int.class))
                             .with(entityName)
                             .withArgument(0)
                             .withArgument(1)
+                            .withArgument(2)
                             .andThen(MethodDelegation.to(new ConstructorInterceptor(columnFields, idIndexType))));
         } catch (NoSuchMethodException e) {
             throw new RuntimeException("Failed to find AbstractTable constructor", e);
@@ -163,12 +164,18 @@ public final class BytecodeTableGenerator {
 
             builder = builder.method(net.bytebuddy.matcher.ElementMatchers.named("liveCount"))
                     .intercept(MethodCall.invoke(AbstractTable.class.getDeclaredMethod("rowCount")).onSuper());
+            builder = builder.method(net.bytebuddy.matcher.ElementMatchers.named("rowGeneration"))
+                    .intercept(MethodDelegation.to(new RowGenerationInterceptor()));
         } catch (NoSuchMethodException e) {
             throw new RuntimeException("Failed to find AbstractTable methods", e);
         }
 
-        builder = builder.method(net.bytebuddy.matcher.ElementMatchers.named("currentGeneration"))
-                .intercept(net.bytebuddy.implementation.FixedValue.value(0L));
+        try {
+            builder = builder.method(net.bytebuddy.matcher.ElementMatchers.named("currentGeneration"))
+                    .intercept(MethodCall.invoke(AbstractTable.class.getDeclaredMethod("currentGeneration")).onSuper());
+        } catch (NoSuchMethodException e) {
+            throw new RuntimeException("Failed to find currentGeneration method", e);
+        }
 
         // Read methods
         builder = builder.method(net.bytebuddy.matcher.ElementMatchers.named("readLong"))
@@ -262,15 +269,15 @@ public final class BytecodeTableGenerator {
         public void intercept(@This Object obj, @AllArguments Object[] args) throws Exception {
             int pageSize = (int) args[0];
             int maxPages = (int) args[1];
-            int capacity = pageSize * maxPages;
+            int initialPages = (int) args[2];
 
             // Initialize column fields
             for (ColumnFieldInfo field : columnFields) {
                 Field declaredField = obj.getClass().getDeclaredField(field.fieldName());
                 declaredField.setAccessible(true);
                 Object columnInstance = field.columnType()
-                        .getDeclaredConstructor(int.class)
-                        .newInstance(capacity);
+                        .getDeclaredConstructor(int.class, int.class, int.class)
+                        .newInstance(pageSize, maxPages, initialPages);
                 declaredField.set(obj, columnInstance);
             }
 
@@ -324,6 +331,13 @@ public final class BytecodeTableGenerator {
 
                 return new net.bytebuddy.implementation.bytecode.ByteCodeAppender.Size(3, 2);
             };
+        }
+    }
+
+    public static class RowGenerationInterceptor {
+        @RuntimeType
+        public long intercept(@Argument(0) int rowIndex, @This AbstractTable table) {
+            return table.rowGenerationAt(rowIndex);
         }
     }
 

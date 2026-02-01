@@ -27,8 +27,8 @@ class TombstoneDirectTest {
         TableMetadata metadata = createPersonMetadata();
         Class<? extends AbstractTable> tableClass = BytecodeTableGenerator.generate(metadata);
         AbstractTable abstractTable = tableClass
-                .getConstructor(int.class, int.class)
-                .newInstance(32, 4);
+                .getConstructor(int.class, int.class, int.class)
+                .newInstance(32, 4, 1);
         GeneratedTable table = (GeneratedTable) abstractTable;
 
         // Insert 3 rows

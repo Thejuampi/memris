@@ -61,7 +61,7 @@ class JoinMaterializerImplTest {
 
     private GeneratedTable newTable(TableMetadata metadata) throws Exception {
         Class<? extends AbstractTable> tableClass = TableGenerator.generate(metadata);
-        return (GeneratedTable) tableClass.getConstructor(int.class, int.class).newInstance(32, 4);
+        return (GeneratedTable) tableClass.getConstructor(int.class, int.class, int.class).newInstance(32, 4, 1);
     }
 
     private TableMetadata sourceMetadata() {

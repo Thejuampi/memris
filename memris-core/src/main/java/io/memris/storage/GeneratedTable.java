@@ -8,7 +8,7 @@ package io.memris.storage;
  *   <li>ALL scans return int[] (rowIndex) - compatible con SelectionVector existente</li>
  *   <li>ALL reads are typed (readLong, readInt, readString) - no boxing</li>
  *   <li>NO materialization of domain objects T</li>
- *   <li>Generation tracking via internal long[] rowGenerations</li>
+ *   <li>Generation tracking via internal row generation pages</li>
  *   <li>Seqlock per-row for concurrent write safety</li>
  * </ul>
  */

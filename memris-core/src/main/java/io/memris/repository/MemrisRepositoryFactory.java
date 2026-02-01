@@ -12,10 +12,14 @@ import io.memris.core.MemrisArena;
 
 import io.memris.core.GeneratedValue;
 import io.memris.core.Index;
-import jakarta.persistence.*;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
-import java.util.*;
+import java.util.HashMap;
+import java.util.Map;
 
 public final class MemrisRepositoryFactory implements AutoCloseable {
 
@@ -740,8 +744,12 @@ public final class MemrisRepositoryFactory implements AutoCloseable {
 
         // Instantiate the generated table
         try {
-            io.memris.storage.heap.AbstractTable table = tableClass.getDeclaredConstructor(int.class, int.class)
-                    .newInstance(1024, 1024); // Default page size and max pages
+            int pageSize = configuration.defaultPageSize();
+            int maxPages = configuration.defaultMaxPages();
+            int initialPages = configuration.defaultInitialPages();
+            io.memris.storage.heap.AbstractTable table = tableClass
+                    .getDeclaredConstructor(int.class, int.class, int.class)
+                    .newInstance(pageSize, maxPages, initialPages);
             return (io.memris.storage.GeneratedTable) table;
         } catch (Exception e) {
             throw new RuntimeException("Failed to instantiate table for entity: " + entityClass.getName(), e);

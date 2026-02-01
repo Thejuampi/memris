@@ -21,8 +21,8 @@ class BytecodeTableGeneratorTest {
         TableMetadata metadata = createPersonMetadata();
         Class<? extends AbstractTable> tableClass = BytecodeTableGenerator.generate(metadata);
         AbstractTable abstractTable = tableClass
-                .getConstructor(int.class, int.class)
-                .newInstance(32, 4);
+                .getConstructor(int.class, int.class, int.class)
+                .newInstance(32, 4, 1);
         GeneratedTable table = (GeneratedTable) abstractTable;
 
         long ref1 = table.insertFrom(new Object[]{1L, "Alice", 100});
@@ -40,8 +40,8 @@ class BytecodeTableGeneratorTest {
         TableMetadata metadata = createPersonMetadata();
         Class<? extends AbstractTable> tableClass = BytecodeTableGenerator.generate(metadata);
         AbstractTable abstractTable = tableClass
-                .getConstructor(int.class, int.class)
-                .newInstance(32, 4);
+                .getConstructor(int.class, int.class, int.class)
+                .newInstance(32, 4, 1);
         GeneratedTable table = (GeneratedTable) abstractTable;
 
         table.insertFrom(new Object[]{1L, "Alice", 100});
@@ -59,8 +59,8 @@ class BytecodeTableGeneratorTest {
         TableMetadata metadata = createPersonMetadata();
         Class<? extends AbstractTable> tableClass = BytecodeTableGenerator.generate(metadata);
         AbstractTable abstractTable = tableClass
-                .getConstructor(int.class, int.class)
-                .newInstance(32, 4);
+                .getConstructor(int.class, int.class, int.class)
+                .newInstance(32, 4, 1);
         GeneratedTable table = (GeneratedTable) abstractTable;
 
         table.insertFrom(new Object[]{1L, "Alice", 100});
@@ -78,8 +78,8 @@ class BytecodeTableGeneratorTest {
         TableMetadata metadata = createPersonMetadata();
         Class<? extends AbstractTable> tableClass = BytecodeTableGenerator.generate(metadata);
         AbstractTable abstractTable = tableClass
-                .getConstructor(int.class, int.class)
-                .newInstance(32, 4);
+                .getConstructor(int.class, int.class, int.class)
+                .newInstance(32, 4, 1);
         GeneratedTable table = (GeneratedTable) abstractTable;
 
         table.insertFrom(new Object[]{1L, "Alice", 100});
@@ -96,8 +96,8 @@ class BytecodeTableGeneratorTest {
         TableMetadata metadata = createPersonMetadata();
         Class<? extends AbstractTable> tableClass = BytecodeTableGenerator.generate(metadata);
         AbstractTable abstractTable = tableClass
-                .getConstructor(int.class, int.class)
-                .newInstance(32, 4);
+                .getConstructor(int.class, int.class, int.class)
+                .newInstance(32, 4, 1);
         GeneratedTable table = (GeneratedTable) abstractTable;
 
         long ref1 = table.insertFrom(new Object[]{1L, "Alice", 100});
@@ -119,8 +119,8 @@ class BytecodeTableGeneratorTest {
         TableMetadata metadata = createPersonMetadata();
         Class<? extends AbstractTable> tableClass = BytecodeTableGenerator.generate(metadata);
         AbstractTable abstractTable = tableClass
-                .getConstructor(int.class, int.class)
-                .newInstance(32, 4);
+                .getConstructor(int.class, int.class, int.class)
+                .newInstance(32, 4, 1);
         GeneratedTable table = (GeneratedTable) abstractTable;
 
         // Type code access should use direct array lookup
@@ -134,8 +134,8 @@ class BytecodeTableGeneratorTest {
         TableMetadata metadata = createPersonMetadata();
         Class<? extends AbstractTable> tableClass = BytecodeTableGenerator.generate(metadata);
         AbstractTable abstractTable = tableClass
-                .getConstructor(int.class, int.class)
-                .newInstance(32, 4);
+                .getConstructor(int.class, int.class, int.class)
+                .newInstance(32, 4, 1);
         GeneratedTable table = (GeneratedTable) abstractTable;
 
         long ref = table.insertFrom(new Object[]{42L, "Test", 999});

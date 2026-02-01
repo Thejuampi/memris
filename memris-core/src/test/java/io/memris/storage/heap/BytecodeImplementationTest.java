@@ -28,8 +28,8 @@ class BytecodeImplementationTest {
         TableMetadata metadata = createPersonMetadata();
         Class<? extends AbstractTable> tableClass = TableGenerator.generate(metadata);
         AbstractTable abstractTable = tableClass
-                .getConstructor(int.class, int.class)
-                .newInstance(32, 4);
+                .getConstructor(int.class, int.class, int.class)
+                .newInstance(32, 4, 1);
         GeneratedTable table = (GeneratedTable) abstractTable;
 
         long ref1 = table.insertFrom(new Object[]{1L, "Alice", 100});

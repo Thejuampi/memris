@@ -34,7 +34,7 @@ class EntityMaterializerImplTest {
         );
         
         Class<? extends AbstractTable> tableClass = TableGenerator.generate(tableMetadata);
-        GeneratedTable table = (GeneratedTable) tableClass.getConstructor(int.class, int.class).newInstance(32, 4);
+        GeneratedTable table = (GeneratedTable) tableClass.getConstructor(int.class, int.class, int.class).newInstance(32, 4, 1);
         
         // Insert test data
         table.insertFrom(new Object[]{1L, "Alice", 30});
@@ -69,7 +69,7 @@ class EntityMaterializerImplTest {
         );
         
         Class<? extends AbstractTable> tableClass = TableGenerator.generate(tableMetadata);
-        GeneratedTable table = (GeneratedTable) tableClass.getConstructor(int.class, int.class).newInstance(32, 4);
+        GeneratedTable table = (GeneratedTable) tableClass.getConstructor(int.class, int.class, int.class).newInstance(32, 4, 1);
         
         // Insert with null name
         table.insertFrom(new Object[]{1L, null, 30});
@@ -99,7 +99,7 @@ class EntityMaterializerImplTest {
         );
         
         Class<? extends AbstractTable> tableClass = TableGenerator.generate(tableMetadata);
-        GeneratedTable table = (GeneratedTable) tableClass.getConstructor(int.class, int.class).newInstance(32, 4);
+        GeneratedTable table = (GeneratedTable) tableClass.getConstructor(int.class, int.class, int.class).newInstance(32, 4, 1);
         
         // Insert multiple rows
         table.insertFrom(new Object[]{1L, "Alice", 30});

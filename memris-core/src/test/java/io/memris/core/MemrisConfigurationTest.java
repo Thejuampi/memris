@@ -17,6 +17,7 @@ class MemrisConfigurationTest {
         assertThat(config.tableImplementation()).isEqualTo(MemrisConfiguration.TableImplementation.BYTECODE);
         assertThat(config.defaultPageSize()).isEqualTo(1024);
         assertThat(config.defaultMaxPages()).isEqualTo(1024);
+        assertThat(config.defaultInitialPages()).isEqualTo(1024);
         assertThat(config.enableParallelSorting()).isTrue();
         assertThat(config.parallelSortThreshold()).isEqualTo(1000);
     }
@@ -27,6 +28,7 @@ class MemrisConfigurationTest {
                 .tableImplementation(MemrisConfiguration.TableImplementation.METHOD_HANDLE)
                 .defaultPageSize(2048)
                 .defaultMaxPages(512)
+                .defaultInitialPages(2)
                 .enableParallelSorting(false)
                 .parallelSortThreshold(500)
                 .build();
@@ -34,6 +36,7 @@ class MemrisConfigurationTest {
         assertThat(config.tableImplementation()).isEqualTo(MemrisConfiguration.TableImplementation.METHOD_HANDLE);
         assertThat(config.defaultPageSize()).isEqualTo(2048);
         assertThat(config.defaultMaxPages()).isEqualTo(512);
+        assertThat(config.defaultInitialPages()).isEqualTo(2);
         assertThat(config.enableParallelSorting()).isFalse();
         assertThat(config.parallelSortThreshold()).isEqualTo(500);
     }
@@ -54,11 +57,13 @@ class MemrisConfigurationTest {
                 .tableImplementation(MemrisConfiguration.TableImplementation.BYTECODE)
                 .defaultPageSize(4096)
                 .defaultMaxPages(1024)
+                .defaultInitialPages(4)
                 .enableParallelSorting(true)
                 .parallelSortThreshold(2000)
                 .build();
 
         assertThat(config.defaultPageSize()).isEqualTo(4096);
+        assertThat(config.defaultInitialPages()).isEqualTo(4);
         assertThat(config.parallelSortThreshold()).isEqualTo(2000);
     }
 }

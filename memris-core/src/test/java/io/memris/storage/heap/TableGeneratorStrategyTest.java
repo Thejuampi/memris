@@ -41,8 +41,8 @@ class TableGeneratorStrategyTest {
         
         // Verify it works
         GeneratedTable table = (GeneratedTable) tableClass
-                .getConstructor(int.class, int.class)
-                .newInstance(32, 4);
+                .getConstructor(int.class, int.class, int.class)
+                .newInstance(32, 4, 1);
         
         long ref = table.insertFrom(new Object[]{1L, "Alice"});
         assertTrue(ref >= 0);
@@ -93,8 +93,8 @@ class TableGeneratorStrategyTest {
         
         // Verify the table works correctly with methodhandle implementation
         GeneratedTable table = (GeneratedTable) tableClass
-                .getConstructor(int.class, int.class)
-                .newInstance(32, 4);
+                .getConstructor(int.class, int.class, int.class)
+                .newInstance(32, 4, 1);
         
         long ref = table.insertFrom(new Object[]{1L, "Alice"});
         assertTrue(ref >= 0, "MethodHandle implementation should work correctly");

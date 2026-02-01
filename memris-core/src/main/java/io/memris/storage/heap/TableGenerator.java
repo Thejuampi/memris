@@ -73,11 +73,12 @@ public final class TableGenerator {
         // Add constructor using MethodCall to super constructor and then field initialization
         try {
             builder = builder.defineConstructor(Visibility.PUBLIC)
-                    .withParameters(int.class, int.class)
-                    .intercept(MethodCall.invoke(AbstractTable.class.getDeclaredConstructor(String.class, int.class, int.class))
+                    .withParameters(int.class, int.class, int.class)
+                    .intercept(MethodCall.invoke(AbstractTable.class.getDeclaredConstructor(String.class, int.class, int.class, int.class))
                             .with(metadata.entityName())
                             .withArgument(0)
                             .withArgument(1)
+                            .withArgument(2)
                             .andThen(MethodDelegation.to(new ConstructorInterceptor(columnFields, idIndexType))));
         } catch (NoSuchMethodException e) {
             throw new RuntimeException("Failed to find AbstractTable constructor", e);
@@ -111,15 +112,15 @@ public final class TableGenerator {
         public void intercept(@This Object obj, @AllArguments Object[] args) throws Exception {
             int pageSize = (int) args[0];
             int maxPages = (int) args[1];
-            int capacity = pageSize * maxPages;
+            int initialPages = (int) args[2];
 
             // Initialize column fields
             for (TableImplementationStrategy.ColumnFieldInfo field : columnFields) {
                 Field declaredField = obj.getClass().getDeclaredField(field.fieldName());
                 declaredField.setAccessible(true);
                 Object columnInstance = field.columnType()
-                        .getDeclaredConstructor(int.class)
-                        .newInstance(capacity);
+                        .getDeclaredConstructor(int.class, int.class, int.class)
+                        .newInstance(pageSize, maxPages, initialPages);
                 declaredField.set(obj, columnInstance);
             }
 
@@ -140,6 +141,8 @@ public final class TableGenerator {
             Field typeCodesField = obj.getClass().getDeclaredField("TYPE_CODES");
             typeCodesField.setAccessible(true);
             typeCodesField.set(obj, typeCodes);
+
+            // Pages are allocated lazily by columns on demand.
         }
     }
 

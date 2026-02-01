@@ -9,7 +9,6 @@ import net.bytebuddy.implementation.bind.annotation.This;
 
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
-import java.lang.invoke.VarHandle;
 import java.lang.reflect.Field;
 import java.util.List;
 
@@ -197,7 +196,7 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
     public static class RowGenerationInterceptor {
         @RuntimeType
         public long intercept(@Argument(0) int rowIndex, @This AbstractTable table) {
-            return table.rowGenerations[rowIndex];
+            return table.rowGenerationAt(rowIndex);
         }
     }
 
@@ -358,8 +357,9 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
 
             int[] filtered = new int[rows.length];
             int count = 0;
+            int pageSize = ((AbstractTable) obj).pageSize();
             for (int rowIndex : rows) {
-                io.memris.kernel.RowId rowId = new io.memris.kernel.RowId(rowIndex / 1024, rowIndex % 1024);
+                io.memris.kernel.RowId rowId = new io.memris.kernel.RowId(rowIndex / pageSize, rowIndex % pageSize);
                 if (!(boolean) isTombstoneMethod.invoke(obj, rowId)) {
                     filtered[count++] = rowIndex;
                 }
@@ -406,8 +406,9 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
 
             int[] filtered = new int[rows.length];
             int count = 0;
+            int pageSize = ((AbstractTable) obj).pageSize();
             for (int rowIndex : rows) {
-                io.memris.kernel.RowId rowId = new io.memris.kernel.RowId(rowIndex / 1024, rowIndex % 1024);
+                io.memris.kernel.RowId rowId = new io.memris.kernel.RowId(rowIndex / pageSize, rowIndex % pageSize);
                 if (!(boolean) isTombstoneMethod.invoke(obj, rowId)) {
                     filtered[count++] = rowIndex;
                 }
@@ -451,8 +452,9 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
 
             int[] filtered = new int[rows.length];
             int count = 0;
+            int pageSize = ((AbstractTable) obj).pageSize();
             for (int rowIndex : rows) {
-                io.memris.kernel.RowId rowId = new io.memris.kernel.RowId(rowIndex / 1024, rowIndex % 1024);
+                io.memris.kernel.RowId rowId = new io.memris.kernel.RowId(rowIndex / pageSize, rowIndex % pageSize);
                 if (!(boolean) isTombstoneMethod.invoke(obj, rowId)) {
                     filtered[count++] = rowIndex;
                 }
@@ -499,8 +501,9 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
 
             int[] filtered = new int[rows.length];
             int count = 0;
+            int pageSize = ((AbstractTable) obj).pageSize();
             for (int rowIndex : rows) {
-                io.memris.kernel.RowId rowId = new io.memris.kernel.RowId(rowIndex / 1024, rowIndex % 1024);
+                io.memris.kernel.RowId rowId = new io.memris.kernel.RowId(rowIndex / pageSize, rowIndex % pageSize);
                 if (!(boolean) isTombstoneMethod.invoke(obj, rowId)) {
                     filtered[count++] = rowIndex;
                 }
@@ -547,8 +550,9 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
 
             int[] filtered = new int[rows.length];
             int count = 0;
+            int pageSize = ((AbstractTable) obj).pageSize();
             for (int rowIndex : rows) {
-                io.memris.kernel.RowId rowId = new io.memris.kernel.RowId(rowIndex / 1024, rowIndex % 1024);
+                io.memris.kernel.RowId rowId = new io.memris.kernel.RowId(rowIndex / pageSize, rowIndex % pageSize);
                 if (!(boolean) isTombstoneMethod.invoke(obj, rowId)) {
                     filtered[count++] = rowIndex;
                 }
@@ -595,8 +599,9 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
 
             int[] filtered = new int[rows.length];
             int count = 0;
+            int pageSize = ((AbstractTable) obj).pageSize();
             for (int rowIndex : rows) {
-                io.memris.kernel.RowId rowId = new io.memris.kernel.RowId(rowIndex / 1024, rowIndex % 1024);
+                io.memris.kernel.RowId rowId = new io.memris.kernel.RowId(rowIndex / pageSize, rowIndex % pageSize);
                 if (!(boolean) isTombstoneMethod.invoke(obj, rowId)) {
                     filtered[count++] = rowIndex;
                 }
@@ -643,8 +648,9 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
 
             int[] filtered = new int[rows.length];
             int count = 0;
+            int pageSize = ((AbstractTable) obj).pageSize();
             for (int rowIndex : rows) {
-                io.memris.kernel.RowId rowId = new io.memris.kernel.RowId(rowIndex / 1024, rowIndex % 1024);
+                io.memris.kernel.RowId rowId = new io.memris.kernel.RowId(rowIndex / pageSize, rowIndex % pageSize);
                 if (!(boolean) isTombstoneMethod.invoke(obj, rowId)) {
                     filtered[count++] = rowIndex;
                 }
@@ -688,8 +694,9 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
 
             int[] filtered = new int[rows.length];
             int count = 0;
+            int pageSize = ((AbstractTable) obj).pageSize();
             for (int rowIndex : rows) {
-                io.memris.kernel.RowId rowId = new io.memris.kernel.RowId(rowIndex / 1024, rowIndex % 1024);
+                io.memris.kernel.RowId rowId = new io.memris.kernel.RowId(rowIndex / pageSize, rowIndex % pageSize);
                 if (!(boolean) isTombstoneMethod.invoke(obj, rowId)) {
                     filtered[count++] = rowIndex;
                 }
@@ -733,8 +740,9 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
 
             int[] filtered = new int[rows.length];
             int count = 0;
+            int pageSize = ((AbstractTable) obj).pageSize();
             for (int rowIndex : rows) {
-                io.memris.kernel.RowId rowId = new io.memris.kernel.RowId(rowIndex / 1024, rowIndex % 1024);
+                io.memris.kernel.RowId rowId = new io.memris.kernel.RowId(rowIndex / pageSize, rowIndex % pageSize);
                 if (!(boolean) isTombstoneMethod.invoke(obj, rowId)) {
                     filtered[count++] = rowIndex;
                 }
@@ -759,9 +767,10 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
 
             int[] temp = new int[(int) allocated];
             int count = 0;
+            int pageSize = ((AbstractTable) obj).pageSize();
             for (int i = 0; i < allocated; i++) {
-                int pageId = i / 1024;
-                int offset = i % 1024;
+                int pageId = i / pageSize;
+                int offset = i % pageSize;
                 io.memris.kernel.RowId rowId = new io.memris.kernel.RowId(pageId, offset);
                 boolean isTombstoned = (boolean) isTombstoneMethod.invoke(obj, rowId);
                 if (!isTombstoned) {
@@ -795,7 +804,8 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
             java.lang.reflect.Method allocateMethod = AbstractTable.class.getDeclaredMethod("allocateRowId");
             allocateMethod.setAccessible(true);
             io.memris.kernel.RowId rowId = (io.memris.kernel.RowId) allocateMethod.invoke(obj);
-            int rowIndex = (int) (rowId.page() * 1024 + rowId.offset());
+            int pageSize = ((AbstractTable) obj).pageSize();
+            int rowIndex = (int) (rowId.page() * pageSize + rowId.offset());
 
             // Get generation for this row
             java.lang.reflect.Method rowGenMethod = AbstractTable.class.getDeclaredMethod("rowGeneration", int.class);
@@ -970,11 +980,11 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
         public void intercept(@Argument(0) long ref, @This Object obj) throws Throwable {
             int rowIndex = io.memris.storage.Selection.index(ref);
             long generation = io.memris.storage.Selection.generation(ref);
-            int pageId = rowIndex / 1024;
-            int offset = rowIndex % 1024;
-            io.memris.kernel.RowId rowId = new io.memris.kernel.RowId(pageId, offset);
-
             AbstractTable table = (AbstractTable) obj;
+            int pageSize = table.pageSize();
+            int pageId = rowIndex / pageSize;
+            int offset = rowIndex % pageSize;
+            io.memris.kernel.RowId rowId = new io.memris.kernel.RowId(pageId, offset);
             table.beginSeqLock(rowIndex);
             Object idValue = null;
             try {
@@ -1036,8 +1046,9 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
         public boolean intercept(@Argument(0) long ref, @This AbstractTable table) {
             int rowIndex = io.memris.storage.Selection.index(ref);
             long generation = io.memris.storage.Selection.generation(ref);
-            int pageId = rowIndex / 1024;
-            int offset = rowIndex % 1024;
+            int pageSize = table.pageSize();
+            int pageId = rowIndex / pageSize;
+            int offset = rowIndex % pageSize;
             io.memris.kernel.RowId rowId = new io.memris.kernel.RowId(pageId, offset);
 
             // Check tombstone
@@ -1046,7 +1057,7 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
             }
 
             // Check generation - stale ref detection (direct field access)
-            return table.rowGenerations[rowIndex] == generation;
+            return table.rowGenerationAt(rowIndex) == generation;
         }
     }
 
@@ -1081,7 +1092,8 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
 
                 io.memris.kernel.RowId rowId = rag.rowId();
                 long generation = rag.generation();
-                int rowIndex = (int) (rowId.page() * 1024 + rowId.offset());
+                int pageSize = ((AbstractTable) obj).pageSize();
+                int rowIndex = (int) (rowId.page() * pageSize + rowId.offset());
 
                 // Validate not tombstoned
                 boolean isTombstoned = (boolean) isTombstoneMethod.invoke(obj, rowId);
@@ -1102,7 +1114,8 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
 
                 io.memris.kernel.RowId rowId = rag.rowId();
                 long generation = rag.generation();
-                int rowIndex = (int) (rowId.page() * 1024 + rowId.offset());
+                int pageSize = ((AbstractTable) obj).pageSize();
+                int rowIndex = (int) (rowId.page() * pageSize + rowId.offset());
 
                 // Validate not tombstoned
                 boolean isTombstoned = (boolean) isTombstoneMethod.invoke(obj, rowId);
