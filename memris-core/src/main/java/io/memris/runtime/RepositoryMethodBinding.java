@@ -11,12 +11,21 @@ public final class RepositoryMethodBinding {
     private final int[] parameterIndices;
     private final Object[] boundValues;
     private final int slotCount;
+    private final ArgResolver resolver;
+
+    private static final Object[] EMPTY_ARGS = new Object[0];
+
+    @FunctionalInterface
+    private interface ArgResolver {
+        Object[] resolve(Object[] args);
+    }
 
     private RepositoryMethodBinding(CompiledQuery query, int[] parameterIndices, Object[] boundValues, int slotCount) {
         this.query = query;
         this.parameterIndices = parameterIndices;
         this.boundValues = boundValues;
         this.slotCount = slotCount;
+        this.resolver = buildResolver(parameterIndices, boundValues, slotCount);
     }
 
     public static RepositoryMethodBinding of(CompiledQuery query) {
@@ -45,20 +54,38 @@ public final class RepositoryMethodBinding {
     }
 
     public Object[] resolveArgs(Object[] args) {
+        return resolver.resolve(args);
+    }
+
+    private static ArgResolver buildResolver(int[] parameterIndices, Object[] boundValues, int slotCount) {
         if (slotCount == 0) {
-            return args != null ? args : new Object[0];
+            return args -> args != null ? args : EMPTY_ARGS;
         }
-        Object[] resolved = new Object[slotCount];
-        for (int i = 0; i < slotCount; i++) {
-            int methodIndex = (parameterIndices != null && i < parameterIndices.length) ? parameterIndices[i] : -1;
-            if (methodIndex >= 0) {
-                resolved[i] = args[methodIndex];
-                continue;
-            }
-            if (boundValues != null && i < boundValues.length) {
-                resolved[i] = boundValues[i];
-            }
+        boolean hasParams = parameterIndices != null && parameterIndices.length > 0;
+        boolean hasBounds = boundValues != null && boundValues.length > 0;
+        if (!hasParams) {
+            return args -> {
+                Object[] resolved = new Object[slotCount];
+                if (hasBounds) {
+                    int copyLen = Math.min(boundValues.length, slotCount);
+                    System.arraycopy(boundValues, 0, resolved, 0, copyLen);
+                }
+                return resolved;
+            };
         }
-        return resolved;
+        return args -> {
+            Object[] resolved = new Object[slotCount];
+            for (int i = 0; i < slotCount; i++) {
+                int methodIndex = (parameterIndices != null && i < parameterIndices.length) ? parameterIndices[i] : -1;
+                if (methodIndex >= 0) {
+                    resolved[i] = args[methodIndex];
+                    continue;
+                }
+                if (boundValues != null && i < boundValues.length) {
+                    resolved[i] = boundValues[i];
+                }
+            }
+            return resolved;
+        };
     }
 }

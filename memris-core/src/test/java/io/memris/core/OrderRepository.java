@@ -64,4 +64,34 @@ public interface OrderRepository extends MemrisRepository<Order> {
      * Find all orders.
      */
     List<Order> findAll();
+
+    /**
+     * Delete order by ID.
+     */
+    void deleteById(Long id);
+
+    /**
+     * Find orders by status, ordered by total descending.
+     */
+    List<Order> findByStatusOrderByTotalDesc(String status);
+
+    /**
+     * Find top 3 orders by status, ordered by ID ascending.
+     */
+    List<Order> findTop3ByStatusOrderByIdAsc(String status);
+
+    /**
+     * Find first order by customer ID.
+     */
+    List<Order> findFirstByCustomerId(Long customerId);
+
+    /**
+     * Find orders with status in list.
+     */
+    List<Order> findByStatusIn(List<String> statuses);
+
+    /**
+     * Find orders by status and total greater than or equal to.
+     */
+    List<Order> findByStatusAndTotalGreaterThanEqual(String status, long minTotal);
 }

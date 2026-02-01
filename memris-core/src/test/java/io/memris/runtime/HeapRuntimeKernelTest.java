@@ -94,6 +94,23 @@ class HeapRuntimeKernelTest {
         assertThat(results).isEmpty();
     }
 
+    @Test
+    void floatBetween_crossZeroRange() {
+        FloatTestRepository repo = arena.createRepository(FloatTestRepository.class);
+
+        repo.save(new FloatTestEntity(1L, -5.5f));
+        repo.save(new FloatTestEntity(2L, -1.0f));
+        repo.save(new FloatTestEntity(3L, 0.0f));
+        repo.save(new FloatTestEntity(4L, 2.5f));
+        repo.save(new FloatTestEntity(5L, 7.5f));
+
+        List<FloatTestEntity> results = repo.findByValueBetween(-2.0f, 3.0f);
+
+        assertThat(results).hasSize(3);
+        assertThat(results).extracting(e -> e.value)
+                .containsExactlyInAnyOrder(-1.0f, 0.0f, 2.5f);
+    }
+
     // ==================== DOUBLE BETWEEN TESTS ====================
 
     @Test
@@ -141,6 +158,23 @@ class HeapRuntimeKernelTest {
 
         assertThat(results).hasSize(1);
         assertThat(results.get(0).value).isEqualTo(-50.5);
+    }
+
+    @Test
+    void doubleBetween_crossZeroRange() {
+        DoubleTestRepository repo = arena.createRepository(DoubleTestRepository.class);
+
+        repo.save(new DoubleTestEntity(1L, -5.5));
+        repo.save(new DoubleTestEntity(2L, -1.0));
+        repo.save(new DoubleTestEntity(3L, 0.0));
+        repo.save(new DoubleTestEntity(4L, 2.5));
+        repo.save(new DoubleTestEntity(5L, 7.5));
+
+        List<DoubleTestEntity> results = repo.findByValueBetween(-2.0, 3.0);
+
+        assertThat(results).hasSize(3);
+        assertThat(results).extracting(e -> e.value)
+                .containsExactlyInAnyOrder(-1.0, 0.0, 2.5);
     }
 
     // ==================== BYTE BETWEEN TESTS ====================

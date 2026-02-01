@@ -22,6 +22,7 @@ public final class RepositoryPlan<T> {
     private final String idColumnName;
     private final CompiledQuery[] queries;
     private final RepositoryMethodBinding[] bindings;
+    private final RepositoryMethodExecutor[] executors;
     private final GeneratedTable table;
     private final HeapRuntimeKernel kernel;
     private final String[] columnNames;
@@ -37,6 +38,7 @@ public final class RepositoryPlan<T> {
         this.idColumnName = builder.idColumnName;
         this.queries = builder.queries;
         this.bindings = builder.bindings;
+        this.executors = builder.executors;
         this.table = builder.table;
         this.kernel = builder.kernel;
         this.columnNames = builder.columnNames;
@@ -62,6 +64,10 @@ public final class RepositoryPlan<T> {
 
     public RepositoryMethodBinding[] bindings() {
         return bindings;
+    }
+
+    public RepositoryMethodExecutor[] executors() {
+        return executors;
     }
 
     public GeneratedTable table() {
@@ -109,6 +115,7 @@ public final class RepositoryPlan<T> {
             String idColumnName,
             CompiledQuery[] queries,
             RepositoryMethodBinding[] bindings,
+            RepositoryMethodExecutor[] executors,
             MethodHandle entityConstructor,
             String[] columnNames,
             byte[] typeCodes,
@@ -127,6 +134,7 @@ public final class RepositoryPlan<T> {
                 .idColumnName(idColumnName)
                 .queries(queries)
                 .bindings(bindings)
+                .executors(executors)
                 .table(table)
                 .kernel(kernel)
                 .columnNames(columnNames)
@@ -148,6 +156,7 @@ public final class RepositoryPlan<T> {
         private String idColumnName;
         private CompiledQuery[] queries;
         private RepositoryMethodBinding[] bindings;
+        private RepositoryMethodExecutor[] executors;
         private GeneratedTable table;
         private HeapRuntimeKernel kernel;
         private String[] columnNames;
@@ -175,6 +184,11 @@ public final class RepositoryPlan<T> {
 
         public Builder<T> bindings(RepositoryMethodBinding[] bindings) {
             this.bindings = bindings;
+            return this;
+        }
+
+        public Builder<T> executors(RepositoryMethodExecutor[] executors) {
+            this.executors = executors;
             return this;
         }
 

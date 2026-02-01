@@ -59,4 +59,14 @@ public interface CustomerRepository extends MemrisRepository<Customer> {
      * Find all customers.
      */
     List<Customer> findAll();
+
+    /**
+     * Delete customer by ID.
+     */
+    void deleteById(Long id);
+
+    /**
+     * Find customers by name not equal to given name.
+     */
+    List<Customer> findByNameNot(String name);
 }

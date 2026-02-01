@@ -85,6 +85,7 @@ public final class RepositoryEmitter {
                 materializersByEntity, joinTables);
 
         RepositoryMethodBinding[] bindings = RepositoryMethodBinding.fromQueries(compiledQueries);
+        RepositoryMethodExecutor[] executors = buildExecutors(compiledQueries, bindings);
 
         // Extract column metadata for RepositoryPlan
         String[] columnNames = extractColumnNames(metadata);
@@ -111,6 +112,7 @@ public final class RepositoryEmitter {
                 metadata.idColumnName(),
                 compiledQueries,
                 bindings,
+                executors,
                 entityConstructor,
                 columnNames,
                 typeCodes,
@@ -517,6 +519,51 @@ public final class RepositoryEmitter {
             case DELETE_QUERY -> new DeleteQueryInterceptor<>(runtime, binding);
             case UPDATE_QUERY -> new UpdateQueryInterceptor<>(runtime, binding);
             case DELETE_ALL_BY_ID -> new DeleteAllByIdInterceptor<>(runtime);
+            default -> throw new UnsupportedOperationException("Unsupported OpCode: " + query.opCode());
+        };
+    }
+
+    private static RepositoryMethodExecutor[] buildExecutors(CompiledQuery[] queries,
+            RepositoryMethodBinding[] bindings) {
+        RepositoryMethodExecutor[] executors = new RepositoryMethodExecutor[queries.length];
+        for (int i = 0; i < queries.length; i++) {
+            executors[i] = executorFor(queries[i], bindings[i]);
+        }
+        return executors;
+    }
+
+    private static RepositoryMethodExecutor executorFor(CompiledQuery query, RepositoryMethodBinding binding) {
+        return switch (query.opCode()) {
+            case SAVE_ONE -> (runtime, args) -> ((RepositoryRuntime) runtime).saveOne(args[0]);
+            case SAVE_ALL -> (runtime, args) -> ((RepositoryRuntime) runtime).saveAll((Iterable<?>) args[0]);
+            case FIND_BY_ID -> (runtime, args) -> ((RepositoryRuntime) runtime).findById(args[0]);
+            case FIND_ALL -> (runtime, args) -> ((RepositoryRuntime) runtime).findAll();
+            case FIND -> (runtime, args) -> ((RepositoryRuntime) runtime).find(binding.query(),
+                    binding.resolveArgs(args));
+            case COUNT -> (runtime, args) -> ((RepositoryRuntime) runtime).countFast(binding.query(),
+                    binding.resolveArgs(args));
+            case COUNT_ALL -> (runtime, args) -> ((RepositoryRuntime) runtime).countAll();
+            case EXISTS -> (runtime, args) -> ((RepositoryRuntime) runtime).existsFast(binding.query(),
+                    binding.resolveArgs(args));
+            case EXISTS_BY_ID -> (runtime, args) -> ((RepositoryRuntime) runtime).existsById(args[0]);
+            case DELETE_ONE -> (runtime, args) -> {
+                ((RepositoryRuntime) runtime).deleteOne(args[0]);
+                return null;
+            };
+            case DELETE_ALL -> (runtime, args) -> {
+                ((RepositoryRuntime) runtime).deleteAll();
+                return null;
+            };
+            case DELETE_BY_ID -> (runtime, args) -> {
+                ((RepositoryRuntime) runtime).deleteById(args[0]);
+                return null;
+            };
+            case DELETE_QUERY -> (runtime, args) -> ((RepositoryRuntime) runtime).deleteQuery(binding.query(),
+                    binding.resolveArgs(args));
+            case UPDATE_QUERY -> (runtime, args) -> ((RepositoryRuntime) runtime).updateQuery(binding.query(),
+                    binding.resolveArgs(args));
+            case DELETE_ALL_BY_ID -> (runtime, args) -> ((RepositoryRuntime) runtime)
+                    .deleteAllById((Iterable<?>) args[0]);
             default -> throw new UnsupportedOperationException("Unsupported OpCode: " + query.opCode());
         };
     }

@@ -54,9 +54,10 @@ public final class FloatEncoding {
      */
     public static int floatToSortableInt(float value) {
         int bits = Float.floatToRawIntBits(value);
-        // If negative (sign bit set), flip all bits
-        // If positive, flip only the sign bit
-        return bits < 0 ? ~bits : bits ^ 0x80000000;
+        if (bits < 0) {
+            return (~bits) ^ 0x80000000;
+        }
+        return bits;
     }
 
     /**
@@ -69,10 +70,12 @@ public final class FloatEncoding {
      * @return the original float value
      */
     public static float sortableIntToFloat(int sortable) {
-        // Reverse the encoding
-        // If sortable < 0, it was originally positive (we flipped only sign bit)
-        // If sortable >= 0, it was originally negative (we flipped all bits)
-        int bits = sortable < 0 ? sortable ^ 0x80000000 : ~sortable;
+        int bits;
+        if (sortable < 0) {
+            bits = ~(sortable ^ 0x80000000);
+        } else {
+            bits = sortable;
+        }
         return Float.intBitsToFloat(bits);
     }
 
@@ -88,9 +91,10 @@ public final class FloatEncoding {
      */
     public static long doubleToSortableLong(double value) {
         long bits = Double.doubleToRawLongBits(value);
-        // If negative (sign bit set), flip all bits
-        // If positive, flip only the sign bit
-        return bits < 0 ? ~bits : bits ^ 0x8000000000000000L;
+        if (bits < 0) {
+            return (~bits) ^ 0x8000000000000000L;
+        }
+        return bits;
     }
 
     /**
@@ -103,10 +107,12 @@ public final class FloatEncoding {
      * @return the original double value
      */
     public static double sortableLongToDouble(long sortable) {
-        // Reverse the encoding
-        // If sortable < 0, it was originally positive (we flipped only sign bit)
-        // If sortable >= 0, it was originally negative (we flipped all bits)
-        long bits = sortable < 0 ? sortable ^ 0x8000000000000000L : ~sortable;
+        long bits;
+        if (sortable < 0) {
+            bits = ~(sortable ^ 0x8000000000000000L);
+        } else {
+            bits = sortable;
+        }
         return Double.longBitsToDouble(bits);
     }
 }

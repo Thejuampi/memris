@@ -149,84 +149,14 @@ public final class RepositoryRuntime<T> {
     }
 
     public Object executeMethodIndex(int methodIndex, Object[] args) {
-        if (methodIndex < 0 || methodIndex >= plan.queries().length) {
+        RepositoryMethodExecutor[] executors = plan.executors();
+        if (executors == null) {
+            throw new IllegalStateException("RepositoryPlan executors not configured");
+        }
+        if (methodIndex < 0 || methodIndex >= executors.length) {
             throw new UnsupportedOperationException("Method index out of range: " + methodIndex);
         }
-        CompiledQuery query = plan.queries()[methodIndex];
-        return executeCompiledQuery(query, args);
-    }
-
-    private Object executeCompiledQuery(CompiledQuery query, Object[] args) {
-        Object[] queryArgs;
-        return switch (query.opCode()) {
-            case SAVE_ONE -> executeSaveOne(args);
-            case SAVE_ALL -> executeSaveAll(args);
-            case FIND_BY_ID -> executeFindById(args);
-            case FIND_ALL -> executeFindAll();
-            case FIND -> {
-                queryArgs = buildQueryArgs(query, args);
-                yield executeFind(query, queryArgs);
-            }
-            case COUNT -> {
-                queryArgs = buildQueryArgs(query, args);
-                yield executeCountFast(query, queryArgs);
-            }
-            case COUNT_ALL -> executeCountAll();
-            case EXISTS -> {
-                queryArgs = buildQueryArgs(query, args);
-                yield executeExistsFast(query, queryArgs);
-            }
-            case EXISTS_BY_ID -> executeExistsById(args);
-            case DELETE_ONE -> {
-                executeDeleteOne(args);
-                yield null;
-            }
-            case DELETE_ALL -> {
-                executeDeleteAll();
-                yield null;
-            }
-            case DELETE_BY_ID -> {
-                executeDeleteById(args);
-                yield null;
-            }
-            case DELETE_QUERY -> {
-                queryArgs = buildQueryArgs(query, args);
-                yield formatModifyingResult(executeDeleteQuery(query, queryArgs), query.returnKind());
-            }
-            case UPDATE_QUERY -> {
-                queryArgs = buildQueryArgs(query, args);
-                yield formatModifyingResult(executeUpdateQuery(query, queryArgs), query.returnKind());
-            }
-            case DELETE_ALL_BY_ID -> executeDeleteAllById(args);
-            default -> throw new UnsupportedOperationException("OpCode not implemented: " + query.opCode());
-        };
-    }
-
-    private Object[] buildQueryArgs(CompiledQuery query, Object[] args) {
-        int[] paramIndices = query.parameterIndices();
-        Object[] boundValues = query.boundValues();
-        int slotCount = 0;
-        if (paramIndices != null) {
-            slotCount = Math.max(slotCount, paramIndices.length);
-        }
-        if (boundValues != null) {
-            slotCount = Math.max(slotCount, boundValues.length);
-        }
-        if (slotCount == 0) {
-            return args != null ? args : new Object[0];
-        }
-        Object[] resolved = new Object[slotCount];
-        for (int i = 0; i < slotCount; i++) {
-            int methodIndex = (paramIndices != null && i < paramIndices.length) ? paramIndices[i] : -1;
-            if (methodIndex >= 0) {
-                resolved[i] = args[methodIndex];
-                continue;
-            }
-            if (boundValues != null && i < boundValues.length) {
-                resolved[i] = boundValues[i];
-            }
-        }
-        return resolved;
+        return executors[methodIndex].execute(this, args);
     }
 
     private T executeSaveOne(Object[] args) {
@@ -253,6 +183,15 @@ public final class RepositoryRuntime<T> {
             applyAuditFields(entity, false);
         }
 
+        if (!isNew) {
+            long existingRef = resolvePackedRefById(table, id);
+            if (existingRef >= 0) {
+                int existingRowIndex = io.memris.storage.Selection.index(existingRef);
+                updateIndexesOnDelete(existingRowIndex);
+                table.tombstone(existingRef);
+            }
+        }
+
         // EntitySaver handles all field extraction, converters, and relationships
         @SuppressWarnings("unchecked")
         T savedEntity = rawSaver != null ? (T) rawSaver.save(entity, table, id) : entity;
@@ -261,20 +200,8 @@ public final class RepositoryRuntime<T> {
         int rowIndex = resolveRowIndexById(table, id);
 
         // Update indexes after save - read values back from table
-        if (metadata != null) {
-            int maxColumnPos = metadata.fields().stream()
-                    .filter(f -> f.columnPosition() >= 0)
-                    .mapToInt(io.memris.core.EntityMetadata.FieldMapping::columnPosition)
-                    .max()
-                    .orElse(0);
-            Object[] indexValues = new Object[maxColumnPos + 1];
-            for (io.memris.core.EntityMetadata.FieldMapping field : metadata.fields()) {
-                if (field.columnPosition() < 0) {
-                    continue;
-                }
-                indexValues[field.columnPosition()] = readIndexValue(field, rowIndex);
-            }
-            updateIndexesOnInsert(indexValues, rowIndex);
+        if (metadata != null && rowIndex >= 0) {
+            updateIndexesOnInsert(readIndexValues(rowIndex), rowIndex);
         }
 
         persistManyToMany(entity);
@@ -1049,15 +976,21 @@ public final class RepositoryRuntime<T> {
         if (idValue == null) {
             return -1;
         }
-        long packedRef;
-        if (idValue instanceof String stringId) {
-            packedRef = table.lookupByIdString(stringId);
-        } else if (idValue instanceof Number number) {
-            packedRef = table.lookupById(number.longValue());
-        } else {
+        long packedRef = resolvePackedRefById(table, idValue);
+        return packedRef < 0 ? -1 : io.memris.storage.Selection.index(packedRef);
+    }
+
+    private long resolvePackedRefById(GeneratedTable table, Object idValue) {
+        if (idValue == null) {
             return -1;
         }
-        return packedRef < 0 ? -1 : io.memris.storage.Selection.index(packedRef);
+        if (idValue instanceof String stringId) {
+            return table.lookupByIdString(stringId);
+        }
+        if (idValue instanceof Number number) {
+            return table.lookupById(number.longValue());
+        }
+        return -1;
     }
 
     private Object[] readIndexValues(int rowIndex) {

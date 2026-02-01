@@ -297,6 +297,7 @@ public final class MemrisRepositoryFactory implements AutoCloseable {
 
         io.memris.runtime.RepositoryMethodBinding[] bindings = io.memris.runtime.RepositoryMethodBinding
                 .fromQueries(compiledQueries);
+        io.memris.runtime.RepositoryMethodExecutor[] executors = buildExecutors(compiledQueries, bindings);
 
         // 7. Extract column metadata for RepositoryPlan
         String[] columnNames = extractColumnNames(metadata);
@@ -325,6 +326,7 @@ public final class MemrisRepositoryFactory implements AutoCloseable {
                 metadata.idColumnName(),
                 compiledQueries,
                 bindings,
+                executors,
                 entityConstructor,
                 columnNames,
                 typeCodes,
@@ -343,6 +345,54 @@ public final class MemrisRepositoryFactory implements AutoCloseable {
         // 11. Generate repository implementation using ByteBuddy
         io.memris.repository.RepositoryEmitter emitter = new io.memris.repository.RepositoryEmitter();
         return emitter.emitAndInstantiate(repositoryInterface, runtime);
+    }
+
+    private static io.memris.runtime.RepositoryMethodExecutor[] buildExecutors(
+            io.memris.query.CompiledQuery[] queries,
+            io.memris.runtime.RepositoryMethodBinding[] bindings) {
+        io.memris.runtime.RepositoryMethodExecutor[] executors = new io.memris.runtime.RepositoryMethodExecutor[queries.length];
+        for (int i = 0; i < queries.length; i++) {
+            executors[i] = executorFor(queries[i], bindings[i]);
+        }
+        return executors;
+    }
+
+    private static io.memris.runtime.RepositoryMethodExecutor executorFor(io.memris.query.CompiledQuery query,
+            io.memris.runtime.RepositoryMethodBinding binding) {
+        return switch (query.opCode()) {
+            case SAVE_ONE -> (runtime, args) -> ((io.memris.runtime.RepositoryRuntime) runtime).saveOne(args[0]);
+            case SAVE_ALL -> (runtime, args) -> ((io.memris.runtime.RepositoryRuntime) runtime)
+                    .saveAll((Iterable<?>) args[0]);
+            case FIND_BY_ID -> (runtime, args) -> ((io.memris.runtime.RepositoryRuntime) runtime).findById(args[0]);
+            case FIND_ALL -> (runtime, args) -> ((io.memris.runtime.RepositoryRuntime) runtime).findAll();
+            case FIND -> (runtime, args) -> ((io.memris.runtime.RepositoryRuntime) runtime).find(binding.query(),
+                    binding.resolveArgs(args));
+            case COUNT -> (runtime, args) -> ((io.memris.runtime.RepositoryRuntime) runtime)
+                    .countFast(binding.query(), binding.resolveArgs(args));
+            case COUNT_ALL -> (runtime, args) -> ((io.memris.runtime.RepositoryRuntime) runtime).countAll();
+            case EXISTS -> (runtime, args) -> ((io.memris.runtime.RepositoryRuntime) runtime)
+                    .existsFast(binding.query(), binding.resolveArgs(args));
+            case EXISTS_BY_ID -> (runtime, args) -> ((io.memris.runtime.RepositoryRuntime) runtime).existsById(args[0]);
+            case DELETE_ONE -> (runtime, args) -> {
+                ((io.memris.runtime.RepositoryRuntime) runtime).deleteOne(args[0]);
+                return null;
+            };
+            case DELETE_ALL -> (runtime, args) -> {
+                ((io.memris.runtime.RepositoryRuntime) runtime).deleteAll();
+                return null;
+            };
+            case DELETE_BY_ID -> (runtime, args) -> {
+                ((io.memris.runtime.RepositoryRuntime) runtime).deleteById(args[0]);
+                return null;
+            };
+            case DELETE_QUERY -> (runtime, args) -> ((io.memris.runtime.RepositoryRuntime) runtime)
+                    .deleteQuery(binding.query(), binding.resolveArgs(args));
+            case UPDATE_QUERY -> (runtime, args) -> ((io.memris.runtime.RepositoryRuntime) runtime)
+                    .updateQuery(binding.query(), binding.resolveArgs(args));
+            case DELETE_ALL_BY_ID -> (runtime, args) -> ((io.memris.runtime.RepositoryRuntime) runtime)
+                    .deleteAllById((Iterable<?>) args[0]);
+            default -> throw new UnsupportedOperationException("Unsupported OpCode: " + query.opCode());
+        };
     }
 
     private <T> java.util.Map<Class<?>, io.memris.storage.GeneratedTable> buildJoinTables(

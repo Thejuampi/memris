@@ -12,6 +12,7 @@ import io.memris.core.Entity;
 import io.memris.core.GeneratedValue;
 import io.memris.core.GenerationType;
 import io.memris.core.Index;
+import jakarta.persistence.Id;
 
 /**
  * Customer entity for e-commerce domain.
@@ -19,6 +20,7 @@ import io.memris.core.Index;
  * Uses simple field names to avoid case-sensitivity issues in query parsing.
  */
 public class Customer {
+    @Id
     public Long id;
     public String email;
     public String name;

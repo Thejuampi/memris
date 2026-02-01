@@ -59,4 +59,14 @@ public interface ProductRepository extends MemrisRepository<Product> {
      * Find all products.
      */
     List<Product> findAll();
+
+    /**
+     * Find top 3 products by price, ordered descending.
+     */
+    List<Product> findTop3ByOrderByPriceDesc();
+
+    /**
+     * Find first product by SKU.
+     */
+    List<Product> findFirstBySku(String sku);
 }

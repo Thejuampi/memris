@@ -1,0 +1,30 @@
+Goal
+- Fix save/update semantics so natural-key index entries (e.g., email) are updated when saving an existing entity, re-enabling the disabled test in `memris-core/src/test/java/io/memris/core/ECommerceRealWorldTest.java`.
+
+Decision
+- Use delete+insert semantics for save with existing ID (tombstone old row, remove old index entries, insert new row, add new index entries).
+
+Context
+- The disabled test `shouldHandleUpdateSemantics` expects old email to stop matching after save with updated email.
+- `RepositoryRuntime.executeSaveOne` currently inserts and updates indexes for the new row without removing old index entries or tombstoning the prior row.
+- `RepositoryRuntime.executeUpdateQuery` already does delete+insert with index cleanup; we should mirror that behavior for save with existing ID.
+
+Plan
+1. Update `RepositoryRuntime.executeSaveOne` to detect an existing row when the entity has a non-zero ID.
+2. If an existing row is found:
+   - Remove old index entries using `updateIndexesOnDelete(rowIndex)` (read old values before deletion).
+   - Tombstone the old row using the packed ref returned by `lookupById`/`lookupByIdString`.
+3. Proceed with the current save path (EntitySaver insert) and then add new index entries via `updateIndexesOnInsert` (existing logic).
+4. Re-enable `shouldHandleUpdateSemantics` and ensure it passes.
+
+Implementation Details
+- Prefer using a small helper in `executeSaveOne` to resolve both packed ref and row index for the current ID before insert; avoid double lookups where possible.
+- Only perform delete+insert when a packed ref exists (id provided but not found -> treat as insert).
+- Keep lifecycle hooks and audit fields as-is: preUpdate for non-new entities and prePersist for new entities.
+
+Files to Modify
+- `memris-core/src/main/java/io/memris/runtime/RepositoryRuntime.java`
+- `memris-core/src/test/java/io/memris/core/ECommerceRealWorldTest.java`
+
+Verification
+- Run: `mvn.cmd -q -e -pl memris-core test -Dtest=ECommerceRealWorldTest#shouldHandleUpdateSemantics`

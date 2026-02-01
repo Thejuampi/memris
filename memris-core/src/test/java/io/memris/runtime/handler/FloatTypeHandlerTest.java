@@ -24,6 +24,17 @@ class FloatTypeHandlerTest {
     }
 
     @Test
+    void executeBetweenRangeAcrossZeroUsesSortableEncoding() {
+        FloatTypeHandler handler = new FloatTypeHandler();
+        GeneratedTable table = new FakeFloatTable(new float[] { -5.5f, -1.0f, 0.0f, 2.5f, 7.5f });
+
+        Selection selection = handler.executeBetweenRange(table, 0, -2.0f, 3.0f);
+
+        assertThat(selection.toIntArray())
+                .containsExactlyInAnyOrder(1, 2, 3);
+    }
+
+    @Test
     void executeBetweenDelegatedToKernel() {
         FloatTypeHandler handler = new FloatTypeHandler();
 
