@@ -152,7 +152,8 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
         builder = builder.method(net.bytebuddy.matcher.ElementMatchers.named("insertFrom"))
                 .intercept(MethodDelegation.to(new InsertInterceptor(columnFields)));
 
-        builder = builder.method(net.bytebuddy.matcher.ElementMatchers.named("tombstone"))
+        builder = builder.method(net.bytebuddy.matcher.ElementMatchers.named("tombstone")
+                .and(net.bytebuddy.matcher.ElementMatchers.takesArguments(long.class)))
                 .intercept(MethodDelegation.to(new TombstoneInterceptor(columnFields)));
 
         builder = builder.method(net.bytebuddy.matcher.ElementMatchers.named("isLive"))
