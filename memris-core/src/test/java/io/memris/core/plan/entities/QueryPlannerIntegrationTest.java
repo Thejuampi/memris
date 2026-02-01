@@ -8,6 +8,7 @@ import static io.memris.query.LogicalQuery.*;
 import java.lang.reflect.Method;
 import java.util.Date;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -477,6 +478,22 @@ class QueryPlannerIntegrationTest {
                 .hasMessageContaining("property");
     }
 
+    @Test
+    void parseCountByGroupingWithoutConditionsRejectsParameters() throws Exception {
+        Method method = TestRepository.class.getMethod("countByNameAndAge", String.class, int.class);
+        assertThatThrownBy(() -> QueryPlanner.parse(method, SimpleEntity.class, "id"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("does not accept parameters");
+    }
+
+    @Test
+    void parseCountByGroupingWithoutConditionsRejectsOrOperator() throws Exception {
+        Method method = TestRepository.class.getMethod("countByNameOrAge");
+        assertThatThrownBy(() -> QueryPlanner.parse(method, SimpleEntity.class, "id"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("only supports simple property paths");
+    }
+
     // ========== Test repository interface ==========
 
     interface TestRepository {
@@ -597,6 +614,10 @@ class QueryPlannerIntegrationTest {
         List<SimpleEntity> findByNameEqualsAge();
 
         List<SimpleEntity> findByNameOrderBy();
+
+        Map<String, Long> countByNameAndAge(String name, int age);
+
+        Map<String, Long> countByNameOrAge();
     }
 
     // ========== Helper methods ==========

@@ -286,6 +286,21 @@ public final class QueryPlanner {
             boolean isCountGroupingWithoutConditions = parseName.toLowerCase().startsWith("countby")
                     && !parseName.contains("GroupingBy")
                     && returnKind == LogicalQuery.ReturnKind.MANY_MAP;
+            if (isCountGroupingWithoutConditions) {
+                if (paramTypes.length > 0) {
+                    throw new IllegalArgumentException(
+                            "countBy grouping without GroupingBy does not accept parameters: " + methodName);
+                }
+                for (QueryMethodToken token : tokens) {
+                    switch (token.type()) {
+                        case OPERATOR, OR -> throw new IllegalArgumentException(
+                                "countBy grouping without GroupingBy only supports simple property paths: "
+                                        + methodName);
+                        default -> {
+                        }
+                    }
+                }
+            }
             if (!isCountGroupingWithoutConditions) {
                 String parseNameForConditions = parseName;
                 int groupingIndex = parseName.indexOf("GroupingBy");
