@@ -295,6 +295,9 @@ public final class MemrisRepositoryFactory implements AutoCloseable {
         compiledQueries = wireJoinRuntime(compiledQueries, metadata, tablesByEntity, kernelsByEntity,
                 materializersByEntity, joinTables);
 
+        io.memris.runtime.RepositoryMethodBinding[] bindings = io.memris.runtime.RepositoryMethodBinding
+                .fromQueries(compiledQueries);
+
         // 7. Extract column metadata for RepositoryPlan
         String[] columnNames = extractColumnNames(metadata);
         byte[] typeCodes = extractTypeCodes(metadata);
@@ -321,6 +324,7 @@ public final class MemrisRepositoryFactory implements AutoCloseable {
                 entityClass,
                 metadata.idColumnName(),
                 compiledQueries,
+                bindings,
                 entityConstructor,
                 columnNames,
                 typeCodes,

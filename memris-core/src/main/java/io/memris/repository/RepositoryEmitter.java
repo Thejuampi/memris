@@ -84,6 +84,8 @@ public final class RepositoryEmitter {
         compiledQueries = wireJoinRuntime(compiledQueries, metadata, tablesByEntity, kernelsByEntity,
                 materializersByEntity, joinTables);
 
+        RepositoryMethodBinding[] bindings = RepositoryMethodBinding.fromQueries(compiledQueries);
+
         // Extract column metadata for RepositoryPlan
         String[] columnNames = extractColumnNames(metadata);
         byte[] typeCodes = extractTypeCodes(metadata);
@@ -108,6 +110,7 @@ public final class RepositoryEmitter {
                 entityClass,
                 metadata.idColumnName(),
                 compiledQueries,
+                bindings,
                 entityConstructor,
                 columnNames,
                 typeCodes,
@@ -482,9 +485,12 @@ public final class RepositoryEmitter {
         Method[] queryMethods = RepositoryMethodIntrospector.extractQueryMethods(repositoryInterface);
         for (int i = 0; i < queryMethods.length; i++) {
             Method method = queryMethods[i];
+            CompiledQuery query = runtime.plan().queries()[i];
+            RepositoryMethodBinding binding = runtime.plan().bindings()[i];
+            Object interceptor = interceptorFor(runtime, query, binding);
             builder = builder.method(ElementMatchers.named(method.getName())
                     .and(ElementMatchers.takesArguments(method.getParameterCount())))
-                    .intercept(MethodDelegation.to(new RepositoryMethodIndexInterceptor<>(runtime, i)));
+                    .intercept(MethodDelegation.to(interceptor));
         }
 
         try (DynamicType.Unloaded<?> unloaded = builder.make()) {
@@ -492,19 +498,240 @@ public final class RepositoryEmitter {
         }
     }
 
-    public static class RepositoryMethodIndexInterceptor<T> {
-        private final RepositoryRuntime<T> runtime;
-        private final int methodIndex;
+    private static <T> Object interceptorFor(RepositoryRuntime<T> runtime,
+            CompiledQuery query,
+            RepositoryMethodBinding binding) {
+        return switch (query.opCode()) {
+            case SAVE_ONE -> new SaveOneInterceptor<>(runtime);
+            case SAVE_ALL -> new SaveAllInterceptor<>(runtime);
+            case FIND_BY_ID -> new FindByIdInterceptor<>(runtime);
+            case FIND_ALL -> new FindAllInterceptor<>(runtime);
+            case FIND -> new FindInterceptor<>(runtime, binding);
+            case COUNT -> new CountInterceptor<>(runtime, binding);
+            case COUNT_ALL -> new CountAllInterceptor<>(runtime);
+            case EXISTS -> new ExistsInterceptor<>(runtime, binding);
+            case EXISTS_BY_ID -> new ExistsByIdInterceptor<>(runtime);
+            case DELETE_ONE -> new DeleteOneInterceptor<>(runtime);
+            case DELETE_ALL -> new DeleteAllInterceptor<>(runtime);
+            case DELETE_BY_ID -> new DeleteByIdInterceptor<>(runtime);
+            case DELETE_QUERY -> new DeleteQueryInterceptor<>(runtime, binding);
+            case UPDATE_QUERY -> new UpdateQueryInterceptor<>(runtime, binding);
+            case DELETE_ALL_BY_ID -> new DeleteAllByIdInterceptor<>(runtime);
+            default -> throw new UnsupportedOperationException("Unsupported OpCode: " + query.opCode());
+        };
+    }
 
-        public RepositoryMethodIndexInterceptor(RepositoryRuntime<T> runtime, int methodIndex) {
+    public static class SaveOneInterceptor<T> {
+        private final RepositoryRuntime<T> runtime;
+
+        public SaveOneInterceptor(RepositoryRuntime<T> runtime) {
             this.runtime = runtime;
-            this.methodIndex = methodIndex;
+        }
+
+        @net.bytebuddy.implementation.bind.annotation.RuntimeType
+        public Object intercept(@net.bytebuddy.implementation.bind.annotation.Argument(0) Object entity) {
+            return runtime.saveOne((T) entity);
+        }
+    }
+
+    public static class SaveAllInterceptor<T> {
+        private final RepositoryRuntime<T> runtime;
+
+        public SaveAllInterceptor(RepositoryRuntime<T> runtime) {
+            this.runtime = runtime;
+        }
+
+        @net.bytebuddy.implementation.bind.annotation.RuntimeType
+        public Object intercept(@net.bytebuddy.implementation.bind.annotation.Argument(0) Iterable<?> entities) {
+            @SuppressWarnings("unchecked")
+            Iterable<T> typed = (Iterable<T>) entities;
+            return runtime.saveAll(typed);
+        }
+    }
+
+    public static class FindByIdInterceptor<T> {
+        private final RepositoryRuntime<T> runtime;
+
+        public FindByIdInterceptor(RepositoryRuntime<T> runtime) {
+            this.runtime = runtime;
+        }
+
+        @net.bytebuddy.implementation.bind.annotation.RuntimeType
+        public Object intercept(@net.bytebuddy.implementation.bind.annotation.Argument(0) Object id) {
+            return runtime.findById(id);
+        }
+    }
+
+    public static class FindAllInterceptor<T> {
+        private final RepositoryRuntime<T> runtime;
+
+        public FindAllInterceptor(RepositoryRuntime<T> runtime) {
+            this.runtime = runtime;
+        }
+
+        @net.bytebuddy.implementation.bind.annotation.RuntimeType
+        public Object intercept() {
+            return runtime.findAll();
+        }
+    }
+
+    public static class FindInterceptor<T> {
+        private final RepositoryRuntime<T> runtime;
+        private final RepositoryMethodBinding binding;
+
+        public FindInterceptor(RepositoryRuntime<T> runtime, RepositoryMethodBinding binding) {
+            this.runtime = runtime;
+            this.binding = binding;
         }
 
         @net.bytebuddy.implementation.bind.annotation.RuntimeType
         public Object intercept(
                 @net.bytebuddy.implementation.bind.annotation.AllArguments Object[] args) {
-            return runtime.executeMethodIndex(methodIndex, args);
+            Object[] resolved = binding.resolveArgs(args);
+            return runtime.find(binding.query(), resolved);
+        }
+    }
+
+    public static class CountInterceptor<T> {
+        private final RepositoryRuntime<T> runtime;
+        private final RepositoryMethodBinding binding;
+
+        public CountInterceptor(RepositoryRuntime<T> runtime, RepositoryMethodBinding binding) {
+            this.runtime = runtime;
+            this.binding = binding;
+        }
+
+        @net.bytebuddy.implementation.bind.annotation.RuntimeType
+        public Object intercept(
+                @net.bytebuddy.implementation.bind.annotation.AllArguments Object[] args) {
+            Object[] resolved = binding.resolveArgs(args);
+            return runtime.countFast(binding.query(), resolved);
+        }
+    }
+
+    public static class CountAllInterceptor<T> {
+        private final RepositoryRuntime<T> runtime;
+
+        public CountAllInterceptor(RepositoryRuntime<T> runtime) {
+            this.runtime = runtime;
+        }
+
+        @net.bytebuddy.implementation.bind.annotation.RuntimeType
+        public Object intercept() {
+            return runtime.countAll();
+        }
+    }
+
+    public static class ExistsInterceptor<T> {
+        private final RepositoryRuntime<T> runtime;
+        private final RepositoryMethodBinding binding;
+
+        public ExistsInterceptor(RepositoryRuntime<T> runtime, RepositoryMethodBinding binding) {
+            this.runtime = runtime;
+            this.binding = binding;
+        }
+
+        @net.bytebuddy.implementation.bind.annotation.RuntimeType
+        public Object intercept(
+                @net.bytebuddy.implementation.bind.annotation.AllArguments Object[] args) {
+            Object[] resolved = binding.resolveArgs(args);
+            return runtime.existsFast(binding.query(), resolved);
+        }
+    }
+
+    public static class ExistsByIdInterceptor<T> {
+        private final RepositoryRuntime<T> runtime;
+
+        public ExistsByIdInterceptor(RepositoryRuntime<T> runtime) {
+            this.runtime = runtime;
+        }
+
+        @net.bytebuddy.implementation.bind.annotation.RuntimeType
+        public Object intercept(@net.bytebuddy.implementation.bind.annotation.Argument(0) Object id) {
+            return runtime.existsById(id);
+        }
+    }
+
+    public static class DeleteOneInterceptor<T> {
+        private final RepositoryRuntime<T> runtime;
+
+        public DeleteOneInterceptor(RepositoryRuntime<T> runtime) {
+            this.runtime = runtime;
+        }
+
+        public void intercept(@net.bytebuddy.implementation.bind.annotation.Argument(0) Object entity) {
+            runtime.deleteOne(entity);
+        }
+    }
+
+    public static class DeleteAllInterceptor<T> {
+        private final RepositoryRuntime<T> runtime;
+
+        public DeleteAllInterceptor(RepositoryRuntime<T> runtime) {
+            this.runtime = runtime;
+        }
+
+        public void intercept() {
+            runtime.deleteAll();
+        }
+    }
+
+    public static class DeleteByIdInterceptor<T> {
+        private final RepositoryRuntime<T> runtime;
+
+        public DeleteByIdInterceptor(RepositoryRuntime<T> runtime) {
+            this.runtime = runtime;
+        }
+
+        public void intercept(@net.bytebuddy.implementation.bind.annotation.Argument(0) Object id) {
+            runtime.deleteById(id);
+        }
+    }
+
+    public static class DeleteQueryInterceptor<T> {
+        private final RepositoryRuntime<T> runtime;
+        private final RepositoryMethodBinding binding;
+
+        public DeleteQueryInterceptor(RepositoryRuntime<T> runtime, RepositoryMethodBinding binding) {
+            this.runtime = runtime;
+            this.binding = binding;
+        }
+
+        @net.bytebuddy.implementation.bind.annotation.RuntimeType
+        public Object intercept(
+                @net.bytebuddy.implementation.bind.annotation.AllArguments Object[] args) {
+            Object[] resolved = binding.resolveArgs(args);
+            return runtime.deleteQuery(binding.query(), resolved);
+        }
+    }
+
+    public static class UpdateQueryInterceptor<T> {
+        private final RepositoryRuntime<T> runtime;
+        private final RepositoryMethodBinding binding;
+
+        public UpdateQueryInterceptor(RepositoryRuntime<T> runtime, RepositoryMethodBinding binding) {
+            this.runtime = runtime;
+            this.binding = binding;
+        }
+
+        @net.bytebuddy.implementation.bind.annotation.RuntimeType
+        public Object intercept(
+                @net.bytebuddy.implementation.bind.annotation.AllArguments Object[] args) {
+            Object[] resolved = binding.resolveArgs(args);
+            return runtime.updateQuery(binding.query(), resolved);
+        }
+    }
+
+    public static class DeleteAllByIdInterceptor<T> {
+        private final RepositoryRuntime<T> runtime;
+
+        public DeleteAllByIdInterceptor(RepositoryRuntime<T> runtime) {
+            this.runtime = runtime;
+        }
+
+        @net.bytebuddy.implementation.bind.annotation.RuntimeType
+        public Object intercept(@net.bytebuddy.implementation.bind.annotation.Argument(0) Iterable<?> ids) {
+            return runtime.deleteAllById(ids);
         }
     }
 

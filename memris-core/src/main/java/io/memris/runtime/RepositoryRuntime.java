@@ -74,6 +74,66 @@ public final class RepositoryRuntime<T> {
         this.entitySaver = plan.entitySaver();
     }
 
+    public T saveOne(T entity) {
+        return executeSaveOne(new Object[] { entity });
+    }
+
+    public List<T> saveAll(Iterable<T> entities) {
+        return executeSaveAll(new Object[] { entities });
+    }
+
+    public Optional<T> findById(Object id) {
+        return executeFindById(new Object[] { id });
+    }
+
+    public List<T> findAll() {
+        return executeFindAll();
+    }
+
+    public Object find(CompiledQuery query, Object[] args) {
+        return executeFind(query, args);
+    }
+
+    public long countFast(CompiledQuery query, Object[] args) {
+        return executeCountFast(query, args);
+    }
+
+    public long countAll() {
+        return executeCountAll();
+    }
+
+    public boolean existsFast(CompiledQuery query, Object[] args) {
+        return executeExistsFast(query, args);
+    }
+
+    public boolean existsById(Object id) {
+        return executeExistsById(new Object[] { id });
+    }
+
+    public void deleteOne(Object entity) {
+        executeDeleteOne(new Object[] { entity });
+    }
+
+    public void deleteAll() {
+        executeDeleteAll();
+    }
+
+    public void deleteById(Object id) {
+        executeDeleteById(new Object[] { id });
+    }
+
+    public Object deleteQuery(CompiledQuery query, Object[] args) {
+        return formatModifyingResult(executeDeleteQuery(query, args), query.returnKind());
+    }
+
+    public Object updateQuery(CompiledQuery query, Object[] args) {
+        return formatModifyingResult(executeUpdateQuery(query, args), query.returnKind());
+    }
+
+    public long deleteAllById(Iterable<?> ids) {
+        return executeDeleteAllById(new Object[] { ids });
+    }
+
     private static java.util.Map<Class<?>, EntityMetadata<?>> buildRelatedMetadata(EntityMetadata<?> metadata) {
         if (metadata == null) {
             return java.util.Map.of();
@@ -98,48 +158,48 @@ public final class RepositoryRuntime<T> {
 
     private Object executeCompiledQuery(CompiledQuery query, Object[] args) {
         Object[] queryArgs;
-        switch (query.opCode()) {
-            case SAVE_ONE:
-                return executeSaveOne(args);
-            case SAVE_ALL:
-                return executeSaveAll(args);
-            case FIND_BY_ID:
-                return executeFindById(args);
-            case FIND_ALL:
-                return executeFindAll();
-            case FIND:
+        return switch (query.opCode()) {
+            case SAVE_ONE -> executeSaveOne(args);
+            case SAVE_ALL -> executeSaveAll(args);
+            case FIND_BY_ID -> executeFindById(args);
+            case FIND_ALL -> executeFindAll();
+            case FIND -> {
                 queryArgs = buildQueryArgs(query, args);
-                return executeFind(query, queryArgs);
-            case COUNT:
+                yield executeFind(query, queryArgs);
+            }
+            case COUNT -> {
                 queryArgs = buildQueryArgs(query, args);
-                return executeCountFast(query, queryArgs);
-            case COUNT_ALL:
-                return executeCountAll();
-            case EXISTS:
+                yield executeCountFast(query, queryArgs);
+            }
+            case COUNT_ALL -> executeCountAll();
+            case EXISTS -> {
                 queryArgs = buildQueryArgs(query, args);
-                return executeExistsFast(query, queryArgs);
-            case EXISTS_BY_ID:
-                return executeExistsById(args);
-            case DELETE_ONE:
+                yield executeExistsFast(query, queryArgs);
+            }
+            case EXISTS_BY_ID -> executeExistsById(args);
+            case DELETE_ONE -> {
                 executeDeleteOne(args);
-                return null;
-            case DELETE_ALL:
+                yield null;
+            }
+            case DELETE_ALL -> {
                 executeDeleteAll();
-                return null;
-            case DELETE_BY_ID:
+                yield null;
+            }
+            case DELETE_BY_ID -> {
                 executeDeleteById(args);
-                return null;
-            case DELETE_QUERY:
+                yield null;
+            }
+            case DELETE_QUERY -> {
                 queryArgs = buildQueryArgs(query, args);
-                return formatModifyingResult(executeDeleteQuery(query, queryArgs), query.returnKind());
-            case UPDATE_QUERY:
+                yield formatModifyingResult(executeDeleteQuery(query, queryArgs), query.returnKind());
+            }
+            case UPDATE_QUERY -> {
                 queryArgs = buildQueryArgs(query, args);
-                return formatModifyingResult(executeUpdateQuery(query, queryArgs), query.returnKind());
-            case DELETE_ALL_BY_ID:
-                return executeDeleteAllById(args);
-            default:
-                throw new UnsupportedOperationException("OpCode not implemented: " + query.opCode());
-        }
+                yield formatModifyingResult(executeUpdateQuery(query, queryArgs), query.returnKind());
+            }
+            case DELETE_ALL_BY_ID -> executeDeleteAllById(args);
+            default -> throw new UnsupportedOperationException("OpCode not implemented: " + query.opCode());
+        };
     }
 
     private Object[] buildQueryArgs(CompiledQuery query, Object[] args) {

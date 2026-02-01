@@ -21,6 +21,7 @@ public final class RepositoryPlan<T> {
     private final Class<T> entityClass;
     private final String idColumnName;
     private final CompiledQuery[] queries;
+    private final RepositoryMethodBinding[] bindings;
     private final GeneratedTable table;
     private final HeapRuntimeKernel kernel;
     private final String[] columnNames;
@@ -35,6 +36,7 @@ public final class RepositoryPlan<T> {
         this.entityClass = builder.entityClass;
         this.idColumnName = builder.idColumnName;
         this.queries = builder.queries;
+        this.bindings = builder.bindings;
         this.table = builder.table;
         this.kernel = builder.kernel;
         this.columnNames = builder.columnNames;
@@ -56,6 +58,10 @@ public final class RepositoryPlan<T> {
 
     public CompiledQuery[] queries() {
         return queries;
+    }
+
+    public RepositoryMethodBinding[] bindings() {
+        return bindings;
     }
 
     public GeneratedTable table() {
@@ -102,6 +108,7 @@ public final class RepositoryPlan<T> {
             Class<T> entityClass,
             String idColumnName,
             CompiledQuery[] queries,
+            RepositoryMethodBinding[] bindings,
             MethodHandle entityConstructor,
             String[] columnNames,
             byte[] typeCodes,
@@ -119,6 +126,7 @@ public final class RepositoryPlan<T> {
                 .entityClass(entityClass)
                 .idColumnName(idColumnName)
                 .queries(queries)
+                .bindings(bindings)
                 .table(table)
                 .kernel(kernel)
                 .columnNames(columnNames)
@@ -139,6 +147,7 @@ public final class RepositoryPlan<T> {
         private Class<T> entityClass;
         private String idColumnName;
         private CompiledQuery[] queries;
+        private RepositoryMethodBinding[] bindings;
         private GeneratedTable table;
         private HeapRuntimeKernel kernel;
         private String[] columnNames;
@@ -161,6 +170,11 @@ public final class RepositoryPlan<T> {
 
         public Builder<T> queries(CompiledQuery[] queries) {
             this.queries = queries;
+            return this;
+        }
+
+        public Builder<T> bindings(RepositoryMethodBinding[] bindings) {
+            this.bindings = bindings;
             return this;
         }
 
