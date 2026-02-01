@@ -148,6 +148,13 @@ Custom annotations for entity marking:
 - TypeCode switch dispatch
 - Delegates to GeneratedTable methods
 
+**RuntimeExecutorGenerator** (`RuntimeExecutorGenerator.java:44`)
+- Generates type-specialized executors at runtime using ByteBuddy
+- Eliminates runtime type switches on hot paths
+- Generates and caches: FieldValueReader, FkReader, TargetRowResolver, ConditionExecutor, OrderKeyBuilder
+- Uses global cache for reuse across repositories
+- Feature toggle: `-Dmemris.codegen.enabled=false` to disable code generation
+
 **EntityMaterializer** (`EntityMaterializer.java`)
 - Converts table rows to entity objects
 - Uses MethodHandles for field access
@@ -158,6 +165,7 @@ Custom annotations for entity marking:
 
 **Key Files:**
 - `HeapRuntimeKernel.java` - Main execution engine
+- `RuntimeExecutorGenerator.java` - Codegen for type-specialized executors
 - `EntityMaterializer.java` - Entity creation
 - `EntityExtractor.java` - Entity decomposition
 
@@ -338,6 +346,7 @@ public final class PersonTable extends AbstractTable implements GeneratedTable {
 | File | Line | Purpose |
 |------|------|---------|
 | `TableGenerator.java` | 31 | ByteBuddy table generation |
+| `RuntimeExecutorGenerator.java` | 44 | Runtime codegen for type-specialized executors |
 | `HeapRuntimeKernel.java` | 9 | Query execution engine |
 | `TypeCodes.java` | 16 | Type code constants |
 | `BuiltInResolver.java` | 57 | Built-in method resolution |

@@ -180,6 +180,7 @@ public class Main {
 
 **Return Types:**
 - `List<T>`, `Optional<T>`, `T` — Find methods
+- `Set<T>` — Find methods (unique results)
 - `long` — Count methods
 - `boolean` — Exists methods
 - `Map<K, V>` — Grouped results

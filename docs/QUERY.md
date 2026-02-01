@@ -72,6 +72,7 @@ This document provides a complete query operator reference for Memris.
 |------------|----------|--------|
 | List\<T\> | `findByXxx` | ✅ |
 | Optional\<T\> | `findById` | ✅ |
+| Set\<T\> | `findByXxx` | ✅ |
 | long | `countByXxx` | ✅ |
 | boolean | `existsByXxx` | ✅ |
 
@@ -106,7 +107,7 @@ List<Product> findByNameAndPrice(@Param("name") String name, @Param("min") long 
 - If compiled with `-parameters`, unannotated names are also matched
 
 **Return types:**
-- `List<T>`, `Optional<T>`, `boolean`, `long`, `Map<K, V>`
+- `List<T>`, `Optional<T>`, `Set<T>`, `boolean`, `long`, `Map<K, V>`
 - `select count(x)` must return `long` or `Map<K, Long>` when grouped
 
 **Literal handling:**
@@ -167,6 +168,7 @@ boolean existsByEmail(String email);
 **Return Types:**
 - `List<T>` - Multiple results
 - `Optional<T>` - Single result
+- `Set<T>` - Unique results
 - `long` - Count
 - `boolean` - Existence check
 

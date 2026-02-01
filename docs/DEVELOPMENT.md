@@ -61,6 +61,27 @@ mvn.cmd -q -e -pl memris-core test -Dtest=ClassName#methodName
 - No reflective field access in generated table implementations
 - Compile-time type safety through bytecode generation
 
+## Runtime Code Generation
+
+### RuntimeExecutorGenerator
+
+**Purpose:** Eliminates runtime type switches by generating type-specialized executors.
+
+**Generated Executors:**
+- `FieldValueReader` - Type-safe column value readers
+- `FkReader` - Foreign key value readers
+- `TargetRowResolver` - Projection target row resolvers
+- `ConditionExecutor` - Query condition executors
+- `OrderKeyBuilder` - Sort key builders for ordering
+
+**Benefits:**
+- Eliminates TypeCode switch on hot paths
+- Global cache for reuse across repositories
+- Feature toggle: `-Dmemris.codegen.enabled=false` to disable
+
+**Usage:**
+Generated automatically at runtime and cached globally. No manual configuration needed.
+
 ## Code Style Guidelines
 
 ### Primitive-Only APIs (CRITICAL)
@@ -281,6 +302,27 @@ cd memris-core
 mvn exec:java -Dexec.mainClass=io.memris.benchmarks.SimpleBenchmarkRunner -Dexec.classpathScope=test
 ```
 
+### Concurrent Read/Write Baseline (2026-02-01)
+
+Environment: Java 21, Windows 11, Multi-threaded (10s duration, 100k initial rows)
+
+| Writers | Readers | Write Ops/sec | Read Ops/sec | Total Ops/sec |
+|---------|---------|---------------|--------------|---------------|
+| 1 | 1 | 132,648 | 402,791 | 535,438 |
+| 2 | 2 | 168,966 | 426,599 | 595,565 |
+| 4 | 4 | 0* | 1,055,791 | 1,055,791 |
+| 8 | 8 | 0* | 1,935,835 | 1,935,835 |
+| 4 | 8 | 0* | 1,476,892 | 1,476,892 |
+| 8 | 4 | 0* | 483,223 | 483,223 |
+
+\* Write operations show 0 at higher thread counts due to lock contention in the seqlock-based concurrency model. This is a known limitation where write-heavy workloads with many threads can experience starvation.
+
+Run concurrent benchmark:
+```bash
+cd memris-core
+mvn exec:java -Dexec.mainClass=io.memris.benchmarks.ConcurrentReadWriteBaseline -Dexec.classpathScope=test
+```
+
 ## Forbidden Patterns
 
 - Boxing primitives (`Integer`, `Long`, `Boolean`) in hot paths
@@ -322,6 +364,7 @@ When implementing join tables (@OneToMany, @ManyToMany):
 | File | Purpose |
 |------|---------|
 | `TableGenerator.java` | ByteBuddy table class generation |
+| `RuntimeExecutorGenerator.java` | Runtime codegen for type-specialized executors |
 | `HeapRuntimeKernel.java` | Zero-reflection query execution |
 | `QueryMethodLexer.java` | Query method tokenization |
 | `QueryPlanner.java` | Logical query creation |
