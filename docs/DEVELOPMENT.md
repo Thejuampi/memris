@@ -265,6 +265,22 @@ System.out.println("Found " + results.length + " matches");  // NOT A TEST!
 - Target: Range index lookup O(log n) < 10μs
 - Use JMH for microbenchmarks when needed
 
+### Benchmark Baseline (2026-02-01)
+
+Environment: Java 21, Windows 11, Single-threaded
+
+| Operation | Rows/Operations | Ops/sec | Avg Time |
+|-----------|----------------|---------|----------|
+| Insert | 100k | ~146,000 | 0.007 ms/op |
+| Lookup by ID | 100k | ~413,000 | 0.002 ms/op |
+| Scan All | 100k | ~533,000 rows/sec | 188 ms total |
+
+Run benchmarks:
+```bash
+cd memris-core
+mvn exec:java -Dexec.mainClass=io.memris.benchmarks.SimpleBenchmarkRunner -Dexec.classpathScope=test
+```
+
 ## Forbidden Patterns
 
 - Boxing primitives (`Integer`, `Long`, `Boolean`) in hot paths
