@@ -342,33 +342,40 @@ public final class BytecodeTableGenerator {
                 throw new IndexOutOfBoundsException("Column index out of range: " + columnIndex);
             }
 
+            AbstractTable table = (AbstractTable) obj;
             ColumnFieldInfo fieldInfo = columnFields.get(columnIndex);
             Field field = obj.getClass().getDeclaredField(fieldInfo.fieldName());
             field.setAccessible(true);
-            Object column = field.get(obj);
 
-            byte typeCode = fieldInfo.typeCode();
-            if (typeCode == TypeCodes.TYPE_LONG
-                    || typeCode == TypeCodes.TYPE_DOUBLE
-                    || typeCode == TypeCodes.TYPE_INSTANT
-                    || typeCode == TypeCodes.TYPE_LOCAL_DATE
-                    || typeCode == TypeCodes.TYPE_LOCAL_DATE_TIME
-                    || typeCode == TypeCodes.TYPE_DATE) {
-                return ((PageColumnLong) column).get(rowIndex);
-            } else if (typeCode == TypeCodes.TYPE_INT
-                    || typeCode == TypeCodes.TYPE_FLOAT
-                    || typeCode == TypeCodes.TYPE_BOOLEAN
-                    || typeCode == TypeCodes.TYPE_BYTE
-                    || typeCode == TypeCodes.TYPE_SHORT
-                    || typeCode == TypeCodes.TYPE_CHAR) {
-                return ((PageColumnInt) column).get(rowIndex);
-            } else if (typeCode == TypeCodes.TYPE_STRING
-                    || typeCode == TypeCodes.TYPE_BIG_DECIMAL
-                    || typeCode == TypeCodes.TYPE_BIG_INTEGER) {
-                return ((PageColumnString) column).get(rowIndex);
-            } else {
-                throw new IllegalStateException("Unknown type code: " + typeCode);
-            }
+            return table.readWithSeqLock(rowIndex, () -> {
+                try {
+                    Object column = field.get(obj);
+                    byte typeCode = fieldInfo.typeCode();
+                    if (typeCode == TypeCodes.TYPE_LONG
+                            || typeCode == TypeCodes.TYPE_DOUBLE
+                            || typeCode == TypeCodes.TYPE_INSTANT
+                            || typeCode == TypeCodes.TYPE_LOCAL_DATE
+                            || typeCode == TypeCodes.TYPE_LOCAL_DATE_TIME
+                            || typeCode == TypeCodes.TYPE_DATE) {
+                        return ((PageColumnLong) column).get(rowIndex);
+                    } else if (typeCode == TypeCodes.TYPE_INT
+                            || typeCode == TypeCodes.TYPE_FLOAT
+                            || typeCode == TypeCodes.TYPE_BOOLEAN
+                            || typeCode == TypeCodes.TYPE_BYTE
+                            || typeCode == TypeCodes.TYPE_SHORT
+                            || typeCode == TypeCodes.TYPE_CHAR) {
+                        return ((PageColumnInt) column).get(rowIndex);
+                    } else if (typeCode == TypeCodes.TYPE_STRING
+                            || typeCode == TypeCodes.TYPE_BIG_DECIMAL
+                            || typeCode == TypeCodes.TYPE_BIG_INTEGER) {
+                        return ((PageColumnString) column).get(rowIndex);
+                    } else {
+                        throw new IllegalStateException("Unknown type code: " + typeCode);
+                    }
+                } catch (IllegalAccessException e) {
+                    throw new RuntimeException(e);
+                }
+            });
         }
     }
 
@@ -387,33 +394,40 @@ public final class BytecodeTableGenerator {
                 throw new IndexOutOfBoundsException("Column index out of range: " + columnIndex);
             }
 
+            AbstractTable table = (AbstractTable) obj;
             ColumnFieldInfo fieldInfo = columnFields.get(columnIndex);
             Field field = obj.getClass().getDeclaredField(fieldInfo.fieldName());
             field.setAccessible(true);
-            Object column = field.get(obj);
 
-            byte typeCode = fieldInfo.typeCode();
-            if (typeCode == TypeCodes.TYPE_LONG
-                    || typeCode == TypeCodes.TYPE_DOUBLE
-                    || typeCode == TypeCodes.TYPE_INSTANT
-                    || typeCode == TypeCodes.TYPE_LOCAL_DATE
-                    || typeCode == TypeCodes.TYPE_LOCAL_DATE_TIME
-                    || typeCode == TypeCodes.TYPE_DATE) {
-                return ((PageColumnLong) column).isPresent(rowIndex);
-            } else if (typeCode == TypeCodes.TYPE_INT
-                    || typeCode == TypeCodes.TYPE_FLOAT
-                    || typeCode == TypeCodes.TYPE_BOOLEAN
-                    || typeCode == TypeCodes.TYPE_BYTE
-                    || typeCode == TypeCodes.TYPE_SHORT
-                    || typeCode == TypeCodes.TYPE_CHAR) {
-                return ((PageColumnInt) column).isPresent(rowIndex);
-            } else if (typeCode == TypeCodes.TYPE_STRING
-                    || typeCode == TypeCodes.TYPE_BIG_DECIMAL
-                    || typeCode == TypeCodes.TYPE_BIG_INTEGER) {
-                return ((PageColumnString) column).isPresent(rowIndex);
-            } else {
-                throw new IllegalStateException("Unknown type code: " + typeCode);
-            }
+            return table.readWithSeqLock(rowIndex, () -> {
+                try {
+                    Object column = field.get(obj);
+                    byte typeCode = fieldInfo.typeCode();
+                    if (typeCode == TypeCodes.TYPE_LONG
+                            || typeCode == TypeCodes.TYPE_DOUBLE
+                            || typeCode == TypeCodes.TYPE_INSTANT
+                            || typeCode == TypeCodes.TYPE_LOCAL_DATE
+                            || typeCode == TypeCodes.TYPE_LOCAL_DATE_TIME
+                            || typeCode == TypeCodes.TYPE_DATE) {
+                        return ((PageColumnLong) column).isPresent(rowIndex);
+                    } else if (typeCode == TypeCodes.TYPE_INT
+                            || typeCode == TypeCodes.TYPE_FLOAT
+                            || typeCode == TypeCodes.TYPE_BOOLEAN
+                            || typeCode == TypeCodes.TYPE_BYTE
+                            || typeCode == TypeCodes.TYPE_SHORT
+                            || typeCode == TypeCodes.TYPE_CHAR) {
+                        return ((PageColumnInt) column).isPresent(rowIndex);
+                    } else if (typeCode == TypeCodes.TYPE_STRING
+                            || typeCode == TypeCodes.TYPE_BIG_DECIMAL
+                            || typeCode == TypeCodes.TYPE_BIG_INTEGER) {
+                        return ((PageColumnString) column).isPresent(rowIndex);
+                    } else {
+                        throw new IllegalStateException("Unknown type code: " + typeCode);
+                    }
+                } catch (IllegalAccessException e) {
+                    throw new RuntimeException(e);
+                }
+            });
         }
     }
 
@@ -904,6 +918,7 @@ public final class BytecodeTableGenerator {
             RowId rowId = table.allocateRowId();
             int rowIndex = (int) (rowId.page() * table.pageSize() + rowId.offset());
             long generation = table.rowGeneration(rowIndex);
+            long packed;
 
             // Begin seqlock - mark row as being written (odd)
             table.beginSeqLock(rowIndex);
@@ -1044,15 +1059,14 @@ public final class BytecodeTableGenerator {
                     }
                 }
 
-                // End seqlock - mark row as stable (even)
-                table.endSeqLock(rowIndex);
-
-                table.incrementRowCount();
-                return Selection.pack(rowIndex, generation);
+                packed = Selection.pack(rowIndex, generation);
             } finally {
                 // Ensure seqlock is ended even if exception occurs
                 table.endSeqLock(rowIndex);
             }
+
+            table.incrementRowCount();
+            return packed;
         }
     }
 
@@ -1073,18 +1087,25 @@ public final class BytecodeTableGenerator {
             Object idColumn = idColumnField.get(obj);
 
             Object idValue = null;
-            if (idColumn instanceof PageColumnLong longCol) {
-                if (longCol.isPresent(rowIndex)) {
-                    idValue = longCol.get(rowIndex);
+            table.beginSeqLock(rowIndex);
+            try {
+                if (idColumn instanceof PageColumnLong longCol) {
+                    if (longCol.isPresent(rowIndex)) {
+                        idValue = longCol.get(rowIndex);
+                    }
+                } else if (idColumn instanceof PageColumnInt intCol) {
+                    if (intCol.isPresent(rowIndex)) {
+                        idValue = intCol.get(rowIndex);
+                    }
+                } else if (idColumn instanceof PageColumnString stringCol) {
+                    if (stringCol.isPresent(rowIndex)) {
+                        idValue = stringCol.get(rowIndex);
+                    }
                 }
-            } else if (idColumn instanceof PageColumnInt intCol) {
-                if (intCol.isPresent(rowIndex)) {
-                    idValue = intCol.get(rowIndex);
-                }
-            } else if (idColumn instanceof PageColumnString stringCol) {
-                if (stringCol.isPresent(rowIndex)) {
-                    idValue = stringCol.get(rowIndex);
-                }
+
+                table.tombstone(rowId, generation);
+            } finally {
+                table.endSeqLock(rowIndex);
             }
 
             // Remove from ID index
@@ -1099,8 +1120,6 @@ public final class BytecodeTableGenerator {
                     stringIdx.remove((String) idValue);
                 }
             }
-
-            table.tombstone(rowId, generation);
         }
     }
 

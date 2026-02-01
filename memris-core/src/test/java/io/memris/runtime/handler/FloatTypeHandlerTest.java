@@ -113,6 +113,11 @@ class FloatTypeHandlerTest {
         }
 
         @Override
+        public <T> T readWithSeqLock(int rowIndex, java.util.function.Supplier<T> reader) {
+            return reader.get();
+        }
+
+        @Override
         public int[] scanEqualsLong(int columnIndex, long value) {
             throw new UnsupportedOperationException();
         }

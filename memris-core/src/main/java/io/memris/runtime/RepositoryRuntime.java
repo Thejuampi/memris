@@ -12,6 +12,7 @@ import io.memris.query.LogicalQuery;
 import io.memris.storage.GeneratedTable;
 import io.memris.storage.Selection;
 import io.memris.storage.SelectionImpl;
+import io.memris.runtime.codegen.RuntimeExecutorGenerator;
 
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
@@ -226,30 +227,33 @@ public final class RepositoryRuntime<T> {
                         TypeCodes.TYPE_BOOLEAN,
                         TypeCodes.TYPE_BYTE,
                         TypeCodes.TYPE_SHORT,
-                        TypeCodes.TYPE_CHAR -> (runtime, rows) -> {
-                    if (limit > 0 && limit < rows.length) {
-                        return runtime.topKInt(rows, columnIndex, ascending, limit);
-                    }
-                    return runtime.sortByIntColumn(rows, columnIndex, ascending);
-                };
+                        TypeCodes.TYPE_CHAR ->
+                    (runtime, rows) -> {
+                        if (limit > 0 && limit < rows.length) {
+                            return runtime.topKInt(rows, columnIndex, ascending, limit);
+                        }
+                        return runtime.sortByIntColumn(rows, columnIndex, ascending);
+                    };
                 case TypeCodes.TYPE_LONG,
                         TypeCodes.TYPE_INSTANT,
                         TypeCodes.TYPE_LOCAL_DATE,
                         TypeCodes.TYPE_LOCAL_DATE_TIME,
-                        TypeCodes.TYPE_DATE -> (runtime, rows) -> {
-                    if (limit > 0 && limit < rows.length) {
-                        return runtime.topKLong(rows, columnIndex, ascending, limit);
-                    }
-                    return runtime.sortByLongColumn(rows, columnIndex, ascending);
-                };
+                        TypeCodes.TYPE_DATE ->
+                    (runtime, rows) -> {
+                        if (limit > 0 && limit < rows.length) {
+                            return runtime.topKLong(rows, columnIndex, ascending, limit);
+                        }
+                        return runtime.sortByLongColumn(rows, columnIndex, ascending);
+                    };
                 case TypeCodes.TYPE_STRING,
                         TypeCodes.TYPE_BIG_DECIMAL,
-                        TypeCodes.TYPE_BIG_INTEGER -> (runtime, rows) -> {
-                    if (limit > 0 && limit < rows.length) {
-                        return runtime.topKString(rows, columnIndex, ascending, limit);
-                    }
-                    return runtime.sortByStringColumn(rows, columnIndex, ascending);
-                };
+                        TypeCodes.TYPE_BIG_INTEGER ->
+                    (runtime, rows) -> {
+                        if (limit > 0 && limit < rows.length) {
+                            return runtime.topKString(rows, columnIndex, ascending, limit);
+                        }
+                        return runtime.sortByStringColumn(rows, columnIndex, ascending);
+                    };
                 case TypeCodes.TYPE_FLOAT -> (runtime, rows) -> {
                     int[] sorted = runtime.sortByFloatColumn(rows, columnIndex, ascending);
                     return limit > 0 && limit < sorted.length ? runtime.limitRows(sorted, limit) : sorted;
@@ -304,178 +308,25 @@ public final class RepositoryRuntime<T> {
     }
 
     private static FkReader buildFkReader(byte typeCode, int columnIndex) {
-        return switch (typeCode) {
-            case TypeCodes.TYPE_STRING -> (table, rowIndex) -> {
-                if (!table.isPresent(columnIndex, rowIndex)) {
-                    return null;
-                }
-                return table.readString(columnIndex, rowIndex);
-            };
-            case TypeCodes.TYPE_INT -> (table, rowIndex) -> {
-                if (!table.isPresent(columnIndex, rowIndex)) {
-                    return null;
-                }
-                return Integer.valueOf(table.readInt(columnIndex, rowIndex));
-            };
-            case TypeCodes.TYPE_SHORT -> (table, rowIndex) -> {
-                if (!table.isPresent(columnIndex, rowIndex)) {
-                    return null;
-                }
-                return Short.valueOf((short) table.readInt(columnIndex, rowIndex));
-            };
-            case TypeCodes.TYPE_BYTE -> (table, rowIndex) -> {
-                if (!table.isPresent(columnIndex, rowIndex)) {
-                    return null;
-                }
-                return Byte.valueOf((byte) table.readInt(columnIndex, rowIndex));
-            };
-            default -> (table, rowIndex) -> {
-                if (!table.isPresent(columnIndex, rowIndex)) {
-                    return null;
-                }
-                return Long.valueOf(table.readLong(columnIndex, rowIndex));
-            };
-        };
+        return RuntimeExecutorGenerator.generateFkReader(columnIndex, typeCode)::read;
     }
 
     private static TargetRowResolver buildTargetRowResolver(CompiledQuery.CompiledProjectionStep step) {
-        if (step.targetColumnIsId()) {
-            return switch (step.fkTypeCode()) {
-                case TypeCodes.TYPE_STRING -> (table, fkValue) -> {
-                    long packedRef = table.lookupByIdString((String) fkValue);
-                    return packedRef < 0 ? -1 : io.memris.storage.Selection.index(packedRef);
-                };
-                default -> (table, fkValue) -> {
-                    long packedRef = table.lookupById(((Number) fkValue).longValue());
-                    return packedRef < 0 ? -1 : io.memris.storage.Selection.index(packedRef);
-                };
-            };
-        }
-
-        return switch (step.fkTypeCode()) {
-            case TypeCodes.TYPE_INT, TypeCodes.TYPE_SHORT, TypeCodes.TYPE_BYTE -> (table, fkValue) -> {
-                int[] matches = table.scanEqualsInt(step.targetColumnIndex(), ((Number) fkValue).intValue());
-                return matches.length == 0 ? -1 : matches[0];
-            };
-            case TypeCodes.TYPE_STRING -> (table, fkValue) -> {
-                int[] matches = table.scanEqualsString(step.targetColumnIndex(), fkValue.toString());
-                return matches.length == 0 ? -1 : matches[0];
-            };
-            default -> (table, fkValue) -> {
-                int[] matches = table.scanEqualsLong(step.targetColumnIndex(), ((Number) fkValue).longValue());
-                return matches.length == 0 ? -1 : matches[0];
-            };
-        };
+        return RuntimeExecutorGenerator.generateTargetRowResolver(
+                step.targetColumnIsId(), step.fkTypeCode(), step.targetColumnIndex())::resolve;
     }
 
-    private static FieldValueReader buildFieldValueReader(int columnIndex, byte typeCode, TypeConverter<?, ?> converter) {
-        @SuppressWarnings("unchecked")
-        TypeConverter<Object, Object> typedConverter = (TypeConverter<Object, Object>) converter;
-        return switch (typeCode) {
-            case TypeCodes.TYPE_STRING,
-                    TypeCodes.TYPE_BIG_DECIMAL,
-                    TypeCodes.TYPE_BIG_INTEGER -> (table, rowIndex) -> {
-                if (!table.isPresent(columnIndex, rowIndex)) {
-                    return null;
-                }
-                Object storage = table.readString(columnIndex, rowIndex);
-                if (typedConverter != null && storage != null) {
-                    return typedConverter.fromStorage(storage);
-                }
-                return storage;
-            };
-            case TypeCodes.TYPE_LONG,
-                    TypeCodes.TYPE_INSTANT,
-                    TypeCodes.TYPE_LOCAL_DATE,
-                    TypeCodes.TYPE_LOCAL_DATE_TIME,
-                    TypeCodes.TYPE_DATE -> (table, rowIndex) -> {
-                if (!table.isPresent(columnIndex, rowIndex)) {
-                    return null;
-                }
-                Object storage = table.readLong(columnIndex, rowIndex);
-                if (typedConverter != null && storage != null) {
-                    return typedConverter.fromStorage(storage);
-                }
-                return storage;
-            };
-            case TypeCodes.TYPE_DOUBLE -> (table, rowIndex) -> {
-                if (!table.isPresent(columnIndex, rowIndex)) {
-                    return null;
-                }
-                Object storage = table.readLong(columnIndex, rowIndex);
-                if (typedConverter != null && storage != null) {
-                    return typedConverter.fromStorage(storage);
-                }
-                return Double.longBitsToDouble((Long) storage);
-            };
-            case TypeCodes.TYPE_FLOAT -> (table, rowIndex) -> {
-                if (!table.isPresent(columnIndex, rowIndex)) {
-                    return null;
-                }
-                Object storage = table.readInt(columnIndex, rowIndex);
-                if (typedConverter != null && storage != null) {
-                    return typedConverter.fromStorage(storage);
-                }
-                return Float.intBitsToFloat((Integer) storage);
-            };
-            case TypeCodes.TYPE_BOOLEAN -> (table, rowIndex) -> {
-                if (!table.isPresent(columnIndex, rowIndex)) {
-                    return null;
-                }
-                Object storage = table.readInt(columnIndex, rowIndex);
-                if (typedConverter != null && storage != null) {
-                    return typedConverter.fromStorage(storage);
-                }
-                return ((Integer) storage) != 0;
-            };
-            case TypeCodes.TYPE_BYTE -> (table, rowIndex) -> {
-                if (!table.isPresent(columnIndex, rowIndex)) {
-                    return null;
-                }
-                Object storage = table.readInt(columnIndex, rowIndex);
-                if (typedConverter != null && storage != null) {
-                    return typedConverter.fromStorage(storage);
-                }
-                return (byte) (int) storage;
-            };
-            case TypeCodes.TYPE_SHORT -> (table, rowIndex) -> {
-                if (!table.isPresent(columnIndex, rowIndex)) {
-                    return null;
-                }
-                Object storage = table.readInt(columnIndex, rowIndex);
-                if (typedConverter != null && storage != null) {
-                    return typedConverter.fromStorage(storage);
-                }
-                return (short) (int) storage;
-            };
-            case TypeCodes.TYPE_CHAR -> (table, rowIndex) -> {
-                if (!table.isPresent(columnIndex, rowIndex)) {
-                    return null;
-                }
-                Object storage = table.readInt(columnIndex, rowIndex);
-                if (typedConverter != null && storage != null) {
-                    return typedConverter.fromStorage(storage);
-                }
-                return (char) (int) storage;
-            };
-            default -> (table, rowIndex) -> {
-                if (!table.isPresent(columnIndex, rowIndex)) {
-                    return null;
-                }
-                Object storage = table.readInt(columnIndex, rowIndex);
-                if (typedConverter != null && storage != null) {
-                    return typedConverter.fromStorage(storage);
-                }
-                return storage;
-            };
-        };
+    private static FieldValueReader buildFieldValueReader(int columnIndex, byte typeCode,
+            TypeConverter<?, ?> converter) {
+        return RuntimeExecutorGenerator.generateFieldValueReader(columnIndex, typeCode, converter)::read;
     }
 
     private static final class ProjectionExecutorImpl implements ProjectionExecutor {
         private final CompiledQuery.CompiledProjection projection;
         private final ProjectionItemExecutor[] itemExecutors;
 
-        private ProjectionExecutorImpl(CompiledQuery.CompiledProjection projection, ProjectionItemExecutor[] itemExecutors) {
+        private ProjectionExecutorImpl(CompiledQuery.CompiledProjection projection,
+                ProjectionItemExecutor[] itemExecutors) {
             this.projection = projection;
             this.itemExecutors = itemExecutors;
         }
@@ -871,7 +722,7 @@ public final class RepositoryRuntime<T> {
         }
 
         int rowIndex = io.memris.storage.Selection.index(packedRef);
-        T entity = materializer.materialize(plan.kernel(), rowIndex);
+        T entity = table.readWithSeqLock(rowIndex, () -> materializer.materialize(plan.kernel(), rowIndex));
         applyPostLoad(entity);
         hydrateCollections(entity, rowIndex);
         return Optional.of(entity);
@@ -941,11 +792,11 @@ public final class RepositoryRuntime<T> {
 
         boolean returnSet = query.returnKind() == LogicalQuery.ReturnKind.MANY_SET;
         boolean returnMap = query.returnKind() == LogicalQuery.ReturnKind.MANY_MAP;
-        
+
         if (returnMap) {
             return buildMapResult(query, rows, max, args);
         }
-        
+
         List<T> results = returnSet ? null : new ArrayList<>(max);
         java.util.Set<T> resultSet = returnSet ? new java.util.LinkedHashSet<>(Math.max(16, max)) : null;
         for (int i = 0; i < max; i++) {
@@ -974,7 +825,7 @@ public final class RepositoryRuntime<T> {
         if (grouping == null) {
             throw new IllegalStateException("MANY_MAP return kind requires grouping configuration");
         }
-        
+
         int[] groupColumnIndices = grouping.columnIndices();
         byte[] groupTypeCodes = grouping.typeCodes();
 
@@ -1025,6 +876,7 @@ public final class RepositoryRuntime<T> {
         }
         return current;
     }
+
     private boolean evaluateHavingCondition(CompiledQuery.CompiledCondition condition, long countValue, Object[] args) {
         if (args == null || args.length == 0) {
             throw new UnsupportedOperationException("HAVING requires parameters");
@@ -1042,7 +894,8 @@ public final class RepositoryRuntime<T> {
             case GTE -> lhs >= rhs;
             case LT -> lhs < rhs;
             case LTE -> lhs <= rhs;
-            default -> throw new UnsupportedOperationException("HAVING operator not supported: " + condition.operator());
+            default ->
+                throw new UnsupportedOperationException("HAVING operator not supported: " + condition.operator());
         };
     }
 
@@ -1061,7 +914,8 @@ public final class RepositoryRuntime<T> {
         return resultMap;
     }
 
-    private Map<Object, java.util.Set<T>> buildGroupSet(CompiledQuery query, int[] rows, int max, int[] groupColumnIndices,
+    private Map<Object, java.util.Set<T>> buildGroupSet(CompiledQuery query, int[] rows, int max,
+            int[] groupColumnIndices,
             byte[] groupTypeCodes) {
         Map<Object, java.util.Set<T>> resultMap = new java.util.LinkedHashMap<>();
         for (int i = 0; i < max; i++) {
@@ -1107,28 +961,8 @@ public final class RepositoryRuntime<T> {
     }
 
     private Object readGroupingValue(int columnIndex, byte typeCode, int rowIndex) {
-        GeneratedTable table = plan.table();
-        if (!table.isPresent(columnIndex, rowIndex)) {
-            return null;
-        }
-        return switch (typeCode) {
-            case TypeCodes.TYPE_STRING -> table.readString(columnIndex, rowIndex);
-            case TypeCodes.TYPE_INT -> table.readInt(columnIndex, rowIndex);
-            case TypeCodes.TYPE_LONG -> table.readLong(columnIndex, rowIndex);
-            case TypeCodes.TYPE_BOOLEAN -> table.readInt(columnIndex, rowIndex) != 0;
-            case TypeCodes.TYPE_BYTE -> (byte) table.readInt(columnIndex, rowIndex);
-            case TypeCodes.TYPE_SHORT -> (short) table.readInt(columnIndex, rowIndex);
-            case TypeCodes.TYPE_CHAR -> (char) table.readInt(columnIndex, rowIndex);
-            case TypeCodes.TYPE_FLOAT -> FloatEncoding.sortableIntToFloat(table.readInt(columnIndex, rowIndex));
-            case TypeCodes.TYPE_DOUBLE -> FloatEncoding.sortableLongToDouble(table.readLong(columnIndex, rowIndex));
-            case TypeCodes.TYPE_INSTANT,
-                    TypeCodes.TYPE_LOCAL_DATE,
-                    TypeCodes.TYPE_LOCAL_DATE_TIME,
-                    TypeCodes.TYPE_DATE -> table.readLong(columnIndex, rowIndex);
-            case TypeCodes.TYPE_BIG_DECIMAL,
-                    TypeCodes.TYPE_BIG_INTEGER -> table.readString(columnIndex, rowIndex);
-            default -> throw new UnsupportedOperationException("Unsupported grouping key type: " + typeCode);
-        };
+        return RuntimeExecutorGenerator.generateGroupingValueReader(columnIndex, typeCode)
+                .read(plan.table(), rowIndex);
     }
 
     private int[] distinctRows(int[] rows) {
@@ -2339,17 +2173,20 @@ public final class RepositoryRuntime<T> {
                     TypeCodes.TYPE_BOOLEAN,
                     TypeCodes.TYPE_BYTE,
                     TypeCodes.TYPE_SHORT,
-                    TypeCodes.TYPE_CHAR -> new IntOrderKeyBuilder(columnIndex, ascending);
+                    TypeCodes.TYPE_CHAR ->
+                new IntOrderKeyBuilder(columnIndex, ascending);
             case TypeCodes.TYPE_FLOAT -> new FloatOrderKeyBuilder(columnIndex, ascending);
             case TypeCodes.TYPE_LONG,
                     TypeCodes.TYPE_INSTANT,
                     TypeCodes.TYPE_LOCAL_DATE,
                     TypeCodes.TYPE_LOCAL_DATE_TIME,
-                    TypeCodes.TYPE_DATE -> new LongOrderKeyBuilder(columnIndex, ascending);
+                    TypeCodes.TYPE_DATE ->
+                new LongOrderKeyBuilder(columnIndex, ascending);
             case TypeCodes.TYPE_DOUBLE -> new DoubleOrderKeyBuilder(columnIndex, ascending);
             case TypeCodes.TYPE_STRING,
                     TypeCodes.TYPE_BIG_DECIMAL,
-                    TypeCodes.TYPE_BIG_INTEGER -> new StringOrderKeyBuilder(columnIndex, ascending);
+                    TypeCodes.TYPE_BIG_INTEGER ->
+                new StringOrderKeyBuilder(columnIndex, ascending);
             default -> throw new UnsupportedOperationException("Unsupported sort type code: " + typeCode);
         };
     }

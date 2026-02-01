@@ -1,0 +1,1525 @@
+package io.memris.runtime.codegen;
+
+import io.memris.core.FloatEncoding;
+import io.memris.core.TypeCodes;
+import io.memris.core.converter.TypeConverter;
+import io.memris.storage.GeneratedTable;
+import io.memris.storage.Selection;
+import io.memris.storage.SelectionImpl;
+import net.bytebuddy.ByteBuddy;
+import net.bytebuddy.dynamic.DynamicType;
+import net.bytebuddy.implementation.MethodDelegation;
+import net.bytebuddy.implementation.bind.annotation.RuntimeType;
+
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
+import java.util.Date;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
+
+import static net.bytebuddy.matcher.ElementMatchers.named;
+
+/**
+ * Generates specialized runtime executors using ByteBuddy.
+ * <p>
+ * This generator creates type-specialized implementations at build time,
+ * eliminating runtime type switches on hot paths. Generated classes are
+ * cached globally for reuse across repositories.
+ * <p>
+ * Key executor types generated:
+ * <ul>
+ * <li>{@code FieldValueReader} - reads column values with type-specific
+ * logic</li>
+ * <li>{@code FkReader} - reads foreign key values</li>
+ * <li>{@code TargetRowResolver} - resolves target rows for projections</li>
+ * <li>{@code ConditionExecutor} - executes query conditions</li>
+ * <li>{@code OrderKeyBuilder} - builds sort keys for ordering</li>
+ * </ul>
+ * <p>
+ * Feature toggle: Set system property {@code memris.codegen.enabled=false}
+ * to disable code generation and use runtime branching instead.
+ */
+public final class RuntimeExecutorGenerator {
+
+    private static final ConcurrentHashMap<String, Object> CACHE = new ConcurrentHashMap<>();
+    private static final AtomicLong CLASS_COUNTER = new AtomicLong(0);
+
+    /** System property to disable code generation */
+    public static final String CODEGEN_ENABLED_PROPERTY = "memris.codegen.enabled";
+
+    private RuntimeExecutorGenerator() {
+    }
+
+    /**
+     * Check if code generation is enabled.
+     * Defaults to true; set -Dmemris.codegen.enabled=false to disable.
+     */
+    public static boolean isEnabled() {
+        return !"false".equalsIgnoreCase(System.getProperty(CODEGEN_ENABLED_PROPERTY, "true"));
+    }
+
+    // ========================================================================
+    // FieldValueReader Generation
+    // ========================================================================
+
+    /**
+     * Functional interface for reading field values from a table.
+     */
+    @FunctionalInterface
+    public interface FieldValueReader {
+        Object read(GeneratedTable table, int rowIndex);
+    }
+
+    /**
+     * Generate a specialized FieldValueReader for the given column and type.
+     */
+    public static FieldValueReader generateFieldValueReader(int columnIndex, byte typeCode,
+            TypeConverter<?, ?> converter) {
+        if (!isEnabled()) {
+            return createFallbackFieldValueReader(columnIndex, typeCode, converter);
+        }
+
+        String converterKey = converter != null ? "_C" + System.identityHashCode(converter) : "";
+        String key = "FVR_" + columnIndex + "_" + typeCode + converterKey;
+
+        return (FieldValueReader) CACHE.computeIfAbsent(key,
+                k -> doGenerateFieldValueReader(columnIndex, typeCode, converter));
+    }
+
+    private static FieldValueReader doGenerateFieldValueReader(int columnIndex, byte typeCode,
+            TypeConverter<?, ?> converter) {
+        String className = "io.memris.runtime.codegen.FieldValueReader$Gen" + CLASS_COUNTER.incrementAndGet();
+
+        try {
+            // Select the appropriate interceptor based on type code
+            Object interceptor = createFieldValueReaderInterceptor(columnIndex, typeCode, converter);
+
+            DynamicType.Builder<?> builder = new ByteBuddy()
+                    .subclass(Object.class)
+                    .implement(FieldValueReader.class)
+                    .name(className);
+
+            builder = builder.method(named("read"))
+                    .intercept(MethodDelegation.to(interceptor));
+
+            try (DynamicType.Unloaded<?> unloaded = builder.make()) {
+                Class<?> implClass = unloaded.load(RuntimeExecutorGenerator.class.getClassLoader()).getLoaded();
+                return (FieldValueReader) implClass.getDeclaredConstructor().newInstance();
+            }
+        } catch (Exception e) {
+            return createFallbackFieldValueReader(columnIndex, typeCode, converter);
+        }
+    }
+
+    private static Object createFieldValueReaderInterceptor(int columnIndex, byte typeCode,
+            TypeConverter<?, ?> converter) {
+        return switch (typeCode) {
+            case TypeCodes.TYPE_STRING, TypeCodes.TYPE_BIG_DECIMAL, TypeCodes.TYPE_BIG_INTEGER ->
+                new StringFieldReader(columnIndex, converter);
+            case TypeCodes.TYPE_LONG ->
+                new LongFieldReader(columnIndex, converter);
+            case TypeCodes.TYPE_INSTANT, TypeCodes.TYPE_LOCAL_DATE, TypeCodes.TYPE_LOCAL_DATE_TIME,
+                    TypeCodes.TYPE_DATE ->
+                new LongFieldReader(columnIndex, converter);
+            case TypeCodes.TYPE_INT ->
+                new IntFieldReader(columnIndex, converter);
+            case TypeCodes.TYPE_BOOLEAN ->
+                new BooleanFieldReader(columnIndex, converter);
+            case TypeCodes.TYPE_BYTE ->
+                new ByteFieldReader(columnIndex, converter);
+            case TypeCodes.TYPE_SHORT ->
+                new ShortFieldReader(columnIndex, converter);
+            case TypeCodes.TYPE_CHAR ->
+                new CharFieldReader(columnIndex, converter);
+            case TypeCodes.TYPE_FLOAT ->
+                new FloatFieldReader(columnIndex, converter);
+            case TypeCodes.TYPE_DOUBLE ->
+                new DoubleFieldReader(columnIndex, converter);
+            default ->
+                new IntFieldReader(columnIndex, converter);
+        };
+    }
+
+    // Type-specific interceptor classes for FieldValueReader
+
+    public static class StringFieldReader {
+        private final int columnIndex;
+        private final TypeConverter<?, ?> converter;
+
+        public StringFieldReader(int columnIndex, TypeConverter<?, ?> converter) {
+            this.columnIndex = columnIndex;
+            this.converter = converter;
+        }
+
+        @RuntimeType
+        public Object read(GeneratedTable table, int rowIndex) {
+            if (!table.isPresent(columnIndex, rowIndex)) {
+                return null;
+            }
+            Object value = table.readString(columnIndex, rowIndex);
+            return converter != null ? applyConverter(converter, value) : value;
+        }
+    }
+
+    public static class LongFieldReader {
+        private final int columnIndex;
+        private final TypeConverter<?, ?> converter;
+
+        public LongFieldReader(int columnIndex, TypeConverter<?, ?> converter) {
+            this.columnIndex = columnIndex;
+            this.converter = converter;
+        }
+
+        @RuntimeType
+        public Object read(GeneratedTable table, int rowIndex) {
+            if (!table.isPresent(columnIndex, rowIndex)) {
+                return null;
+            }
+            Object value = table.readLong(columnIndex, rowIndex);
+            return converter != null ? applyConverter(converter, value) : value;
+        }
+    }
+
+    public static class IntFieldReader {
+        private final int columnIndex;
+        private final TypeConverter<?, ?> converter;
+
+        public IntFieldReader(int columnIndex, TypeConverter<?, ?> converter) {
+            this.columnIndex = columnIndex;
+            this.converter = converter;
+        }
+
+        @RuntimeType
+        public Object read(GeneratedTable table, int rowIndex) {
+            if (!table.isPresent(columnIndex, rowIndex)) {
+                return null;
+            }
+            Object value = table.readInt(columnIndex, rowIndex);
+            return converter != null ? applyConverter(converter, value) : value;
+        }
+    }
+
+    public static class BooleanFieldReader {
+        private final int columnIndex;
+        private final TypeConverter<?, ?> converter;
+
+        public BooleanFieldReader(int columnIndex, TypeConverter<?, ?> converter) {
+            this.columnIndex = columnIndex;
+            this.converter = converter;
+        }
+
+        @RuntimeType
+        public Object read(GeneratedTable table, int rowIndex) {
+            if (!table.isPresent(columnIndex, rowIndex)) {
+                return null;
+            }
+            Object value = table.readInt(columnIndex, rowIndex) != 0;
+            return converter != null ? applyConverter(converter, value) : value;
+        }
+    }
+
+    public static class ByteFieldReader {
+        private final int columnIndex;
+        private final TypeConverter<?, ?> converter;
+
+        public ByteFieldReader(int columnIndex, TypeConverter<?, ?> converter) {
+            this.columnIndex = columnIndex;
+            this.converter = converter;
+        }
+
+        @RuntimeType
+        public Object read(GeneratedTable table, int rowIndex) {
+            if (!table.isPresent(columnIndex, rowIndex)) {
+                return null;
+            }
+            Object value = (byte) table.readInt(columnIndex, rowIndex);
+            return converter != null ? applyConverter(converter, value) : value;
+        }
+    }
+
+    public static class ShortFieldReader {
+        private final int columnIndex;
+        private final TypeConverter<?, ?> converter;
+
+        public ShortFieldReader(int columnIndex, TypeConverter<?, ?> converter) {
+            this.columnIndex = columnIndex;
+            this.converter = converter;
+        }
+
+        @RuntimeType
+        public Object read(GeneratedTable table, int rowIndex) {
+            if (!table.isPresent(columnIndex, rowIndex)) {
+                return null;
+            }
+            Object value = (short) table.readInt(columnIndex, rowIndex);
+            return converter != null ? applyConverter(converter, value) : value;
+        }
+    }
+
+    public static class CharFieldReader {
+        private final int columnIndex;
+        private final TypeConverter<?, ?> converter;
+
+        public CharFieldReader(int columnIndex, TypeConverter<?, ?> converter) {
+            this.columnIndex = columnIndex;
+            this.converter = converter;
+        }
+
+        @RuntimeType
+        public Object read(GeneratedTable table, int rowIndex) {
+            if (!table.isPresent(columnIndex, rowIndex)) {
+                return null;
+            }
+            Object value = (char) table.readInt(columnIndex, rowIndex);
+            return converter != null ? applyConverter(converter, value) : value;
+        }
+    }
+
+    public static class FloatFieldReader {
+        private final int columnIndex;
+        private final TypeConverter<?, ?> converter;
+
+        public FloatFieldReader(int columnIndex, TypeConverter<?, ?> converter) {
+            this.columnIndex = columnIndex;
+            this.converter = converter;
+        }
+
+        @RuntimeType
+        public Object read(GeneratedTable table, int rowIndex) {
+            if (!table.isPresent(columnIndex, rowIndex)) {
+                return null;
+            }
+            Object value = FloatEncoding.sortableIntToFloat(table.readInt(columnIndex, rowIndex));
+            return converter != null ? applyConverter(converter, value) : value;
+        }
+    }
+
+    public static class DoubleFieldReader {
+        private final int columnIndex;
+        private final TypeConverter<?, ?> converter;
+
+        public DoubleFieldReader(int columnIndex, TypeConverter<?, ?> converter) {
+            this.columnIndex = columnIndex;
+            this.converter = converter;
+        }
+
+        @RuntimeType
+        public Object read(GeneratedTable table, int rowIndex) {
+            if (!table.isPresent(columnIndex, rowIndex)) {
+                return null;
+            }
+            Object value = FloatEncoding.sortableLongToDouble(table.readLong(columnIndex, rowIndex));
+            return converter != null ? applyConverter(converter, value) : value;
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Object applyConverter(TypeConverter<?, ?> converter, Object value) {
+        return ((TypeConverter<Object, Object>) converter).fromStorage(value);
+    }
+
+    private static FieldValueReader createFallbackFieldValueReader(int columnIndex, byte typeCode,
+            TypeConverter<?, ?> converter) {
+        return switch (typeCode) {
+            case TypeCodes.TYPE_STRING, TypeCodes.TYPE_BIG_DECIMAL, TypeCodes.TYPE_BIG_INTEGER ->
+                (table, rowIndex) -> {
+                    if (!table.isPresent(columnIndex, rowIndex))
+                        return null;
+                    Object val = table.readString(columnIndex, rowIndex);
+                    return converter != null ? applyConverter(converter, val) : val;
+                };
+            case TypeCodes.TYPE_LONG ->
+                (table, rowIndex) -> {
+                    if (!table.isPresent(columnIndex, rowIndex))
+                        return null;
+                    Object val = table.readLong(columnIndex, rowIndex);
+                    return converter != null ? applyConverter(converter, val) : val;
+                };
+            case TypeCodes.TYPE_INSTANT, TypeCodes.TYPE_LOCAL_DATE, TypeCodes.TYPE_LOCAL_DATE_TIME,
+                    TypeCodes.TYPE_DATE ->
+                (table, rowIndex) -> {
+                    if (!table.isPresent(columnIndex, rowIndex))
+                        return null;
+                    Object val = table.readLong(columnIndex, rowIndex);
+                    return converter != null ? applyConverter(converter, val) : val;
+                };
+            case TypeCodes.TYPE_INT ->
+                (table, rowIndex) -> {
+                    if (!table.isPresent(columnIndex, rowIndex))
+                        return null;
+                    Object val = table.readInt(columnIndex, rowIndex);
+                    return converter != null ? applyConverter(converter, val) : val;
+                };
+            case TypeCodes.TYPE_BOOLEAN ->
+                (table, rowIndex) -> {
+                    if (!table.isPresent(columnIndex, rowIndex))
+                        return null;
+                    Object val = table.readInt(columnIndex, rowIndex) != 0;
+                    return converter != null ? applyConverter(converter, val) : val;
+                };
+            case TypeCodes.TYPE_BYTE ->
+                (table, rowIndex) -> {
+                    if (!table.isPresent(columnIndex, rowIndex))
+                        return null;
+                    Object val = (byte) table.readInt(columnIndex, rowIndex);
+                    return converter != null ? applyConverter(converter, val) : val;
+                };
+            case TypeCodes.TYPE_SHORT ->
+                (table, rowIndex) -> {
+                    if (!table.isPresent(columnIndex, rowIndex))
+                        return null;
+                    Object val = (short) table.readInt(columnIndex, rowIndex);
+                    return converter != null ? applyConverter(converter, val) : val;
+                };
+            case TypeCodes.TYPE_CHAR ->
+                (table, rowIndex) -> {
+                    if (!table.isPresent(columnIndex, rowIndex))
+                        return null;
+                    Object val = (char) table.readInt(columnIndex, rowIndex);
+                    return converter != null ? applyConverter(converter, val) : val;
+                };
+            case TypeCodes.TYPE_FLOAT ->
+                (table, rowIndex) -> {
+                    if (!table.isPresent(columnIndex, rowIndex))
+                        return null;
+                    Object val = FloatEncoding.sortableIntToFloat(table.readInt(columnIndex, rowIndex));
+                    return converter != null ? applyConverter(converter, val) : val;
+                };
+            case TypeCodes.TYPE_DOUBLE ->
+                (table, rowIndex) -> {
+                    if (!table.isPresent(columnIndex, rowIndex))
+                        return null;
+                    Object val = FloatEncoding.sortableLongToDouble(table.readLong(columnIndex, rowIndex));
+                    return converter != null ? applyConverter(converter, val) : val;
+                };
+            default ->
+                (table, rowIndex) -> {
+                    if (!table.isPresent(columnIndex, rowIndex))
+                        return null;
+                    Object val = table.readInt(columnIndex, rowIndex);
+                    return converter != null ? applyConverter(converter, val) : val;
+                };
+        };
+    }
+
+    // ========================================================================
+    // FkReader Generation
+    // ========================================================================
+
+    /**
+     * Functional interface for reading foreign key values from a table.
+     */
+    @FunctionalInterface
+    public interface FkReader {
+        Object read(GeneratedTable table, int rowIndex);
+    }
+
+    /**
+     * Generate a specialized FkReader for the given column and type.
+     */
+    public static FkReader generateFkReader(int columnIndex, byte typeCode) {
+        if (!isEnabled()) {
+            return createFallbackFkReader(columnIndex, typeCode);
+        }
+
+        String key = "FK_" + columnIndex + "_" + typeCode;
+        return (FkReader) CACHE.computeIfAbsent(key, k -> doGenerateFkReader(columnIndex, typeCode));
+    }
+
+    private static FkReader doGenerateFkReader(int columnIndex, byte typeCode) {
+        String className = "io.memris.runtime.codegen.FkReader$Gen" + CLASS_COUNTER.incrementAndGet();
+
+        try {
+            Object interceptor = createFkReaderInterceptor(columnIndex, typeCode);
+
+            DynamicType.Builder<?> builder = new ByteBuddy()
+                    .subclass(Object.class)
+                    .implement(FkReader.class)
+                    .name(className);
+
+            builder = builder.method(named("read"))
+                    .intercept(MethodDelegation.to(interceptor));
+
+            try (DynamicType.Unloaded<?> unloaded = builder.make()) {
+                Class<?> implClass = unloaded.load(RuntimeExecutorGenerator.class.getClassLoader()).getLoaded();
+                return (FkReader) implClass.getDeclaredConstructor().newInstance();
+            }
+        } catch (Exception e) {
+            return createFallbackFkReader(columnIndex, typeCode);
+        }
+    }
+
+    private static Object createFkReaderInterceptor(int columnIndex, byte typeCode) {
+        return switch (typeCode) {
+            case TypeCodes.TYPE_STRING -> new StringFkReader(columnIndex);
+            case TypeCodes.TYPE_LONG -> new LongFkReader(columnIndex);
+            case TypeCodes.TYPE_INT -> new IntFkReader(columnIndex);
+            default -> new LongFkReader(columnIndex);
+        };
+    }
+
+    // Type-specific interceptor classes for FkReader
+
+    public static class StringFkReader {
+        private final int columnIndex;
+
+        public StringFkReader(int columnIndex) {
+            this.columnIndex = columnIndex;
+        }
+
+        @RuntimeType
+        public Object read(GeneratedTable table, int rowIndex) {
+            if (!table.isPresent(columnIndex, rowIndex)) {
+                return null;
+            }
+            return table.readString(columnIndex, rowIndex);
+        }
+    }
+
+    public static class LongFkReader {
+        private final int columnIndex;
+
+        public LongFkReader(int columnIndex) {
+            this.columnIndex = columnIndex;
+        }
+
+        @RuntimeType
+        public Object read(GeneratedTable table, int rowIndex) {
+            if (!table.isPresent(columnIndex, rowIndex)) {
+                return null;
+            }
+            return table.readLong(columnIndex, rowIndex);
+        }
+    }
+
+    public static class IntFkReader {
+        private final int columnIndex;
+
+        public IntFkReader(int columnIndex) {
+            this.columnIndex = columnIndex;
+        }
+
+        @RuntimeType
+        public Object read(GeneratedTable table, int rowIndex) {
+            if (!table.isPresent(columnIndex, rowIndex)) {
+                return null;
+            }
+            return table.readInt(columnIndex, rowIndex);
+        }
+    }
+
+    private static FkReader createFallbackFkReader(int columnIndex, byte typeCode) {
+        return switch (typeCode) {
+            case TypeCodes.TYPE_STRING -> (table, rowIndex) -> {
+                if (!table.isPresent(columnIndex, rowIndex))
+                    return null;
+                return table.readString(columnIndex, rowIndex);
+            };
+            case TypeCodes.TYPE_LONG -> (table, rowIndex) -> {
+                if (!table.isPresent(columnIndex, rowIndex))
+                    return null;
+                return table.readLong(columnIndex, rowIndex);
+            };
+            case TypeCodes.TYPE_INT -> (table, rowIndex) -> {
+                if (!table.isPresent(columnIndex, rowIndex))
+                    return null;
+                return table.readInt(columnIndex, rowIndex);
+            };
+            default -> (table, rowIndex) -> {
+                if (!table.isPresent(columnIndex, rowIndex))
+                    return null;
+                return table.readLong(columnIndex, rowIndex);
+            };
+        };
+    }
+
+    // ========================================================================
+    // TargetRowResolver Generation
+    // ========================================================================
+
+    /**
+     * Functional interface for resolving target row indices.
+     */
+    @FunctionalInterface
+    public interface TargetRowResolver {
+        int resolve(GeneratedTable table, Object fkValue);
+    }
+
+    /**
+     * Generate a specialized TargetRowResolver.
+     */
+    public static TargetRowResolver generateTargetRowResolver(
+            boolean targetColumnIsId, byte fkTypeCode, int targetColumnIndex) {
+        if (!isEnabled()) {
+            return createFallbackTargetRowResolver(targetColumnIsId, fkTypeCode, targetColumnIndex);
+        }
+
+        String key = "TRR_" + targetColumnIsId + "_" + fkTypeCode + "_" + targetColumnIndex;
+        return (TargetRowResolver) CACHE.computeIfAbsent(key,
+                k -> doGenerateTargetRowResolver(targetColumnIsId, fkTypeCode, targetColumnIndex));
+    }
+
+    private static TargetRowResolver doGenerateTargetRowResolver(
+            boolean targetColumnIsId, byte fkTypeCode, int targetColumnIndex) {
+        String className = "io.memris.runtime.codegen.TargetRowResolver$Gen" + CLASS_COUNTER.incrementAndGet();
+
+        try {
+            Object interceptor = createTargetRowResolverInterceptor(targetColumnIsId, fkTypeCode, targetColumnIndex);
+
+            DynamicType.Builder<?> builder = new ByteBuddy()
+                    .subclass(Object.class)
+                    .implement(TargetRowResolver.class)
+                    .name(className);
+
+            builder = builder.method(named("resolve"))
+                    .intercept(MethodDelegation.to(interceptor));
+
+            try (DynamicType.Unloaded<?> unloaded = builder.make()) {
+                Class<?> implClass = unloaded.load(RuntimeExecutorGenerator.class.getClassLoader()).getLoaded();
+                return (TargetRowResolver) implClass.getDeclaredConstructor().newInstance();
+            }
+        } catch (Exception e) {
+            return createFallbackTargetRowResolver(targetColumnIsId, fkTypeCode, targetColumnIndex);
+        }
+    }
+
+    private static Object createTargetRowResolverInterceptor(
+            boolean targetColumnIsId, byte fkTypeCode, int targetColumnIndex) {
+        if (targetColumnIsId) {
+            return switch (fkTypeCode) {
+                case TypeCodes.TYPE_STRING -> new StringIdResolver();
+                case TypeCodes.TYPE_LONG -> new LongIdResolver();
+                case TypeCodes.TYPE_INT -> new IntIdResolver();
+                default -> new LongIdResolver();
+            };
+        } else {
+            return switch (fkTypeCode) {
+                case TypeCodes.TYPE_STRING -> new StringColumnResolver(targetColumnIndex);
+                case TypeCodes.TYPE_LONG -> new LongColumnResolver(targetColumnIndex);
+                case TypeCodes.TYPE_INT -> new IntColumnResolver(targetColumnIndex);
+                default -> new LongColumnResolver(targetColumnIndex);
+            };
+        }
+    }
+
+    // Type-specific interceptor classes for TargetRowResolver (ID-based)
+
+    public static class StringIdResolver {
+        @RuntimeType
+        public int resolve(GeneratedTable table, Object fkValue) {
+            if (fkValue == null)
+                return -1;
+            long ref = table.lookupByIdString((String) fkValue);
+            return ref >= 0 ? (int) (ref & 0xFFFFFFFFL) : -1;
+        }
+    }
+
+    public static class LongIdResolver {
+        @RuntimeType
+        public int resolve(GeneratedTable table, Object fkValue) {
+            if (fkValue == null)
+                return -1;
+            long ref = table.lookupById(((Number) fkValue).longValue());
+            return ref >= 0 ? (int) (ref & 0xFFFFFFFFL) : -1;
+        }
+    }
+
+    public static class IntIdResolver {
+        @RuntimeType
+        public int resolve(GeneratedTable table, Object fkValue) {
+            if (fkValue == null)
+                return -1;
+            long ref = table.lookupById(((Number) fkValue).intValue());
+            return ref >= 0 ? (int) (ref & 0xFFFFFFFFL) : -1;
+        }
+    }
+
+    // Type-specific interceptor classes for TargetRowResolver (column-based)
+
+    public static class StringColumnResolver {
+        private final int targetColumnIndex;
+
+        public StringColumnResolver(int targetColumnIndex) {
+            this.targetColumnIndex = targetColumnIndex;
+        }
+
+        @RuntimeType
+        public int resolve(GeneratedTable table, Object fkValue) {
+            if (fkValue == null)
+                return -1;
+            int[] matches = table.scanEqualsString(targetColumnIndex, (String) fkValue);
+            return matches.length > 0 ? matches[0] : -1;
+        }
+    }
+
+    public static class LongColumnResolver {
+        private final int targetColumnIndex;
+
+        public LongColumnResolver(int targetColumnIndex) {
+            this.targetColumnIndex = targetColumnIndex;
+        }
+
+        @RuntimeType
+        public int resolve(GeneratedTable table, Object fkValue) {
+            if (fkValue == null)
+                return -1;
+            int[] matches = table.scanEqualsLong(targetColumnIndex, ((Number) fkValue).longValue());
+            return matches.length > 0 ? matches[0] : -1;
+        }
+    }
+
+    public static class IntColumnResolver {
+        private final int targetColumnIndex;
+
+        public IntColumnResolver(int targetColumnIndex) {
+            this.targetColumnIndex = targetColumnIndex;
+        }
+
+        @RuntimeType
+        public int resolve(GeneratedTable table, Object fkValue) {
+            if (fkValue == null)
+                return -1;
+            int[] matches = table.scanEqualsInt(targetColumnIndex, ((Number) fkValue).intValue());
+            return matches.length > 0 ? matches[0] : -1;
+        }
+    }
+
+    private static TargetRowResolver createFallbackTargetRowResolver(
+            boolean targetColumnIsId, byte fkTypeCode, int targetColumnIndex) {
+        if (targetColumnIsId) {
+            return switch (fkTypeCode) {
+                case TypeCodes.TYPE_STRING -> (table, fkValue) -> {
+                    if (fkValue == null)
+                        return -1;
+                    long ref = table.lookupByIdString((String) fkValue);
+                    return ref >= 0 ? (int) (ref & 0xFFFFFFFFL) : -1;
+                };
+                case TypeCodes.TYPE_LONG -> (table, fkValue) -> {
+                    if (fkValue == null)
+                        return -1;
+                    long ref = table.lookupById(((Number) fkValue).longValue());
+                    return ref >= 0 ? (int) (ref & 0xFFFFFFFFL) : -1;
+                };
+                case TypeCodes.TYPE_INT -> (table, fkValue) -> {
+                    if (fkValue == null)
+                        return -1;
+                    long ref = table.lookupById(((Number) fkValue).intValue());
+                    return ref >= 0 ? (int) (ref & 0xFFFFFFFFL) : -1;
+                };
+                default -> (table, fkValue) -> {
+                    if (fkValue == null)
+                        return -1;
+                    long ref = table.lookupById(((Number) fkValue).longValue());
+                    return ref >= 0 ? (int) (ref & 0xFFFFFFFFL) : -1;
+                };
+            };
+        } else {
+            return switch (fkTypeCode) {
+                case TypeCodes.TYPE_STRING -> (table, fkValue) -> {
+                    if (fkValue == null)
+                        return -1;
+                    int[] matches = table.scanEqualsString(targetColumnIndex, (String) fkValue);
+                    return matches.length > 0 ? matches[0] : -1;
+                };
+                case TypeCodes.TYPE_LONG -> (table, fkValue) -> {
+                    if (fkValue == null)
+                        return -1;
+                    int[] matches = table.scanEqualsLong(targetColumnIndex, ((Number) fkValue).longValue());
+                    return matches.length > 0 ? matches[0] : -1;
+                };
+                case TypeCodes.TYPE_INT -> (table, fkValue) -> {
+                    if (fkValue == null)
+                        return -1;
+                    int[] matches = table.scanEqualsInt(targetColumnIndex, ((Number) fkValue).intValue());
+                    return matches.length > 0 ? matches[0] : -1;
+                };
+                default -> (table, fkValue) -> {
+                    if (fkValue == null)
+                        return -1;
+                    int[] matches = table.scanEqualsLong(targetColumnIndex, ((Number) fkValue).longValue());
+                    return matches.length > 0 ? matches[0] : -1;
+                };
+            };
+        }
+    }
+
+    // ========================================================================
+    // GroupingValueReader Generation
+    // ========================================================================
+
+    /**
+     * Functional interface for reading grouping key values from a table.
+     * Similar to FieldValueReader but without converter support.
+     */
+    @FunctionalInterface
+    public interface GroupingValueReader {
+        Object read(GeneratedTable table, int rowIndex);
+    }
+
+    /**
+     * Generate a specialized GroupingValueReader for the given column and type.
+     */
+    public static GroupingValueReader generateGroupingValueReader(int columnIndex, byte typeCode) {
+        if (!isEnabled()) {
+            return createFallbackGroupingValueReader(columnIndex, typeCode);
+        }
+
+        String key = "GVR_" + columnIndex + "_" + typeCode;
+        return (GroupingValueReader) CACHE.computeIfAbsent(key,
+                k -> doGenerateGroupingValueReader(columnIndex, typeCode));
+    }
+
+    private static GroupingValueReader doGenerateGroupingValueReader(int columnIndex, byte typeCode) {
+        String className = "io.memris.runtime.codegen.GroupingValueReader$Gen" + CLASS_COUNTER.incrementAndGet();
+
+        try {
+            Object interceptor = createGroupingValueReaderInterceptor(columnIndex, typeCode);
+
+            DynamicType.Builder<?> builder = new ByteBuddy()
+                    .subclass(Object.class)
+                    .implement(GroupingValueReader.class)
+                    .name(className);
+
+            builder = builder.method(named("read"))
+                    .intercept(MethodDelegation.to(interceptor));
+
+            try (DynamicType.Unloaded<?> unloaded = builder.make()) {
+                Class<?> implClass = unloaded.load(RuntimeExecutorGenerator.class.getClassLoader()).getLoaded();
+                return (GroupingValueReader) implClass.getDeclaredConstructor().newInstance();
+            }
+        } catch (Exception e) {
+            return createFallbackGroupingValueReader(columnIndex, typeCode);
+        }
+    }
+
+    private static Object createGroupingValueReaderInterceptor(int columnIndex, byte typeCode) {
+        return switch (typeCode) {
+            case TypeCodes.TYPE_STRING, TypeCodes.TYPE_BIG_DECIMAL, TypeCodes.TYPE_BIG_INTEGER ->
+                new StringGroupingReader(columnIndex);
+            case TypeCodes.TYPE_LONG, TypeCodes.TYPE_INSTANT, TypeCodes.TYPE_LOCAL_DATE,
+                    TypeCodes.TYPE_LOCAL_DATE_TIME, TypeCodes.TYPE_DATE ->
+                new LongGroupingReader(columnIndex);
+            case TypeCodes.TYPE_INT ->
+                new IntGroupingReader(columnIndex);
+            case TypeCodes.TYPE_BOOLEAN ->
+                new BooleanGroupingReader(columnIndex);
+            case TypeCodes.TYPE_BYTE ->
+                new ByteGroupingReader(columnIndex);
+            case TypeCodes.TYPE_SHORT ->
+                new ShortGroupingReader(columnIndex);
+            case TypeCodes.TYPE_CHAR ->
+                new CharGroupingReader(columnIndex);
+            case TypeCodes.TYPE_FLOAT ->
+                new FloatGroupingReader(columnIndex);
+            case TypeCodes.TYPE_DOUBLE ->
+                new DoubleGroupingReader(columnIndex);
+            default ->
+                new IntGroupingReader(columnIndex);
+        };
+    }
+
+    // Grouping reader interceptor classes
+
+    public static class StringGroupingReader {
+        private final int columnIndex;
+
+        public StringGroupingReader(int columnIndex) {
+            this.columnIndex = columnIndex;
+        }
+
+        @RuntimeType
+        public Object read(GeneratedTable table, int rowIndex) {
+            return table.isPresent(columnIndex, rowIndex) ? table.readString(columnIndex, rowIndex) : null;
+        }
+    }
+
+    public static class LongGroupingReader {
+        private final int columnIndex;
+
+        public LongGroupingReader(int columnIndex) {
+            this.columnIndex = columnIndex;
+        }
+
+        @RuntimeType
+        public Object read(GeneratedTable table, int rowIndex) {
+            return table.isPresent(columnIndex, rowIndex) ? table.readLong(columnIndex, rowIndex) : null;
+        }
+    }
+
+    public static class IntGroupingReader {
+        private final int columnIndex;
+
+        public IntGroupingReader(int columnIndex) {
+            this.columnIndex = columnIndex;
+        }
+
+        @RuntimeType
+        public Object read(GeneratedTable table, int rowIndex) {
+            return table.isPresent(columnIndex, rowIndex) ? table.readInt(columnIndex, rowIndex) : null;
+        }
+    }
+
+    public static class BooleanGroupingReader {
+        private final int columnIndex;
+
+        public BooleanGroupingReader(int columnIndex) {
+            this.columnIndex = columnIndex;
+        }
+
+        @RuntimeType
+        public Object read(GeneratedTable table, int rowIndex) {
+            return table.isPresent(columnIndex, rowIndex) ? table.readInt(columnIndex, rowIndex) != 0 : null;
+        }
+    }
+
+    public static class ByteGroupingReader {
+        private final int columnIndex;
+
+        public ByteGroupingReader(int columnIndex) {
+            this.columnIndex = columnIndex;
+        }
+
+        @RuntimeType
+        public Object read(GeneratedTable table, int rowIndex) {
+            return table.isPresent(columnIndex, rowIndex) ? (byte) table.readInt(columnIndex, rowIndex) : null;
+        }
+    }
+
+    public static class ShortGroupingReader {
+        private final int columnIndex;
+
+        public ShortGroupingReader(int columnIndex) {
+            this.columnIndex = columnIndex;
+        }
+
+        @RuntimeType
+        public Object read(GeneratedTable table, int rowIndex) {
+            return table.isPresent(columnIndex, rowIndex) ? (short) table.readInt(columnIndex, rowIndex) : null;
+        }
+    }
+
+    public static class CharGroupingReader {
+        private final int columnIndex;
+
+        public CharGroupingReader(int columnIndex) {
+            this.columnIndex = columnIndex;
+        }
+
+        @RuntimeType
+        public Object read(GeneratedTable table, int rowIndex) {
+            return table.isPresent(columnIndex, rowIndex) ? (char) table.readInt(columnIndex, rowIndex) : null;
+        }
+    }
+
+    public static class FloatGroupingReader {
+        private final int columnIndex;
+
+        public FloatGroupingReader(int columnIndex) {
+            this.columnIndex = columnIndex;
+        }
+
+        @RuntimeType
+        public Object read(GeneratedTable table, int rowIndex) {
+            return table.isPresent(columnIndex, rowIndex)
+                    ? FloatEncoding.sortableIntToFloat(table.readInt(columnIndex, rowIndex))
+                    : null;
+        }
+    }
+
+    public static class DoubleGroupingReader {
+        private final int columnIndex;
+
+        public DoubleGroupingReader(int columnIndex) {
+            this.columnIndex = columnIndex;
+        }
+
+        @RuntimeType
+        public Object read(GeneratedTable table, int rowIndex) {
+            return table.isPresent(columnIndex, rowIndex)
+                    ? FloatEncoding.sortableLongToDouble(table.readLong(columnIndex, rowIndex))
+                    : null;
+        }
+    }
+
+    private static GroupingValueReader createFallbackGroupingValueReader(int columnIndex, byte typeCode) {
+        return switch (typeCode) {
+            case TypeCodes.TYPE_STRING, TypeCodes.TYPE_BIG_DECIMAL, TypeCodes.TYPE_BIG_INTEGER ->
+                (table, rowIndex) -> table.isPresent(columnIndex, rowIndex) ? table.readString(columnIndex, rowIndex)
+                        : null;
+            case TypeCodes.TYPE_LONG, TypeCodes.TYPE_INSTANT, TypeCodes.TYPE_LOCAL_DATE,
+                    TypeCodes.TYPE_LOCAL_DATE_TIME, TypeCodes.TYPE_DATE ->
+                (table, rowIndex) -> table.isPresent(columnIndex, rowIndex) ? table.readLong(columnIndex, rowIndex)
+                        : null;
+            case TypeCodes.TYPE_INT ->
+                (table, rowIndex) -> table.isPresent(columnIndex, rowIndex) ? table.readInt(columnIndex, rowIndex)
+                        : null;
+            case TypeCodes.TYPE_BOOLEAN ->
+                (table, rowIndex) -> table.isPresent(columnIndex, rowIndex) ? table.readInt(columnIndex, rowIndex) != 0
+                        : null;
+            case TypeCodes.TYPE_BYTE ->
+                (table, rowIndex) -> table.isPresent(columnIndex, rowIndex)
+                        ? (byte) table.readInt(columnIndex, rowIndex)
+                        : null;
+            case TypeCodes.TYPE_SHORT ->
+                (table, rowIndex) -> table.isPresent(columnIndex, rowIndex)
+                        ? (short) table.readInt(columnIndex, rowIndex)
+                        : null;
+            case TypeCodes.TYPE_CHAR ->
+                (table, rowIndex) -> table.isPresent(columnIndex, rowIndex)
+                        ? (char) table.readInt(columnIndex, rowIndex)
+                        : null;
+            case TypeCodes.TYPE_FLOAT ->
+                (table, rowIndex) -> table.isPresent(columnIndex, rowIndex)
+                        ? FloatEncoding.sortableIntToFloat(table.readInt(columnIndex, rowIndex))
+                        : null;
+            case TypeCodes.TYPE_DOUBLE ->
+                (table, rowIndex) -> table.isPresent(columnIndex, rowIndex)
+                        ? FloatEncoding.sortableLongToDouble(table.readLong(columnIndex, rowIndex))
+                        : null;
+            default ->
+                (table, rowIndex) -> table.isPresent(columnIndex, rowIndex) ? table.readInt(columnIndex, rowIndex)
+                        : null;
+        };
+    }
+
+    // ========================================================================
+    // BetweenExecutor Generation
+    // ========================================================================
+
+    @FunctionalInterface
+    public interface BetweenExecutor {
+        Selection execute(GeneratedTable table, int argIndex, Object[] args);
+    }
+
+    public static BetweenExecutor generateBetweenExecutor(int columnIndex, byte typeCode) {
+        if (!isEnabled()) {
+            return createFallbackBetweenExecutor(columnIndex, typeCode);
+        }
+
+        String key = "BETWEEN_" + columnIndex + "_" + typeCode;
+        return (BetweenExecutor) CACHE.computeIfAbsent(key,
+                k -> doGenerateBetweenExecutor(columnIndex, typeCode));
+    }
+
+    private static BetweenExecutor doGenerateBetweenExecutor(int columnIndex, byte typeCode) {
+        String className = "io.memris.runtime.codegen.BetweenExecutor$Gen" + CLASS_COUNTER.incrementAndGet();
+
+        try {
+            Object interceptor = createBetweenExecutorInterceptor(columnIndex, typeCode);
+
+            DynamicType.Builder<?> builder = new ByteBuddy()
+                    .subclass(Object.class)
+                    .implement(BetweenExecutor.class)
+                    .name(className);
+
+            builder = builder.method(named("execute"))
+                    .intercept(MethodDelegation.to(interceptor));
+
+            try (DynamicType.Unloaded<?> unloaded = builder.make()) {
+                Class<?> implClass = unloaded.load(RuntimeExecutorGenerator.class.getClassLoader()).getLoaded();
+                return (BetweenExecutor) implClass.getDeclaredConstructor().newInstance();
+            }
+        } catch (Exception e) {
+            return createFallbackBetweenExecutor(columnIndex, typeCode);
+        }
+    }
+
+    private static Object createBetweenExecutorInterceptor(int columnIndex, byte typeCode) {
+        return switch (typeCode) {
+            case TypeCodes.TYPE_LONG -> new LongBetweenExecutor(columnIndex);
+            case TypeCodes.TYPE_INT, TypeCodes.TYPE_BYTE, TypeCodes.TYPE_SHORT -> new IntBetweenExecutor(columnIndex);
+            case TypeCodes.TYPE_CHAR -> new CharBetweenExecutor(columnIndex);
+            case TypeCodes.TYPE_FLOAT -> new FloatBetweenExecutor(columnIndex);
+            case TypeCodes.TYPE_DOUBLE -> new DoubleBetweenExecutor(columnIndex);
+            case TypeCodes.TYPE_INSTANT, TypeCodes.TYPE_LOCAL_DATE, TypeCodes.TYPE_LOCAL_DATE_TIME, TypeCodes.TYPE_DATE ->
+                new TemporalBetweenExecutor(columnIndex, typeCode);
+            default -> new UnsupportedBetweenExecutor(typeCode);
+        };
+    }
+
+    public static class LongBetweenExecutor {
+        private final int columnIndex;
+
+        public LongBetweenExecutor(int columnIndex) {
+            this.columnIndex = columnIndex;
+        }
+
+        @RuntimeType
+        public Selection execute(GeneratedTable table, int argIndex, Object[] args) {
+            if (argIndex + 1 >= args.length) {
+                throw new IllegalArgumentException("BETWEEN requires two arguments");
+            }
+            long min = ((Number) args[argIndex]).longValue();
+            long max = ((Number) args[argIndex + 1]).longValue();
+            return createSelection(table, table.scanBetweenLong(columnIndex, min, max));
+        }
+    }
+
+    public static class IntBetweenExecutor {
+        private final int columnIndex;
+
+        public IntBetweenExecutor(int columnIndex) {
+            this.columnIndex = columnIndex;
+        }
+
+        @RuntimeType
+        public Selection execute(GeneratedTable table, int argIndex, Object[] args) {
+            if (argIndex + 1 >= args.length) {
+                throw new IllegalArgumentException("BETWEEN requires two arguments");
+            }
+            int min = ((Number) args[argIndex]).intValue();
+            int max = ((Number) args[argIndex + 1]).intValue();
+            return createSelection(table, table.scanBetweenInt(columnIndex, min, max));
+        }
+    }
+
+    public static class CharBetweenExecutor {
+        private final int columnIndex;
+
+        public CharBetweenExecutor(int columnIndex) {
+            this.columnIndex = columnIndex;
+        }
+
+        @RuntimeType
+        public Selection execute(GeneratedTable table, int argIndex, Object[] args) {
+            if (argIndex + 1 >= args.length) {
+                throw new IllegalArgumentException("BETWEEN requires two arguments");
+            }
+            Object minObj = args[argIndex];
+            Object maxObj = args[argIndex + 1];
+            int min = (minObj instanceof Character c) ? c : minObj.toString().charAt(0);
+            int max = (maxObj instanceof Character c) ? c : maxObj.toString().charAt(0);
+            return createSelection(table, table.scanBetweenInt(columnIndex, min, max));
+        }
+    }
+
+    public static class FloatBetweenExecutor {
+        private final int columnIndex;
+
+        public FloatBetweenExecutor(int columnIndex) {
+            this.columnIndex = columnIndex;
+        }
+
+        @RuntimeType
+        public Selection execute(GeneratedTable table, int argIndex, Object[] args) {
+            if (argIndex + 1 >= args.length) {
+                throw new IllegalArgumentException("BETWEEN requires two arguments");
+            }
+            int min = FloatEncoding.floatToSortableInt(((Number) args[argIndex]).floatValue());
+            int max = FloatEncoding.floatToSortableInt(((Number) args[argIndex + 1]).floatValue());
+            return createSelection(table, table.scanBetweenInt(columnIndex, min, max));
+        }
+    }
+
+    public static class DoubleBetweenExecutor {
+        private final int columnIndex;
+
+        public DoubleBetweenExecutor(int columnIndex) {
+            this.columnIndex = columnIndex;
+        }
+
+        @RuntimeType
+        public Selection execute(GeneratedTable table, int argIndex, Object[] args) {
+            if (argIndex + 1 >= args.length) {
+                throw new IllegalArgumentException("BETWEEN requires two arguments");
+            }
+            long min = FloatEncoding.doubleToSortableLong(((Number) args[argIndex]).doubleValue());
+            long max = FloatEncoding.doubleToSortableLong(((Number) args[argIndex + 1]).doubleValue());
+            return createSelection(table, table.scanBetweenLong(columnIndex, min, max));
+        }
+    }
+
+    public static class TemporalBetweenExecutor {
+        private final int columnIndex;
+        private final byte typeCode;
+
+        public TemporalBetweenExecutor(int columnIndex, byte typeCode) {
+            this.columnIndex = columnIndex;
+            this.typeCode = typeCode;
+        }
+
+        @RuntimeType
+        public Selection execute(GeneratedTable table, int argIndex, Object[] args) {
+            if (argIndex + 1 >= args.length) {
+                throw new IllegalArgumentException("BETWEEN requires two arguments");
+            }
+            long min = convertToEpochLong(typeCode, args[argIndex]);
+            long max = convertToEpochLong(typeCode, args[argIndex + 1]);
+            return createSelection(table, table.scanBetweenLong(columnIndex, min, max));
+        }
+    }
+
+    public static class UnsupportedBetweenExecutor {
+        private final byte typeCode;
+
+        public UnsupportedBetweenExecutor(byte typeCode) {
+            this.typeCode = typeCode;
+        }
+
+        @RuntimeType
+        public Selection execute(GeneratedTable table, int argIndex, Object[] args) {
+            throw new UnsupportedOperationException("BETWEEN not supported for type code: " + typeCode);
+        }
+    }
+
+    private static BetweenExecutor createFallbackBetweenExecutor(int columnIndex, byte typeCode) {
+        return switch (typeCode) {
+            case TypeCodes.TYPE_LONG ->
+                (table, argIndex, args) -> {
+                    if (argIndex + 1 >= args.length) {
+                        throw new IllegalArgumentException("BETWEEN requires two arguments");
+                    }
+                    long min = ((Number) args[argIndex]).longValue();
+                    long max = ((Number) args[argIndex + 1]).longValue();
+                    return createSelection(table, table.scanBetweenLong(columnIndex, min, max));
+                };
+            case TypeCodes.TYPE_INT, TypeCodes.TYPE_BYTE, TypeCodes.TYPE_SHORT ->
+                (table, argIndex, args) -> {
+                    if (argIndex + 1 >= args.length) {
+                        throw new IllegalArgumentException("BETWEEN requires two arguments");
+                    }
+                    int min = ((Number) args[argIndex]).intValue();
+                    int max = ((Number) args[argIndex + 1]).intValue();
+                    return createSelection(table, table.scanBetweenInt(columnIndex, min, max));
+                };
+            case TypeCodes.TYPE_CHAR ->
+                (table, argIndex, args) -> {
+                    if (argIndex + 1 >= args.length) {
+                        throw new IllegalArgumentException("BETWEEN requires two arguments");
+                    }
+                    Object minObj = args[argIndex];
+                    Object maxObj = args[argIndex + 1];
+                    int min = (minObj instanceof Character c) ? c : minObj.toString().charAt(0);
+                    int max = (maxObj instanceof Character c) ? c : maxObj.toString().charAt(0);
+                    return createSelection(table, table.scanBetweenInt(columnIndex, min, max));
+                };
+            case TypeCodes.TYPE_FLOAT ->
+                (table, argIndex, args) -> {
+                    if (argIndex + 1 >= args.length) {
+                        throw new IllegalArgumentException("BETWEEN requires two arguments");
+                    }
+                    int min = FloatEncoding.floatToSortableInt(((Number) args[argIndex]).floatValue());
+                    int max = FloatEncoding.floatToSortableInt(((Number) args[argIndex + 1]).floatValue());
+                    return createSelection(table, table.scanBetweenInt(columnIndex, min, max));
+                };
+            case TypeCodes.TYPE_DOUBLE ->
+                (table, argIndex, args) -> {
+                    if (argIndex + 1 >= args.length) {
+                        throw new IllegalArgumentException("BETWEEN requires two arguments");
+                    }
+                    long min = FloatEncoding.doubleToSortableLong(((Number) args[argIndex]).doubleValue());
+                    long max = FloatEncoding.doubleToSortableLong(((Number) args[argIndex + 1]).doubleValue());
+                    return createSelection(table, table.scanBetweenLong(columnIndex, min, max));
+                };
+            case TypeCodes.TYPE_INSTANT, TypeCodes.TYPE_LOCAL_DATE, TypeCodes.TYPE_LOCAL_DATE_TIME, TypeCodes.TYPE_DATE ->
+                (table, argIndex, args) -> {
+                    if (argIndex + 1 >= args.length) {
+                        throw new IllegalArgumentException("BETWEEN requires two arguments");
+                    }
+                    long min = convertToEpochLong(typeCode, args[argIndex]);
+                    long max = convertToEpochLong(typeCode, args[argIndex + 1]);
+                    return createSelection(table, table.scanBetweenLong(columnIndex, min, max));
+                };
+            default ->
+                (table, argIndex, args) -> {
+                    throw new UnsupportedOperationException("BETWEEN not supported for type code: " + typeCode);
+                };
+        };
+    }
+
+    // ========================================================================
+    // InListExecutor Generation
+    // ========================================================================
+
+    @FunctionalInterface
+    public interface InListExecutor {
+        Selection execute(GeneratedTable table, Object value);
+    }
+
+    public static InListExecutor generateInListExecutor(int columnIndex, byte typeCode) {
+        if (!isEnabled()) {
+            return createFallbackInListExecutor(columnIndex, typeCode);
+        }
+
+        String key = "IN_" + columnIndex + "_" + typeCode;
+        return (InListExecutor) CACHE.computeIfAbsent(key,
+                k -> doGenerateInListExecutor(columnIndex, typeCode));
+    }
+
+    private static InListExecutor doGenerateInListExecutor(int columnIndex, byte typeCode) {
+        String className = "io.memris.runtime.codegen.InListExecutor$Gen" + CLASS_COUNTER.incrementAndGet();
+
+        try {
+            Object interceptor = createInListExecutorInterceptor(columnIndex, typeCode);
+
+            DynamicType.Builder<?> builder = new ByteBuddy()
+                    .subclass(Object.class)
+                    .implement(InListExecutor.class)
+                    .name(className);
+
+            builder = builder.method(named("execute"))
+                    .intercept(MethodDelegation.to(interceptor));
+
+            try (DynamicType.Unloaded<?> unloaded = builder.make()) {
+                Class<?> implClass = unloaded.load(RuntimeExecutorGenerator.class.getClassLoader()).getLoaded();
+                return (InListExecutor) implClass.getDeclaredConstructor().newInstance();
+            }
+        } catch (Exception e) {
+            return createFallbackInListExecutor(columnIndex, typeCode);
+        }
+    }
+
+    private static Object createInListExecutorInterceptor(int columnIndex, byte typeCode) {
+        return switch (typeCode) {
+            case TypeCodes.TYPE_STRING, TypeCodes.TYPE_BIG_DECIMAL, TypeCodes.TYPE_BIG_INTEGER ->
+                new StringInListExecutor(columnIndex);
+            case TypeCodes.TYPE_LONG, TypeCodes.TYPE_INSTANT, TypeCodes.TYPE_LOCAL_DATE,
+                    TypeCodes.TYPE_LOCAL_DATE_TIME, TypeCodes.TYPE_DATE, TypeCodes.TYPE_DOUBLE ->
+                new LongInListExecutor(columnIndex, typeCode);
+            case TypeCodes.TYPE_INT, TypeCodes.TYPE_BOOLEAN, TypeCodes.TYPE_BYTE, TypeCodes.TYPE_SHORT,
+                    TypeCodes.TYPE_CHAR, TypeCodes.TYPE_FLOAT ->
+                new IntInListExecutor(columnIndex, typeCode);
+            default -> new UnsupportedInListExecutor(typeCode);
+        };
+    }
+
+    public static class StringInListExecutor {
+        private final int columnIndex;
+
+        public StringInListExecutor(int columnIndex) {
+            this.columnIndex = columnIndex;
+        }
+
+        @RuntimeType
+        public Selection execute(GeneratedTable table, Object value) {
+            if (value == null) {
+                return createSelection(table, new int[0]);
+            }
+            return createSelection(table, table.scanInString(columnIndex, toStringArray(value)));
+        }
+    }
+
+    public static class LongInListExecutor {
+        private final int columnIndex;
+        private final byte typeCode;
+
+        public LongInListExecutor(int columnIndex, byte typeCode) {
+            this.columnIndex = columnIndex;
+            this.typeCode = typeCode;
+        }
+
+        @RuntimeType
+        public Selection execute(GeneratedTable table, Object value) {
+            if (value == null) {
+                return createSelection(table, new int[0]);
+            }
+            return createSelection(table, table.scanInLong(columnIndex, toLongArray(typeCode, value)));
+        }
+    }
+
+    public static class IntInListExecutor {
+        private final int columnIndex;
+        private final byte typeCode;
+
+        public IntInListExecutor(int columnIndex, byte typeCode) {
+            this.columnIndex = columnIndex;
+            this.typeCode = typeCode;
+        }
+
+        @RuntimeType
+        public Selection execute(GeneratedTable table, Object value) {
+            if (value == null) {
+                return createSelection(table, new int[0]);
+            }
+            return createSelection(table, table.scanInInt(columnIndex, toIntArray(typeCode, value)));
+        }
+    }
+
+    public static class UnsupportedInListExecutor {
+        private final byte typeCode;
+
+        public UnsupportedInListExecutor(byte typeCode) {
+            this.typeCode = typeCode;
+        }
+
+        @RuntimeType
+        public Selection execute(GeneratedTable table, Object value) {
+            throw new UnsupportedOperationException("IN not supported for type code: " + typeCode);
+        }
+    }
+
+    private static InListExecutor createFallbackInListExecutor(int columnIndex, byte typeCode) {
+        return switch (typeCode) {
+            case TypeCodes.TYPE_STRING, TypeCodes.TYPE_BIG_DECIMAL, TypeCodes.TYPE_BIG_INTEGER ->
+                (table, value) -> {
+                    if (value == null) {
+                        return createSelection(table, new int[0]);
+                    }
+                    return createSelection(table, table.scanInString(columnIndex, toStringArray(value)));
+                };
+            case TypeCodes.TYPE_LONG, TypeCodes.TYPE_INSTANT, TypeCodes.TYPE_LOCAL_DATE,
+                    TypeCodes.TYPE_LOCAL_DATE_TIME, TypeCodes.TYPE_DATE, TypeCodes.TYPE_DOUBLE ->
+                (table, value) -> {
+                    if (value == null) {
+                        return createSelection(table, new int[0]);
+                    }
+                    return createSelection(table, table.scanInLong(columnIndex, toLongArray(typeCode, value)));
+                };
+            case TypeCodes.TYPE_INT, TypeCodes.TYPE_BOOLEAN, TypeCodes.TYPE_BYTE, TypeCodes.TYPE_SHORT,
+                    TypeCodes.TYPE_CHAR, TypeCodes.TYPE_FLOAT ->
+                (table, value) -> {
+                    if (value == null) {
+                        return createSelection(table, new int[0]);
+                    }
+                    return createSelection(table, table.scanInInt(columnIndex, toIntArray(typeCode, value)));
+                };
+            default ->
+                (table, value) -> {
+                    throw new UnsupportedOperationException("IN not supported for type code: " + typeCode);
+                };
+        };
+    }
+
+    // ========================================================================
+    // Utility Methods
+    // ========================================================================
+
+    private static long[] toLongArray(byte typeCode, Object value) {
+        if (value instanceof long[] longs) {
+            return longs;
+        }
+        if (value instanceof int[] ints) {
+            long[] result = new long[ints.length];
+            for (int i = 0; i < ints.length; i++) {
+                result[i] = ints[i];
+            }
+            return result;
+        }
+        if (value instanceof Object[] objects) {
+            long[] result = new long[objects.length];
+            for (int i = 0; i < objects.length; i++) {
+                result[i] = convertToLong(typeCode, objects[i]);
+            }
+            return result;
+        }
+        if (value instanceof Iterable<?> iterable) {
+            int size = 0;
+            for (Object ignored : iterable) {
+                size++;
+            }
+            long[] result = new long[size];
+            int i = 0;
+            for (Object item : iterable) {
+                result[i++] = convertToLong(typeCode, item);
+            }
+            return result;
+        }
+        return new long[] { convertToLong(typeCode, value) };
+    }
+
+    private static int[] toIntArray(byte typeCode, Object value) {
+        if (value instanceof int[] ints) {
+            return ints;
+        }
+        if (value instanceof Object[] objects) {
+            int[] result = new int[objects.length];
+            for (int i = 0; i < objects.length; i++) {
+                result[i] = convertToInt(typeCode, objects[i]);
+            }
+            return result;
+        }
+        if (value instanceof Iterable<?> iterable) {
+            int size = 0;
+            for (Object ignored : iterable) {
+                size++;
+            }
+            int[] result = new int[size];
+            int i = 0;
+            for (Object item : iterable) {
+                result[i++] = convertToInt(typeCode, item);
+            }
+            return result;
+        }
+        return new int[] { convertToInt(typeCode, value) };
+    }
+
+    private static String[] toStringArray(Object value) {
+        if (value instanceof String[] strings) {
+            return strings;
+        }
+        if (value instanceof Object[] objects) {
+            String[] result = new String[objects.length];
+            for (int i = 0; i < objects.length; i++) {
+                result[i] = objects[i] != null ? objects[i].toString() : null;
+            }
+            return result;
+        }
+        if (value instanceof Iterable<?> iterable) {
+            int size = 0;
+            for (Object ignored : iterable) {
+                size++;
+            }
+            String[] result = new String[size];
+            int i = 0;
+            for (Object item : iterable) {
+                result[i++] = item != null ? item.toString() : null;
+            }
+            return result;
+        }
+        return new String[] { value.toString() };
+    }
+
+    private static long convertToLong(byte typeCode, Object value) {
+        if (value == null) {
+            return 0L;
+        }
+        return switch (typeCode) {
+            case TypeCodes.TYPE_INSTANT -> ((Instant) value).toEpochMilli();
+            case TypeCodes.TYPE_LOCAL_DATE -> ((LocalDate) value).toEpochDay();
+            case TypeCodes.TYPE_LOCAL_DATE_TIME -> ((LocalDateTime) value).toInstant(ZoneOffset.UTC).toEpochMilli();
+            case TypeCodes.TYPE_DATE -> ((Date) value).getTime();
+            case TypeCodes.TYPE_DOUBLE -> FloatEncoding.doubleToSortableLong(((Number) value).doubleValue());
+            default -> ((Number) value).longValue();
+        };
+    }
+
+    private static int convertToInt(byte typeCode, Object value) {
+        if (value == null) {
+            return 0;
+        }
+        return switch (typeCode) {
+            case TypeCodes.TYPE_BOOLEAN -> (value instanceof Boolean b && b) ? 1 : 0;
+            case TypeCodes.TYPE_CHAR -> (value instanceof Character c) ? c : (int) value.toString().charAt(0);
+            case TypeCodes.TYPE_FLOAT -> FloatEncoding.floatToSortableInt(((Number) value).floatValue());
+            default -> ((Number) value).intValue();
+        };
+    }
+
+    private static long convertToEpochLong(byte typeCode, Object value) {
+        return switch (typeCode) {
+            case TypeCodes.TYPE_INSTANT -> ((Instant) value).toEpochMilli();
+            case TypeCodes.TYPE_LOCAL_DATE -> ((LocalDate) value).toEpochDay();
+            case TypeCodes.TYPE_LOCAL_DATE_TIME -> ((LocalDateTime) value).toInstant(ZoneOffset.UTC).toEpochMilli();
+            case TypeCodes.TYPE_DATE -> ((Date) value).getTime();
+            default -> ((Number) value).longValue();
+        };
+    }
+
+    private static Selection createSelection(GeneratedTable table, int[] indices) {
+        long[] packed = new long[indices.length];
+        for (int i = 0; i < indices.length; i++) {
+            int rowIndex = indices[i];
+            packed[i] = Selection.pack(rowIndex, table.rowGeneration(rowIndex));
+        }
+        return new SelectionImpl(packed);
+    }
+
+    /**
+     * Clear the executor cache. Primarily for testing.
+     */
+    public static void clearCache() {
+        CACHE.clear();
+    }
+}

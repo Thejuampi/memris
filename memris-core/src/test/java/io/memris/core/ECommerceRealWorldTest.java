@@ -358,8 +358,8 @@ class ECommerceRealWorldTest {
 
         // Then - last-write-wins should apply
         assertThat(found).isPresent();
-        assertThat(found.get().name).isEqualTo("Second User");
-        assertThat(found.get().id).isEqualTo(saved.id);
+        assertThat(found.orElseThrow().name).isEqualTo("Second User");
+        assertThat(found.orElseThrow().id).isEqualTo(saved.id);
     }
 
     @Test
@@ -513,7 +513,7 @@ class ECommerceRealWorldTest {
 
         // Then - Optional should return single result (last-write-wins)
         assertThat(found).isPresent();
-        assertThat(found.get().name).isEqualTo("Second");
+        assertThat(found.orElseThrow().name).isEqualTo("Second");
     }
 
     @Test

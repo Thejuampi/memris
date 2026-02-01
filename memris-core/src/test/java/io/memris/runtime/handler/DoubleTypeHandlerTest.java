@@ -160,6 +160,9 @@ class DoubleTypeHandlerTest {
         @Override public boolean isLive(long ref) { return true; }
         @Override public long currentGeneration() { return 0L; }
         @Override public long rowGeneration(int rowIndex) { return 0L; }
+        @Override public <T> T readWithSeqLock(int rowIndex, java.util.function.Supplier<T> reader) {
+            return reader.get();
+        }
         
         @Override public int[] scanEqualsLong(int columnIndex, long value) {
             int[] matches = new int[values.length];

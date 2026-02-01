@@ -901,41 +901,40 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
                         throw new IllegalArgumentException("Unsupported type code: " + typeCode);
                     }
                 }
+
+                // Publish row to make data visible to scans
+                for (int i = 0; i < columnFields.size(); i++) {
+                    ColumnFieldInfo fieldInfo = columnFields.get(i);
+                    Field field = obj.getClass().getDeclaredField(fieldInfo.fieldName());
+                    MethodHandle getter = lookup.unreflectGetter(field);
+                    Object column = getter.invoke(obj);
+
+                    byte typeCode = fieldInfo.typeCode();
+                    if (typeCode == io.memris.core.TypeCodes.TYPE_LONG
+                            || typeCode == io.memris.core.TypeCodes.TYPE_DOUBLE
+                            || typeCode == io.memris.core.TypeCodes.TYPE_INSTANT
+                            || typeCode == io.memris.core.TypeCodes.TYPE_LOCAL_DATE
+                            || typeCode == io.memris.core.TypeCodes.TYPE_LOCAL_DATE_TIME
+                            || typeCode == io.memris.core.TypeCodes.TYPE_DATE) {
+                        PageColumnLong col = (PageColumnLong) column;
+                        col.publish(rowIndex + 1);
+                    } else if (typeCode == io.memris.core.TypeCodes.TYPE_INT
+                            || typeCode == io.memris.core.TypeCodes.TYPE_FLOAT
+                            || typeCode == io.memris.core.TypeCodes.TYPE_BOOLEAN
+                            || typeCode == io.memris.core.TypeCodes.TYPE_BYTE
+                            || typeCode == io.memris.core.TypeCodes.TYPE_SHORT
+                            || typeCode == io.memris.core.TypeCodes.TYPE_CHAR) {
+                        PageColumnInt col = (PageColumnInt) column;
+                        col.publish(rowIndex + 1);
+                    } else if (typeCode == io.memris.core.TypeCodes.TYPE_STRING
+                            || typeCode == io.memris.core.TypeCodes.TYPE_BIG_DECIMAL
+                            || typeCode == io.memris.core.TypeCodes.TYPE_BIG_INTEGER) {
+                        PageColumnString col = (PageColumnString) column;
+                        col.publish(rowIndex + 1);
+                    }
+                }
             } finally {
                 table.endSeqLock(rowIndex);
-            }
-
-            // Publish row to make data visible to scans
-            VarHandle.storeStoreFence();
-            for (int i = 0; i < columnFields.size(); i++) {
-                ColumnFieldInfo fieldInfo = columnFields.get(i);
-                Field field = obj.getClass().getDeclaredField(fieldInfo.fieldName());
-                MethodHandle getter = lookup.unreflectGetter(field);
-                Object column = getter.invoke(obj);
-
-                byte typeCode = fieldInfo.typeCode();
-                if (typeCode == io.memris.core.TypeCodes.TYPE_LONG
-                        || typeCode == io.memris.core.TypeCodes.TYPE_DOUBLE
-                        || typeCode == io.memris.core.TypeCodes.TYPE_INSTANT
-                        || typeCode == io.memris.core.TypeCodes.TYPE_LOCAL_DATE
-                        || typeCode == io.memris.core.TypeCodes.TYPE_LOCAL_DATE_TIME
-                        || typeCode == io.memris.core.TypeCodes.TYPE_DATE) {
-                    PageColumnLong col = (PageColumnLong) column;
-                    col.publish(rowIndex + 1);
-                } else if (typeCode == io.memris.core.TypeCodes.TYPE_INT
-                        || typeCode == io.memris.core.TypeCodes.TYPE_FLOAT
-                        || typeCode == io.memris.core.TypeCodes.TYPE_BOOLEAN
-                        || typeCode == io.memris.core.TypeCodes.TYPE_BYTE
-                        || typeCode == io.memris.core.TypeCodes.TYPE_SHORT
-                        || typeCode == io.memris.core.TypeCodes.TYPE_CHAR) {
-                    PageColumnInt col = (PageColumnInt) column;
-                    col.publish(rowIndex + 1);
-                } else if (typeCode == io.memris.core.TypeCodes.TYPE_STRING
-                        || typeCode == io.memris.core.TypeCodes.TYPE_BIG_DECIMAL
-                        || typeCode == io.memris.core.TypeCodes.TYPE_BIG_INTEGER) {
-                    PageColumnString col = (PageColumnString) column;
-                    col.publish(rowIndex + 1);
-                }
             }
 
             // Update ID index

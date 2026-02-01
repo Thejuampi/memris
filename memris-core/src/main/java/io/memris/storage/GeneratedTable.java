@@ -13,13 +13,26 @@ package io.memris.storage;
  * </ul>
  */
 public interface GeneratedTable {
-    
+
     // ===== METADATA =====
-    
+
     int columnCount();
     byte typeCodeAt(int columnIndex);
     long allocatedCount();
     long liveCount();
+
+    // ===== SEQLOCK =====
+
+    /**
+     * Read a value with seqlock validation.
+     * Retries if the seqlock changes during the read (indicating concurrent write).
+     *
+     * @param rowIndex the row index
+     * @param reader the function to read the value
+     * @param <T> the value type
+     * @return the consistently read value
+     */
+    <T> T readWithSeqLock(int rowIndex, java.util.function.Supplier<T> reader);
     
     // ===== PRIMARY KEY INDEX =====
     
