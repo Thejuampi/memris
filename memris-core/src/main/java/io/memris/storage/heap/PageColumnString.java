@@ -1,10 +1,13 @@
 package io.memris.storage.heap;
 
+import java.util.concurrent.atomic.AtomicReferenceArray;
+
 /**
  * String column storage with scan operations.
  * <p>
- * Uses String[] array with volatile published watermark for safe concurrent reads.
- * Scan operations enable direct column access without row allocation.
+ * Uses paged arrays with CAS-based page publication and volatile published
+ * watermark for safe concurrent reads. Scan operations enable direct column
+ * access without row allocation.
  * <p>
  * <b>Thread-safety:</b>
  * <ul>
@@ -18,10 +21,18 @@ public final class PageColumnString {
     private final int pageSize;
     private final int maxPages;
     private final int capacity;
-    private final String[][] dataPages;
-    private final byte[][] presentPages;
+    private final AtomicReferenceArray<ColumnPage> pages;
     private volatile int published;
-    private final Object pageAllocationLock = new Object();
+
+    private static final class ColumnPage {
+        private final String[] values;
+        private final byte[] present;
+
+        private ColumnPage(int pageSize) {
+            this.values = new String[pageSize];
+            this.present = new byte[pageSize];
+        }
+    }
 
     /**
      * Create a PageColumnString.
@@ -35,9 +46,8 @@ public final class PageColumnString {
         this.pageSize = capacity;
         this.maxPages = 1;
         this.capacity = capacity;
-        this.dataPages = new String[1][];
-        this.presentPages = new byte[1][];
-        allocatePage(0);
+        this.pages = new AtomicReferenceArray<>(1);
+        getOrCreatePage(0);
         this.published = 0;
     }
 
@@ -65,10 +75,9 @@ public final class PageColumnString {
         this.pageSize = pageSize;
         this.maxPages = maxPages;
         this.capacity = (int) total;
-        this.dataPages = new String[maxPages][];
-        this.presentPages = new byte[maxPages][];
+        this.pages = new AtomicReferenceArray<>(maxPages);
         for (int pageId = 0; pageId < initialPages; pageId++) {
-            allocatePage(pageId);
+            getOrCreatePage(pageId);
         }
         this.published = 0;
     }
@@ -94,11 +103,11 @@ public final class PageColumnString {
         }
         int pageId = offset / pageSize;
         int pageOffset = offset % pageSize;
-        byte[] present = presentPages[pageId];
-        if (present == null || present[pageOffset] == 0) {
+        ColumnPage page = pages.get(pageId);
+        if (page == null || page.present[pageOffset] == 0) {
             return null;
         }
-        return dataPages[pageId][pageOffset];
+        return page.values[pageOffset];
     }
 
     /**
@@ -110,8 +119,8 @@ public final class PageColumnString {
         }
         int pageId = offset / pageSize;
         int pageOffset = offset % pageSize;
-        byte[] present = presentPages[pageId];
-        return present != null && present[pageOffset] != 0;
+        ColumnPage page = pages.get(pageId);
+        return page != null && page.present[pageOffset] != 0;
     }
 
     /**
@@ -126,9 +135,9 @@ public final class PageColumnString {
         }
         int pageId = offset / pageSize;
         int pageOffset = offset % pageSize;
-        ensurePage(pageId);
-        dataPages[pageId][pageOffset] = value;
-        presentPages[pageId][pageOffset] = 1;
+        ColumnPage page = getOrCreatePage(pageId);
+        page.values[pageOffset] = value;
+        page.present[pageOffset] = 1;
     }
 
     /**
@@ -140,9 +149,9 @@ public final class PageColumnString {
         }
         int pageId = offset / pageSize;
         int pageOffset = offset % pageSize;
-        ensurePage(pageId);
-        dataPages[pageId][pageOffset] = null;
-        presentPages[pageId][pageOffset] = 0;
+        ColumnPage page = getOrCreatePage(pageId);
+        page.values[pageOffset] = null;
+        page.present[pageOffset] = 0;
     }
 
     /**
@@ -184,12 +193,13 @@ public final class PageColumnString {
         for (int pageId = 0; pageId < maxPages && remaining > 0; pageId++) {
             int pageLimit = Math.min(pageSize, remaining);
             int base = pageId * pageSize;
-            byte[] present = presentPages[pageId];
-            if (present == null) {
+            ColumnPage page = pages.get(pageId);
+            if (page == null) {
                 remaining -= pageLimit;
                 continue;
             }
-            String[] data = dataPages[pageId];
+            byte[] present = page.present;
+            String[] data = page.values;
             for (int i = 0; i < pageLimit; i++) {
                 if (present[i] != 0 && target.equals(data[i])) {
                     results[found++] = base + i;
@@ -222,12 +232,13 @@ public final class PageColumnString {
         for (int pageId = 0; pageId < maxPages && remaining > 0; pageId++) {
             int pageLimit = Math.min(pageSize, remaining);
             int base = pageId * pageSize;
-            byte[] present = presentPages[pageId];
-            if (present == null) {
+            ColumnPage page = pages.get(pageId);
+            if (page == null) {
                 remaining -= pageLimit;
                 continue;
             }
-            String[] data = dataPages[pageId];
+            byte[] present = page.present;
+            String[] data = page.values;
             for (int i = 0; i < pageLimit; i++) {
                 if (present[i] == 0) {
                     continue;
@@ -273,12 +284,13 @@ public final class PageColumnString {
         for (int pageId = 0; pageId < maxPages && remaining > 0; pageId++) {
             int pageLimit = Math.min(pageSize, remaining);
             int base = pageId * pageSize;
-            byte[] present = presentPages[pageId];
-            if (present == null) {
+            ColumnPage page = pages.get(pageId);
+            if (page == null) {
                 remaining -= pageLimit;
                 continue;
             }
-            String[] data = dataPages[pageId];
+            byte[] present = page.present;
+            String[] data = page.values;
             for (int i = 0; i < pageLimit; i++) {
                 if (present[i] != 0 && targetSet.contains(data[i])) {
                     results[found++] = base + i;
@@ -302,11 +314,12 @@ public final class PageColumnString {
         for (int pageId = 0; pageId < maxPages && remaining > 0; pageId++) {
             int pageLimit = Math.min(pageSize, remaining);
             int base = pageId * pageSize;
-            byte[] present = presentPages[pageId];
-            if (present == null) {
+            ColumnPage page = pages.get(pageId);
+            if (page == null) {
                 remaining -= pageLimit;
                 continue;
             }
+            byte[] present = page.present;
             for (int i = 0; i < pageLimit; i++) {
                 if (present[i] == 0) {
                     results[found++] = base + i;
@@ -342,27 +355,18 @@ public final class PageColumnString {
         return capacity;
     }
 
-    private void ensurePage(int pageId) {
-        if (dataPages[pageId] != null && presentPages[pageId] != null) {
-            return;
-        }
-        allocatePage(pageId);
-    }
-
-    private void allocatePage(int pageId) {
+    private ColumnPage getOrCreatePage(int pageId) {
         if (pageId < 0 || pageId >= maxPages) {
             throw new IndexOutOfBoundsException("pageId out of range: " + pageId);
         }
-        if (dataPages[pageId] != null && presentPages[pageId] != null) {
-            return;
+        ColumnPage existing = pages.get(pageId);
+        if (existing != null) {
+            return existing;
         }
-        synchronized (pageAllocationLock) {
-            if (dataPages[pageId] == null) {
-                dataPages[pageId] = new String[pageSize];
-            }
-            if (presentPages[pageId] == null) {
-                presentPages[pageId] = new byte[pageSize];
-            }
+        ColumnPage created = new ColumnPage(pageSize);
+        if (pages.compareAndSet(pageId, null, created)) {
+            return created;
         }
+        return pages.get(pageId);
     }
 }

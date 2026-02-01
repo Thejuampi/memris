@@ -72,6 +72,20 @@ public final class HashIndex<K> {
         return set == null ? RowIdSets.empty() : set;
     }
 
+    public RowIdSet lookup(K key, java.util.function.Predicate<RowId> filter) {
+        if (key == null) {
+            return RowIdSets.empty();
+        }
+        MutableRowIdSet set = index.get(key);
+        if (set == null) {
+            return RowIdSets.empty();
+        }
+        if (filter == null) {
+            return set;
+        }
+        return filterSet(set, filter);
+    }
+
     public int size() {
         return index.size();
     }
@@ -82,5 +96,19 @@ public final class HashIndex<K> {
      */
     public java.util.Map<K, MutableRowIdSet> entries() {
         return new java.util.HashMap<>(index);
+    }
+
+    private RowIdSet filterSet(MutableRowIdSet set, java.util.function.Predicate<RowId> filter) {
+        int expected = set.size();
+        MutableRowIdSet result = setFactory.create(expected);
+        io.memris.kernel.LongEnumerator e = set.enumerator();
+        while (e.hasNext()) {
+            RowId rowId = RowId.fromLong(e.nextLong());
+            if (filter.test(rowId)) {
+                result.add(rowId);
+                result = setFactory.maybeUpgrade(result);
+            }
+        }
+        return result;
     }
 }

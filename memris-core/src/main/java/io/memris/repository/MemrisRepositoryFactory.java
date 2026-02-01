@@ -145,15 +145,26 @@ public final class MemrisRepositoryFactory implements AutoCloseable {
             return null;
         }
 
+        io.memris.storage.GeneratedTable table = tables.get(entityClass);
+        if (table == null) {
+            return null;
+        }
+        java.util.function.Predicate<RowId> validator = rowId -> {
+            int rowIndex = (int) rowId.value();
+            long generation = table.rowGeneration(rowIndex);
+            long ref = io.memris.storage.Selection.pack(rowIndex, generation);
+            return table.isLive(ref);
+        };
+
         // Java 21+ pattern matching with switch on sealed types
         return switch (index) {
-            case HashIndex hashIndex when value != null -> rowIdSetToIntArray(hashIndex.lookup(value));
+            case HashIndex hashIndex when value != null -> rowIdSetToIntArray(hashIndex.lookup(value, validator));
             case RangeIndex rangeIndex when value instanceof Comparable comp -> switch (operator) {
-                case EQ -> rowIdSetToIntArray(rangeIndex.lookup(comp));
-                case GT -> rowIdSetToIntArray(rangeIndex.greaterThan(comp));
-                case GTE -> rowIdSetToIntArray(rangeIndex.greaterThanOrEqual(comp));
-                case LT -> rowIdSetToIntArray(rangeIndex.lessThan(comp));
-                case LTE -> rowIdSetToIntArray(rangeIndex.lessThanOrEqual(comp));
+                case EQ -> rowIdSetToIntArray(rangeIndex.lookup(comp, validator));
+                case GT -> rowIdSetToIntArray(rangeIndex.greaterThan(comp, validator));
+                case GTE -> rowIdSetToIntArray(rangeIndex.greaterThanOrEqual(comp, validator));
+                case LT -> rowIdSetToIntArray(rangeIndex.lessThan(comp, validator));
+                case LTE -> rowIdSetToIntArray(rangeIndex.lessThanOrEqual(comp, validator));
                 default -> null;
             };
             case RangeIndex rangeIndex when operator == Predicate.Operator.BETWEEN
@@ -164,7 +175,7 @@ public final class MemrisRepositoryFactory implements AutoCloseable {
                 Object lower = range[0];
                 Object upper = range[1];
                 if (lower instanceof Comparable lowerComp && upper instanceof Comparable upperComp) {
-                    yield rowIdSetToIntArray(rangeIndex.between(lowerComp, upperComp));
+                    yield rowIdSetToIntArray(rangeIndex.between(lowerComp, upperComp, validator));
                 }
                 yield null;
             }

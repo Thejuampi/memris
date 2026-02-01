@@ -56,11 +56,36 @@ public final class RangeIndex<K extends Comparable<K>> {
         return set == null ? RowIdSets.empty() : set;
     }
 
+    public RowIdSet lookup(K key, java.util.function.Predicate<RowId> filter) {
+        if (key == null) {
+            return RowIdSets.empty();
+        }
+        MutableRowIdSet set = index.get(key);
+        if (set == null) {
+            return RowIdSets.empty();
+        }
+        if (filter == null) {
+            return set;
+        }
+        return filterSet(set, filter);
+    }
+
     public RowIdSet between(K lowerInclusive, K upperInclusive) {
         if (lowerInclusive == null || upperInclusive == null) {
             return RowIdSets.empty();
         }
         return collect(index.subMap(lowerInclusive, true, upperInclusive, true));
+    }
+
+    public RowIdSet between(K lowerInclusive, K upperInclusive, java.util.function.Predicate<RowId> filter) {
+        if (lowerInclusive == null || upperInclusive == null) {
+            return RowIdSets.empty();
+        }
+        RowIdSet set = collect(index.subMap(lowerInclusive, true, upperInclusive, true));
+        if (filter == null) {
+            return set;
+        }
+        return filterSet(set, filter);
     }
 
     public RowIdSet greaterThan(K value) {
@@ -70,11 +95,33 @@ public final class RangeIndex<K extends Comparable<K>> {
         return collect(index.tailMap(value, false));
     }
 
+    public RowIdSet greaterThan(K value, java.util.function.Predicate<RowId> filter) {
+        if (value == null) {
+            return RowIdSets.empty();
+        }
+        RowIdSet set = collect(index.tailMap(value, false));
+        if (filter == null) {
+            return set;
+        }
+        return filterSet(set, filter);
+    }
+
     public RowIdSet greaterThanOrEqual(K value) {
         if (value == null) {
             return RowIdSets.empty();
         }
         return collect(index.tailMap(value, true));
+    }
+
+    public RowIdSet greaterThanOrEqual(K value, java.util.function.Predicate<RowId> filter) {
+        if (value == null) {
+            return RowIdSets.empty();
+        }
+        RowIdSet set = collect(index.tailMap(value, true));
+        if (filter == null) {
+            return set;
+        }
+        return filterSet(set, filter);
     }
 
     public RowIdSet lessThan(K value) {
@@ -84,11 +131,33 @@ public final class RangeIndex<K extends Comparable<K>> {
         return collect(index.headMap(value, false));
     }
 
+    public RowIdSet lessThan(K value, java.util.function.Predicate<RowId> filter) {
+        if (value == null) {
+            return RowIdSets.empty();
+        }
+        RowIdSet set = collect(index.headMap(value, false));
+        if (filter == null) {
+            return set;
+        }
+        return filterSet(set, filter);
+    }
+
     public RowIdSet lessThanOrEqual(K value) {
         if (value == null) {
             return RowIdSets.empty();
         }
         return collect(index.headMap(value, true));
+    }
+
+    public RowIdSet lessThanOrEqual(K value, java.util.function.Predicate<RowId> filter) {
+        if (value == null) {
+            return RowIdSets.empty();
+        }
+        RowIdSet set = collect(index.headMap(value, true));
+        if (filter == null) {
+            return set;
+        }
+        return filterSet(set, filter);
     }
 
     public int size() {
@@ -114,6 +183,19 @@ public final class RangeIndex<K extends Comparable<K>> {
                 result.add(RowId.fromLong(e.nextLong()));
             }
             result = setFactory.maybeUpgrade(result);
+        }
+        return result;
+    }
+
+    private RowIdSet filterSet(RowIdSet set, java.util.function.Predicate<RowId> filter) {
+        MutableRowIdSet result = setFactory.create(1);
+        LongEnumerator e = set.enumerator();
+        while (e.hasNext()) {
+            RowId rowId = RowId.fromLong(e.nextLong());
+            if (filter.test(rowId)) {
+                result.add(rowId);
+                result = setFactory.maybeUpgrade(result);
+            }
         }
         return result;
     }

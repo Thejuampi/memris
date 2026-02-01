@@ -1,10 +1,13 @@
 package io.memris.storage.heap;
 
+import java.util.concurrent.atomic.AtomicReferenceArray;
+
 /**
  * Primitive int column storage with SIMD-capable scan operations.
  * <p>
- * Uses int[] array with volatile published watermark for safe concurrent reads.
- * Scan operations enable SIMD vectorization for high throughput.
+ * Uses paged arrays with CAS-based page publication and volatile published
+ * watermark for safe concurrent reads. Scan operations enable SIMD
+ * vectorization for high throughput.
  * <p>
  * <b>Thread-safety:</b>
  * <ul>
@@ -18,10 +21,18 @@ public final class PageColumnInt {
     private final int pageSize;
     private final int maxPages;
     private final int capacity;
-    private final int[][] dataPages;
-    private final byte[][] presentPages;
+    private final AtomicReferenceArray<ColumnPage> pages;
     private volatile int published;
-    private final Object pageAllocationLock = new Object();
+
+    private static final class ColumnPage {
+        private final int[] values;
+        private final byte[] present;
+
+        private ColumnPage(int pageSize) {
+            this.values = new int[pageSize];
+            this.present = new byte[pageSize];
+        }
+    }
 
     /**
      * Create a PageColumnInt.
@@ -35,9 +46,8 @@ public final class PageColumnInt {
         this.pageSize = capacity;
         this.maxPages = 1;
         this.capacity = capacity;
-        this.dataPages = new int[1][];
-        this.presentPages = new byte[1][];
-        allocatePage(0);
+        this.pages = new AtomicReferenceArray<>(1);
+        getOrCreatePage(0);
         this.published = 0;
     }
 
@@ -65,10 +75,9 @@ public final class PageColumnInt {
         this.pageSize = pageSize;
         this.maxPages = maxPages;
         this.capacity = (int) total;
-        this.dataPages = new int[maxPages][];
-        this.presentPages = new byte[maxPages][];
+        this.pages = new AtomicReferenceArray<>(maxPages);
         for (int pageId = 0; pageId < initialPages; pageId++) {
-            allocatePage(pageId);
+            getOrCreatePage(pageId);
         }
         this.published = 0;
     }
@@ -94,11 +103,11 @@ public final class PageColumnInt {
         }
         int pageId = offset / pageSize;
         int pageOffset = offset % pageSize;
-        byte[] present = presentPages[pageId];
-        if (present == null || present[pageOffset] == 0) {
+        ColumnPage page = pages.get(pageId);
+        if (page == null || page.present[pageOffset] == 0) {
             return 0;
         }
-        return dataPages[pageId][pageOffset];
+        return page.values[pageOffset];
     }
 
     /**
@@ -110,8 +119,8 @@ public final class PageColumnInt {
         }
         int pageId = offset / pageSize;
         int pageOffset = offset % pageSize;
-        byte[] present = presentPages[pageId];
-        return present != null && present[pageOffset] != 0;
+        ColumnPage page = pages.get(pageId);
+        return page != null && page.present[pageOffset] != 0;
     }
 
     /**
@@ -126,9 +135,9 @@ public final class PageColumnInt {
         }
         int pageId = offset / pageSize;
         int pageOffset = offset % pageSize;
-        ensurePage(pageId);
-        dataPages[pageId][pageOffset] = value;
-        presentPages[pageId][pageOffset] = 1;
+        ColumnPage page = getOrCreatePage(pageId);
+        page.values[pageOffset] = value;
+        page.present[pageOffset] = 1;
     }
 
     /**
@@ -140,8 +149,8 @@ public final class PageColumnInt {
         }
         int pageId = offset / pageSize;
         int pageOffset = offset % pageSize;
-        ensurePage(pageId);
-        presentPages[pageId][pageOffset] = 0;
+        ColumnPage page = getOrCreatePage(pageId);
+        page.present[pageOffset] = 0;
     }
 
     /**
@@ -179,12 +188,13 @@ public final class PageColumnInt {
         for (int pageId = 0; pageId < maxPages && remaining > 0; pageId++) {
             int pageLimit = Math.min(pageSize, remaining);
             int base = pageId * pageSize;
-            byte[] present = presentPages[pageId];
-            if (present == null) {
+            ColumnPage page = pages.get(pageId);
+            if (page == null) {
                 remaining -= pageLimit;
                 continue;
             }
-            int[] data = dataPages[pageId];
+            byte[] present = page.present;
+            int[] data = page.values;
             for (int i = 0; i < pageLimit; i++) {
                 if (present[i] != 0 && data[i] == target) {
                     results[found++] = base + i;
@@ -212,12 +222,13 @@ public final class PageColumnInt {
         for (int pageId = 0; pageId < maxPages && remaining > 0; pageId++) {
             int pageLimit = Math.min(pageSize, remaining);
             int base = pageId * pageSize;
-            byte[] present = presentPages[pageId];
-            if (present == null) {
+            ColumnPage page = pages.get(pageId);
+            if (page == null) {
                 remaining -= pageLimit;
                 continue;
             }
-            int[] data = dataPages[pageId];
+            byte[] present = page.present;
+            int[] data = page.values;
             for (int i = 0; i < pageLimit; i++) {
                 if (present[i] != 0 && data[i] > target) {
                     results[found++] = base + i;
@@ -245,12 +256,13 @@ public final class PageColumnInt {
         for (int pageId = 0; pageId < maxPages && remaining > 0; pageId++) {
             int pageLimit = Math.min(pageSize, remaining);
             int base = pageId * pageSize;
-            byte[] present = presentPages[pageId];
-            if (present == null) {
+            ColumnPage page = pages.get(pageId);
+            if (page == null) {
                 remaining -= pageLimit;
                 continue;
             }
-            int[] data = dataPages[pageId];
+            byte[] present = page.present;
+            int[] data = page.values;
             for (int i = 0; i < pageLimit; i++) {
                 if (present[i] != 0 && data[i] < target) {
                     results[found++] = base + i;
@@ -278,12 +290,13 @@ public final class PageColumnInt {
         for (int pageId = 0; pageId < maxPages && remaining > 0; pageId++) {
             int pageLimit = Math.min(pageSize, remaining);
             int base = pageId * pageSize;
-            byte[] present = presentPages[pageId];
-            if (present == null) {
+            ColumnPage page = pages.get(pageId);
+            if (page == null) {
                 remaining -= pageLimit;
                 continue;
             }
-            int[] data = dataPages[pageId];
+            byte[] present = page.present;
+            int[] data = page.values;
             for (int i = 0; i < pageLimit; i++) {
                 if (present[i] != 0 && data[i] >= target) {
                     results[found++] = base + i;
@@ -311,12 +324,13 @@ public final class PageColumnInt {
         for (int pageId = 0; pageId < maxPages && remaining > 0; pageId++) {
             int pageLimit = Math.min(pageSize, remaining);
             int base = pageId * pageSize;
-            byte[] present = presentPages[pageId];
-            if (present == null) {
+            ColumnPage page = pages.get(pageId);
+            if (page == null) {
                 remaining -= pageLimit;
                 continue;
             }
-            int[] data = dataPages[pageId];
+            byte[] present = page.present;
+            int[] data = page.values;
             for (int i = 0; i < pageLimit; i++) {
                 if (present[i] != 0 && data[i] <= target) {
                     results[found++] = base + i;
@@ -345,12 +359,13 @@ public final class PageColumnInt {
         for (int pageId = 0; pageId < maxPages && remaining > 0; pageId++) {
             int pageLimit = Math.min(pageSize, remaining);
             int base = pageId * pageSize;
-            byte[] present = presentPages[pageId];
-            if (present == null) {
+            ColumnPage page = pages.get(pageId);
+            if (page == null) {
                 remaining -= pageLimit;
                 continue;
             }
-            int[] data = dataPages[pageId];
+            byte[] present = page.present;
+            int[] data = page.values;
             for (int i = 0; i < pageLimit; i++) {
                 int value = data[i];
                 if (present[i] != 0 && value >= lower && value <= upper) {
@@ -391,12 +406,13 @@ public final class PageColumnInt {
         for (int pageId = 0; pageId < maxPages && remaining > 0; pageId++) {
             int pageLimit = Math.min(pageSize, remaining);
             int base = pageId * pageSize;
-            byte[] present = presentPages[pageId];
-            if (present == null) {
+            ColumnPage page = pages.get(pageId);
+            if (page == null) {
                 remaining -= pageLimit;
                 continue;
             }
-            int[] data = dataPages[pageId];
+            byte[] present = page.present;
+            int[] data = page.values;
             for (int i = 0; i < pageLimit; i++) {
                 if (present[i] != 0 && targetSet.contains(data[i])) {
                     results[found++] = base + i;
@@ -432,27 +448,18 @@ public final class PageColumnInt {
         return capacity;
     }
 
-    private void ensurePage(int pageId) {
-        if (dataPages[pageId] != null && presentPages[pageId] != null) {
-            return;
-        }
-        allocatePage(pageId);
-    }
-
-    private void allocatePage(int pageId) {
+    private ColumnPage getOrCreatePage(int pageId) {
         if (pageId < 0 || pageId >= maxPages) {
             throw new IndexOutOfBoundsException("pageId out of range: " + pageId);
         }
-        if (dataPages[pageId] != null && presentPages[pageId] != null) {
-            return;
+        ColumnPage existing = pages.get(pageId);
+        if (existing != null) {
+            return existing;
         }
-        synchronized (pageAllocationLock) {
-            if (dataPages[pageId] == null) {
-                dataPages[pageId] = new int[pageSize];
-            }
-            if (presentPages[pageId] == null) {
-                presentPages[pageId] = new byte[pageSize];
-            }
+        ColumnPage created = new ColumnPage(pageSize);
+        if (pages.compareAndSet(pageId, null, created)) {
+            return created;
         }
+        return pages.get(pageId);
     }
 }

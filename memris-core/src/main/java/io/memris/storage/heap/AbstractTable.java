@@ -6,6 +6,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicIntegerArray;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicLongArray;
+import java.util.concurrent.atomic.AtomicReferenceArray;
 import java.util.concurrent.locks.LockSupport;
 
 /**
@@ -34,16 +35,25 @@ public abstract class AbstractTable {
     private final AtomicInteger allocatedPages;
     private final AtomicLong nextRowId;
     private final AtomicInteger liveRowCount;
-    private final AtomicIntegerArray[] tombstonePages;
-    private final long[][] rowGenerationPages;
-    private final AtomicLongArray[] rowSeqLockPages;
-    private final Object pageAllocationLock = new Object();
+    private final AtomicReferenceArray<RowMetaPage> rowMetaPages;
 
     // Lock-free free-list for row reuse (O(1) allocation)
     private final LockFreeFreeList freeList = new LockFreeFreeList();
 
     // Generation tracking for stale ref detection
     private final AtomicLong globalGeneration = new AtomicLong(1);
+
+    private static final class RowMetaPage {
+        private final long[] generations;
+        private final AtomicIntegerArray tombstones;
+        private final AtomicLongArray seqLocks;
+
+        private RowMetaPage(int pageSize) {
+            this.generations = new long[pageSize];
+            this.tombstones = new AtomicIntegerArray(pageSize);
+            this.seqLocks = new AtomicLongArray(pageSize);
+        }
+    }
 
     /**
      * Create an AbstractTable.
@@ -75,9 +85,7 @@ public abstract class AbstractTable {
         this.nextRowId = new AtomicLong(0);
         this.liveRowCount = new AtomicInteger(0);
         this.allocatedPages = new AtomicInteger(0);
-        this.tombstonePages = new AtomicIntegerArray[maxPages];
-        this.rowGenerationPages = new long[maxPages][];
-        this.rowSeqLockPages = new AtomicLongArray[maxPages];
+        this.rowMetaPages = new AtomicReferenceArray<>(maxPages);
     }
 
     /**
@@ -189,7 +197,7 @@ public abstract class AbstractTable {
 
     private void ensurePageAllocated(int rowIndex) {
         int pageId = rowIndex / pageSize;
-        allocatePage(pageId);
+        getOrCreateMetaPage(pageId);
         int requiredPages = pageId + 1;
         int currentPages = allocatedPages.get();
         while (requiredPages > currentPages) {
@@ -200,60 +208,42 @@ public abstract class AbstractTable {
         }
     }
 
-    private void allocatePage(int pageId) {
+    private RowMetaPage getOrCreateMetaPage(int pageId) {
         if (pageId < 0 || pageId >= maxPages) {
             throw new IllegalStateException("Page exceeds maxPages: " + pageId);
         }
-        if (rowGenerationPages[pageId] != null) {
-            return;
+        RowMetaPage existing = rowMetaPages.get(pageId);
+        if (existing != null) {
+            return existing;
         }
-        synchronized (pageAllocationLock) {
-            if (rowGenerationPages[pageId] == null) {
-                rowGenerationPages[pageId] = new long[pageSize];
-                tombstonePages[pageId] = new AtomicIntegerArray(pageSize);
-                rowSeqLockPages[pageId] = new AtomicLongArray(pageSize);
-            }
+        RowMetaPage created = new RowMetaPage(pageSize);
+        if (rowMetaPages.compareAndSet(pageId, null, created)) {
+            return created;
         }
+        return rowMetaPages.get(pageId);
     }
 
-    private AtomicLongArray rowSeqLockPage(int rowIndex) {
+    private RowMetaPage metaPage(int rowIndex) {
         int pageId = rowIndex / pageSize;
-        AtomicLongArray page = rowSeqLockPages[pageId];
+        RowMetaPage page = rowMetaPages.get(pageId);
         if (page == null) {
-            allocatePage(pageId);
-            page = rowSeqLockPages[pageId];
-        }
-        return page;
-    }
-
-    private AtomicIntegerArray tombstonePage(int rowIndex) {
-        int pageId = rowIndex / pageSize;
-        AtomicIntegerArray page = tombstonePages[pageId];
-        if (page == null) {
-            allocatePage(pageId);
-            page = tombstonePages[pageId];
+            page = getOrCreateMetaPage(pageId);
         }
         return page;
     }
 
     protected long rowGenerationAt(int rowIndex) {
-        int pageId = rowIndex / pageSize;
-        long[] page = rowGenerationPages[pageId];
+        RowMetaPage page = rowMetaPages.get(rowIndex / pageSize);
         if (page == null) {
             return 0L;
         }
-        return page[rowIndex % pageSize];
+        return page.generations[rowIndex % pageSize];
     }
 
     private void setRowGenerationAt(int rowIndex, long generation) {
-        int pageId = rowIndex / pageSize;
         int offset = rowIndex % pageSize;
-        long[] page = rowGenerationPages[pageId];
-        if (page == null) {
-            allocatePage(pageId);
-            page = rowGenerationPages[pageId];
-        }
-        page[offset] = generation;
+        RowMetaPage page = metaPage(rowIndex);
+        page.generations[offset] = generation;
     }
 
     /**
@@ -288,7 +278,7 @@ public abstract class AbstractTable {
     public long beginSeqLock(int rowIndex) {
         validateRowIndex(rowIndex);
         int spins = 0;
-        AtomicLongArray seqLocks = rowSeqLockPage(rowIndex);
+        AtomicLongArray seqLocks = metaPage(rowIndex).seqLocks;
         while (true) {
             int offset = rowIndex % pageSize;
             long current = seqLocks.get(offset);
@@ -311,7 +301,7 @@ public abstract class AbstractTable {
      */
     public void endSeqLock(int rowIndex) {
         validateRowIndex(rowIndex);
-        AtomicLongArray seqLocks = rowSeqLockPage(rowIndex);
+        AtomicLongArray seqLocks = metaPage(rowIndex).seqLocks;
         int offset = rowIndex % pageSize;
         seqLocks.incrementAndGet(offset);
     }
@@ -324,7 +314,7 @@ public abstract class AbstractTable {
      */
     public long getSeqLock(int rowIndex) {
         validateRowIndex(rowIndex);
-        AtomicLongArray seqLocks = rowSeqLockPage(rowIndex);
+        AtomicLongArray seqLocks = metaPage(rowIndex).seqLocks;
         int offset = rowIndex % pageSize;
         return seqLocks.get(offset);
     }
@@ -340,7 +330,7 @@ public abstract class AbstractTable {
      */
     public <T> T readWithSeqLock(int rowIndex, java.util.function.Supplier<T> reader) {
         validateRowIndex(rowIndex);
-        AtomicLongArray seqLocks = rowSeqLockPage(rowIndex);
+        AtomicLongArray seqLocks = metaPage(rowIndex).seqLocks;
         int offset = rowIndex % pageSize;
         while (true) {
             long seqBefore = seqLocks.get(offset);
@@ -370,7 +360,7 @@ public abstract class AbstractTable {
     }
 
     private void clearTombstoneInternal(int rowId) {
-        AtomicIntegerArray tombstonePage = tombstonePage(rowId);
+        AtomicIntegerArray tombstonePage = metaPage(rowId).tombstones;
         int offset = rowId % pageSize;
         tombstonePage.set(offset, 0);
     }
@@ -389,7 +379,7 @@ public abstract class AbstractTable {
         if (rowGenerationAt(index) != generation) {
             return false;
         }
-        AtomicIntegerArray tombstonePage = tombstonePage(index);
+        AtomicIntegerArray tombstonePage = metaPage(index).tombstones;
         int offset = index % pageSize;
         // CAS loop to ensure exactly one decrement
         while (true) {
@@ -412,7 +402,7 @@ public abstract class AbstractTable {
     public void tombstone(RowId rowId) {
         int index = toIndex(rowId);
         validateRowIndex(index);
-        AtomicIntegerArray tombstonePage = tombstonePage(index);
+        AtomicIntegerArray tombstonePage = metaPage(index).tombstones;
         int offset = index % pageSize;
         // CAS loop to ensure exactly one decrement
         while (true) {
@@ -439,18 +429,18 @@ public abstract class AbstractTable {
         int index = toIndex(rowId);
         validateRowIndex(index);
         int pageId = index / pageSize;
-        AtomicIntegerArray tombstonePage = tombstonePages[pageId];
-        if (tombstonePage == null) {
+        RowMetaPage page = rowMetaPages.get(pageId);
+        if (page == null) {
             return false;
         }
         int offset = index % pageSize;
-        return tombstonePage.get(offset) != 0;
+        return page.tombstones.get(offset) != 0;
     }
 
     public void clearTombstone(RowId rowId) {
         int index = toIndex(rowId);
         validateRowIndex(index);
-        AtomicIntegerArray tombstonePage = tombstonePage(index);
+        AtomicIntegerArray tombstonePage = metaPage(index).tombstones;
         int offset = index % pageSize;
         // CAS loop to ensure exactly one increment
         while (true) {
