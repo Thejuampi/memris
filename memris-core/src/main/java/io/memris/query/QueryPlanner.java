@@ -271,6 +271,35 @@ public final class QueryPlanner {
         // Tokenize using context-aware lexer
         List<QueryMethodToken> tokens = QueryMethodLexer.tokenize(entityClass, parseName);
         LogicalQuery.ReturnKind returnKind = determineReturnKind(parseName, returnType);
+        LogicalQuery.Grouping grouping = extractGrouping(parseName, returnType);
+        if (isMapReturnType(returnType) && grouping == null) {
+            throw new IllegalArgumentException(
+                    "Map return types require GroupingBy or countBy with Map return: " + methodName);
+        }
+        if (grouping != null) {
+            if (paramTypes.length != 0) {
+                throw new IllegalArgumentException(
+                        "Grouping queries do not accept parameters: " + methodName);
+            }
+            if (parseName.contains("OrderBy")) {
+                throw new IllegalArgumentException(
+                        "Grouping queries do not support OrderBy: " + methodName);
+            }
+            return LogicalQuery.of(
+                    determineOpCodeForDerived(parseName, returnKind),
+                    returnKind,
+                    new LogicalQuery.Condition[0],
+                    new LogicalQuery.UpdateAssignment[0],
+                    null,
+                    new LogicalQuery.Join[0],
+                    null,
+                    grouping,
+                    0,
+                    false,
+                    new Object[0],
+                    new int[0],
+                    0);
+        }
         List<LogicalQuery.Condition> conditions = new ArrayList<>();
         LogicalQuery.OrderBy[] orderBy = null;
 
@@ -296,7 +325,7 @@ public final class QueryPlanner {
         }
 
         // Validation: No property after "By"
-        validateHasPropertyAfterBy(state.hasPropertyAfterBy, state.inOrderBy, methodName);
+        validateHasPropertyAfterBy(state.hasPropertyAfterBy, state.inOrderBy, false, methodName);
 
         // Validation: Ending with combinator
         validateNotEndingWithCombinator(state.lastTokenWasCombinator, methodName);
@@ -332,6 +361,7 @@ public final class QueryPlanner {
                 null,
                 new LogicalQuery.Join[0],
                 orderBy,
+                null,
                 limitParse.limit(),
                 distinct,
                 new Object[0],
@@ -352,7 +382,7 @@ public final class QueryPlanner {
 
         // Otherwise, determine from ReturnKind
         return switch (returnKind) {
-            case MANY_LIST, MANY_SET, ONE_OPTIONAL -> OpCode.FIND;
+            case MANY_LIST, MANY_SET, MANY_MAP, ONE_OPTIONAL -> OpCode.FIND;
             case COUNT_LONG -> OpCode.COUNT;
             case EXISTS_BOOL -> OpCode.EXISTS;
             default -> throw new IllegalArgumentException("Unexpected return kind for derived query: " + returnKind);
@@ -500,8 +530,8 @@ public final class QueryPlanner {
     /**
      * Validate that there's at least one property after "By".
      */
-    private static void validateHasPropertyAfterBy(boolean hasPropertyAfterBy, boolean inOrderBy, String methodName) {
-        if (!hasPropertyAfterBy && !inOrderBy) {
+    private static void validateHasPropertyAfterBy(boolean hasPropertyAfterBy, boolean inOrderBy, boolean isGroupingQuery, String methodName) {
+        if (!hasPropertyAfterBy && !inOrderBy && !isGroupingQuery) {
             throw new IllegalArgumentException(
                     "Invalid query method '%s': no property specified after 'By'".formatted(methodName));
         }
@@ -543,6 +573,9 @@ public final class QueryPlanner {
 
         return switch (prefix.toLowerCase()) {
             case "find", "read", "query", "get" -> {
+                if (remaining.startsWith("AllGroupingBy")) {
+                    yield LogicalQuery.ReturnKind.MANY_MAP;
+                }
                 if (isAll || remaining.isEmpty())
                     yield isSetReturnType(returnType)
                             ? LogicalQuery.ReturnKind.MANY_SET
@@ -553,11 +586,15 @@ public final class QueryPlanner {
                             ? LogicalQuery.ReturnKind.ONE_OPTIONAL
                             : (isSetReturnType(returnType)
                                     ? LogicalQuery.ReturnKind.MANY_SET
-                                    : LogicalQuery.ReturnKind.MANY_LIST);
+                                    : (isMapReturnType(returnType)
+                                            ? LogicalQuery.ReturnKind.MANY_MAP
+                                            : LogicalQuery.ReturnKind.MANY_LIST));
                 }
                 throw new IllegalArgumentException("Invalid find method: " + methodName);
             }
-            case "count" -> LogicalQuery.ReturnKind.COUNT_LONG; // count() or countByXxx()
+            case "count" -> isMapReturnType(returnType)
+                    ? LogicalQuery.ReturnKind.MANY_MAP
+                    : LogicalQuery.ReturnKind.COUNT_LONG; // count() or countByXxx()
             case "exists" -> LogicalQuery.ReturnKind.EXISTS_BOOL; // existsByXxx()
             case "delete" -> {
                 if (hasBy && remaining.startsWith("ById"))
@@ -579,6 +616,51 @@ public final class QueryPlanner {
 
     private static boolean isSetReturnType(Class<?> returnType) {
         return java.util.Set.class.isAssignableFrom(returnType);
+    }
+
+    private static boolean isMapReturnType(Class<?> returnType) {
+        return java.util.Map.class.isAssignableFrom(returnType);
+    }
+
+    /**
+     * Extract grouping information from method name for Map return types.
+     * <p>
+     * Examples:
+     * - "findAllGroupingByDepartment" → Grouping("department", LIST)
+     * - "countByDepartment" → Grouping("department", COUNT)
+     */
+    private static LogicalQuery.Grouping extractGrouping(String methodName, Class<?> returnType) {
+        if (!isMapReturnType(returnType)) {
+            return null;
+        }
+
+        // Check for "GroupingBy" pattern
+        int groupingByIndex = methodName.indexOf("GroupingBy");
+        if (groupingByIndex >= 0) {
+            String propertyName = methodName.substring(groupingByIndex + "GroupingBy".length());
+            if (!propertyName.isEmpty()) {
+                // Convert property name to camelCase (first letter lowercase)
+                String camelCaseProperty = Character.toLowerCase(propertyName.charAt(0)) + propertyName.substring(1);
+                // Check for count aggregation in method name
+                if (methodName.toLowerCase().startsWith("count")) {
+                    return new LogicalQuery.Grouping(camelCaseProperty, LogicalQuery.Grouping.GroupValueType.COUNT);
+                }
+                return new LogicalQuery.Grouping(camelCaseProperty, LogicalQuery.Grouping.GroupValueType.LIST);
+            }
+        }
+
+        // Check for "By" pattern with Map return (e.g., countByDepartment)
+        int byIndex = methodName.indexOf("By");
+        if (byIndex >= 0 && methodName.toLowerCase().startsWith("count")) {
+            String afterBy = methodName.substring(byIndex + 2);
+            if (!afterBy.isEmpty()) {
+                // Convert property name to camelCase (first letter lowercase)
+                String camelCaseProperty = Character.toLowerCase(afterBy.charAt(0)) + afterBy.substring(1);
+                return new LogicalQuery.Grouping(camelCaseProperty, LogicalQuery.Grouping.GroupValueType.COUNT);
+            }
+        }
+
+        return null;
     }
 
     /**

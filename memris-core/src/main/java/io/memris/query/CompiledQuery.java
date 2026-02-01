@@ -31,6 +31,8 @@ public record CompiledQuery(
         CompiledJoin[] joins,
         /** Pre-compiled order by (optional) */
         CompiledOrderBy[] orderBy,
+        /** Grouping configuration for Map return types (optional) */
+        CompiledGrouping grouping,
         /** Limit for Top/First queries (0 = none) */
         int limit,
         /** DISTINCT flag for result de-duplication */
@@ -55,7 +57,7 @@ public record CompiledQuery(
             OpCode opCode,
             LogicalQuery.ReturnKind returnKind,
             CompiledCondition[] conditions) {
-        return new CompiledQuery(opCode, returnKind, conditions, new CompiledUpdateAssignment[0], null, new CompiledJoin[0], null, 0, false, new Object[0], new int[0], conditions.length);
+        return new CompiledQuery(opCode, returnKind, conditions, new CompiledUpdateAssignment[0], null, new CompiledJoin[0], null, null, 0, false, new Object[0], new int[0], conditions.length);
     }
 
     public static CompiledQuery of(
@@ -66,7 +68,7 @@ public record CompiledQuery(
             CompiledOrderBy[] orderBy,
             int limit,
             int arity) {
-        return new CompiledQuery(opCode, returnKind, conditions, new CompiledUpdateAssignment[0], null, joins, orderBy, limit, false, new Object[0], new int[0], arity);
+        return new CompiledQuery(opCode, returnKind, conditions, new CompiledUpdateAssignment[0], null, joins, orderBy, null, limit, false, new Object[0], new int[0], arity);
     }
 
     public static CompiledQuery of(
@@ -77,16 +79,17 @@ public record CompiledQuery(
             CompiledProjection projection,
             CompiledJoin[] joins,
             CompiledOrderBy[] orderBy,
+            CompiledGrouping grouping,
             int limit,
             boolean distinct,
             Object[] boundValues,
             int[] parameterIndices,
             int arity) {
-        return new CompiledQuery(opCode, returnKind, conditions, updateAssignments, projection, joins, orderBy, limit, distinct, boundValues, parameterIndices, arity);
+        return new CompiledQuery(opCode, returnKind, conditions, updateAssignments, projection, joins, orderBy, grouping, limit, distinct, boundValues, parameterIndices, arity);
     }
 
     public CompiledQuery withJoins(CompiledJoin[] joins) {
-        return new CompiledQuery(opCode, returnKind, conditions, updateAssignments, projection, joins, orderBy, limit, distinct, boundValues, parameterIndices, arity);
+        return new CompiledQuery(opCode, returnKind, conditions, updateAssignments, projection, joins, orderBy, grouping, limit, distinct, boundValues, parameterIndices, arity);
     }
 
     /**
@@ -232,6 +235,15 @@ public record CompiledQuery(
             LogicalQuery.Operator operator,
             int argumentIndex,
             boolean ignoreCase
+    ) {
+    }
+
+    /**
+     * Pre-compiled grouping configuration for Map return types.
+     */
+    public record CompiledGrouping(
+            int columnIndex,
+            LogicalQuery.Grouping.GroupValueType valueType
     ) {
     }
 }

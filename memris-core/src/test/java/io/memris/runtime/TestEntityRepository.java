@@ -3,6 +3,7 @@ package io.memris.runtime;
 import io.memris.repository.MemrisRepository;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
@@ -55,4 +56,8 @@ public interface TestEntityRepository extends MemrisRepository<TestEntity> {
     Set<TestEntity> findByIdIn(Set<Long> ids);
 
     Set<TestEntity> findByIdIn(long... ids);
+
+    Map<String, List<TestEntity>> findAllGroupingByDepartment();
+
+    Map<String, Long> countByDepartment();
 }

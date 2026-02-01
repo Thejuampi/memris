@@ -19,6 +19,7 @@ import java.lang.invoke.MethodType;
 import java.lang.reflect.RecordComponent;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -939,6 +940,12 @@ public final class RepositoryRuntime<T> {
         }
 
         boolean returnSet = query.returnKind() == LogicalQuery.ReturnKind.MANY_SET;
+        boolean returnMap = query.returnKind() == LogicalQuery.ReturnKind.MANY_MAP;
+        
+        if (returnMap) {
+            return buildMapResult(query, rows, max);
+        }
+        
         List<T> results = returnSet ? null : new ArrayList<>(max);
         java.util.Set<T> resultSet = returnSet ? new java.util.LinkedHashSet<>(Math.max(16, max)) : null;
         for (int i = 0; i < max; i++) {
@@ -959,6 +966,75 @@ public final class RepositoryRuntime<T> {
             case MANY_LIST -> results;
             case MANY_SET -> resultSet;
             default -> throw new IllegalStateException("Unexpected return kind for FIND: " + query.returnKind());
+        };
+    }
+
+    private Map<Object, ?> buildMapResult(CompiledQuery query, int[] rows, int max) {
+        CompiledQuery.CompiledGrouping grouping = query.grouping();
+        if (grouping == null) {
+            throw new IllegalStateException("MANY_MAP return kind requires grouping configuration");
+        }
+        
+        int groupColumnIndex = grouping.columnIndex();
+        byte groupTypeCode = plan.table().typeCodeAt(groupColumnIndex);
+        
+        return switch (grouping.valueType()) {
+            case LIST -> buildGroupList(query, rows, max, groupColumnIndex, groupTypeCode);
+            case SET -> buildGroupSet(query, rows, max, groupColumnIndex, groupTypeCode);
+            case COUNT -> buildGroupCount(rows, max, groupColumnIndex, groupTypeCode);
+        };
+    }
+
+    private Map<Object, List<T>> buildGroupList(CompiledQuery query, int[] rows, int max, int groupColumnIndex,
+            byte groupTypeCode) {
+        Map<Object, List<T>> resultMap = new java.util.LinkedHashMap<>();
+        for (int i = 0; i < max; i++) {
+            int rowIndex = rows[i];
+            T entity = materializer.materialize(plan.kernel(), rowIndex);
+            applyPostLoad(entity);
+            hydrateJoins(entity, rowIndex, query);
+            hydrateCollections(entity, rowIndex);
+            Object key = readGroupingKey(groupColumnIndex, groupTypeCode, rowIndex);
+            resultMap.computeIfAbsent(key, k -> new ArrayList<>()).add(entity);
+        }
+        return resultMap;
+    }
+
+    private Map<Object, java.util.Set<T>> buildGroupSet(CompiledQuery query, int[] rows, int max, int groupColumnIndex,
+            byte groupTypeCode) {
+        Map<Object, java.util.Set<T>> resultMap = new java.util.LinkedHashMap<>();
+        for (int i = 0; i < max; i++) {
+            int rowIndex = rows[i];
+            T entity = materializer.materialize(plan.kernel(), rowIndex);
+            applyPostLoad(entity);
+            hydrateJoins(entity, rowIndex, query);
+            hydrateCollections(entity, rowIndex);
+            Object key = readGroupingKey(groupColumnIndex, groupTypeCode, rowIndex);
+            resultMap.computeIfAbsent(key, k -> new java.util.LinkedHashSet<>()).add(entity);
+        }
+        return resultMap;
+    }
+
+    private Map<Object, Long> buildGroupCount(int[] rows, int max, int groupColumnIndex, byte groupTypeCode) {
+        Map<Object, Long> resultMap = new java.util.LinkedHashMap<>();
+        for (int i = 0; i < max; i++) {
+            int rowIndex = rows[i];
+            Object key = readGroupingKey(groupColumnIndex, groupTypeCode, rowIndex);
+            resultMap.merge(key, 1L, Long::sum);
+        }
+        return resultMap;
+    }
+
+    private Object readGroupingKey(int columnIndex, byte typeCode, int rowIndex) {
+        GeneratedTable table = plan.table();
+        if (!table.isPresent(columnIndex, rowIndex)) {
+            return null;
+        }
+        return switch (typeCode) {
+            case TypeCodes.TYPE_STRING -> table.readString(columnIndex, rowIndex);
+            case TypeCodes.TYPE_INT -> table.readInt(columnIndex, rowIndex);
+            case TypeCodes.TYPE_LONG -> table.readLong(columnIndex, rowIndex);
+            default -> throw new UnsupportedOperationException("Unsupported grouping key type: " + typeCode);
         };
     }
 

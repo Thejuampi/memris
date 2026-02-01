@@ -11,6 +11,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
@@ -514,5 +515,44 @@ class RepositoryRuntimeTest {
         repo.delete(second);
 
         assertThat(repo.countByCategory("beta")).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("Should group entities by department")
+    void shouldGroupEntitiesByDepartment() {
+        TestEntityRepository repo = arena.createRepository(TestEntityRepository.class);
+        repo.save(new TestEntity(null, "Alice", 25, "Engineering"));
+        repo.save(new TestEntity(null, "Bob", 30, "Engineering"));
+        repo.save(new TestEntity(null, "Charlie", 35, "Sales"));
+        repo.save(new TestEntity(null, "David", 40, "Sales"));
+        repo.save(new TestEntity(null, "Eve", 45, "HR"));
+
+        Map<String, List<TestEntity>> grouped = repo.findAllGroupingByDepartment();
+
+        assertThat(grouped).hasSize(3);
+        assertThat(grouped.get("Engineering")).hasSize(2);
+        assertThat(grouped.get("Sales")).hasSize(2);
+        assertThat(grouped.get("HR")).hasSize(1);
+        assertThat(grouped.get("Engineering")).extracting(e -> e.name).containsExactlyInAnyOrder("Alice", "Bob");
+        assertThat(grouped.get("Sales")).extracting(e -> e.name).containsExactlyInAnyOrder("Charlie", "David");
+        assertThat(grouped.get("HR")).extracting(e -> e.name).containsExactlyInAnyOrder("Eve");
+    }
+
+    @Test
+    @DisplayName("Should count entities by department")
+    void shouldCountEntitiesByDepartment() {
+        TestEntityRepository repo = arena.createRepository(TestEntityRepository.class);
+        repo.save(new TestEntity(null, "Alice", 25, "Engineering"));
+        repo.save(new TestEntity(null, "Bob", 30, "Engineering"));
+        repo.save(new TestEntity(null, "Charlie", 35, "Sales"));
+        repo.save(new TestEntity(null, "David", 40, "Sales"));
+        repo.save(new TestEntity(null, "Eve", 45, "HR"));
+
+        Map<String, Long> counts = repo.countByDepartment();
+
+        assertThat(counts).hasSize(3);
+        assertThat(counts.get("Engineering")).isEqualTo(2L);
+        assertThat(counts.get("Sales")).isEqualTo(2L);
+        assertThat(counts.get("HR")).isEqualTo(1L);
     }
 }

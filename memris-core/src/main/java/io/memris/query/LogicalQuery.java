@@ -26,6 +26,7 @@ public record LogicalQuery(
         Projection projection,
         Join[] joins,
         OrderBy[] orderBy,
+        Grouping grouping,
         int limit,
         boolean distinct,
         Object[] boundValues,
@@ -38,7 +39,7 @@ public record LogicalQuery(
             ReturnKind returnKind,
             Condition[] conditions,
             OrderBy[] orderBy) {
-        return new LogicalQuery(opCode, returnKind, conditions, new UpdateAssignment[0], null, new Join[0], orderBy, 0, false, new Object[0], new int[0], conditions.length);
+        return new LogicalQuery(opCode, returnKind, conditions, new UpdateAssignment[0], null, new Join[0], orderBy, null, 0, false, new Object[0], new int[0], conditions.length);
     }
 
     public static LogicalQuery of(
@@ -48,7 +49,7 @@ public record LogicalQuery(
             Join[] joins,
             OrderBy[] orderBy,
             int parameterCount) {
-        return new LogicalQuery(opCode, returnKind, conditions, new UpdateAssignment[0], null, joins, orderBy, 0, false, new Object[0], new int[0], parameterCount);
+        return new LogicalQuery(opCode, returnKind, conditions, new UpdateAssignment[0], null, joins, orderBy, null, 0, false, new Object[0], new int[0], parameterCount);
     }
 
     public static LogicalQuery of(
@@ -59,7 +60,7 @@ public record LogicalQuery(
             OrderBy[] orderBy,
             int limit,
             int parameterCount) {
-        return new LogicalQuery(opCode, returnKind, conditions, new UpdateAssignment[0], null, joins, orderBy, limit, false, new Object[0], new int[0], parameterCount);
+        return new LogicalQuery(opCode, returnKind, conditions, new UpdateAssignment[0], null, joins, orderBy, null, limit, false, new Object[0], new int[0], parameterCount);
     }
 
     public static LogicalQuery of(
@@ -70,12 +71,13 @@ public record LogicalQuery(
             Projection projection,
             Join[] joins,
             OrderBy[] orderBy,
+            Grouping grouping,
             int limit,
             boolean distinct,
             Object[] boundValues,
             int[] parameterIndices,
             int parameterCount) {
-        return new LogicalQuery(opCode, returnKind, conditions, updateAssignments, projection, joins, orderBy, limit, distinct, boundValues, parameterIndices, parameterCount);
+        return new LogicalQuery(opCode, returnKind, conditions, updateAssignments, projection, joins, orderBy, grouping, limit, distinct, boundValues, parameterIndices, parameterCount);
     }
 
     /**
@@ -87,7 +89,7 @@ public record LogicalQuery(
             Condition[] conditions,
             OrderBy[] orderBy,
             int parameterCount) {
-        return new LogicalQuery(opCode, returnKind, conditions, new UpdateAssignment[0], null, new Join[0], orderBy, 0, false, new Object[0], new int[0], parameterCount);
+        return new LogicalQuery(opCode, returnKind, conditions, new UpdateAssignment[0], null, new Join[0], orderBy, null, 0, false, new Object[0], new int[0], parameterCount);
     }
 
     /**
@@ -101,7 +103,7 @@ public record LogicalQuery(
      * @return a LogicalQuery for the CRUD operation
      */
     public static LogicalQuery crud(OpCode opCode, ReturnKind returnKind, int parameterCount) {
-        return new LogicalQuery(opCode, returnKind, new Condition[0], new UpdateAssignment[0], null, new Join[0], null, 0, false, new Object[0], new int[0], parameterCount);
+        return new LogicalQuery(opCode, returnKind, new Condition[0], new UpdateAssignment[0], null, new Join[0], null, null, 0, false, new Object[0], new int[0], parameterCount);
     }
 
     /**
@@ -155,6 +157,8 @@ public record LogicalQuery(
         MANY_LIST,
         /** Query: Multiple entities as Set (findBy*, findAll) */
         MANY_SET,
+        /** Query: Map of entities grouped by key (findAllGroupingBy*) */
+        MANY_MAP,
         /** Query: Boolean existence check (existsById) */
         EXISTS_BOOL,
         /** Query: Count (count, countBy*) */
@@ -193,6 +197,24 @@ public record LogicalQuery(
             String alias,
             String propertyPath
     ) {
+    }
+
+    /**
+     * Grouping configuration for Map return types.
+     * <p>
+     * Examples:
+     * - "findAllGroupingByDepartment" → keyProperty="department", valueType=LIST
+     * - "countByDepartment" → keyProperty="department", valueType=COUNT
+     */
+    public record Grouping(
+            String keyProperty,
+            GroupValueType valueType
+    ) {
+        public enum GroupValueType {
+            LIST,   // Map<K, List<T>>
+            SET,    // Map<K, Set<T>>
+            COUNT   // Map<K, Long>
+        }
     }
 
     /**

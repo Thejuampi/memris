@@ -101,6 +101,14 @@ public class QueryCompiler {
             compiledProjection = compileProjection(projection, joinsByPath, joinTypes);
         }
 
+        // Compile grouping if present
+        CompiledQuery.CompiledGrouping compiledGrouping = null;
+        LogicalQuery.Grouping grouping = logicalQuery.grouping();
+        if (grouping != null) {
+            int groupColumnIndex = resolveColumnIndex(grouping.keyProperty(), metadata);
+            compiledGrouping = new CompiledQuery.CompiledGrouping(groupColumnIndex, grouping.valueType());
+        }
+
         return CompiledQuery.of(
             logicalQuery.opCode(),
             logicalQuery.returnKind(),
@@ -109,6 +117,7 @@ public class QueryCompiler {
             compiledProjection,
             attachJoinPredicates(joinsByPath, joinPredicates),
             compiledOrderBy,
+            compiledGrouping,
             logicalQuery.limit(),
             logicalQuery.distinct(),
             logicalQuery.boundValues(),
