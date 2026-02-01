@@ -59,7 +59,7 @@ IndexOutOfBoundsException errors are now prevented through bounds checking in th
 **Practical Usage Patterns:**
 
 For **read-mostly workloads with occasional writes**:
-- Multi-reader, single-writer is fully supported without external synchronization
+- Multi-reader, multi-writer is fully supported without external synchronization
 - Readers benefit from lock-free lookups and wait-free seqlock reads
 
 For **write-heavy workloads**:
@@ -243,10 +243,9 @@ Join tables are hardcoded with `int.class` columns for storing entity references
 ## Current Limitations
 
 1. **Join Tables with UUID/String IDs** - Only numeric IDs supported
-2. **@OneToMany and @ManyToMany relationships** - Not implemented yet
-3. **DISTINCT query modifier** - Tokenized but execution not complete
-4. **No MVCC or transactions** - Best-effort isolation only (see CONCURRENCY.md)
-5. **No pessimistic locking API** - External synchronization required for some write-heavy scenarios
+2. **DISTINCT query modifier** - Tokenized but execution not complete
+3. **No MVCC or transactions** - Best-effort isolation only (see CONCURRENCY.md)
+4. **No pessimistic locking API** - External synchronization required for some write-heavy scenarios
 
 ### Test Coverage
 

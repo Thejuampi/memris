@@ -194,6 +194,8 @@ Custom annotations for entity marking:
 **Concurrency Primitives**
 - `LockFreeFreeList` - Lock-free Treiber stack for row ID reuse with CAS-based push/pop operations
 
+**See [CONCURRENCY.md](CONCURRENCY.md)** for detailed concurrency model, thread-safety guarantees, and improvement roadmap.
+
 **Key Files:**
 - `TableGenerator.java` - ByteBuddy generation
 - `AbstractTable.java` - Base class for tables
@@ -358,7 +360,7 @@ public final class PersonTable extends AbstractTable implements GeneratedTable {
 - **SIMD Not Implemented**: Plain loops used; JIT may auto-vectorize but no explicit Vector API
 - **Custom annotations**: Uses `@Entity`, `@Index`, etc. (not Jakarta/JPA)
 - **No Repository generation**: Generates tables, caller implements repository pattern
-- **Relationship Support**: @OneToOne and @ManyToOne fully implemented; @OneToMany and @ManyToMany not implemented
+- **Relationship Support**: All relationship types (@OneToOne, @ManyToOne, @OneToMany, @ManyToMany) fully implemented
 - **RangeIndex Exists**: O(log n) operations via ConcurrentSkipListMap
 - **Lock-Free Data Structures**: `LockFreeFreeList` uses Treiber stack algorithm with CAS for O(1) row allocation/deallocation
 - **Seqlock Support**: `rowSeqLocks` in AbstractTable provides per-row atomic read-write transactions

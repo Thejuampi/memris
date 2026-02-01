@@ -192,22 +192,29 @@ Memris uses **custom annotations** (not Jakarta/JPA):
 
 ---
 
-## Join Table Implementation
+## Relationship Annotations Supported
 
-When implementing join tables (@OneToMany, @ManyToMany):
+All relationship annotations are fully implemented:
+
+- **@ManyToOne** - Foreign key relationships with targetEntity and optional attributes
+- **@OneToMany** - Bidirectional relationships requiring mappedBy attribute
+- **@ManyToMany** - Join table relationships with @JoinTable annotation
+- **@OneToOne** - One-to-one relationships with mappedBy support
+
+**Join Table Implementation**:
 - **Numeric IDs (int, long)**: direct mapping to int/long columns
 - **UUID IDs**: store as two long columns (128 bits total)
 - **String IDs**: store in String columns with proper indexing
 - **Current limitation**: Only numeric IDs fully supported
 
-**Note:** @OneToMany and @ManyToMany are NOT implemented yet. Use manual foreign key fields (long) for relationships.
+All relationships use eager loading since Memris is an in-memory storage engine (no lazy loading).
 
 ## Concurrency Model
 
 **Current Implementation:**
 - **Multi-reader**: Thread-safe concurrent queries (via HashIndex, RangeIndex)
-- **Single-writer**: External synchronization required for concurrent saves
-- **Read-write**: No coordination, potential inconsistency
+- **Multi-writer**: Thread-safe with row seqlock + CAS (concurrent saves supported)
+- **Read-write**: SeqLock provides coordination for row updates and typed reads
 - **Isolation**: Best-effort (no MVCC, no transactions)
 
 **Thread-Safe Operations:**
@@ -215,11 +222,10 @@ When implementing join tables (@OneToMany, @ManyToMany):
 - ID indexes: `ConcurrentHashMap` for lock-free lookups
 - Query execution: Thread-safe reads on published data
 - Index updates: `ConcurrentHashMap.compute()` / `ConcurrentSkipListMap.compute()`
-
-**NOT Thread-Safe (External Sync Required):**
-- Entity saves: Multiple concurrent saves can corrupt column state
-- Entity deletes: Tombstone BitSet operations not synchronized
-- Row allocation: Unsynchronized free-list
+- Entity saves: Coordinated by row seqlock (AbstractTable.java:172-195)
+- Entity deletes: AtomicIntegerArray with CAS loops (AbstractTable.java:255-274)
+- Row allocation: Lock-free via LockFreeFreeList (CAS-based)
+- Column writes: Protected by beginSeqLock/endSeqLock
 
 **See Also:** [CONCURRENCY.md](CONCURRENCY.md) for detailed concurrency model and improvement roadmap.
 

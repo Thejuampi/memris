@@ -28,8 +28,8 @@
 ### Relationships
 - ✅ @OneToOne (FULLY IMPLEMENTED)
 - ✅ @ManyToOne (FULLY IMPLEMENTED)
-- ❌ @OneToMany (NOT IMPLEMENTED)
-- ❌ @ManyToMany (NOT IMPLEMENTED)
+- ✅ @OneToMany (FULLY IMPLEMENTED)
+- ✅ @ManyToMany (FULLY IMPLEMENTED)
 
 ### Annotations
 - ✅ @Entity
@@ -44,7 +44,6 @@
 ## Not Implemented
 
 ### Relationships
-- @OneToMany and @ManyToMany relationships
 - Cascade delete / orphan removal
 - Cascade operations on @OneToOne relationships
 
@@ -96,7 +95,7 @@ See [ROADMAP.md](ROADMAP.md) for detailed roadmap including:
 | Entity deletes | ✅ | AtomicIntegerArray (CAS) |
 | Row allocation | ✅ | LockFreeFreeList (CAS) |
 | SeqLock operations | ✅ | AtomicLongArray |
-| Column writes | ❌ | External sync required |
-| Index updates | ❌ | External sync required |
+| Column writes | ✅ | Row seqlock (CAS) + publish ordering |
+| Index updates | ⚠️ | Eventual consistency + query validation |
 
 See [CONCURRENCY.md](CONCURRENCY.md) for detailed concurrency analysis and improvement opportunities.

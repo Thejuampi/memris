@@ -257,7 +257,7 @@ Repository Method → QueryCompiler → HeapRuntimeKernel
 
 ### Concurrency Model
 
-**Multi-Reader, Single-Writer (with SeqLock coordination)**
+**Multi-Reader, Multi-Writer (with SeqLock coordination)**
 
 | Operation | Thread-Safe | Mechanism |
 |-----------|-------------|-----------|
