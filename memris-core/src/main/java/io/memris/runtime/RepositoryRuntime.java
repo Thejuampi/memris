@@ -916,35 +916,48 @@ public final class RepositoryRuntime<T> {
         CompiledQuery.CompiledProjection projection = query.projection();
         ProjectionExecutor projectionExecutor = plan.projectionExecutorFor(query);
         if (projection != null) {
-            List<Object> results = new ArrayList<>(max);
+            boolean returnSet = query.returnKind() == LogicalQuery.ReturnKind.MANY_SET;
+            List<Object> results = returnSet ? null : new ArrayList<>(max);
+            java.util.Set<Object> resultSet = returnSet ? new java.util.LinkedHashSet<>(Math.max(16, max)) : null;
             for (int i = 0; i < max; i++) {
                 int rowIndex = rows[i];
-                if (projectionExecutor != null) {
-                    results.add(projectionExecutor.materialize(this, rowIndex));
+                Object value = projectionExecutor != null
+                        ? projectionExecutor.materialize(this, rowIndex)
+                        : materializeProjection(projection, rowIndex);
+                if (returnSet) {
+                    resultSet.add(value);
                 } else {
-                    results.add(materializeProjection(projection, rowIndex));
+                    results.add(value);
                 }
             }
             return switch (query.returnKind()) {
                 case ONE_OPTIONAL -> results.isEmpty() ? Optional.empty() : Optional.of(results.get(0));
                 case MANY_LIST -> results;
+                case MANY_SET -> resultSet;
                 default -> throw new IllegalStateException("Unexpected return kind for FIND: " + query.returnKind());
             };
         }
 
-        List<T> results = new ArrayList<>(max);
+        boolean returnSet = query.returnKind() == LogicalQuery.ReturnKind.MANY_SET;
+        List<T> results = returnSet ? null : new ArrayList<>(max);
+        java.util.Set<T> resultSet = returnSet ? new java.util.LinkedHashSet<>(Math.max(16, max)) : null;
         for (int i = 0; i < max; i++) {
             int rowIndex = rows[i];
             T entity = materializer.materialize(plan.kernel(), rowIndex);
             applyPostLoad(entity);
             hydrateJoins(entity, rowIndex, query);
             hydrateCollections(entity, rowIndex);
-            results.add(entity);
+            if (returnSet) {
+                resultSet.add(entity);
+            } else {
+                results.add(entity);
+            }
         }
 
         return switch (query.returnKind()) {
             case ONE_OPTIONAL -> results.isEmpty() ? Optional.empty() : Optional.of(results.get(0));
             case MANY_LIST -> results;
+            case MANY_SET -> resultSet;
             default -> throw new IllegalStateException("Unexpected return kind for FIND: " + query.returnKind());
         };
     }

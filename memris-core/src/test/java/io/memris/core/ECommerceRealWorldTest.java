@@ -55,8 +55,7 @@ class ECommerceRealWorldTest {
         assertThat(saved.id).isNotNull();
         assertThat(found).isPresent();
         Customer foundCustomer = found.orElseThrow();
-        assertThat(foundCustomer.email).isEqualTo("john.doe@example.com");
-        assertThat(foundCustomer.name).isEqualTo("John Doe");
+        assertThat(foundCustomer).usingRecursiveComparison().ignoringFields("id", "phone").isEqualTo(customer);
     }
 
     @Test
@@ -101,11 +100,8 @@ class ECommerceRealWorldTest {
         // Then
         assertThat(saved.id).isNotNull();
         assertThat(found).isPresent();
-        Product foundProduct = found.orElseThrow();
-        assertThat(foundProduct.sku).isEqualTo("LAPTOP-001");
-        assertThat(foundProduct.name).isEqualTo("Gaming Laptop");
-        assertThat(foundProduct.price).isEqualTo(129999);
-        assertThat(foundProduct.getPriceDollars()).isEqualTo(1299.99);
+        assertThat(found.orElseThrow()).usingRecursiveComparison().ignoringFields("id").isEqualTo(product);
+        assertThat(found.orElseThrow().getPriceDollars()).isEqualTo(1299.99);
     }
 
     @Test
@@ -121,9 +117,10 @@ class ECommerceRealWorldTest {
         List<Product> results = productRepo.findByPriceBetween(5000, 20000);
 
         // Then
-        assertThat(results).hasSize(2);
-        assertThat(results).extracting(p -> p.name)
-                .containsExactlyInAnyOrder("Mechanical Keyboard", "Gaming Headset");
+        assertThat(results).usingRecursiveFieldByFieldElementComparatorIgnoringFields("id").containsExactlyInAnyOrder(
+                new Product("KEYBOARD-001", "Mechanical Keyboard", 14999, 75),
+                new Product("HEADSET-001", "Gaming Headset", 7999, 50)
+        );
     }
 
     @Test
@@ -138,9 +135,10 @@ class ECommerceRealWorldTest {
         List<Product> results = productRepo.findByStockGreaterThan(25);
 
         // Then
-        assertThat(results).hasSize(2);
-        assertThat(results).extracting(p -> p.name)
-                .containsExactlyInAnyOrder("Item B", "Item C");
+        assertThat(results).usingRecursiveFieldByFieldElementComparatorIgnoringFields("id").containsExactlyInAnyOrder(
+                new Product("ITEM-002", "Item B", 2000, 50),
+                new Product("ITEM-003", "Item C", 3000, 100)
+        );
     }
 
     @Test
@@ -170,9 +168,7 @@ class ECommerceRealWorldTest {
 
         // Then
         assertThat(foundOrder).isPresent();
-        Order foundOrderEntity = foundOrder.orElseThrow();
-        assertThat(foundOrderEntity.customerId).isEqualTo(savedCustomer.id);
-        assertThat(foundOrderEntity.status).isEqualTo("PENDING");
+        assertThat(foundOrder.orElseThrow()).usingRecursiveComparison().ignoringFields("id").isEqualTo(order);
         assertThat(orderItems).hasSize(2);
     }
 
@@ -186,9 +182,9 @@ class ECommerceRealWorldTest {
         Customer customer2 = customerRepo.save(new Customer("cust2@example.com", "Customer Two", "555-2222"));
 
         // Customer 1 orders
-        orderRepo.save(new Order(customer1.id, "PENDING", 10000));
+        Order o1 = orderRepo.save(new Order(customer1.id, "PENDING", 10000));
         orderRepo.save(new Order(customer1.id, "CONFIRMED", 20000));
-        orderRepo.save(new Order(customer1.id, "PENDING", 15000));
+        Order o2 = orderRepo.save(new Order(customer1.id, "PENDING", 15000));
 
         // Customer 2 orders
         orderRepo.save(new Order(customer2.id, "PENDING", 5000));
@@ -198,8 +194,7 @@ class ECommerceRealWorldTest {
 
         // Then
         assertThat(customer1Pending).hasSize(2);
-        assertThat(customer1Pending).allMatch(o -> o.customerId.equals(customer1.id));
-        assertThat(customer1Pending).allMatch(o -> o.status.equals("PENDING"));
+        assertThat(customer1Pending).allMatch(o -> o.customerId.equals(customer1.id) && o.status.equals("PENDING"));
     }
 
     @Test
@@ -379,12 +374,14 @@ class ECommerceRealWorldTest {
         // When
         saved.email = newEmail;
         saved.name = "New Name";
-        customerRepo.save(saved);
+        Customer updated = customerRepo.save(saved);
 
         // Then
         assertThat(customerRepo.findByEmail(oldEmail)).isEmpty();
         assertThat(customerRepo.findByEmail(newEmail)).isPresent();
-        assertThat(customerRepo.findByEmail(newEmail).get().name).isEqualTo("New Name");
+        assertThat(customerRepo.findByEmail(newEmail).orElseThrow()).usingRecursiveComparison().ignoringFields("id", "phone", "created").isEqualTo(
+                new Customer(newEmail, "New Name", "555-1111")
+        );
     }
 
     @Test
@@ -436,9 +433,11 @@ class ECommerceRealWorldTest {
         List<Product> results = productRepo.findByPriceBetween(5000, 20000);
 
         // Then - boundaries should be inclusive
-        assertThat(results).hasSize(3);
-        assertThat(results).extracting(p -> p.price)
-                .containsExactlyInAnyOrder(5000L, 20000L, 15000L);
+        assertThat(results).usingRecursiveFieldByFieldElementComparatorIgnoringFields("id").containsExactlyInAnyOrder(
+                new Product("P1", "Product 1", 5000, 10),
+                new Product("P2", "Product 2", 20000, 10),
+                new Product("P3", "Product 3", 15000, 10)
+        );
     }
 
     @Test
@@ -467,9 +466,10 @@ class ECommerceRealWorldTest {
         List<Product> all = productRepo.findAll();
 
         // Then - values should be stored correctly without overflow
-        assertThat(all).hasSize(2);
-        assertThat(all.get(0).price).isEqualTo(Integer.MAX_VALUE - 1);
-        assertThat(all.get(1).price).isEqualTo(Integer.MAX_VALUE);
+        assertThat(all).usingRecursiveFieldByFieldElementComparatorIgnoringFields("id").containsExactlyInAnyOrder(
+                new Product("P1", "Product 1", Integer.MAX_VALUE - 1, 10),
+                new Product("P2", "Product 2", Integer.MAX_VALUE, 10)
+        );
     }
 
     @Test
@@ -520,16 +520,20 @@ class ECommerceRealWorldTest {
     void shouldHandleSorting() {
         // Given
         OrderRepository orderRepo = arena.createRepository(OrderRepository.class);
-        Order o1 = orderRepo.save(new Order(1L, "PENDING", 10000));
-        Order o2 = orderRepo.save(new Order(1L, "PENDING", 30000));
-        Order o3 = orderRepo.save(new Order(1L, "PENDING", 20000));
+        orderRepo.save(new Order(1L, "PENDING", 10000));
+        orderRepo.save(new Order(1L, "PENDING", 30000));
+        orderRepo.save(new Order(1L, "PENDING", 20000));
 
         // When
         List<Order> results = orderRepo.findByStatusOrderByTotalDesc("PENDING");
 
         // Then - results should be sorted by total descending
         assertThat(results).hasSize(3);
-        assertThat(results).extracting(o -> o.total).containsExactly(30000L, 20000L, 10000L);
+        assertThat(results).usingRecursiveFieldByFieldElementComparatorIgnoringFields("id").containsExactly(
+                new Order(1L, "PENDING", 30000),
+                new Order(1L, "PENDING", 20000),
+                new Order(1L, "PENDING", 10000)
+        );
     }
 
     @Test
@@ -546,25 +550,28 @@ class ECommerceRealWorldTest {
 
         // Then - only 3 results returned, sorted by ID ascending
         assertThat(top3).hasSize(3);
-        assertThat(top3).extracting(o -> o.id).containsExactly(o1.id, o2.id, o3.id);
+        assertThat(top3).usingRecursiveFieldByFieldElementComparatorIgnoringFields("id").containsExactly(
+                o1, o2, o3
+        );
     }
 
     @Test
     void shouldHandleInQueries() {
         // Given
         OrderRepository orderRepo = arena.createRepository(OrderRepository.class);
-        orderRepo.save(new Order(1L, "PENDING", 10000));
-        orderRepo.save(new Order(2L, "SHIPPED", 20000));
-        orderRepo.save(new Order(3L, "DELIVERED", 30000));
-        orderRepo.save(new Order(4L, "PENDING", 15000));
+        Order o1 = orderRepo.save(new Order(1L, "PENDING", 10000));
+        Order o2 = orderRepo.save(new Order(2L, "SHIPPED", 20000));
+        Order o3 = orderRepo.save(new Order(3L, "DELIVERED", 30000));
+        Order o4 = orderRepo.save(new Order(4L, "PENDING", 15000));
 
         // When
         List<Order> results = orderRepo.findByStatusIn(List.of("PENDING", "SHIPPED"));
 
         // Then
         assertThat(results).hasSize(3);
-        assertThat(results).extracting(o -> o.status)
-                .containsExactlyInAnyOrder("PENDING", "SHIPPED", "PENDING");
+        assertThat(results).usingRecursiveFieldByFieldElementComparatorIgnoringFields("id").containsExactlyInAnyOrder(
+                o1, o2, o4
+        );
     }
 
     @Test

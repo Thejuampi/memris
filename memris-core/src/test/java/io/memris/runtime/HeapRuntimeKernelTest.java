@@ -46,9 +46,11 @@ class HeapRuntimeKernelTest {
 
         List<FloatTestEntity> results = repo.findByValueBetween(2.0f, 6.0f);
 
-        assertThat(results).hasSize(3);
-        assertThat(results).extracting(e -> e.value)
-                .containsExactlyInAnyOrder(2.5f, 3.5f, 5.5f);
+        assertThat(results).usingRecursiveFieldByFieldElementComparatorIgnoringFields("id").containsExactlyInAnyOrder(
+                new FloatTestEntity(null, 2.5f),
+                new FloatTestEntity(null, 3.5f),
+                new FloatTestEntity(null, 5.5f)
+        );
     }
 
     @Test
@@ -64,9 +66,10 @@ class HeapRuntimeKernelTest {
 
         List<FloatTestEntity> results = repo.findByValueBetween(-6.0f, -2.0f);
 
-        assertThat(results).hasSize(2);
-        assertThat(results).extracting(e -> e.value)
-                .containsExactlyInAnyOrder(-5.5f, -2.5f);
+        assertThat(results).usingRecursiveFieldByFieldElementComparatorIgnoringFields("id").containsExactlyInAnyOrder(
+                new FloatTestEntity(null, -5.5f),
+                new FloatTestEntity(null, -2.5f)
+        );
     }
 
     @Test
@@ -106,9 +109,11 @@ class HeapRuntimeKernelTest {
 
         List<FloatTestEntity> results = repo.findByValueBetween(-2.0f, 3.0f);
 
-        assertThat(results).hasSize(3);
-        assertThat(results).extracting(e -> e.value)
-                .containsExactlyInAnyOrder(-1.0f, 0.0f, 2.5f);
+        assertThat(results).usingRecursiveFieldByFieldElementComparatorIgnoringFields("id").containsExactlyInAnyOrder(
+                new FloatTestEntity(null, -1.0f),
+                new FloatTestEntity(null, 0.0f),
+                new FloatTestEntity(null, 2.5f)
+        );
     }
 
     // ==================== DOUBLE BETWEEN TESTS ====================
@@ -125,9 +130,11 @@ class HeapRuntimeKernelTest {
 
         List<DoubleTestEntity> results = repo.findByValueBetween(2.0, 6.0);
 
-        assertThat(results).hasSize(3);
-        assertThat(results).extracting(e -> e.value)
-                .containsExactlyInAnyOrder(2.5, 3.5, 5.5);
+        assertThat(results).usingRecursiveFieldByFieldElementComparatorIgnoringFields("id").containsExactlyInAnyOrder(
+                new DoubleTestEntity(null, 2.5),
+                new DoubleTestEntity(null, 3.5),
+                new DoubleTestEntity(null, 5.5)
+        );
     }
 
     @Test
@@ -172,9 +179,11 @@ class HeapRuntimeKernelTest {
 
         List<DoubleTestEntity> results = repo.findByValueBetween(-2.0, 3.0);
 
-        assertThat(results).hasSize(3);
-        assertThat(results).extracting(e -> e.value)
-                .containsExactlyInAnyOrder(-1.0, 0.0, 2.5);
+        assertThat(results).usingRecursiveFieldByFieldElementComparatorIgnoringFields("id").containsExactlyInAnyOrder(
+                new DoubleTestEntity(null, -1.0),
+                new DoubleTestEntity(null, 0.0),
+                new DoubleTestEntity(null, 2.5)
+        );
     }
 
     // ==================== BYTE BETWEEN TESTS ====================
@@ -191,9 +200,10 @@ class HeapRuntimeKernelTest {
 
         List<ByteTestEntity> results = repo.findByValueBetween((byte) 15, (byte) 35);
 
-        assertThat(results).hasSize(2);
-        assertThat(results).extracting(e -> e.value)
-                .containsExactlyInAnyOrder((byte) 20, (byte) 30);
+        assertThat(results).usingRecursiveFieldByFieldElementComparatorIgnoringFields("id").containsExactlyInAnyOrder(
+                new ByteTestEntity(null, (byte) 20),
+                new ByteTestEntity(null, (byte) 30)
+        );
     }
 
     @Test
@@ -238,9 +248,10 @@ class HeapRuntimeKernelTest {
 
         List<ShortTestEntity> results = repo.findByValueBetween((short) 150, (short) 350);
 
-        assertThat(results).hasSize(2);
-        assertThat(results).extracting(e -> e.value)
-                .containsExactlyInAnyOrder((short) 200, (short) 300);
+        assertThat(results).usingRecursiveFieldByFieldElementComparatorIgnoringFields("id").containsExactlyInAnyOrder(
+                new ShortTestEntity(null, (short) 200),
+                new ShortTestEntity(null, (short) 300)
+        );
     }
 
     @Test
@@ -268,9 +279,10 @@ class HeapRuntimeKernelTest {
 
         List<ShortTestEntity> results = repo.findByValueBetween((short) 25000, Short.MAX_VALUE);
 
-        assertThat(results).hasSize(2);
-        assertThat(results).extracting(e -> e.value)
-                .containsExactlyInAnyOrder((short) 30000, Short.MAX_VALUE);
+        assertThat(results).usingRecursiveFieldByFieldElementComparatorIgnoringFields("id").containsExactlyInAnyOrder(
+                new ShortTestEntity(null, (short) 30000),
+                new ShortTestEntity(null, Short.MAX_VALUE)
+        );
     }
 
     // ==================== CHAR BETWEEN TESTS ====================
@@ -286,9 +298,10 @@ class HeapRuntimeKernelTest {
 
         List<CharTestEntity> results = repo.findByValueBetween('c', 'h');
 
-        assertThat(results).hasSize(2);
-        assertThat(results).extracting(e -> e.value)
-                .containsExactlyInAnyOrder('d', 'g');
+        assertThat(results).usingRecursiveFieldByFieldElementComparatorIgnoringFields("id").containsExactlyInAnyOrder(
+                new CharTestEntity(null, 'd'),
+                new CharTestEntity(null, 'g')
+        );
     }
 
     @Test
@@ -302,9 +315,10 @@ class HeapRuntimeKernelTest {
 
         List<CharTestEntity> results = repo.findByValueBetween('2', '6');
 
-        assertThat(results).hasSize(2);
-        assertThat(results).extracting(e -> e.value)
-                .containsExactlyInAnyOrder('3', '5');
+        assertThat(results).usingRecursiveFieldByFieldElementComparatorIgnoringFields("id").containsExactlyInAnyOrder(
+                new CharTestEntity(null, '3'),
+                new CharTestEntity(null, '5')
+        );
     }
 
     @Test
@@ -318,9 +332,10 @@ class HeapRuntimeKernelTest {
 
         List<CharTestEntity> results = repo.findByValueBetween('\u0060', '\u03C0');
 
-        assertThat(results).hasSize(2);
-        assertThat(results).extracting(e -> e.value)
-                .containsExactlyInAnyOrder('\u0061', '\u03B1');
+        assertThat(results).usingRecursiveFieldByFieldElementComparatorIgnoringFields("id").containsExactlyInAnyOrder(
+                new CharTestEntity(null, '\u0061'),
+                new CharTestEntity(null, '\u03B1')
+        );
     }
 
 }

@@ -4,6 +4,7 @@ import io.memris.repository.MemrisRepository;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 public interface TestEntityRepository extends MemrisRepository<TestEntity> {
     
@@ -50,4 +51,8 @@ public interface TestEntityRepository extends MemrisRepository<TestEntity> {
 
     
     List<TestEntity> findTop2ByOrderByAgeAsc();
+
+    Set<TestEntity> findByIdIn(Set<Long> ids);
+
+    Set<TestEntity> findByIdIn(long... ids);
 }

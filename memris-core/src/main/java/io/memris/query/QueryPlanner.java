@@ -155,9 +155,9 @@ enum QueryOperator {
  * <p>
  * Supported patterns:
  * - findById → ReturnKind.ONE_OPTIONAL, Condition(id, EQ, arg0)
- * - findAll → ReturnKind.MANY_LIST, no conditions
- * - findByXxx → ReturnKind.MANY_LIST, Condition(xxx, EQ, arg0)
- * - findByXxxAndYyy → ReturnKind.MANY_LIST, Condition(xxx, EQ, arg0),
+ * - findAll → ReturnKind.MANY_LIST (or MANY_SET), no conditions
+ * - findByXxx → ReturnKind.MANY_LIST (or MANY_SET), Condition(xxx, EQ, arg0)
+ * - findByXxxAndYyy → ReturnKind.MANY_LIST (or MANY_SET), Condition(xxx, EQ, arg0),
  * Condition(yyy, EQ, arg1)
  * - findByXxxOrYyy → ReturnKind.MANY_LIST, OR conditions
  * - countByXxx → ReturnKind.COUNT_LONG, Condition(xxx, EQ, arg0)
@@ -352,7 +352,7 @@ public final class QueryPlanner {
 
         // Otherwise, determine from ReturnKind
         return switch (returnKind) {
-            case MANY_LIST, ONE_OPTIONAL -> OpCode.FIND;
+            case MANY_LIST, MANY_SET, ONE_OPTIONAL -> OpCode.FIND;
             case COUNT_LONG -> OpCode.COUNT;
             case EXISTS_BOOL -> OpCode.EXISTS;
             default -> throw new IllegalArgumentException("Unexpected return kind for derived query: " + returnKind);
@@ -544,12 +544,16 @@ public final class QueryPlanner {
         return switch (prefix.toLowerCase()) {
             case "find", "read", "query", "get" -> {
                 if (isAll || remaining.isEmpty())
-                    yield LogicalQuery.ReturnKind.MANY_LIST; // findAll()
+                    yield isSetReturnType(returnType)
+                            ? LogicalQuery.ReturnKind.MANY_SET
+                            : LogicalQuery.ReturnKind.MANY_LIST; // findAll()
                 if (hasBy) {
                     // findById() vs findByXxx()
                     yield returnType.equals(java.util.Optional.class)
                             ? LogicalQuery.ReturnKind.ONE_OPTIONAL
-                            : LogicalQuery.ReturnKind.MANY_LIST;
+                            : (isSetReturnType(returnType)
+                                    ? LogicalQuery.ReturnKind.MANY_SET
+                                    : LogicalQuery.ReturnKind.MANY_LIST);
                 }
                 throw new IllegalArgumentException("Invalid find method: " + methodName);
             }
@@ -571,6 +575,10 @@ public final class QueryPlanner {
             }
             default -> throw new IllegalArgumentException("Unknown prefix: " + prefix);
         };
+    }
+
+    private static boolean isSetReturnType(Class<?> returnType) {
+        return java.util.Set.class.isAssignableFrom(returnType);
     }
 
     /**

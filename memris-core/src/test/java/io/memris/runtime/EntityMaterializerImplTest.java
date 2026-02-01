@@ -12,7 +12,7 @@ import org.junit.jupiter.api.DisplayName;
 
 import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Tests for EntityMaterializerImpl.
@@ -49,10 +49,10 @@ class EntityMaterializerImplTest {
         // Materialize entity
         TestEntity entity = materializer.materialize(kernel, 0);
         
-        assertNotNull(entity);
-        assertEquals(1L, entity.id);
-        assertEquals("Alice", entity.name);
-        assertEquals(30, entity.age);
+        assertThat(entity).isNotNull();
+        assertThat(entity.id).isEqualTo(1L);
+        assertThat(entity.name).isEqualTo("Alice");
+        assertThat(entity.age).isEqualTo(30);
     }
     
     @Test
@@ -80,9 +80,9 @@ class EntityMaterializerImplTest {
         
         TestEntity entity = materializer.materialize(kernel, 0);
         
-        assertNotNull(entity);
-        assertNull(entity.name);
-        assertEquals(30, entity.age);
+        assertThat(entity).isNotNull();
+        assertThat(entity.name).isNull();
+        assertThat(entity.age).isEqualTo(30);
     }
     
     @Test
@@ -115,13 +115,13 @@ class EntityMaterializerImplTest {
         TestEntity bob = materializer.materialize(kernel, 1);
         TestEntity charlie = materializer.materialize(kernel, 2);
         
-        assertEquals("Alice", alice.name);
-        assertEquals("Bob", bob.name);
-        assertEquals("Charlie", charlie.name);
+        assertThat(alice.name).isEqualTo("Alice");
+        assertThat(bob.name).isEqualTo("Bob");
+        assertThat(charlie.name).isEqualTo("Charlie");
         
-        assertEquals(30, alice.age);
-        assertEquals(25, bob.age);
-        assertEquals(35, charlie.age);
+        assertThat(alice.age).isEqualTo(30);
+        assertThat(bob.age).isEqualTo(25);
+        assertThat(charlie.age).isEqualTo(35);
     }
     
     // Test entity

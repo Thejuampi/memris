@@ -153,6 +153,8 @@ public record LogicalQuery(
         ONE_OPTIONAL,
         /** Query: Multiple entities (findBy*, findAll) */
         MANY_LIST,
+        /** Query: Multiple entities as Set (findBy*, findAll) */
+        MANY_SET,
         /** Query: Boolean existence check (existsById) */
         EXISTS_BOOL,
         /** Query: Count (count, countBy*) */

@@ -209,6 +209,9 @@ public final class JpqlQueryParser {
         if (List.class.isAssignableFrom(returnType)) {
             return LogicalQuery.ReturnKind.MANY_LIST;
         }
+        if (java.util.Set.class.isAssignableFrom(returnType)) {
+            return LogicalQuery.ReturnKind.MANY_SET;
+        }
         if (returnType == boolean.class || returnType == Boolean.class) {
             return LogicalQuery.ReturnKind.EXISTS_BOOL;
         }
@@ -300,7 +303,7 @@ public final class JpqlQueryParser {
         Class<?> rawType = method.getReturnType();
         if (rawType.isRecord()) {
             throw new IllegalArgumentException(
-                    "Record projections must be returned as List or Optional: " + method.getName());
+                    "Record projections must be returned as List, Set, or Optional: " + method.getName());
         }
 
         java.lang.reflect.Type generic = method.getGenericReturnType();
@@ -320,6 +323,9 @@ public final class JpqlQueryParser {
         }
         if (List.class.isAssignableFrom(rawType)) {
             return new ProjectionReturn(argClass, LogicalQuery.ReturnKind.MANY_LIST);
+        }
+        if (java.util.Set.class.isAssignableFrom(rawType)) {
+            return new ProjectionReturn(argClass, LogicalQuery.ReturnKind.MANY_SET);
         }
         return null;
     }

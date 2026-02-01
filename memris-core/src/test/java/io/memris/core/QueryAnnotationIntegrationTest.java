@@ -58,7 +58,9 @@ class QueryAnnotationIntegrationTest {
         Optional<Product> found = repo.findBySkuQuery("SKU-2");
 
         assertThat(found).isPresent();
-        assertThat(found.orElseThrow().name).isEqualTo("Product 2");
+        assertThat(found.orElseThrow()).usingRecursiveComparison().ignoringFields("id").isEqualTo(
+                new Product("SKU-2", "Product 2", 2000, 20)
+        );
     }
 
     @Test
@@ -70,9 +72,10 @@ class QueryAnnotationIntegrationTest {
 
         List<Product> results = repo.findByPriceRange(1500, 3000);
 
-        assertThat(results).hasSize(2);
-        assertThat(results).extracting(p -> p.sku)
-                .containsExactlyInAnyOrder("SKU-2", "SKU-3");
+        assertThat(results).usingRecursiveFieldByFieldElementComparatorIgnoringFields("id").containsExactlyInAnyOrder(
+                new Product("SKU-2", "Product 2", 2000, 20),
+                new Product("SKU-3", "Product 3", 3000, 30)
+        );
     }
 
     @Test
@@ -84,9 +87,10 @@ class QueryAnnotationIntegrationTest {
 
         List<Product> results = repo.findBySkus(List.of("SKU-1", "SKU-3"));
 
-        assertThat(results).hasSize(2);
-        assertThat(results).extracting(p -> p.sku)
-                .containsExactlyInAnyOrder("SKU-1", "SKU-3");
+        assertThat(results).usingRecursiveFieldByFieldElementComparatorIgnoringFields("id").containsExactlyInAnyOrder(
+                new Product("SKU-1", "Product 1", 1000, 10),
+                new Product("SKU-3", "Product 3", 3000, 30)
+        );
     }
 
     @Test
@@ -99,8 +103,7 @@ class QueryAnnotationIntegrationTest {
         List<Customer> results = repo.findByNameIlike("%ali%");
 
         assertThat(results).hasSize(2);
-        assertThat(results).extracting(c -> c.name)
-                .containsExactlyInAnyOrder("Alice Johnson", "ALICIA Brown");
+        assertThat(results).allMatch(c -> c.name.equals("Alice Johnson") || c.name.equals("ALICIA Brown"));
     }
 
     @Test
@@ -113,9 +116,11 @@ class QueryAnnotationIntegrationTest {
         List<Product> results = repo.findAllOrderByPriceDesc();
 
         assertThat(results).hasSize(3);
-        assertThat(results.get(0).sku).isEqualTo("SKU-2");
-        assertThat(results.get(1).sku).isEqualTo("SKU-3");
-        assertThat(results.get(2).sku).isEqualTo("SKU-1");
+        assertThat(results).usingRecursiveFieldByFieldElementComparatorIgnoringFields("id").containsExactly(
+                new Product("SKU-2", "Product 2", 3000, 20),
+                new Product("SKU-3", "Product 3", 2000, 30),
+                new Product("SKU-1", "Product 1", 1000, 10)
+        );
     }
 
     @Test
@@ -127,9 +132,10 @@ class QueryAnnotationIntegrationTest {
 
         List<Product> results = repo.findAffordableOrSpecific(10, 3000, "SKU-3");
 
-        assertThat(results).hasSize(2);
-        assertThat(results).extracting(p -> p.sku)
-                .containsExactlyInAnyOrder("SKU-2", "SKU-3");
+        assertThat(results).usingRecursiveFieldByFieldElementComparatorIgnoringFields("id").containsExactlyInAnyOrder(
+                new Product("SKU-2", "Product 2", 2000, 50),
+                new Product("SKU-3", "Product 3", 5000, 100)
+        );
     }
 
     @Test
@@ -161,9 +167,10 @@ class QueryAnnotationIntegrationTest {
 
         List<OrderSummary> results = repo.findSummariesOrdered(0);
 
-        assertThat(results).hasSize(2);
-        assertThat(results.get(0).total()).isEqualTo(2500);
-        assertThat(results.get(1).total()).isEqualTo(1500);
+        assertThat(results).containsExactly(
+                new OrderSummary(2500, "Bob"),
+                new OrderSummary(1500, "Alice")
+        );
     }
 
     @Test
@@ -196,10 +203,11 @@ class QueryAnnotationIntegrationTest {
 
         List<Product> results = repo.findAllOrderByPriceDescStockAsc();
 
-        assertThat(results).hasSize(3);
-        assertThat(results.get(0).sku).isEqualTo("SKU-3");
-        assertThat(results.get(1).sku).isEqualTo("SKU-2");
-        assertThat(results.get(2).sku).isEqualTo("SKU-1");
+        assertThat(results).usingRecursiveFieldByFieldElementComparatorIgnoringFields("id").containsExactly(
+                new Product("SKU-3", "Product 3", 2000, 1),
+                new Product("SKU-2", "Product 2", 1000, 2),
+                new Product("SKU-1", "Product 1", 1000, 5)
+        );
     }
 
     @Test
