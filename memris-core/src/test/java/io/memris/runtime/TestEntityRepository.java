@@ -29,6 +29,10 @@ public interface TestEntityRepository extends MemrisRepository<TestEntity> {
     
     // Query methods
     List<TestEntity> findByName(String name);
+
+    List<TestEntity> findByNameIn(List<String> names);
+
+    List<TestEntity> findByNameIn(String[] names);
     
     List<TestEntity> findByAgeGreaterThan(int age);
     
@@ -41,8 +45,9 @@ public interface TestEntityRepository extends MemrisRepository<TestEntity> {
     List<TestEntity> findByNameAndAge(String name, int age);
     
     List<TestEntity> findByNameOrAge(String name, int age);
-    
+
     List<TestEntity> findByOrderByAgeAsc();
+
     
     List<TestEntity> findTop2ByOrderByAgeAsc();
 }

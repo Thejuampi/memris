@@ -2,6 +2,8 @@ package io.memris.runtime;
 
 import io.memris.core.MemrisArena;
 import io.memris.repository.MemrisRepositoryFactory;
+import io.memris.runtime.IndexedEntity;
+import io.memris.runtime.IndexedEntityRepository;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -221,6 +223,34 @@ class RepositoryRuntimeTest {
     }
 
     @Test
+    @DisplayName("Should find by name in list")
+    void shouldFindByNameInList() {
+        TestEntityRepository repo = arena.createRepository(TestEntityRepository.class);
+        repo.save(new TestEntity(null, "Alice", 25));
+        repo.save(new TestEntity(null, "Bob", 30));
+        repo.save(new TestEntity(null, "Charlie", 35));
+
+        List<TestEntity> results = repo.findByNameIn(List.of("Alice", "Charlie"));
+
+        assertThat(results).hasSize(2);
+        assertThat(results).extracting(e -> e.name).containsExactlyInAnyOrder("Alice", "Charlie");
+    }
+
+    @Test
+    @DisplayName("Should find by name in array")
+    void shouldFindByNameInArray() {
+        TestEntityRepository repo = arena.createRepository(TestEntityRepository.class);
+        repo.save(new TestEntity(null, "Alice", 25));
+        repo.save(new TestEntity(null, "Bob", 30));
+        repo.save(new TestEntity(null, "Charlie", 35));
+
+        List<TestEntity> results = repo.findByNameIn(new String[] { "Bob" });
+
+        assertThat(results).hasSize(1);
+        assertThat(results.get(0).name).isEqualTo("Bob");
+    }
+
+    @Test
     @DisplayName("Should find by age greater than")
     void shouldFindByAgeGreaterThan() {
         // Given
@@ -337,6 +367,7 @@ class RepositoryRuntimeTest {
         assertThat(results.get(2).name).isEqualTo("Charlie");
     }
 
+
     @Test
     @DisplayName("Should find top N results")
     void shouldFindTopNResults() {
@@ -412,5 +443,26 @@ class RepositoryRuntimeTest {
         // Then
         assertThat(saved.id).isNotNull();
         assertThat(saved.name).isNull();
+    }
+
+    @Test
+    @DisplayName("Should maintain index entries on save, update, and delete")
+    void shouldMaintainIndexEntriesOnSaveUpdateDelete() {
+        IndexedEntityRepository repo = arena.createRepository(IndexedEntityRepository.class);
+        IndexedEntity first = repo.save(new IndexedEntity(null, "alpha", 10));
+        IndexedEntity second = repo.save(new IndexedEntity(null, "beta", 20));
+
+        assertThat(repo.countByCategory("alpha")).isEqualTo(1);
+        assertThat(repo.findByCategory("beta")).hasSize(1);
+
+        first.category = "beta";
+        repo.save(first);
+
+        assertThat(repo.countByCategory("alpha")).isEqualTo(0);
+        assertThat(repo.countByCategory("beta")).isEqualTo(2);
+
+        repo.delete(second);
+
+        assertThat(repo.countByCategory("beta")).isEqualTo(1);
     }
 }

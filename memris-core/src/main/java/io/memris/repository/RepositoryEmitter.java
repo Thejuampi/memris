@@ -93,6 +93,14 @@ public final class RepositoryEmitter {
         TypeConverter<?, ?>[] converters = extractConverters(metadata);
         MethodHandle[] setters = extractSetters(metadata);
 
+        ConditionExecutor[][] conditionExecutors = RepositoryRuntime.buildConditionExecutors(
+                compiledQueries,
+                columnNames,
+                metadata.entityClass(),
+                false);
+        OrderExecutor[] orderExecutors = RepositoryRuntime.buildOrderExecutors(compiledQueries, table);
+        ProjectionExecutor[] projectionExecutors = RepositoryRuntime.buildProjectionExecutors(compiledQueries);
+
         // Create entity constructor handle
         MethodHandle entityConstructor;
         try {
@@ -113,6 +121,9 @@ public final class RepositoryEmitter {
                 compiledQueries,
                 bindings,
                 executors,
+                conditionExecutors,
+                orderExecutors,
+                projectionExecutors,
                 entityConstructor,
                 columnNames,
                 typeCodes,

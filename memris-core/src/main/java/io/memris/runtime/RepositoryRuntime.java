@@ -40,6 +40,7 @@ public final class RepositoryRuntime<T> {
     private final EntitySaver<T, ?> entitySaver;
     private final java.util.concurrent.ConcurrentHashMap<Class<?>, EntityMetadata<?>> projectionMetadata;
     private final java.util.concurrent.ConcurrentHashMap<Class<?>, MethodHandle> projectionConstructors;
+    private final IndexFieldReader[] indexFieldReaders;
     private static final AtomicLong idCounter = new AtomicLong(1L);
 
     /**
@@ -72,6 +73,491 @@ public final class RepositoryRuntime<T> {
         this.projectionMetadata.putAll(this.relatedMetadata);
         this.projectionConstructors = new java.util.concurrent.ConcurrentHashMap<>();
         this.entitySaver = plan.entitySaver();
+        this.indexFieldReaders = buildIndexFieldReaders(metadata);
+    }
+
+    public static ConditionExecutor[][] buildConditionExecutors(CompiledQuery[] queries, String[] columnNames,
+            Class<?> entityClass, boolean useIndex) {
+        ConditionExecutor[][] executors = new ConditionExecutor[queries.length][];
+        for (int i = 0; i < queries.length; i++) {
+            CompiledQuery.CompiledCondition[] conditions = queries[i].conditions();
+            if (conditions == null || conditions.length == 0) {
+                executors[i] = new ConditionExecutor[0];
+                continue;
+            }
+            ConditionExecutor[] queryExecutors = new ConditionExecutor[conditions.length];
+            for (int j = 0; j < conditions.length; j++) {
+                queryExecutors[j] = buildConditionExecutor(conditions[j], columnNames, entityClass, useIndex);
+            }
+            executors[i] = queryExecutors;
+        }
+        return executors;
+    }
+
+    public static OrderExecutor[] buildOrderExecutors(CompiledQuery[] queries, GeneratedTable table) {
+        OrderExecutor[] executors = new OrderExecutor[queries.length];
+        for (int i = 0; i < queries.length; i++) {
+            executors[i] = buildOrderExecutor(queries[i], table);
+        }
+        return executors;
+    }
+
+    public static ProjectionExecutor[] buildProjectionExecutors(CompiledQuery[] queries) {
+        ProjectionExecutor[] executors = new ProjectionExecutor[queries.length];
+        for (int i = 0; i < queries.length; i++) {
+            executors[i] = buildProjectionExecutor(queries[i]);
+        }
+        return executors;
+    }
+
+    private static ConditionExecutor buildConditionExecutor(CompiledQuery.CompiledCondition condition,
+            String[] columnNames,
+            Class<?> entityClass,
+            boolean useIndex) {
+        if (!useIndex || condition.ignoreCase()) {
+            return new ConditionExecutor(condition.nextCombinator(),
+                    (runtime, args) -> runtime.plan().kernel().executeCondition(condition, args));
+        }
+        String fieldName = (condition.columnIndex() >= 0 && condition.columnIndex() < columnNames.length)
+                ? columnNames[condition.columnIndex()]
+                : null;
+        if (fieldName == null) {
+            return new ConditionExecutor(condition.nextCombinator(),
+                    (runtime, args) -> runtime.plan().kernel().executeCondition(condition, args));
+        }
+        LogicalQuery.Operator operator = condition.operator();
+        return switch (operator) {
+            case IN -> new ConditionExecutor(condition.nextCombinator(), (runtime, args) -> {
+                Selection selection = selectWithIndexForIn(runtime, entityClass, fieldName,
+                        args[condition.argumentIndex()]);
+                return selection != null ? selection : runtime.plan().kernel().executeCondition(condition, args);
+            });
+            case BETWEEN -> new ConditionExecutor(condition.nextCombinator(), (runtime, args) -> {
+                Object[] range = new Object[] { args[condition.argumentIndex()], args[condition.argumentIndex() + 1] };
+                MemrisRepositoryFactory indexFactory = runtime.indexFactory();
+                if (indexFactory == null) {
+                    return runtime.plan().kernel().executeCondition(condition, args);
+                }
+                int[] rows = indexFactory.queryIndex(entityClass, fieldName, operator.toPredicateOperator(), range);
+                return rows != null ? runtime.selectionFromRows(rows)
+                        : runtime.plan().kernel().executeCondition(condition, args);
+            });
+            case EQ, GT, GTE, LT, LTE -> new ConditionExecutor(condition.nextCombinator(), (runtime, args) -> {
+                MemrisRepositoryFactory indexFactory = runtime.indexFactory();
+                if (indexFactory == null) {
+                    return runtime.plan().kernel().executeCondition(condition, args);
+                }
+                Object value = args[condition.argumentIndex()];
+                int[] rows = indexFactory.queryIndex(entityClass, fieldName, operator.toPredicateOperator(), value);
+                return rows != null ? runtime.selectionFromRows(rows)
+                        : runtime.plan().kernel().executeCondition(condition, args);
+            });
+            default -> new ConditionExecutor(condition.nextCombinator(),
+                    (runtime, args) -> runtime.plan().kernel().executeCondition(condition, args));
+        };
+    }
+
+    private static Selection selectWithIndexForIn(RepositoryRuntime<?> runtime, Class<?> entityClass, String fieldName,
+            Object value) {
+        MemrisRepositoryFactory indexFactory = runtime.indexFactory();
+        if (indexFactory == null) {
+            return null;
+        }
+        Iterable<?> iterable = null;
+        if (value instanceof Iterable<?> it) {
+            iterable = it;
+        } else if (value instanceof Object[] arr) {
+            iterable = java.util.Arrays.asList(arr);
+        }
+
+        if (iterable == null) {
+            if (value instanceof int[] ints) {
+                Selection combined = null;
+                for (int v : ints) {
+                    int[] rows = indexFactory.queryIndex(entityClass, fieldName, Predicate.Operator.EQ, v);
+                    if (rows == null) {
+                        return null;
+                    }
+                    Selection next = runtime.selectionFromRows(rows);
+                    combined = combined == null ? next : combined.union(next);
+                }
+                return combined;
+            }
+            if (value instanceof long[] longs) {
+                Selection combined = null;
+                for (long v : longs) {
+                    int[] rows = indexFactory.queryIndex(entityClass, fieldName, Predicate.Operator.EQ, v);
+                    if (rows == null) {
+                        return null;
+                    }
+                    Selection next = runtime.selectionFromRows(rows);
+                    combined = combined == null ? next : combined.union(next);
+                }
+                return combined;
+            }
+            return null;
+        }
+
+        Selection combined = null;
+        for (Object item : iterable) {
+            int[] rows = indexFactory.queryIndex(entityClass, fieldName, Predicate.Operator.EQ, item);
+            if (rows == null) {
+                return null;
+            }
+            Selection next = runtime.selectionFromRows(rows);
+            combined = combined == null ? next : combined.union(next);
+        }
+        return combined;
+    }
+
+    private static OrderExecutor buildOrderExecutor(CompiledQuery query, GeneratedTable table) {
+        CompiledQuery.CompiledOrderBy[] orderBy = query.orderBy();
+        if (orderBy == null || orderBy.length == 0) {
+            return null;
+        }
+        int limit = query.limit();
+        if (orderBy.length == 1) {
+            int columnIndex = orderBy[0].columnIndex();
+            boolean ascending = orderBy[0].ascending();
+            byte typeCode = table.typeCodeAt(columnIndex);
+            return switch (typeCode) {
+                case TypeCodes.TYPE_INT,
+                        TypeCodes.TYPE_BOOLEAN,
+                        TypeCodes.TYPE_BYTE,
+                        TypeCodes.TYPE_SHORT,
+                        TypeCodes.TYPE_CHAR -> (runtime, rows) -> {
+                    if (limit > 0 && limit < rows.length) {
+                        return runtime.topKInt(rows, columnIndex, ascending, limit);
+                    }
+                    return runtime.sortByIntColumn(rows, columnIndex, ascending);
+                };
+                case TypeCodes.TYPE_LONG,
+                        TypeCodes.TYPE_INSTANT,
+                        TypeCodes.TYPE_LOCAL_DATE,
+                        TypeCodes.TYPE_LOCAL_DATE_TIME,
+                        TypeCodes.TYPE_DATE -> (runtime, rows) -> {
+                    if (limit > 0 && limit < rows.length) {
+                        return runtime.topKLong(rows, columnIndex, ascending, limit);
+                    }
+                    return runtime.sortByLongColumn(rows, columnIndex, ascending);
+                };
+                case TypeCodes.TYPE_STRING,
+                        TypeCodes.TYPE_BIG_DECIMAL,
+                        TypeCodes.TYPE_BIG_INTEGER -> (runtime, rows) -> {
+                    if (limit > 0 && limit < rows.length) {
+                        return runtime.topKString(rows, columnIndex, ascending, limit);
+                    }
+                    return runtime.sortByStringColumn(rows, columnIndex, ascending);
+                };
+                case TypeCodes.TYPE_FLOAT -> (runtime, rows) -> {
+                    int[] sorted = runtime.sortByFloatColumn(rows, columnIndex, ascending);
+                    return limit > 0 && limit < sorted.length ? runtime.limitRows(sorted, limit) : sorted;
+                };
+                case TypeCodes.TYPE_DOUBLE -> (runtime, rows) -> {
+                    int[] sorted = runtime.sortByDoubleColumn(rows, columnIndex, ascending);
+                    return limit > 0 && limit < sorted.length ? runtime.limitRows(sorted, limit) : sorted;
+                };
+                default -> null;
+            };
+        }
+
+        OrderKeyBuilder[] builders = new OrderKeyBuilder[orderBy.length];
+        for (int i = 0; i < orderBy.length; i++) {
+            int columnIndex = orderBy[i].columnIndex();
+            boolean ascending = orderBy[i].ascending();
+            byte typeCode = table.typeCodeAt(columnIndex);
+            builders[i] = buildOrderKeyBuilder(columnIndex, ascending, typeCode);
+        }
+        return (runtime, rows) -> runtime.sortByMultipleColumns(rows, builders);
+    }
+
+    private static ProjectionExecutor buildProjectionExecutor(CompiledQuery query) {
+        CompiledQuery.CompiledProjection projection = query.projection();
+        if (projection == null) {
+            return null;
+        }
+        CompiledQuery.CompiledProjectionItem[] items = projection.items();
+        ProjectionItemExecutor[] itemExecutors = new ProjectionItemExecutor[items.length];
+        for (int i = 0; i < items.length; i++) {
+            itemExecutors[i] = buildProjectionItemExecutor(items[i]);
+        }
+        return new ProjectionExecutorImpl(projection, itemExecutors);
+    }
+
+    private static ProjectionItemExecutor buildProjectionItemExecutor(CompiledQuery.CompiledProjectionItem item) {
+        ProjectionStepExecutor[] steps = new ProjectionStepExecutor[item.steps().length];
+        for (int i = 0; i < item.steps().length; i++) {
+            steps[i] = buildProjectionStepExecutor(item.steps()[i]);
+        }
+        EntityMetadata<?> fieldMetadata = io.memris.core.MetadataExtractor
+                .extractEntityMetadata(item.fieldEntity());
+        TypeConverter<?, ?> converter = fieldMetadata.converters().get(item.fieldName());
+        FieldValueReader reader = buildFieldValueReader(item.columnIndex(), item.typeCode(), converter);
+        return new ProjectionItemExecutor(item.fieldEntity(), steps, reader);
+    }
+
+    private static ProjectionStepExecutor buildProjectionStepExecutor(CompiledQuery.CompiledProjectionStep step) {
+        FkReader fkReader = buildFkReader(step.fkTypeCode(), step.sourceColumnIndex());
+        TargetRowResolver resolver = buildTargetRowResolver(step);
+        return new ProjectionStepExecutor(step.sourceEntity(), step.targetEntity(), fkReader, resolver);
+    }
+
+    private static FkReader buildFkReader(byte typeCode, int columnIndex) {
+        return switch (typeCode) {
+            case TypeCodes.TYPE_STRING -> (table, rowIndex) -> {
+                if (!table.isPresent(columnIndex, rowIndex)) {
+                    return null;
+                }
+                return table.readString(columnIndex, rowIndex);
+            };
+            case TypeCodes.TYPE_INT -> (table, rowIndex) -> {
+                if (!table.isPresent(columnIndex, rowIndex)) {
+                    return null;
+                }
+                return Integer.valueOf(table.readInt(columnIndex, rowIndex));
+            };
+            case TypeCodes.TYPE_SHORT -> (table, rowIndex) -> {
+                if (!table.isPresent(columnIndex, rowIndex)) {
+                    return null;
+                }
+                return Short.valueOf((short) table.readInt(columnIndex, rowIndex));
+            };
+            case TypeCodes.TYPE_BYTE -> (table, rowIndex) -> {
+                if (!table.isPresent(columnIndex, rowIndex)) {
+                    return null;
+                }
+                return Byte.valueOf((byte) table.readInt(columnIndex, rowIndex));
+            };
+            default -> (table, rowIndex) -> {
+                if (!table.isPresent(columnIndex, rowIndex)) {
+                    return null;
+                }
+                return Long.valueOf(table.readLong(columnIndex, rowIndex));
+            };
+        };
+    }
+
+    private static TargetRowResolver buildTargetRowResolver(CompiledQuery.CompiledProjectionStep step) {
+        if (step.targetColumnIsId()) {
+            return switch (step.fkTypeCode()) {
+                case TypeCodes.TYPE_STRING -> (table, fkValue) -> {
+                    long packedRef = table.lookupByIdString((String) fkValue);
+                    return packedRef < 0 ? -1 : io.memris.storage.Selection.index(packedRef);
+                };
+                default -> (table, fkValue) -> {
+                    long packedRef = table.lookupById(((Number) fkValue).longValue());
+                    return packedRef < 0 ? -1 : io.memris.storage.Selection.index(packedRef);
+                };
+            };
+        }
+
+        return switch (step.fkTypeCode()) {
+            case TypeCodes.TYPE_INT, TypeCodes.TYPE_SHORT, TypeCodes.TYPE_BYTE -> (table, fkValue) -> {
+                int[] matches = table.scanEqualsInt(step.targetColumnIndex(), ((Number) fkValue).intValue());
+                return matches.length == 0 ? -1 : matches[0];
+            };
+            case TypeCodes.TYPE_STRING -> (table, fkValue) -> {
+                int[] matches = table.scanEqualsString(step.targetColumnIndex(), fkValue.toString());
+                return matches.length == 0 ? -1 : matches[0];
+            };
+            default -> (table, fkValue) -> {
+                int[] matches = table.scanEqualsLong(step.targetColumnIndex(), ((Number) fkValue).longValue());
+                return matches.length == 0 ? -1 : matches[0];
+            };
+        };
+    }
+
+    private static FieldValueReader buildFieldValueReader(int columnIndex, byte typeCode, TypeConverter<?, ?> converter) {
+        @SuppressWarnings("unchecked")
+        TypeConverter<Object, Object> typedConverter = (TypeConverter<Object, Object>) converter;
+        return switch (typeCode) {
+            case TypeCodes.TYPE_STRING,
+                    TypeCodes.TYPE_BIG_DECIMAL,
+                    TypeCodes.TYPE_BIG_INTEGER -> (table, rowIndex) -> {
+                if (!table.isPresent(columnIndex, rowIndex)) {
+                    return null;
+                }
+                Object storage = table.readString(columnIndex, rowIndex);
+                if (typedConverter != null && storage != null) {
+                    return typedConverter.fromStorage(storage);
+                }
+                return storage;
+            };
+            case TypeCodes.TYPE_LONG,
+                    TypeCodes.TYPE_INSTANT,
+                    TypeCodes.TYPE_LOCAL_DATE,
+                    TypeCodes.TYPE_LOCAL_DATE_TIME,
+                    TypeCodes.TYPE_DATE -> (table, rowIndex) -> {
+                if (!table.isPresent(columnIndex, rowIndex)) {
+                    return null;
+                }
+                Object storage = table.readLong(columnIndex, rowIndex);
+                if (typedConverter != null && storage != null) {
+                    return typedConverter.fromStorage(storage);
+                }
+                return storage;
+            };
+            case TypeCodes.TYPE_DOUBLE -> (table, rowIndex) -> {
+                if (!table.isPresent(columnIndex, rowIndex)) {
+                    return null;
+                }
+                Object storage = table.readLong(columnIndex, rowIndex);
+                if (typedConverter != null && storage != null) {
+                    return typedConverter.fromStorage(storage);
+                }
+                return Double.longBitsToDouble((Long) storage);
+            };
+            case TypeCodes.TYPE_FLOAT -> (table, rowIndex) -> {
+                if (!table.isPresent(columnIndex, rowIndex)) {
+                    return null;
+                }
+                Object storage = table.readInt(columnIndex, rowIndex);
+                if (typedConverter != null && storage != null) {
+                    return typedConverter.fromStorage(storage);
+                }
+                return Float.intBitsToFloat((Integer) storage);
+            };
+            case TypeCodes.TYPE_BOOLEAN -> (table, rowIndex) -> {
+                if (!table.isPresent(columnIndex, rowIndex)) {
+                    return null;
+                }
+                Object storage = table.readInt(columnIndex, rowIndex);
+                if (typedConverter != null && storage != null) {
+                    return typedConverter.fromStorage(storage);
+                }
+                return ((Integer) storage) != 0;
+            };
+            case TypeCodes.TYPE_BYTE -> (table, rowIndex) -> {
+                if (!table.isPresent(columnIndex, rowIndex)) {
+                    return null;
+                }
+                Object storage = table.readInt(columnIndex, rowIndex);
+                if (typedConverter != null && storage != null) {
+                    return typedConverter.fromStorage(storage);
+                }
+                return (byte) (int) storage;
+            };
+            case TypeCodes.TYPE_SHORT -> (table, rowIndex) -> {
+                if (!table.isPresent(columnIndex, rowIndex)) {
+                    return null;
+                }
+                Object storage = table.readInt(columnIndex, rowIndex);
+                if (typedConverter != null && storage != null) {
+                    return typedConverter.fromStorage(storage);
+                }
+                return (short) (int) storage;
+            };
+            case TypeCodes.TYPE_CHAR -> (table, rowIndex) -> {
+                if (!table.isPresent(columnIndex, rowIndex)) {
+                    return null;
+                }
+                Object storage = table.readInt(columnIndex, rowIndex);
+                if (typedConverter != null && storage != null) {
+                    return typedConverter.fromStorage(storage);
+                }
+                return (char) (int) storage;
+            };
+            default -> (table, rowIndex) -> {
+                if (!table.isPresent(columnIndex, rowIndex)) {
+                    return null;
+                }
+                Object storage = table.readInt(columnIndex, rowIndex);
+                if (typedConverter != null && storage != null) {
+                    return typedConverter.fromStorage(storage);
+                }
+                return storage;
+            };
+        };
+    }
+
+    private static final class ProjectionExecutorImpl implements ProjectionExecutor {
+        private final CompiledQuery.CompiledProjection projection;
+        private final ProjectionItemExecutor[] itemExecutors;
+
+        private ProjectionExecutorImpl(CompiledQuery.CompiledProjection projection, ProjectionItemExecutor[] itemExecutors) {
+            this.projection = projection;
+            this.itemExecutors = itemExecutors;
+        }
+
+        @Override
+        public Object materialize(RepositoryRuntime<?> runtime, int rowIndex) {
+            Object[] args = new Object[itemExecutors.length];
+            for (int i = 0; i < itemExecutors.length; i++) {
+                args[i] = itemExecutors[i].resolve(runtime, rowIndex);
+            }
+            MethodHandle ctor = runtime.projectionConstructor(projection.projectionType());
+            try {
+                return ctor.invokeWithArguments(args);
+            } catch (Throwable e) {
+                throw new RuntimeException("Failed to materialize projection", e);
+            }
+        }
+    }
+
+    private interface FieldValueReader {
+        Object read(GeneratedTable table, int rowIndex);
+    }
+
+    private interface FkReader {
+        Object read(GeneratedTable table, int rowIndex);
+    }
+
+    private interface TargetRowResolver {
+        int resolve(GeneratedTable table, Object fkValue);
+    }
+
+    private static final class ProjectionStepExecutor {
+        private final Class<?> sourceEntity;
+        private final Class<?> targetEntity;
+        private final FkReader fkReader;
+        private final TargetRowResolver resolver;
+
+        private ProjectionStepExecutor(Class<?> sourceEntity, Class<?> targetEntity, FkReader fkReader,
+                TargetRowResolver resolver) {
+            this.sourceEntity = sourceEntity;
+            this.targetEntity = targetEntity;
+            this.fkReader = fkReader;
+            this.resolver = resolver;
+        }
+    }
+
+    private static final class ProjectionItemExecutor {
+        private final Class<?> fieldEntity;
+        private final ProjectionStepExecutor[] steps;
+        private final FieldValueReader reader;
+
+        private ProjectionItemExecutor(Class<?> fieldEntity, ProjectionStepExecutor[] steps, FieldValueReader reader) {
+            this.fieldEntity = fieldEntity;
+            this.steps = steps;
+            this.reader = reader;
+        }
+
+        private Object resolve(RepositoryRuntime<?> runtime, int rootRowIndex) {
+            int currentRow = rootRowIndex;
+            for (ProjectionStepExecutor step : steps) {
+                GeneratedTable sourceTable = runtime.tableFor(step.sourceEntity);
+                if (sourceTable == null || currentRow < 0) {
+                    return null;
+                }
+                Object fkValue = step.fkReader.read(sourceTable, currentRow);
+                if (fkValue == null) {
+                    return null;
+                }
+                GeneratedTable targetTable = runtime.tableFor(step.targetEntity);
+                if (targetTable == null) {
+                    return null;
+                }
+                currentRow = step.resolver.resolve(targetTable, fkValue);
+                if (currentRow < 0) {
+                    return null;
+                }
+            }
+            GeneratedTable fieldTable = runtime.tableFor(fieldEntity);
+            if (fieldTable == null || currentRow < 0) {
+                return null;
+            }
+            return reader.read(fieldTable, currentRow);
+        }
     }
 
     public T saveOne(T entity) {
@@ -284,6 +770,10 @@ public final class RepositoryRuntime<T> {
         return config.auditProvider().currentUser();
     }
 
+    MemrisRepositoryFactory indexFactory() {
+        return factory;
+    }
+
     private boolean hasValue(Object entity, String fieldName) {
         MethodHandle getter = metadata.fieldGetters().get(fieldName);
         if (getter == null) {
@@ -409,21 +899,31 @@ public final class RepositoryRuntime<T> {
         }
 
         int limit = query.limit();
-        // Use top-k optimization when limit is small relative to result set
-        if (limit > 0 && limit < rows.length && query.orderBy() != null && query.orderBy().length > 0) {
-            rows = applyTopKOrderBy(query, rows, limit);
+        OrderExecutor orderExecutor = plan.orderExecutorFor(query);
+        if (orderExecutor != null) {
+            rows = orderExecutor.apply(this, rows);
         } else {
-            rows = applyOrderBy(query, rows);
+            // Use top-k optimization when limit is small relative to result set
+            if (limit > 0 && limit < rows.length && query.orderBy() != null && query.orderBy().length > 0) {
+                rows = applyTopKOrderBy(query, rows, limit);
+            } else {
+                rows = applyOrderBy(query, rows);
+            }
         }
 
         int max = (limit > 0 && limit < rows.length) ? limit : rows.length;
 
         CompiledQuery.CompiledProjection projection = query.projection();
+        ProjectionExecutor projectionExecutor = plan.projectionExecutorFor(query);
         if (projection != null) {
             List<Object> results = new ArrayList<>(max);
             for (int i = 0; i < max; i++) {
                 int rowIndex = rows[i];
-                results.add(materializeProjection(projection, rowIndex));
+                if (projectionExecutor != null) {
+                    results.add(projectionExecutor.materialize(this, rowIndex));
+                } else {
+                    results.add(materializeProjection(projection, rowIndex));
+                }
             }
             return switch (query.returnKind()) {
                 case ONE_OPTIONAL -> results.isEmpty() ? Optional.empty() : Optional.of(results.get(0));
@@ -489,6 +989,7 @@ public final class RepositoryRuntime<T> {
      */
     private boolean executeExistsFast(CompiledQuery query, Object[] args) {
         CompiledQuery.CompiledCondition[] conditions = query.conditions();
+        ConditionExecutor[] executors = plan.conditionExecutorsFor(query);
 
         if (conditions.length == 0) {
             // No conditions - check if table has any rows
@@ -497,7 +998,9 @@ public final class RepositoryRuntime<T> {
 
         // For single condition, just check if it matches anything
         if (conditions.length == 1) {
-            Selection selection = selectWithIndex(conditions[0], args);
+            Selection selection = executors != null && executors.length == 1
+                    ? executors[0].execute(this, args)
+                    : selectWithIndex(conditions[0], args);
             return selection.size() > 0;
         }
 
@@ -507,7 +1010,7 @@ public final class RepositoryRuntime<T> {
 
         for (int i = 0; i < conditions.length; i++) {
             CompiledQuery.CompiledCondition condition = conditions[i];
-            Selection next = selectWithIndex(condition, args);
+            Selection next = executors != null ? executors[i].execute(this, args) : selectWithIndex(condition, args);
             int nextSize = next.size();
 
             if (currentGroup == null) {
@@ -548,7 +1051,8 @@ public final class RepositoryRuntime<T> {
                 }
             }
 
-            LogicalQuery.Combinator combinator = condition.nextCombinator();
+            LogicalQuery.Combinator combinator = executors != null ? executors[i].nextCombinator()
+                    : condition.nextCombinator();
             if (combinator == LogicalQuery.Combinator.OR) {
                 // End of AND group - if we have matches, return true
                 if (currentGroup != null && !currentGroup.isEmpty()) {
@@ -571,6 +1075,7 @@ public final class RepositoryRuntime<T> {
             return executeCount(query, args);
         }
         CompiledQuery.CompiledCondition[] conditions = query.conditions();
+        ConditionExecutor[] executors = plan.conditionExecutorsFor(query);
 
         if (conditions.length == 0) {
             // No conditions - count all rows
@@ -579,7 +1084,9 @@ public final class RepositoryRuntime<T> {
 
         // For single condition, just return its count
         if (conditions.length == 1) {
-            Selection selection = selectWithIndex(conditions[0], args);
+            Selection selection = executors != null && executors.length == 1
+                    ? executors[0].execute(this, args)
+                    : selectWithIndex(conditions[0], args);
             return selection.size();
         }
 
@@ -590,7 +1097,7 @@ public final class RepositoryRuntime<T> {
 
         for (int i = 0; i < conditions.length; i++) {
             CompiledQuery.CompiledCondition condition = conditions[i];
-            Selection next = selectWithIndex(condition, args);
+            Selection next = executors != null ? executors[i].execute(this, args) : selectWithIndex(condition, args);
             int[] nextRows = next.toIntArray();
 
             if (currentGroup == null) {
@@ -599,7 +1106,8 @@ public final class RepositoryRuntime<T> {
                 currentGroup.intersect(nextRows);
             }
 
-            LogicalQuery.Combinator combinator = condition.nextCombinator();
+            LogicalQuery.Combinator combinator = executors != null ? executors[i].nextCombinator()
+                    : condition.nextCombinator();
             if (combinator == LogicalQuery.Combinator.OR) {
                 // Union this group with combined result
                 if (combined == null) {
@@ -994,17 +1502,17 @@ public final class RepositoryRuntime<T> {
     }
 
     private Object[] readIndexValues(int rowIndex) {
-        int maxColumnPos = metadata.fields().stream()
-                .filter(f -> f.columnPosition() >= 0)
-                .mapToInt(io.memris.core.EntityMetadata.FieldMapping::columnPosition)
-                .max()
-                .orElse(0);
-        Object[] indexValues = new Object[maxColumnPos + 1];
-        for (io.memris.core.EntityMetadata.FieldMapping field : metadata.fields()) {
-            if (field.columnPosition() < 0) {
+        if (indexFieldReaders == null || indexFieldReaders.length == 0) {
+            return new Object[0];
+        }
+        Object[] indexValues = new Object[indexFieldReaders.length];
+        GeneratedTable table = plan.table();
+        for (int i = 0; i < indexFieldReaders.length; i++) {
+            IndexFieldReader reader = indexFieldReaders[i];
+            if (reader == null) {
                 continue;
             }
-            indexValues[field.columnPosition()] = readIndexValue(field, rowIndex);
+            indexValues[reader.columnIndex] = reader.reader.read(table, rowIndex);
         }
         return indexValues;
     }
@@ -1022,12 +1530,15 @@ public final class RepositoryRuntime<T> {
         if (metadata == null || factory == null) {
             return;
         }
-        for (io.memris.core.EntityMetadata.FieldMapping field : metadata.fields()) {
-            if (field.columnPosition() < 0) {
+        if (indexFieldReaders == null) {
+            return;
+        }
+        for (IndexFieldReader reader : indexFieldReaders) {
+            if (reader == null) {
                 continue;
             }
-            Object value = indexValues[field.columnPosition()];
-            factory.addIndexEntry(metadata.entityClass(), field.name(), value, rowIndex);
+            Object value = indexValues[reader.columnIndex];
+            factory.addIndexEntry(metadata.entityClass(), reader.fieldName, value, rowIndex);
         }
     }
 
@@ -1035,75 +1546,144 @@ public final class RepositoryRuntime<T> {
         if (metadata == null || factory == null) {
             return;
         }
-        for (io.memris.core.EntityMetadata.FieldMapping field : metadata.fields()) {
-            if (field.columnPosition() < 0) {
+        if (indexFieldReaders == null) {
+            return;
+        }
+        GeneratedTable table = plan.table();
+        for (IndexFieldReader reader : indexFieldReaders) {
+            if (reader == null) {
                 continue;
             }
-            Object value = readIndexValue(field, rowIndex);
-            factory.removeIndexEntry(metadata.entityClass(), field.name(), value, rowIndex);
+            Object value = reader.reader.read(table, rowIndex);
+            factory.removeIndexEntry(metadata.entityClass(), reader.fieldName, value, rowIndex);
         }
     }
 
-    private Object readIndexValue(io.memris.core.EntityMetadata.FieldMapping field, int rowIndex) {
+    private IndexFieldReader[] buildIndexFieldReaders(EntityMetadata<?> entityMetadata) {
+        if (entityMetadata == null) {
+            return new IndexFieldReader[0];
+        }
+        int maxColumnPos = entityMetadata.fields().stream()
+                .filter(f -> f.columnPosition() >= 0)
+                .mapToInt(io.memris.core.EntityMetadata.FieldMapping::columnPosition)
+                .max()
+                .orElse(-1);
+        if (maxColumnPos < 0) {
+            return new IndexFieldReader[0];
+        }
+        IndexFieldReader[] readers = new IndexFieldReader[maxColumnPos + 1];
+        for (io.memris.core.EntityMetadata.FieldMapping field : entityMetadata.fields()) {
+            if (field.columnPosition() < 0) {
+                continue;
+            }
+            IndexValueReader reader = buildIndexValueReader(field, entityMetadata);
+            readers[field.columnPosition()] = new IndexFieldReader(field.columnPosition(), field.name(), reader);
+        }
+        return readers;
+    }
+
+    private IndexValueReader buildIndexValueReader(io.memris.core.EntityMetadata.FieldMapping field,
+            EntityMetadata<?> entityMetadata) {
         int columnIndex = field.columnPosition();
-        GeneratedTable table = plan.table();
-        if (!table.isPresent(columnIndex, rowIndex)) {
-            return null;
-        }
-
         byte typeCode = field.typeCode();
-        Object storage = switch (typeCode) {
-            case TypeCodes.TYPE_STRING,
-                    TypeCodes.TYPE_BIG_DECIMAL,
-                    TypeCodes.TYPE_BIG_INTEGER ->
-                table.readString(columnIndex, rowIndex);
-            case TypeCodes.TYPE_LONG,
-                    TypeCodes.TYPE_INSTANT,
-                    TypeCodes.TYPE_LOCAL_DATE,
-                    TypeCodes.TYPE_LOCAL_DATE_TIME,
-                    TypeCodes.TYPE_DATE,
-                    TypeCodes.TYPE_DOUBLE ->
-                table.readLong(columnIndex, rowIndex);
-            default -> table.readInt(columnIndex, rowIndex);
+        TypeConverter<?, ?> converter = entityMetadata.converters().get(field.name());
+        @SuppressWarnings("unchecked")
+        TypeConverter<Object, Object> typedConverter = (TypeConverter<Object, Object>) converter;
+        return new IndexValueReader() {
+            @Override
+            public Object read(GeneratedTable table, int rowIndex) {
+                if (!table.isPresent(columnIndex, rowIndex)) {
+                    return null;
+                }
+                Object storage = switch (typeCode) {
+                    case TypeCodes.TYPE_STRING,
+                            TypeCodes.TYPE_BIG_DECIMAL,
+                            TypeCodes.TYPE_BIG_INTEGER ->
+                        table.readString(columnIndex, rowIndex);
+                    case TypeCodes.TYPE_LONG,
+                            TypeCodes.TYPE_INSTANT,
+                            TypeCodes.TYPE_LOCAL_DATE,
+                            TypeCodes.TYPE_LOCAL_DATE_TIME,
+                            TypeCodes.TYPE_DATE,
+                            TypeCodes.TYPE_DOUBLE ->
+                        table.readLong(columnIndex, rowIndex);
+                    default -> table.readInt(columnIndex, rowIndex);
+                };
+                if (typedConverter != null && storage != null) {
+                    return typedConverter.fromStorage(storage);
+                }
+                return switch (typeCode) {
+                    case TypeCodes.TYPE_LONG -> (Long) storage;
+                    case TypeCodes.TYPE_INT -> (Integer) storage;
+                    case TypeCodes.TYPE_BOOLEAN -> ((Integer) storage) != 0;
+                    case TypeCodes.TYPE_BYTE -> (byte) (int) storage;
+                    case TypeCodes.TYPE_SHORT -> (short) (int) storage;
+                    case TypeCodes.TYPE_FLOAT -> FloatEncoding.sortableIntToFloat((Integer) storage);
+                    case TypeCodes.TYPE_DOUBLE -> FloatEncoding.sortableLongToDouble((Long) storage);
+                    case TypeCodes.TYPE_CHAR -> (char) (int) storage;
+                    case TypeCodes.TYPE_STRING -> storage;
+                    default -> storage;
+                };
+            }
         };
+    }
 
-        TypeConverter<?, ?> converter = metadata.converters().get(field.name());
-        if (converter != null && storage != null) {
-            @SuppressWarnings("unchecked")
-            TypeConverter<Object, Object> typedConverter = (TypeConverter<Object, Object>) converter;
-            return typedConverter.fromStorage(storage);
+    private static final class IndexFieldReader {
+        private final int columnIndex;
+        private final String fieldName;
+        private final IndexValueReader reader;
+
+        private IndexFieldReader(int columnIndex, String fieldName, IndexValueReader reader) {
+            this.columnIndex = columnIndex;
+            this.fieldName = fieldName;
+            this.reader = reader;
         }
+    }
 
-        return switch (typeCode) {
-            case TypeCodes.TYPE_LONG -> (Long) storage;
-            case TypeCodes.TYPE_INT -> (Integer) storage;
-            case TypeCodes.TYPE_BOOLEAN -> ((Integer) storage) != 0;
-            case TypeCodes.TYPE_BYTE -> (byte) (int) storage;
-            case TypeCodes.TYPE_SHORT -> (short) (int) storage;
-            case TypeCodes.TYPE_FLOAT -> FloatEncoding.sortableIntToFloat((Integer) storage);
-            case TypeCodes.TYPE_DOUBLE -> FloatEncoding.sortableLongToDouble((Long) storage);
-            case TypeCodes.TYPE_CHAR -> (char) (int) storage;
-            case TypeCodes.TYPE_STRING -> storage;
-            default -> storage;
-        };
+    private interface IndexValueReader {
+        Object read(GeneratedTable table, int rowIndex);
     }
 
     private Selection executeConditions(CompiledQuery query, Object[] args) {
         CompiledQuery.CompiledCondition[] conditions = query.conditions();
+        ConditionExecutor[] executors = plan.conditionExecutorsFor(query);
 
         if (conditions.length == 0) {
             int[] allRows = plan.table().scanAll();
             return applyJoins(query, args, selectionFromRows(allRows));
         }
 
+        if (executors == null || executors.length == 0) {
+            Selection combined = null;
+            Selection currentGroup = null;
+
+            for (int i = 0; i < conditions.length; i++) {
+                Selection next = selectWithIndex(conditions[i], args);
+                currentGroup = (currentGroup == null) ? next : currentGroup.intersect(next);
+
+                LogicalQuery.Combinator combinator = conditions[i].nextCombinator();
+                if (combinator == LogicalQuery.Combinator.OR) {
+                    combined = (combined == null) ? currentGroup : combined.union(currentGroup);
+                    currentGroup = null;
+                }
+            }
+
+            if (currentGroup != null) {
+                combined = (combined == null) ? currentGroup : combined.union(currentGroup);
+            }
+
+            return applyJoins(query, args, combined);
+        }
+
         Selection combined = null;
         Selection currentGroup = null;
 
-        for (int i = 0; i < conditions.length; i++) {
-            Selection next = selectWithIndex(conditions[i], args);
+        for (int i = 0; i < executors.length; i++) {
+            ConditionExecutor executor = executors[i];
+            Selection next = executor.execute(this, args);
             currentGroup = (currentGroup == null) ? next : currentGroup.intersect(next);
 
-            LogicalQuery.Combinator combinator = conditions[i].nextCombinator();
+            LogicalQuery.Combinator combinator = executor.nextCombinator();
             if (combinator == LogicalQuery.Combinator.OR) {
                 combined = (combined == null) ? currentGroup : combined.union(currentGroup);
                 currentGroup = null;
@@ -1216,7 +1796,7 @@ public final class RepositoryRuntime<T> {
         return null;
     }
 
-    private Selection selectionFromRows(int[] rows) {
+    Selection selectionFromRows(int[] rows) {
         GeneratedTable table = plan.table();
         long[] packed = new long[rows.length];
         int count = 0;
@@ -1326,6 +1906,15 @@ public final class RepositoryRuntime<T> {
                 yield sorted;
             }
         };
+    }
+
+    private int[] limitRows(int[] rows, int limit) {
+        if (limit >= rows.length) {
+            return rows;
+        }
+        int[] limited = new int[limit];
+        System.arraycopy(rows, 0, limited, 0, limit);
+        return limited;
     }
 
     private int[] topKInt(int[] rows, int columnIndex, boolean ascending, int k) {
@@ -1528,81 +2117,59 @@ public final class RepositoryRuntime<T> {
 
     private int[] sortByMultipleColumns(int[] rows, CompiledQuery.CompiledOrderBy[] orderBy) {
         int[] result = rows.clone();
-        OrderKey[] keys = buildOrderKeys(result, orderBy);
+        OrderKeyBuilder[] builders = buildOrderKeyBuilders(orderBy);
+        OrderKey[] keys = buildOrderKeys(result, builders);
         quickSortMulti(result, keys, 0, result.length - 1);
         return result;
     }
 
-    private OrderKey[] buildOrderKeys(int[] rows, CompiledQuery.CompiledOrderBy[] orderBy) {
+    private int[] sortByMultipleColumns(int[] rows, OrderKeyBuilder[] builders) {
+        int[] result = rows.clone();
+        OrderKey[] keys = buildOrderKeys(result, builders);
+        quickSortMulti(result, keys, 0, result.length - 1);
+        return result;
+    }
+
+    private OrderKey[] buildOrderKeys(int[] rows, OrderKeyBuilder[] builders) {
         GeneratedTable table = plan.table();
-        OrderKey[] keys = new OrderKey[orderBy.length];
+        OrderKey[] keys = new OrderKey[builders.length];
+        for (int i = 0; i < builders.length; i++) {
+            keys[i] = builders[i].build(table, rows);
+        }
+        return keys;
+    }
+
+    private OrderKeyBuilder[] buildOrderKeyBuilders(CompiledQuery.CompiledOrderBy[] orderBy) {
+        GeneratedTable table = plan.table();
+        OrderKeyBuilder[] builders = new OrderKeyBuilder[orderBy.length];
         for (int i = 0; i < orderBy.length; i++) {
             int columnIndex = orderBy[i].columnIndex();
             boolean ascending = orderBy[i].ascending();
             byte typeCode = table.typeCodeAt(columnIndex);
-            boolean[] present = new boolean[rows.length];
-            OrderKey key = new OrderKey(typeCode, ascending, present);
-            switch (typeCode) {
-                case TypeCodes.TYPE_INT,
-                        TypeCodes.TYPE_BOOLEAN,
-                        TypeCodes.TYPE_BYTE,
-                        TypeCodes.TYPE_SHORT,
-                        TypeCodes.TYPE_CHAR -> {
-                    int[] values = new int[rows.length];
-                    for (int r = 0; r < rows.length; r++) {
-                        int row = rows[r];
-                        present[r] = table.isPresent(columnIndex, row);
-                        values[r] = table.readInt(columnIndex, row);
-                    }
-                    key.intKeys = values;
-                }
-                case TypeCodes.TYPE_FLOAT -> {
-                    float[] values = new float[rows.length];
-                    for (int r = 0; r < rows.length; r++) {
-                        int row = rows[r];
-                        present[r] = table.isPresent(columnIndex, row);
-                        values[r] = FloatEncoding.sortableIntToFloat(table.readInt(columnIndex, row));
-                    }
-                    key.floatKeys = values;
-                }
-                case TypeCodes.TYPE_LONG,
-                        TypeCodes.TYPE_INSTANT,
-                        TypeCodes.TYPE_LOCAL_DATE,
-                        TypeCodes.TYPE_LOCAL_DATE_TIME,
-                        TypeCodes.TYPE_DATE -> {
-                    long[] values = new long[rows.length];
-                    for (int r = 0; r < rows.length; r++) {
-                        int row = rows[r];
-                        present[r] = table.isPresent(columnIndex, row);
-                        values[r] = table.readLong(columnIndex, row);
-                    }
-                    key.longKeys = values;
-                }
-                case TypeCodes.TYPE_DOUBLE -> {
-                    double[] values = new double[rows.length];
-                    for (int r = 0; r < rows.length; r++) {
-                        int row = rows[r];
-                        present[r] = table.isPresent(columnIndex, row);
-                        values[r] = Double.longBitsToDouble(table.readLong(columnIndex, row));
-                    }
-                    key.doubleKeys = values;
-                }
-                case TypeCodes.TYPE_STRING,
-                        TypeCodes.TYPE_BIG_DECIMAL,
-                        TypeCodes.TYPE_BIG_INTEGER -> {
-                    String[] values = new String[rows.length];
-                    for (int r = 0; r < rows.length; r++) {
-                        int row = rows[r];
-                        values[r] = table.readString(columnIndex, row);
-                        present[r] = values[r] != null;
-                    }
-                    key.stringKeys = values;
-                }
-                default -> throw new UnsupportedOperationException("Unsupported sort type code: " + typeCode);
-            }
-            keys[i] = key;
+            builders[i] = buildOrderKeyBuilder(columnIndex, ascending, typeCode);
         }
-        return keys;
+        return builders;
+    }
+
+    private static OrderKeyBuilder buildOrderKeyBuilder(int columnIndex, boolean ascending, byte typeCode) {
+        return switch (typeCode) {
+            case TypeCodes.TYPE_INT,
+                    TypeCodes.TYPE_BOOLEAN,
+                    TypeCodes.TYPE_BYTE,
+                    TypeCodes.TYPE_SHORT,
+                    TypeCodes.TYPE_CHAR -> new IntOrderKeyBuilder(columnIndex, ascending);
+            case TypeCodes.TYPE_FLOAT -> new FloatOrderKeyBuilder(columnIndex, ascending);
+            case TypeCodes.TYPE_LONG,
+                    TypeCodes.TYPE_INSTANT,
+                    TypeCodes.TYPE_LOCAL_DATE,
+                    TypeCodes.TYPE_LOCAL_DATE_TIME,
+                    TypeCodes.TYPE_DATE -> new LongOrderKeyBuilder(columnIndex, ascending);
+            case TypeCodes.TYPE_DOUBLE -> new DoubleOrderKeyBuilder(columnIndex, ascending);
+            case TypeCodes.TYPE_STRING,
+                    TypeCodes.TYPE_BIG_DECIMAL,
+                    TypeCodes.TYPE_BIG_INTEGER -> new StringOrderKeyBuilder(columnIndex, ascending);
+            default -> throw new UnsupportedOperationException("Unsupported sort type code: " + typeCode);
+        };
     }
 
     private static void quickSortMulti(int[] rows, OrderKey[] keys, int low, int high) {
@@ -1646,88 +2213,272 @@ public final class RepositoryRuntime<T> {
         return Integer.compare(rows[left], rows[right]);
     }
 
-    private static final class OrderKey {
-        private final byte typeCode;
-        private final boolean ascending;
-        private final boolean[] present;
-        private int[] intKeys;
-        private long[] longKeys;
-        private float[] floatKeys;
-        private double[] doubleKeys;
-        private String[] stringKeys;
+    private interface OrderKey {
+        int compare(int left, int right);
 
-        OrderKey(byte typeCode, boolean ascending, boolean[] present) {
-            this.typeCode = typeCode;
+        void swap(int i, int j);
+    }
+
+    private interface OrderKeyBuilder {
+        OrderKey build(GeneratedTable table, int[] rows);
+    }
+
+    private static final class IntOrderKeyBuilder implements OrderKeyBuilder {
+        private final int columnIndex;
+        private final boolean ascending;
+
+        IntOrderKeyBuilder(int columnIndex, boolean ascending) {
+            this.columnIndex = columnIndex;
             this.ascending = ascending;
-            this.present = present;
         }
 
-        int compare(int left, int right) {
+        @Override
+        public OrderKey build(GeneratedTable table, int[] rows) {
+            boolean[] present = new boolean[rows.length];
+            int[] values = new int[rows.length];
+            for (int i = 0; i < rows.length; i++) {
+                int row = rows[i];
+                present[i] = table.isPresent(columnIndex, row);
+                values[i] = table.readInt(columnIndex, row);
+            }
+            return new IntOrderKey(ascending, present, values);
+        }
+    }
+
+    private static final class FloatOrderKeyBuilder implements OrderKeyBuilder {
+        private final int columnIndex;
+        private final boolean ascending;
+
+        FloatOrderKeyBuilder(int columnIndex, boolean ascending) {
+            this.columnIndex = columnIndex;
+            this.ascending = ascending;
+        }
+
+        @Override
+        public OrderKey build(GeneratedTable table, int[] rows) {
+            boolean[] present = new boolean[rows.length];
+            float[] values = new float[rows.length];
+            for (int i = 0; i < rows.length; i++) {
+                int row = rows[i];
+                present[i] = table.isPresent(columnIndex, row);
+                values[i] = FloatEncoding.sortableIntToFloat(table.readInt(columnIndex, row));
+            }
+            return new FloatOrderKey(ascending, present, values);
+        }
+    }
+
+    private static final class LongOrderKeyBuilder implements OrderKeyBuilder {
+        private final int columnIndex;
+        private final boolean ascending;
+
+        LongOrderKeyBuilder(int columnIndex, boolean ascending) {
+            this.columnIndex = columnIndex;
+            this.ascending = ascending;
+        }
+
+        @Override
+        public OrderKey build(GeneratedTable table, int[] rows) {
+            boolean[] present = new boolean[rows.length];
+            long[] values = new long[rows.length];
+            for (int i = 0; i < rows.length; i++) {
+                int row = rows[i];
+                present[i] = table.isPresent(columnIndex, row);
+                values[i] = table.readLong(columnIndex, row);
+            }
+            return new LongOrderKey(ascending, present, values);
+        }
+    }
+
+    private static final class DoubleOrderKeyBuilder implements OrderKeyBuilder {
+        private final int columnIndex;
+        private final boolean ascending;
+
+        DoubleOrderKeyBuilder(int columnIndex, boolean ascending) {
+            this.columnIndex = columnIndex;
+            this.ascending = ascending;
+        }
+
+        @Override
+        public OrderKey build(GeneratedTable table, int[] rows) {
+            boolean[] present = new boolean[rows.length];
+            double[] values = new double[rows.length];
+            for (int i = 0; i < rows.length; i++) {
+                int row = rows[i];
+                present[i] = table.isPresent(columnIndex, row);
+                values[i] = Double.longBitsToDouble(table.readLong(columnIndex, row));
+            }
+            return new DoubleOrderKey(ascending, present, values);
+        }
+    }
+
+    private static final class StringOrderKeyBuilder implements OrderKeyBuilder {
+        private final int columnIndex;
+        private final boolean ascending;
+
+        StringOrderKeyBuilder(int columnIndex, boolean ascending) {
+            this.columnIndex = columnIndex;
+            this.ascending = ascending;
+        }
+
+        @Override
+        public OrderKey build(GeneratedTable table, int[] rows) {
+            boolean[] present = new boolean[rows.length];
+            String[] values = new String[rows.length];
+            for (int i = 0; i < rows.length; i++) {
+                int row = rows[i];
+                values[i] = table.readString(columnIndex, row);
+                present[i] = values[i] != null;
+            }
+            return new StringOrderKey(ascending, present, values);
+        }
+    }
+
+    private static final class IntOrderKey implements OrderKey {
+        private final boolean ascending;
+        private final boolean[] present;
+        private final int[] keys;
+
+        IntOrderKey(boolean ascending, boolean[] present, int[] keys) {
+            this.ascending = ascending;
+            this.present = present;
+            this.keys = keys;
+        }
+
+        @Override
+        public int compare(int left, int right) {
             int cmp = compareNullable(present[left], present[right]);
             if (cmp == 0) {
-                cmp = switch (typeCode) {
-                    case TypeCodes.TYPE_INT,
-                            TypeCodes.TYPE_BOOLEAN,
-                            TypeCodes.TYPE_BYTE,
-                            TypeCodes.TYPE_SHORT,
-                            TypeCodes.TYPE_CHAR ->
-                        Integer.compare(intKeys[left], intKeys[right]);
-                    case TypeCodes.TYPE_FLOAT -> Float.compare(floatKeys[left], floatKeys[right]);
-                    case TypeCodes.TYPE_LONG,
-                            TypeCodes.TYPE_INSTANT,
-                            TypeCodes.TYPE_LOCAL_DATE,
-                            TypeCodes.TYPE_LOCAL_DATE_TIME,
-                            TypeCodes.TYPE_DATE ->
-                        Long.compare(longKeys[left], longKeys[right]);
-                    case TypeCodes.TYPE_DOUBLE -> Double.compare(doubleKeys[left], doubleKeys[right]);
-                    case TypeCodes.TYPE_STRING,
-                            TypeCodes.TYPE_BIG_DECIMAL,
-                            TypeCodes.TYPE_BIG_INTEGER ->
-                        compareStringValue(stringKeys[left], stringKeys[right]);
-                    default -> 0;
-                };
+                cmp = Integer.compare(keys[left], keys[right]);
             }
             return ascending ? cmp : -cmp;
         }
 
-        void swap(int i, int j) {
+        @Override
+        public void swap(int i, int j) {
             RepositoryRuntime.swap(present, i, j);
-            switch (typeCode) {
-                case TypeCodes.TYPE_INT,
-                        TypeCodes.TYPE_BOOLEAN,
-                        TypeCodes.TYPE_BYTE,
-                        TypeCodes.TYPE_SHORT,
-                        TypeCodes.TYPE_CHAR ->
-                    RepositoryRuntime.swap(intKeys, i, j);
-                case TypeCodes.TYPE_FLOAT -> RepositoryRuntime.swap(floatKeys, i, j);
-                case TypeCodes.TYPE_LONG,
-                        TypeCodes.TYPE_INSTANT,
-                        TypeCodes.TYPE_LOCAL_DATE,
-                        TypeCodes.TYPE_LOCAL_DATE_TIME,
-                        TypeCodes.TYPE_DATE ->
-                    RepositoryRuntime.swap(longKeys, i, j);
-                case TypeCodes.TYPE_DOUBLE -> RepositoryRuntime.swap(doubleKeys, i, j);
-                case TypeCodes.TYPE_STRING,
-                        TypeCodes.TYPE_BIG_DECIMAL,
-                        TypeCodes.TYPE_BIG_INTEGER ->
-                    RepositoryRuntime.swap(stringKeys, i, j);
-                default -> {
-                }
-            }
+            RepositoryRuntime.swap(keys, i, j);
+        }
+    }
+
+    private static final class LongOrderKey implements OrderKey {
+        private final boolean ascending;
+        private final boolean[] present;
+        private final long[] keys;
+
+        LongOrderKey(boolean ascending, boolean[] present, long[] keys) {
+            this.ascending = ascending;
+            this.present = present;
+            this.keys = keys;
         }
 
-        private static int compareStringValue(String left, String right) {
-            if (left == null && right == null) {
-                return 0;
+        @Override
+        public int compare(int left, int right) {
+            int cmp = compareNullable(present[left], present[right]);
+            if (cmp == 0) {
+                cmp = Long.compare(keys[left], keys[right]);
             }
-            if (left == null) {
-                return 1;
-            }
-            if (right == null) {
-                return -1;
-            }
-            return left.compareTo(right);
+            return ascending ? cmp : -cmp;
         }
+
+        @Override
+        public void swap(int i, int j) {
+            RepositoryRuntime.swap(present, i, j);
+            RepositoryRuntime.swap(keys, i, j);
+        }
+    }
+
+    private static final class FloatOrderKey implements OrderKey {
+        private final boolean ascending;
+        private final boolean[] present;
+        private final float[] keys;
+
+        FloatOrderKey(boolean ascending, boolean[] present, float[] keys) {
+            this.ascending = ascending;
+            this.present = present;
+            this.keys = keys;
+        }
+
+        @Override
+        public int compare(int left, int right) {
+            int cmp = compareNullable(present[left], present[right]);
+            if (cmp == 0) {
+                cmp = Float.compare(keys[left], keys[right]);
+            }
+            return ascending ? cmp : -cmp;
+        }
+
+        @Override
+        public void swap(int i, int j) {
+            RepositoryRuntime.swap(present, i, j);
+            RepositoryRuntime.swap(keys, i, j);
+        }
+    }
+
+    private static final class DoubleOrderKey implements OrderKey {
+        private final boolean ascending;
+        private final boolean[] present;
+        private final double[] keys;
+
+        DoubleOrderKey(boolean ascending, boolean[] present, double[] keys) {
+            this.ascending = ascending;
+            this.present = present;
+            this.keys = keys;
+        }
+
+        @Override
+        public int compare(int left, int right) {
+            int cmp = compareNullable(present[left], present[right]);
+            if (cmp == 0) {
+                cmp = Double.compare(keys[left], keys[right]);
+            }
+            return ascending ? cmp : -cmp;
+        }
+
+        @Override
+        public void swap(int i, int j) {
+            RepositoryRuntime.swap(present, i, j);
+            RepositoryRuntime.swap(keys, i, j);
+        }
+    }
+
+    private static final class StringOrderKey implements OrderKey {
+        private final boolean ascending;
+        private final boolean[] present;
+        private final String[] keys;
+
+        StringOrderKey(boolean ascending, boolean[] present, String[] keys) {
+            this.ascending = ascending;
+            this.present = present;
+            this.keys = keys;
+        }
+
+        @Override
+        public int compare(int left, int right) {
+            int cmp = compareNullable(present[left], present[right]);
+            if (cmp == 0) {
+                cmp = compareStringValueOrder(keys[left], keys[right]);
+            }
+            return ascending ? cmp : -cmp;
+        }
+
+        @Override
+        public void swap(int i, int j) {
+            RepositoryRuntime.swap(present, i, j);
+            RepositoryRuntime.swap(keys, i, j);
+        }
+    }
+
+    private static int compareStringValueOrder(String left, String right) {
+        if (left == null && right == null) {
+            return 0;
+        }
+        if (left == null) {
+            return 1;
+        }
+        if (right == null) {
+            return -1;
+        }
+        return left.compareTo(right);
     }
 
     private int[] sortBySingleColumn(int[] rows, CompiledQuery.CompiledOrderBy orderBy) {

@@ -3,6 +3,7 @@ package io.memris.core;
 import io.memris.core.Query;
 
 import io.memris.core.Param;
+import io.memris.core.Modifying;
 
 import io.memris.repository.MemrisRepositoryFactory;
 import io.memris.core.MemrisArena;
@@ -149,6 +150,23 @@ class QueryAnnotationIntegrationTest {
     }
 
     @Test
+    void shouldProjectOrderSummariesOrdered() {
+        QueryOrderRepository repo = arena.createRepository(QueryOrderRepository.class);
+        QueryCustomerRepository customerRepo = arena.createRepository(QueryCustomerRepository.class);
+        Customer alice = customerRepo.save(new Customer("alice@example.com", "Alice", "123"));
+        Customer bob = customerRepo.save(new Customer("bob@example.com", "Bob", "456"));
+
+        repo.save(new Order(1500, alice));
+        repo.save(new Order(2500, bob));
+
+        List<OrderSummary> results = repo.findSummariesOrdered(0);
+
+        assertThat(results).hasSize(2);
+        assertThat(results.get(0).total()).isEqualTo(2500);
+        assertThat(results.get(1).total()).isEqualTo(1500);
+    }
+
+    @Test
     void shouldCountWithQuery() {
         QueryProductRepository repo = arena.createRepository(QueryProductRepository.class);
         repo.save(new Product("SKU-1", "Product 1", 1000, 0));
@@ -169,6 +187,45 @@ class QueryAnnotationIntegrationTest {
         assertThat(repo.existsBySkuQuery("SKU-2")).isFalse();
     }
 
+    @Test
+    void shouldOrderByMultipleColumns() {
+        QueryProductRepository repo = arena.createRepository(QueryProductRepository.class);
+        repo.save(new Product("SKU-1", "Product 1", 1000, 5));
+        repo.save(new Product("SKU-2", "Product 2", 1000, 2));
+        repo.save(new Product("SKU-3", "Product 3", 2000, 1));
+
+        List<Product> results = repo.findAllOrderByPriceDescStockAsc();
+
+        assertThat(results).hasSize(3);
+        assertThat(results.get(0).sku).isEqualTo("SKU-3");
+        assertThat(results.get(1).sku).isEqualTo("SKU-2");
+        assertThat(results.get(2).sku).isEqualTo("SKU-1");
+    }
+
+    @Test
+    void shouldUpdateWithQuery() {
+        QueryProductRepository repo = arena.createRepository(QueryProductRepository.class);
+        repo.save(new Product("SKU-1", "Product 1", 1000, 0));
+
+        long updated = repo.updateStockBySku("SKU-1", 7);
+
+        assertThat(updated).isEqualTo(1);
+        Optional<Product> found = repo.findBySkuQuery("SKU-1");
+        assertThat(found).isPresent();
+        assertThat(found.orElseThrow().stock).isEqualTo(7);
+    }
+
+    @Test
+    void shouldDeleteWithQuery() {
+        QueryProductRepository repo = arena.createRepository(QueryProductRepository.class);
+        repo.save(new Product("SKU-1", "Product 1", 1000, 0));
+
+        long deleted = repo.deleteBySku("SKU-1");
+
+        assertThat(deleted).isEqualTo(1);
+        assertThat(repo.findBySkuQuery("SKU-1")).isEmpty();
+    }
+
     public interface QueryProductRepository extends MemrisRepository<Product> {
         @Query("select p from Product p where p.sku = :sku")
         Optional<Product> findBySkuQuery(@Param("sku") String sku);
@@ -182,6 +239,9 @@ class QueryAnnotationIntegrationTest {
         @Query("select p from Product p order by p.price desc")
         List<Product> findAllOrderByPriceDesc();
 
+        @Query("select p from Product p order by p.price desc, p.stock asc")
+        List<Product> findAllOrderByPriceDescStockAsc();
+
         @Query("select p from Product p where (p.stock > :minStock and p.price < :maxPrice) or p.sku = :sku")
         List<Product> findAffordableOrSpecific(@Param("minStock") int minStock, @Param("maxPrice") long maxPrice,
                 @Param("sku") String sku);
@@ -191,6 +251,14 @@ class QueryAnnotationIntegrationTest {
 
         @Query("select p from Product p where p.sku = :sku")
         boolean existsBySkuQuery(@Param("sku") String sku);
+
+        @Modifying
+        @Query("update Product p set p.stock = :stock where p.sku = :sku")
+        long updateStockBySku(@Param("sku") String sku, @Param("stock") int stock);
+
+        @Modifying
+        @Query("delete from Product p where p.sku = :sku")
+        long deleteBySku(@Param("sku") String sku);
 
         Product save(Product product);
     }
@@ -205,6 +273,9 @@ class QueryAnnotationIntegrationTest {
     public interface QueryOrderRepository extends MemrisRepository<Order> {
         @Query("select o.total as total, o.customer.name as customerName from Order o where o.total >= :min")
         List<OrderSummary> findSummaries(@Param("min") long min);
+
+        @Query("select o.total as total, o.customer.name as customerName from Order o where o.total >= :min order by o.total desc")
+        List<OrderSummary> findSummariesOrdered(@Param("min") long min);
 
         Order save(Order order);
     }

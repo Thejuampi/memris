@@ -305,6 +305,13 @@ public final class MemrisRepositoryFactory implements AutoCloseable {
         io.memris.core.converter.TypeConverter<?, ?>[] converters = extractConverters(metadata);
         java.lang.invoke.MethodHandle[] setters = extractSetters(metadata);
 
+        io.memris.runtime.ConditionExecutor[][] conditionExecutors = io.memris.runtime.RepositoryRuntime
+                .buildConditionExecutors(compiledQueries, columnNames, metadata.entityClass(), true);
+        io.memris.runtime.OrderExecutor[] orderExecutors = io.memris.runtime.RepositoryRuntime
+                .buildOrderExecutors(compiledQueries, table);
+        io.memris.runtime.ProjectionExecutor[] projectionExecutors = io.memris.runtime.RepositoryRuntime
+                .buildProjectionExecutors(compiledQueries);
+
         // 8. Create entity constructor handle
         java.lang.invoke.MethodHandle entityConstructor;
         try {
@@ -327,6 +334,9 @@ public final class MemrisRepositoryFactory implements AutoCloseable {
                 compiledQueries,
                 bindings,
                 executors,
+                conditionExecutors,
+                orderExecutors,
+                projectionExecutors,
                 entityConstructor,
                 columnNames,
                 typeCodes,

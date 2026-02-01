@@ -23,6 +23,9 @@ public final class RepositoryPlan<T> {
     private final CompiledQuery[] queries;
     private final RepositoryMethodBinding[] bindings;
     private final RepositoryMethodExecutor[] executors;
+    private final ConditionExecutor[][] conditionExecutors;
+    private final OrderExecutor[] orderExecutors;
+    private final ProjectionExecutor[] projectionExecutors;
     private final GeneratedTable table;
     private final HeapRuntimeKernel kernel;
     private final String[] columnNames;
@@ -32,6 +35,7 @@ public final class RepositoryPlan<T> {
     private final java.util.Map<Class<?>, EntityMaterializer<?>> materializersByEntity;
     private final java.util.Map<String, SimpleTable> joinTables;
     private final EntitySaver<T, ?> entitySaver;
+    private final java.util.IdentityHashMap<CompiledQuery, Integer> queryIndexByInstance;
 
     private RepositoryPlan(Builder<T> builder) {
         this.entityClass = builder.entityClass;
@@ -39,6 +43,9 @@ public final class RepositoryPlan<T> {
         this.queries = builder.queries;
         this.bindings = builder.bindings;
         this.executors = builder.executors;
+        this.conditionExecutors = builder.conditionExecutors;
+        this.orderExecutors = builder.orderExecutors;
+        this.projectionExecutors = builder.projectionExecutors;
         this.table = builder.table;
         this.kernel = builder.kernel;
         this.columnNames = builder.columnNames;
@@ -48,6 +55,12 @@ public final class RepositoryPlan<T> {
         this.materializersByEntity = builder.materializersByEntity;
         this.joinTables = builder.joinTables;
         this.entitySaver = builder.entitySaver;
+        this.queryIndexByInstance = new java.util.IdentityHashMap<>();
+        if (this.queries != null) {
+            for (int i = 0; i < this.queries.length; i++) {
+                this.queryIndexByInstance.put(this.queries[i], i);
+            }
+        }
     }
 
     public Class<T> entityClass() {
@@ -68,6 +81,30 @@ public final class RepositoryPlan<T> {
 
     public RepositoryMethodExecutor[] executors() {
         return executors;
+    }
+
+    public ConditionExecutor[] conditionExecutorsFor(CompiledQuery query) {
+        Integer index = queryIndexByInstance.get(query);
+        if (index == null || conditionExecutors == null) {
+            return null;
+        }
+        return conditionExecutors[index];
+    }
+
+    public OrderExecutor orderExecutorFor(CompiledQuery query) {
+        Integer index = queryIndexByInstance.get(query);
+        if (index == null || orderExecutors == null) {
+            return null;
+        }
+        return orderExecutors[index];
+    }
+
+    public ProjectionExecutor projectionExecutorFor(CompiledQuery query) {
+        Integer index = queryIndexByInstance.get(query);
+        if (index == null || projectionExecutors == null) {
+            return null;
+        }
+        return projectionExecutors[index];
     }
 
     public GeneratedTable table() {
@@ -116,6 +153,9 @@ public final class RepositoryPlan<T> {
             CompiledQuery[] queries,
             RepositoryMethodBinding[] bindings,
             RepositoryMethodExecutor[] executors,
+            ConditionExecutor[][] conditionExecutors,
+            OrderExecutor[] orderExecutors,
+            ProjectionExecutor[] projectionExecutors,
             MethodHandle entityConstructor,
             String[] columnNames,
             byte[] typeCodes,
@@ -135,6 +175,9 @@ public final class RepositoryPlan<T> {
                 .queries(queries)
                 .bindings(bindings)
                 .executors(executors)
+                .conditionExecutors(conditionExecutors)
+                .orderExecutors(orderExecutors)
+                .projectionExecutors(projectionExecutors)
                 .table(table)
                 .kernel(kernel)
                 .columnNames(columnNames)
@@ -157,6 +200,9 @@ public final class RepositoryPlan<T> {
         private CompiledQuery[] queries;
         private RepositoryMethodBinding[] bindings;
         private RepositoryMethodExecutor[] executors;
+        private ConditionExecutor[][] conditionExecutors;
+        private OrderExecutor[] orderExecutors;
+        private ProjectionExecutor[] projectionExecutors;
         private GeneratedTable table;
         private HeapRuntimeKernel kernel;
         private String[] columnNames;
@@ -189,6 +235,21 @@ public final class RepositoryPlan<T> {
 
         public Builder<T> executors(RepositoryMethodExecutor[] executors) {
             this.executors = executors;
+            return this;
+        }
+
+        public Builder<T> conditionExecutors(ConditionExecutor[][] conditionExecutors) {
+            this.conditionExecutors = conditionExecutors;
+            return this;
+        }
+
+        public Builder<T> orderExecutors(OrderExecutor[] orderExecutors) {
+            this.orderExecutors = orderExecutors;
+            return this;
+        }
+
+        public Builder<T> projectionExecutors(ProjectionExecutor[] projectionExecutors) {
+            this.projectionExecutors = projectionExecutors;
             return this;
         }
 
