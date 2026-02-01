@@ -1,5 +1,7 @@
 package io.memris.runtime;
 
+import io.memris.core.FloatEncoding;
+
 import io.memris.core.EntityMetadata;
 import io.memris.repository.MemrisRepositoryFactory;
 import io.memris.core.TypeCodes;
@@ -14,7 +16,6 @@ import io.memris.storage.SelectionImpl;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
-import java.lang.reflect.Method;
 import java.lang.reflect.RecordComponent;
 import java.util.ArrayList;
 import java.util.List;
@@ -36,7 +37,7 @@ public final class RepositoryRuntime<T> {
     private final EntityMaterializer<T> materializer;
     private final EntityMetadata<T> metadata;
     private final java.util.Map<Class<?>, EntityMetadata<?>> relatedMetadata;
-    private final EntitySaver<T> entitySaver;
+    private final EntitySaver<T, ?> entitySaver;
     private final java.util.concurrent.ConcurrentHashMap<Class<?>, EntityMetadata<?>> projectionMetadata;
     private final java.util.concurrent.ConcurrentHashMap<Class<?>, MethodHandle> projectionConstructors;
     private static final AtomicLong idCounter = new AtomicLong(1L);
@@ -87,40 +88,12 @@ public final class RepositoryRuntime<T> {
         return java.util.Map.copyOf(related);
     }
 
-    /**
-     * Execute a method call based on the compiled query plan.
-     */
-    public Object executeMethod(Method method, Object[] args) {
-        if (Boolean.getBoolean("memris.fail.method.lookup")) {
-            throw new IllegalStateException("Method lookup dispatch is disabled for tests");
-        }
-        int methodIndex = findMethodIndex(method);
-        if (methodIndex < 0) {
-            throw new UnsupportedOperationException("Method not found in plan: " + method.getName());
-        }
-
-        CompiledQuery query = plan.queries()[methodIndex];
-        return executeCompiledQuery(query, args);
-    }
-
     public Object executeMethodIndex(int methodIndex, Object[] args) {
         if (methodIndex < 0 || methodIndex >= plan.queries().length) {
             throw new UnsupportedOperationException("Method index out of range: " + methodIndex);
         }
         CompiledQuery query = plan.queries()[methodIndex];
         return executeCompiledQuery(query, args);
-    }
-
-    private int findMethodIndex(Method method) {
-        java.lang.reflect.Method[] methods = io.memris.repository.RepositoryMethodIntrospector.extractQueryMethods(
-                method.getDeclaringClass());
-
-        for (int i = 0; i < methods.length; i++) {
-            if (methods[i].equals(method)) {
-                return i;
-            }
-        }
-        return -1;
     }
 
     private Object executeCompiledQuery(CompiledQuery query, Object[] args) {
@@ -201,14 +174,17 @@ public final class RepositoryRuntime<T> {
         GeneratedTable table = plan.table();
 
         // Use EntitySaver for ID extraction and field access
-        Long currentId = entitySaver != null ? entitySaver.extractId(entity) : null;
+        // Cast to raw type to work around wildcard capture issues
+        @SuppressWarnings("rawtypes")
+        EntitySaver rawSaver = entitySaver;
+        Object currentId = rawSaver != null ? rawSaver.extractId(entity) : null;
         boolean isNew = (currentId == null) || isZeroId(currentId);
 
-        Long id = currentId;
+        Object id = currentId;
         if (isNew) {
             id = generateNextId();
-            if (entitySaver != null) {
-                entitySaver.setId(entity, id);
+            if (rawSaver != null) {
+                rawSaver.setId(entity, id);
             }
             invokeLifecycle(metadata != null ? metadata.prePersistHandle() : null, entity);
             applyAuditFields(entity, true);
@@ -218,11 +194,11 @@ public final class RepositoryRuntime<T> {
         }
 
         // EntitySaver handles all field extraction, converters, and relationships
-        T savedEntity = entitySaver != null ? entitySaver.save(entity, table, id) : entity;
+        @SuppressWarnings("unchecked")
+        T savedEntity = rawSaver != null ? (T) rawSaver.save(entity, table, id) : entity;
 
         // Look up row index by ID for index updates
-        long packedRef = table.lookupById(id);
-        int rowIndex = io.memris.storage.Selection.index(packedRef);
+        int rowIndex = resolveRowIndexById(table, id);
 
         // Update indexes after save - read values back from table
         if (metadata != null) {
@@ -1111,8 +1087,8 @@ public final class RepositoryRuntime<T> {
             case TypeCodes.TYPE_BOOLEAN -> ((Integer) storage) != 0;
             case TypeCodes.TYPE_BYTE -> (byte) (int) storage;
             case TypeCodes.TYPE_SHORT -> (short) (int) storage;
-            case TypeCodes.TYPE_FLOAT -> Float.intBitsToFloat((Integer) storage);
-            case TypeCodes.TYPE_DOUBLE -> Double.longBitsToDouble((Long) storage);
+            case TypeCodes.TYPE_FLOAT -> FloatEncoding.sortableIntToFloat((Integer) storage);
+            case TypeCodes.TYPE_DOUBLE -> FloatEncoding.sortableLongToDouble((Long) storage);
             case TypeCodes.TYPE_CHAR -> (char) (int) storage;
             case TypeCodes.TYPE_STRING -> storage;
             default -> storage;
@@ -1592,7 +1568,7 @@ public final class RepositoryRuntime<T> {
                     for (int r = 0; r < rows.length; r++) {
                         int row = rows[r];
                         present[r] = table.isPresent(columnIndex, row);
-                        values[r] = Float.intBitsToFloat(table.readInt(columnIndex, row));
+                        values[r] = FloatEncoding.sortableIntToFloat(table.readInt(columnIndex, row));
                     }
                     key.floatKeys = values;
                 }
@@ -1811,7 +1787,7 @@ public final class RepositoryRuntime<T> {
         for (int i = 0; i < result.length; i++) {
             int row = result[i];
             present[i] = table.isPresent(columnIndex, row);
-            keys[i] = Float.intBitsToFloat(table.readInt(columnIndex, row));
+            keys[i] = FloatEncoding.sortableIntToFloat(table.readInt(columnIndex, row));
         }
         quickSortFloat(result, keys, present, 0, result.length - 1, ascending);
         return result;

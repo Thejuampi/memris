@@ -1,5 +1,7 @@
 package io.memris.runtime;
 
+import io.memris.core.FloatEncoding;
+
 import io.memris.core.EntityMetadata;
 import io.memris.core.EntityMetadata.FieldMapping;
 import io.memris.core.TypeCodes;
@@ -11,14 +13,16 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Implementation of EntityMaterializer that constructs entity instances from table row data.
+ * Implementation of EntityMaterializer that constructs entity instances from
+ * table row data.
  * <p>
  * This implementation:
  * <ul>
- *   <li>Uses pre-compiled MethodHandles for zero-reflection field access</li>
- *   <li>Reads directly from GeneratedTable using typed methods (readLong, readInt, readString)</li>
- *   <li>Applies TypeConverters when converting from storage to Java types</li>
- *   <li>Uses type code switching for O(1) dispatch</li>
+ * <li>Uses pre-compiled MethodHandles for zero-reflection field access</li>
+ * <li>Reads directly from GeneratedTable using typed methods (readLong,
+ * readInt, readString)</li>
+ * <li>Applies TypeConverters when converting from storage to Java types</li>
+ * <li>Uses type code switching for O(1) dispatch</li>
  * </ul>
  *
  * @param <T> the entity type
@@ -33,9 +37,9 @@ public class EntityMaterializerImpl<T> implements EntityMaterializer<T> {
 
     public EntityMaterializerImpl(EntityMetadata<T> metadata) {
         this.metadata = metadata;
-        this.constructor = metadata.entityConstructor() != null 
-            ? toMethodHandle(metadata.entityConstructor()) 
-            : null;
+        this.constructor = metadata.entityConstructor() != null
+                ? toMethodHandle(metadata.entityConstructor())
+                : null;
         this.fieldSetters = metadata.fieldSetters();
         this.fields = metadata.fields();
         this.converters = metadata.converters();
@@ -87,8 +91,8 @@ public class EntityMaterializerImpl<T> implements EntityMaterializer<T> {
                     case TypeCodes.TYPE_BOOLEAN -> table.readInt(colIdx, rowIndex) != 0; // stored as int
                     case TypeCodes.TYPE_BYTE -> (byte) table.readInt(colIdx, rowIndex);
                     case TypeCodes.TYPE_SHORT -> (short) table.readInt(colIdx, rowIndex);
-                    case TypeCodes.TYPE_FLOAT -> Float.intBitsToFloat(table.readInt(colIdx, rowIndex));
-                    case TypeCodes.TYPE_DOUBLE -> Double.longBitsToDouble(table.readLong(colIdx, rowIndex));
+                    case TypeCodes.TYPE_FLOAT -> FloatEncoding.sortableIntToFloat(table.readInt(colIdx, rowIndex));
+                    case TypeCodes.TYPE_DOUBLE -> FloatEncoding.sortableLongToDouble(table.readLong(colIdx, rowIndex));
                     case TypeCodes.TYPE_CHAR -> (char) table.readInt(colIdx, rowIndex);
                     case TypeCodes.TYPE_INSTANT -> table.readLong(colIdx, rowIndex);
                     case TypeCodes.TYPE_LOCAL_DATE -> table.readLong(colIdx, rowIndex);

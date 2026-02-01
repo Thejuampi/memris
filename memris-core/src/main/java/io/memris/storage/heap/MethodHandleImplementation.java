@@ -827,9 +827,10 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
                         long longValue;
                         if (typeCode == io.memris.core.TypeCodes.TYPE_DOUBLE) {
                             if (value instanceof Double) {
-                                longValue = Double.doubleToLongBits((Double) value);
+                                longValue = io.memris.core.FloatEncoding.doubleToSortableLong((Double) value);
                             } else if (value instanceof Number) {
-                                longValue = Double.doubleToLongBits(((Number) value).doubleValue());
+                                longValue = io.memris.core.FloatEncoding
+                                        .doubleToSortableLong(((Number) value).doubleValue());
                             } else {
                                 throw new IllegalArgumentException("Expected Double for column " + i);
                             }
@@ -857,9 +858,10 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
                         int intValue;
                         if (typeCode == io.memris.core.TypeCodes.TYPE_FLOAT) {
                             if (value instanceof Float) {
-                                intValue = Float.floatToIntBits((Float) value);
+                                intValue = io.memris.core.FloatEncoding.floatToSortableInt((Float) value);
                             } else if (value instanceof Number) {
-                                intValue = Float.floatToIntBits(((Number) value).floatValue());
+                                intValue = io.memris.core.FloatEncoding
+                                        .floatToSortableInt(((Number) value).floatValue());
                             } else {
                                 throw new IllegalArgumentException("Expected Float for column " + i);
                             }

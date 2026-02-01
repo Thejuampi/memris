@@ -100,7 +100,7 @@ public final class RepositoryEmitter {
         }
 
         // Generate EntitySaver for the entity
-        EntitySaver<T> entitySaver = EntitySaverGenerator.generate(entityClass, metadata);
+        EntitySaver<T, ?> entitySaver = EntitySaverGenerator.generate(entityClass, metadata);
 
         // Build RepositoryPlan with compiled queries
         RepositoryPlan<T> plan = RepositoryPlan.fromGeneratedTable(
@@ -450,6 +450,7 @@ public final class RepositoryEmitter {
      * @param <R>                 the repository interface type
      * @return an instance of the generated repository implementation
      */
+    @SuppressWarnings("unchecked")
     public <T, R extends MemrisRepository<T>> R emitAndInstantiate(Class<R> repositoryInterface,
             RepositoryRuntime<T> runtime) {
         try {

@@ -2,6 +2,7 @@ package io.memris.storage.heap;
 
 import io.memris.kernel.RowId;
 import io.memris.core.TypeCodes;
+import io.memris.core.FloatEncoding;
 import io.memris.storage.Selection;
 import net.bytebuddy.ByteBuddy;
 import net.bytebuddy.description.modifier.FieldManifestation;
@@ -930,9 +931,9 @@ public final class BytecodeTableGenerator {
                         long longValue;
                         if (typeCode == TypeCodes.TYPE_DOUBLE) {
                             if (value instanceof Double) {
-                                longValue = Double.doubleToLongBits((Double) value);
+                                longValue = FloatEncoding.doubleToSortableLong((Double) value);
                             } else if (value instanceof Number) {
-                                longValue = Double.doubleToLongBits(((Number) value).doubleValue());
+                                longValue = FloatEncoding.doubleToSortableLong(((Number) value).doubleValue());
                             } else {
                                 throw new IllegalArgumentException("Expected Double for column " + i);
                             }
@@ -960,9 +961,9 @@ public final class BytecodeTableGenerator {
                         int intValue;
                         if (typeCode == TypeCodes.TYPE_FLOAT) {
                             if (value instanceof Float) {
-                                intValue = Float.floatToIntBits((Float) value);
+                                intValue = FloatEncoding.floatToSortableInt((Float) value);
                             } else if (value instanceof Number) {
-                                intValue = Float.floatToIntBits(((Number) value).floatValue());
+                                intValue = FloatEncoding.floatToSortableInt(((Number) value).floatValue());
                             } else {
                                 throw new IllegalArgumentException("Expected Float for column " + i);
                             }

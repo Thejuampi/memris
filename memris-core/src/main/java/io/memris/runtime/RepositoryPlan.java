@@ -7,9 +7,11 @@ import io.memris.storage.SimpleTable;
 import java.lang.invoke.MethodHandle;
 
 /**
- * RepositoryPlan is the single compiled artifact created ONCE at repository creation time.
+ * RepositoryPlan is the single compiled artifact created ONCE at repository
+ * creation time.
  * <p>
- * This class enforces the "compile once, reuse forever" principle by holding all
+ * This class enforces the "compile once, reuse forever" principle by holding
+ * all
  * pre-compiled data needed for runtime execution.
  *
  * @param <T> the entity type
@@ -27,7 +29,7 @@ public final class RepositoryPlan<T> {
     private final java.util.Map<Class<?>, HeapRuntimeKernel> kernelsByEntity;
     private final java.util.Map<Class<?>, EntityMaterializer<?>> materializersByEntity;
     private final java.util.Map<String, SimpleTable> joinTables;
-    private final EntitySaver<T> entitySaver;
+    private final EntitySaver<T, ?> entitySaver;
 
     private RepositoryPlan(Builder<T> builder) {
         this.entityClass = builder.entityClass;
@@ -44,18 +46,53 @@ public final class RepositoryPlan<T> {
         this.entitySaver = builder.entitySaver;
     }
 
-    public Class<T> entityClass() { return entityClass; }
-    public String idColumnName() { return idColumnName; }
-    public CompiledQuery[] queries() { return queries; }
-    public GeneratedTable table() { return table; }
-    public HeapRuntimeKernel kernel() { return kernel; }
-    public String[] columnNames() { return columnNames; }
-    public byte[] typeCodes() { return typeCodes; }
-    public java.util.Map<Class<?>, GeneratedTable> tablesByEntity() { return tablesByEntity; }
-    public java.util.Map<Class<?>, HeapRuntimeKernel> kernelsByEntity() { return kernelsByEntity; }
-    public java.util.Map<Class<?>, EntityMaterializer<?>> materializersByEntity() { return materializersByEntity; }
-    public java.util.Map<String, SimpleTable> joinTables() { return joinTables; }
-    public EntitySaver<T> entitySaver() { return entitySaver; }
+    public Class<T> entityClass() {
+        return entityClass;
+    }
+
+    public String idColumnName() {
+        return idColumnName;
+    }
+
+    public CompiledQuery[] queries() {
+        return queries;
+    }
+
+    public GeneratedTable table() {
+        return table;
+    }
+
+    public HeapRuntimeKernel kernel() {
+        return kernel;
+    }
+
+    public String[] columnNames() {
+        return columnNames;
+    }
+
+    public byte[] typeCodes() {
+        return typeCodes;
+    }
+
+    public java.util.Map<Class<?>, GeneratedTable> tablesByEntity() {
+        return tablesByEntity;
+    }
+
+    public java.util.Map<Class<?>, HeapRuntimeKernel> kernelsByEntity() {
+        return kernelsByEntity;
+    }
+
+    public java.util.Map<Class<?>, EntityMaterializer<?>> materializersByEntity() {
+        return materializersByEntity;
+    }
+
+    public java.util.Map<String, SimpleTable> joinTables() {
+        return joinTables;
+    }
+
+    public EntitySaver<T, ?> entitySaver() {
+        return entitySaver;
+    }
 
     /**
      * Create a RepositoryPlan from a GeneratedTable.
@@ -74,7 +111,7 @@ public final class RepositoryPlan<T> {
             java.util.Map<Class<?>, HeapRuntimeKernel> kernelsByEntity,
             java.util.Map<Class<?>, EntityMaterializer<?>> materializersByEntity,
             java.util.Map<String, SimpleTable> joinTables,
-            EntitySaver<T> entitySaver) {
+            EntitySaver<T, ?> entitySaver) {
 
         HeapRuntimeKernel kernel = new HeapRuntimeKernel(table);
 
@@ -110,7 +147,7 @@ public final class RepositoryPlan<T> {
         private java.util.Map<Class<?>, HeapRuntimeKernel> kernelsByEntity = java.util.Map.of();
         private java.util.Map<Class<?>, EntityMaterializer<?>> materializersByEntity = java.util.Map.of();
         private java.util.Map<String, SimpleTable> joinTables = java.util.Map.of();
-        private EntitySaver<T> entitySaver;
+        private EntitySaver<T, ?> entitySaver;
 
         public Builder<T> entityClass(Class<T> entityClass) {
             this.entityClass = entityClass;
@@ -167,7 +204,7 @@ public final class RepositoryPlan<T> {
             return this;
         }
 
-        public Builder<T> entitySaver(EntitySaver<T> entitySaver) {
+        public Builder<T> entitySaver(EntitySaver<T, ?> entitySaver) {
             this.entitySaver = entitySaver;
             return this;
         }

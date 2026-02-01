@@ -26,7 +26,7 @@ class RepositoryPlanTest {
         EntityMetadata<TestEntity> metadata = MetadataExtractor.extractEntityMetadata(entityClass);
 
         // Generate EntitySaver
-        EntitySaver<TestEntity> entitySaver = EntitySaverGenerator.generate(entityClass, metadata);
+        EntitySaver<TestEntity, ?> entitySaver = EntitySaverGenerator.generate(entityClass, metadata);
         assertNotNull(entitySaver);
 
         // Create minimal RepositoryPlan with EntitySaver
@@ -76,7 +76,7 @@ class RepositoryPlanTest {
         // Create entity and metadata
         Class<TestEntity> entityClass = TestEntity.class;
         EntityMetadata<TestEntity> metadata = MetadataExtractor.extractEntityMetadata(entityClass);
-        EntitySaver<TestEntity> entitySaver = EntitySaverGenerator.generate(entityClass, metadata);
+        EntitySaver<TestEntity, ?> entitySaver = EntitySaverGenerator.generate(entityClass, metadata);
 
         // Build plan with EntitySaver
         RepositoryPlan<TestEntity> plan = RepositoryPlan.<TestEntity>builder()
@@ -94,16 +94,20 @@ class RepositoryPlanTest {
         TestEntity entity = new TestEntity();
         entity.name = "Test";
 
+        // Use raw type to work around wildcard capture issues
+        @SuppressWarnings("rawtypes")
+        EntitySaver rawSaver = plan.entitySaver();
+
         // Test extractId (should return null for new entity)
-        Long id = plan.entitySaver().extractId(entity);
+        Object id = rawSaver.extractId(entity);
         assertNull(id);
 
         // Test setId
-        plan.entitySaver().setId(entity, 42L);
+        rawSaver.setId(entity, 42L);
         assertEquals(42L, entity.id);
 
         // Test extractId after setting
-        id = plan.entitySaver().extractId(entity);
+        id = rawSaver.extractId(entity);
         assertEquals(42L, id);
     }
 

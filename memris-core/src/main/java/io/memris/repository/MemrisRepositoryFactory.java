@@ -311,7 +311,8 @@ public final class MemrisRepositoryFactory implements AutoCloseable {
         }
 
         // 9. Generate EntitySaver for the entity
-        io.memris.runtime.EntitySaver<T> entitySaver = io.memris.repository.EntitySaverGenerator.generate(entityClass,
+        io.memris.runtime.EntitySaver<T, ?> entitySaver = io.memris.repository.EntitySaverGenerator.generate(
+                entityClass,
                 metadata);
 
         // 10. Build RepositoryPlan

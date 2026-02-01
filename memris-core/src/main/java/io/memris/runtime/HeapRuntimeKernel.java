@@ -1,5 +1,6 @@
 package io.memris.runtime;
 
+import io.memris.core.FloatEncoding;
 import io.memris.core.TypeCodes;
 import io.memris.storage.GeneratedTable;
 import io.memris.storage.Selection;
@@ -16,17 +17,19 @@ import java.util.Date;
 /**
  * Hot-path query execution kernel using type handlers for extensibility.
  *
- * <p>This kernel uses the {@link TypeHandlerRegistry} to dispatch operations
+ * <p>
+ * This kernel uses the {@link TypeHandlerRegistry} to dispatch operations
  * to type-specific handlers. This design allows new types to be added without
  * modifying the kernel - simply register a new {@link TypeHandler}.
  *
- * <p>The kernel supports all standard comparison operators:
+ * <p>
+ * The kernel supports all standard comparison operators:
  * <ul>
- *   <li>Equality: EQ, NE</li>
- *   <li>Comparison: GT, GTE, LT, LTE</li>
- *   <li>Range: BETWEEN</li>
- *   <li>Set: IN, NOT_IN</li>
- *   <li>Null checks: IS_NULL, IS_NOT_NULL</li>
+ * <li>Equality: EQ, NE</li>
+ * <li>Comparison: GT, GTE, LT, LTE</li>
+ * <li>Range: BETWEEN</li>
+ * <li>Set: IN, NOT_IN</li>
+ * <li>Null checks: IS_NULL, IS_NOT_NULL</li>
  * </ul>
  */
 public record HeapRuntimeKernel(GeneratedTable table, TypeHandlerRegistry handlerRegistry) {
@@ -76,9 +79,10 @@ public record HeapRuntimeKernel(GeneratedTable table, TypeHandlerRegistry handle
      * @param cc   the compiled condition
      * @param args the argument values from the method call
      * @return selection of matching rows
-     * @throws IllegalArgumentException if no handler is registered for the column type
+     * @throws IllegalArgumentException if no handler is registered for the column
+     *                                  type
      */
-    @SuppressWarnings({"unchecked", "rawtypes"})
+    @SuppressWarnings({ "unchecked", "rawtypes" })
     public Selection executeCondition(CompiledQuery.CompiledCondition cc, Object[] args) {
         int columnIndex = cc.columnIndex();
         LogicalQuery.Operator operator = cc.operator();
@@ -128,15 +132,34 @@ public record HeapRuntimeKernel(GeneratedTable table, TypeHandlerRegistry handle
                 long max = ((Number) maxObj).longValue();
                 yield createSelection(table, table.scanBetweenLong(columnIndex, min, max));
             }
-            case TypeCodes.TYPE_INT -> {
+            case TypeCodes.TYPE_INT,
+                    TypeCodes.TYPE_BYTE,
+                    TypeCodes.TYPE_SHORT -> {
                 int min = ((Number) minObj).intValue();
                 int max = ((Number) maxObj).intValue();
                 yield createSelection(table, table.scanBetweenInt(columnIndex, min, max));
             }
+            case TypeCodes.TYPE_CHAR -> {
+                int min = (minObj instanceof Character c) ? c : minObj.toString().charAt(0);
+                int max = (maxObj instanceof Character c) ? c : maxObj.toString().charAt(0);
+                yield createSelection(table, table.scanBetweenInt(columnIndex, min, max));
+            }
+            case TypeCodes.TYPE_FLOAT -> {
+                // Uses sortable encoding for correct numerical ordering
+                int min = FloatEncoding.floatToSortableInt(((Number) minObj).floatValue());
+                int max = FloatEncoding.floatToSortableInt(((Number) maxObj).floatValue());
+                yield createSelection(table, table.scanBetweenInt(columnIndex, min, max));
+            }
+            case TypeCodes.TYPE_DOUBLE -> {
+                // Uses sortable encoding for correct numerical ordering
+                long min = FloatEncoding.doubleToSortableLong(((Number) minObj).doubleValue());
+                long max = FloatEncoding.doubleToSortableLong(((Number) maxObj).doubleValue());
+                yield createSelection(table, table.scanBetweenLong(columnIndex, min, max));
+            }
             case TypeCodes.TYPE_INSTANT,
-                 TypeCodes.TYPE_LOCAL_DATE,
-                 TypeCodes.TYPE_LOCAL_DATE_TIME,
-                 TypeCodes.TYPE_DATE -> {
+                    TypeCodes.TYPE_LOCAL_DATE,
+                    TypeCodes.TYPE_LOCAL_DATE_TIME,
+                    TypeCodes.TYPE_DATE -> {
                 long min = convertToEpochLong(typeCode, minObj);
                 long max = convertToEpochLong(typeCode, maxObj);
                 yield createSelection(table, table.scanBetweenLong(columnIndex, min, max));
@@ -152,20 +175,23 @@ public record HeapRuntimeKernel(GeneratedTable table, TypeHandlerRegistry handle
         byte typeCode = table.typeCodeAt(columnIndex);
         return switch (typeCode) {
             case TypeCodes.TYPE_STRING,
-                 TypeCodes.TYPE_BIG_DECIMAL,
-                 TypeCodes.TYPE_BIG_INTEGER -> createSelection(table, table.scanInString(columnIndex, toStringArray(value)));
+                    TypeCodes.TYPE_BIG_DECIMAL,
+                    TypeCodes.TYPE_BIG_INTEGER ->
+                createSelection(table, table.scanInString(columnIndex, toStringArray(value)));
             case TypeCodes.TYPE_LONG,
-                 TypeCodes.TYPE_INSTANT,
-                 TypeCodes.TYPE_LOCAL_DATE,
-                 TypeCodes.TYPE_LOCAL_DATE_TIME,
-                 TypeCodes.TYPE_DATE,
-                 TypeCodes.TYPE_DOUBLE -> createSelection(table, table.scanInLong(columnIndex, toLongArray(typeCode, value)));
+                    TypeCodes.TYPE_INSTANT,
+                    TypeCodes.TYPE_LOCAL_DATE,
+                    TypeCodes.TYPE_LOCAL_DATE_TIME,
+                    TypeCodes.TYPE_DATE,
+                    TypeCodes.TYPE_DOUBLE ->
+                createSelection(table, table.scanInLong(columnIndex, toLongArray(typeCode, value)));
             case TypeCodes.TYPE_INT,
-                 TypeCodes.TYPE_BOOLEAN,
-                 TypeCodes.TYPE_BYTE,
-                 TypeCodes.TYPE_SHORT,
-                 TypeCodes.TYPE_CHAR,
-                 TypeCodes.TYPE_FLOAT -> createSelection(table, table.scanInInt(columnIndex, toIntArray(typeCode, value)));
+                    TypeCodes.TYPE_BOOLEAN,
+                    TypeCodes.TYPE_BYTE,
+                    TypeCodes.TYPE_SHORT,
+                    TypeCodes.TYPE_CHAR,
+                    TypeCodes.TYPE_FLOAT ->
+                createSelection(table, table.scanInInt(columnIndex, toIntArray(typeCode, value)));
             default -> throw new UnsupportedOperationException("IN not supported for type code: " + typeCode);
         };
     }
@@ -201,7 +227,7 @@ public record HeapRuntimeKernel(GeneratedTable table, TypeHandlerRegistry handle
             }
             return result;
         }
-        return new long[]{convertToLong(typeCode, value)};
+        return new long[] { convertToLong(typeCode, value) };
     }
 
     private int[] toIntArray(byte typeCode, Object value) {
@@ -228,7 +254,7 @@ public record HeapRuntimeKernel(GeneratedTable table, TypeHandlerRegistry handle
             }
             return result;
         }
-        return new int[]{convertToInt(typeCode, value)};
+        return new int[] { convertToInt(typeCode, value) };
     }
 
     private String[] toStringArray(Object value) {
@@ -255,7 +281,7 @@ public record HeapRuntimeKernel(GeneratedTable table, TypeHandlerRegistry handle
             }
             return result;
         }
-        return new String[]{value.toString()};
+        return new String[] { value.toString() };
     }
 
     private long convertToLong(byte typeCode, Object value) {
@@ -267,7 +293,7 @@ public record HeapRuntimeKernel(GeneratedTable table, TypeHandlerRegistry handle
             case TypeCodes.TYPE_LOCAL_DATE -> ((LocalDate) value).toEpochDay();
             case TypeCodes.TYPE_LOCAL_DATE_TIME -> ((LocalDateTime) value).toInstant(ZoneOffset.UTC).toEpochMilli();
             case TypeCodes.TYPE_DATE -> ((Date) value).getTime();
-            case TypeCodes.TYPE_DOUBLE -> Double.doubleToLongBits(((Number) value).doubleValue());
+            case TypeCodes.TYPE_DOUBLE -> FloatEncoding.doubleToSortableLong(((Number) value).doubleValue());
             default -> ((Number) value).longValue();
         };
     }
@@ -279,7 +305,7 @@ public record HeapRuntimeKernel(GeneratedTable table, TypeHandlerRegistry handle
         return switch (typeCode) {
             case TypeCodes.TYPE_BOOLEAN -> (value instanceof Boolean b && b) ? 1 : 0;
             case TypeCodes.TYPE_CHAR -> (value instanceof Character c) ? c : (int) value.toString().charAt(0);
-            case TypeCodes.TYPE_FLOAT -> Float.floatToIntBits(((Number) value).floatValue());
+            case TypeCodes.TYPE_FLOAT -> FloatEncoding.floatToSortableInt(((Number) value).floatValue());
             default -> ((Number) value).intValue();
         };
     }
