@@ -245,3 +245,36 @@ Return types determine execution path:
 - `List<T>` / `T` / `Optional<T>` / `long` (count) / `boolean` (exists)
 
 For complete operator reference, see **[docs/QUERY.md](docs/QUERY.md)**.
+
+---
+
+## Testing Guidelines
+
+### Single Assertion Requirement
+
+**IMPORTANT**: All tests must use a single AssertJ assertion. The entity classes (Customer, Product, Order, OrderItem) do not implement `equals()`/`hashCode()`, so tests should use AssertJ's `usingRecursiveComparison()` API.
+
+**Strategy by Assertion Type:**
+
+| Current Pattern | Single Assertion Replacement |
+|----------------|------------------------------|
+| `assertThat(entity.field).isEqualTo(value)` | `assertThat(actual).usingRecursiveComparison().ignoringFields("created").isEqualTo(expected)` |
+| `assertThat(list).hasSize(N) + extracting` | `assertThat(list).usingRecursiveFieldByFieldElementComparator().ignoringFields("created").containsExactly(expected)` |
+| `containsExactlyInAnyOrder` | `usingRecursiveFieldByFieldElementComparator().ignoringFields("created").containsExactlyInAnyOrder(expectedElements)` |
+| Boolean checks (isTrue, isFalse) | Keep as single assertions (already single) |
+| Exception checks (assertThrownBy) | Keep as single assertions (already single) |
+
+**Key Considerations:**
+
+1. **Ignore created field**: Customer entity has timestamp-based field that won't match
+2. **Order-sensitive tests**: Use `containsExactly()` when order matters (sorting tests)
+3. **Order-agnostic tests**: Use `containsExactlyInAnyOrder()` for most cases
+4. **ID fields**: Keep in comparison when testing specific entities
+
+**Test Grouping:**
+
+| Category | Tests Affected | Approach |
+|----------|----------------|----------|
+| Single entity verification | `shouldCreateAndFindCustomerByEmail`, `shouldCreateAndFindProductBySku`, `shouldHandleUpdateSemantics` | `usingRecursiveComparison()` |
+| Collection verification | 15+ tests with list assertions | `usingRecursiveFieldByFieldElementComparator()` |
+| Single boolean/count checks | `shouldCheckCustomerExistsByEmail`, `shouldCountOrdersByStatus`, etc. | Already single assertions |
