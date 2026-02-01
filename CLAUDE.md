@@ -63,15 +63,6 @@ mvn.cmd -q -e -pl memris-core test -Dtest=ClassName
 mvn.cmd -q -e -pl memris-core test -Dtest=ClassName#methodName
 ```
 
-## Java Runtime Requirements
-
-- **Java Version**: 21 (required)
-
-- **Native Access**: `--enable-native-access=ALL-UNNAMED`
-- **Storage**: 100% heap-based (no FFM/MemorySegment)
-
----
-
 ## Architecture Overview
 
 Memris is a **heap-based**, columnar in-memory storage engine with **zero reflection in hot paths**. The key architectural split is:
@@ -178,37 +169,6 @@ public final class TypeCodes {
 
 ---
 
-## Custom Annotations (NOT Jakarta/JPA)
-
-Memris uses **custom annotations** (not Jakarta/JPA):
-
-- `@Entity` (io.memris.Entity) - Marks entity classes
-- `@Index` (io.memris.Index) - Marks fields for indexing
-- `@GeneratedValue` (io.memris.GeneratedValue) - Auto ID generation
-- `@OneToOne` (io.memris.OneToOne) - Relationship marker
-- `GenerationType` - ID generation strategies (AUTO, IDENTITY, UUID, CUSTOM)
-
-**Note:** Test entities may use Jakarta annotations, but main code uses custom annotations.
-
----
-
-## Relationship Annotations Supported
-
-All relationship annotations are fully implemented:
-
-- **@ManyToOne** - Foreign key relationships with targetEntity and optional attributes
-- **@OneToMany** - Bidirectional relationships requiring mappedBy attribute
-- **@ManyToMany** - Join table relationships with @JoinTable annotation
-- **@OneToOne** - One-to-one relationships with mappedBy support
-
-**Join Table Implementation**:
-- **Numeric IDs (int, long)**: direct mapping to int/long columns
-- **UUID IDs**: store as two long columns (128 bits total)
-- **String IDs**: store in String columns with proper indexing
-- **Current limitation**: Only numeric IDs fully supported
-
-All relationships use eager loading since Memris is an in-memory storage engine (no lazy loading).
-
 ## Concurrency Model
 
 **Current Implementation:**
@@ -233,18 +193,7 @@ All relationships use eager loading since Memris is an in-memory storage engine 
 
 ## Query Method Naming
 
-Query methods are parsed from method names:
-```
-findByLastname              → EQ lastname
-findByAgeGreaterThan        → GT age
-findByAgeBetween            → BETWEEN age
-findByLastnameIgnoreCase    → EQ lastname (case-insensitive)
-```
-
-Return types determine execution path:
-- `List<T>` / `T` / `Optional<T>` / `long` (count) / `boolean` (exists)
-
-For complete operator reference, see **[docs/QUERY.md](docs/QUERY.md)**.
+Query methods are parsed from method names. For complete operator reference, see [docs/QUERY.md](docs/QUERY.md).
 
 ---
 

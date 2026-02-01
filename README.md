@@ -267,25 +267,6 @@ Repository Method → QueryCompiler → HeapRuntimeKernel
 | `LongIdIndex` | Primary key index (long) | O(1) lookup |
 | `StringIdIndex` | Primary key index (String) | O(1) lookup |
 
-### Concurrency Model
-
-**Multi-Reader, Multi-Writer (with SeqLock coordination)**
-
-| Operation | Thread-Safe | Mechanism |
-|-----------|-------------|-----------|
-| ID generation | ✅ | AtomicLong |
-| ID index lookups | ✅ | ConcurrentHashMap |
-| HashIndex lookups | ✅ | ConcurrentHashMap |
-| RangeIndex lookups | ✅ | ConcurrentSkipListMap |
-| Query scans | ✅ | SeqLock + volatile watermark |
-| Row allocation | ✅ | LockFreeFreeList (CAS-based) |
-| Column writes | ✅ | Row seqlock (CAS) + publish ordering |
-| Index updates | ⚠️ | Eventual consistency + query validation |
-
-**Isolation Level:** Best-effort (no MVCC, no transactions)
-
-**Note:** Concurrent saves/deletes are supported; external synchronization is only needed for strict index/row atomicity.
-
 ## Current Limitations
 
 1. **DISTINCT** — Tokenized but execution incomplete
@@ -353,14 +334,6 @@ mvn.cmd -q -e -pl memris-core test -Dtest=ClassName
 
 # Run single test method
 mvn.cmd -q -e -pl memris-core test -Dtest=ClassName#methodName
-
-# Code quality checks
-mvn.cmd spotbugs:check
-mvn.cmd checkstyle:check
-mvn.cmd pmd:check
-mvn.cmd modernizer:modernizer     # Legacy API check
-mvn.cmd dependency-check:check    # Security vulnerability scan
-mvn.cmd test -Dtest=ArchitectureTest # Architecture rule verification
 
 # Package and install
 mvn.cmd clean install
