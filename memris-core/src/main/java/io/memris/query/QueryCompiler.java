@@ -105,8 +105,30 @@ public class QueryCompiler {
         CompiledQuery.CompiledGrouping compiledGrouping = null;
         LogicalQuery.Grouping grouping = logicalQuery.grouping();
         if (grouping != null) {
-            int groupColumnIndex = resolveColumnIndex(grouping.keyProperty(), metadata);
-            compiledGrouping = new CompiledQuery.CompiledGrouping(groupColumnIndex, grouping.valueType());
+            String[] keyProperties = grouping.keyProperties();
+            if (keyProperties == null || keyProperties.length == 0) {
+                throw new IllegalArgumentException("Grouping requires key properties");
+            }
+            int[] columnIndices = new int[keyProperties.length];
+            byte[] typeCodes = new byte[keyProperties.length];
+            for (int i = 0; i < keyProperties.length; i++) {
+                int columnIndex = resolveColumnIndex(keyProperties[i], metadata);
+                columnIndices[i] = columnIndex;
+                EntityMetadata.FieldMapping field = findFieldByColumnIndex(columnIndex, metadata);
+                if (field == null) {
+                    throw new IllegalArgumentException("Grouping property not found: " + keyProperties[i]);
+                }
+                typeCodes[i] = field.typeCode();
+            }
+            Class<?> keyType = grouping.keyType();
+            java.lang.invoke.MethodHandle keyConstructor = null;
+            if (keyType != null && keyType.isRecord()) {
+                keyConstructor = resolveRecordConstructor(keyType, keyProperties, typeCodes, metadata);
+            } else if (keyProperties.length > 1) {
+                throw new IllegalArgumentException("Grouping with multiple keys requires record key type");
+            }
+            compiledGrouping = new CompiledQuery.CompiledGrouping(columnIndices, typeCodes, keyProperties, keyType,
+                    keyConstructor, grouping.valueType());
         }
 
         return CompiledQuery.of(
@@ -122,8 +144,32 @@ public class QueryCompiler {
             logicalQuery.distinct(),
             logicalQuery.boundValues(),
             logicalQuery.parameterIndices(),
-            logicalQuery.arity()
+            logicalQuery.arity(),
+            compileHavingConditions(logicalQuery.havingConditions())
         );
+    }
+
+    private CompiledQuery.CompiledCondition[] compileHavingConditions(LogicalQuery.Condition[] conditions) {
+        if (conditions == null || conditions.length == 0) {
+            return null;
+        }
+        CompiledQuery.CompiledCondition[] compiled = new CompiledQuery.CompiledCondition[conditions.length];
+        for (int i = 0; i < conditions.length; i++) {
+            LogicalQuery.Condition condition = conditions[i];
+            int columnIndex;
+            if ("$COUNT".equals(condition.propertyPath())) {
+                columnIndex = -1;
+            } else {
+                columnIndex = resolveColumnIndex(condition.propertyPath(), metadata);
+            }
+            compiled[i] = CompiledQuery.CompiledCondition.of(
+                    columnIndex,
+                    condition.operator(),
+                    condition.argumentIndex(),
+                    condition.ignoreCase(),
+                    condition.nextCombinator());
+        }
+        return compiled;
     }
 
     /**
@@ -139,6 +185,55 @@ public class QueryCompiler {
             return entityMetadata.resolveColumnPosition(entityMetadata.idColumnName());
         }
         return entityMetadata.resolvePropertyPosition(propertyPath);
+    }
+
+    private java.lang.invoke.MethodHandle resolveRecordConstructor(Class<?> recordType, String[] keyProperties,
+            byte[] typeCodes, EntityMetadata<?> entityMetadata) {
+        if (!recordType.isRecord()) {
+            throw new IllegalArgumentException("Grouping key type must be a record: " + recordType.getName());
+        }
+        java.lang.reflect.RecordComponent[] components = recordType.getRecordComponents();
+        if (components.length != keyProperties.length) {
+            throw new IllegalArgumentException("Grouping key record component count must match grouping properties");
+        }
+        Class<?>[] paramTypes = new Class<?>[components.length];
+        for (int i = 0; i < components.length; i++) {
+            String expectedName = keyProperties[i];
+            String actualName = components[i].getName();
+            if (!expectedName.equalsIgnoreCase(actualName)) {
+                throw new IllegalArgumentException("Grouping key record component names must match grouping properties in order");
+            }
+            Class<?> expectedType = resolveGroupingPropertyType(expectedName, entityMetadata);
+            Class<?> actualType = components[i].getType();
+            if (!expectedType.equals(actualType)) {
+                throw new IllegalArgumentException("Grouping key record component type mismatch for: " + actualName);
+            }
+            paramTypes[i] = actualType;
+        }
+        try {
+            return java.lang.invoke.MethodHandles.lookup().findConstructor(recordType,
+                    java.lang.invoke.MethodType.methodType(void.class, paramTypes));
+        } catch (NoSuchMethodException | IllegalAccessException e) {
+            throw new RuntimeException("Failed to resolve grouping key record constructor", e);
+        }
+    }
+
+    private Class<?> resolveGroupingPropertyType(String propertyName, EntityMetadata<?> entityMetadata) {
+        int columnIndex = resolveColumnIndex(propertyName, entityMetadata);
+        EntityMetadata.FieldMapping field = findFieldByColumnIndex(columnIndex, entityMetadata);
+        if (field == null) {
+            throw new IllegalArgumentException("Unknown grouping property: " + propertyName);
+        }
+        return field.javaType();
+    }
+
+    private EntityMetadata.FieldMapping findFieldByColumnIndex(int columnIndex, EntityMetadata<?> entityMetadata) {
+        for (EntityMetadata.FieldMapping field : entityMetadata.fields()) {
+            if (field.columnPosition() == columnIndex) {
+                return field;
+            }
+        }
+        return null;
     }
 
     private boolean compileJoinPath(

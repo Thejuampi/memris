@@ -41,16 +41,29 @@ public final class JpqlQueryParser {
             LogicalQuery.ReturnKind returnKind = projectionSpec != null
                     ? projectionSpec.returnKind
                     : resolveReturnKind(method);
-            if (ast.count() && returnKind != LogicalQuery.ReturnKind.COUNT_LONG) {
-                throw new IllegalArgumentException("@Query count must return long: " + method.getName());
+            if (ast.count() && returnKind != LogicalQuery.ReturnKind.COUNT_LONG
+                    && returnKind != LogicalQuery.ReturnKind.MANY_MAP) {
+                throw new IllegalArgumentException("@Query count must return long or Map: " + method.getName());
             }
             if (!ast.count() && returnKind == LogicalQuery.ReturnKind.COUNT_LONG) {
                 throw new IllegalArgumentException("@Query return type long requires count: " + method.getName());
+            }
+            if (ast.count() && projectionSpec != null) {
+                throw new IllegalArgumentException("@Query count cannot return projection: " + method.getName());
             }
 
             LogicalQuery.Join[] joins = buildJoins(ast, aliasMap, entityClass);
             BindingContext bindingContext = new BindingContext(method);
             List<LogicalQuery.Condition> flattened = flattenConditions(ast.where(), aliasMap, bindingContext);
+            LogicalQuery.Grouping grouping = buildGrouping(method, ast, aliasMap, entityClass);
+            List<LogicalQuery.Condition> havingConditions = flattenHavingConditions(ast.having(), aliasMap,
+                    bindingContext);
+            if (!havingConditions.isEmpty() && grouping == null) {
+                throw new IllegalArgumentException("HAVING requires GROUP BY: " + method.getName());
+            }
+            if (grouping != null && returnKind != LogicalQuery.ReturnKind.MANY_MAP) {
+                throw new IllegalArgumentException("GROUP BY requires Map return type: " + method.getName());
+            }
 
             LogicalQuery.OrderBy[] orderBy = null;
             if (!ast.orderBy().isEmpty()) {
@@ -76,7 +89,7 @@ public final class JpqlQueryParser {
             // Extract limit from method name (e.g., findTop3By...)
             int limit = parseLimitFromMethodName(method.getName());
 
-            return LogicalQuery.of(
+            LogicalQuery logical = LogicalQuery.of(
                     opCode,
                     returnKind,
                     conditions,
@@ -84,12 +97,17 @@ public final class JpqlQueryParser {
                     projectionSpec != null ? projectionSpec.projection : null,
                     joins,
                     orderBy,
+                    grouping,
                     null,
                     limit,
                     ast.distinct(),
                     boundValues,
                     parameterIndices,
                     arity);
+            if (grouping != null && !havingConditions.isEmpty()) {
+                return logical.withHavingConditions(havingConditions.toArray(new LogicalQuery.Condition[0]));
+            }
+            return logical;
         }
 
         if (statement instanceof JpqlAst.Delete(String name, String alias, JpqlAst.Expression where1)) {
@@ -113,6 +131,7 @@ public final class JpqlQueryParser {
                     new LogicalQuery.UpdateAssignment[0],
                     null,
                     new LogicalQuery.Join[0],
+                    null,
                     null,
                     null,
                     0,
@@ -165,6 +184,7 @@ public final class JpqlQueryParser {
                     new LogicalQuery.Join[0],
                     null,
                     null,
+                    null,
                     0,
                     false,
                     boundValues,
@@ -214,6 +234,9 @@ public final class JpqlQueryParser {
         }
         if (java.util.Set.class.isAssignableFrom(returnType)) {
             return LogicalQuery.ReturnKind.MANY_SET;
+        }
+        if (Map.class.isAssignableFrom(returnType)) {
+            return LogicalQuery.ReturnKind.MANY_MAP;
         }
         if (returnType == boolean.class || returnType == Boolean.class) {
             return LogicalQuery.ReturnKind.EXISTS_BOOL;
@@ -283,6 +306,46 @@ public final class JpqlQueryParser {
                 new LogicalQuery.Projection(projectionReturn.projectionType, projectionItems));
     }
 
+    private static LogicalQuery.Grouping buildGrouping(Method method, JpqlAst.Query ast,
+            Map<String, String> aliasMap, Class<?> entityClass) {
+        List<String> groupBy = ast.groupBy();
+        if (groupBy == null || groupBy.isEmpty()) {
+            return null;
+        }
+        Class<?> keyType = resolveMapKeyType(method, method.getName());
+        if (keyType == null) {
+            throw new IllegalArgumentException("GROUP BY requires Map return type: " + method.getName());
+        }
+        String[] properties = new String[groupBy.size()];
+        for (int i = 0; i < groupBy.size(); i++) {
+            properties[i] = resolvePath(groupBy.get(i), aliasMap);
+        }
+        validateGroupingSelect(ast, properties, entityClass, method);
+        LogicalQuery.Grouping.GroupValueType valueType = ast.count()
+                ? LogicalQuery.Grouping.GroupValueType.COUNT
+                : LogicalQuery.Grouping.GroupValueType.LIST;
+        return new LogicalQuery.Grouping(properties, keyType, valueType);
+    }
+
+    private static void validateGroupingSelect(JpqlAst.Query ast, String[] properties, Class<?> entityClass,
+            Method method) {
+        if (ast.count()) {
+            return;
+        }
+        List<JpqlAst.SelectItem> items = ast.selectItems();
+        if (items == null || items.size() != 1) {
+            throw new IllegalArgumentException("GROUP BY queries must select root entity: " + method.getName());
+        }
+        JpqlAst.SelectItem item = items.get(0);
+        String selection = item.path();
+        if (!selection.equals(ast.rootAlias()) && !selection.equals(ast.entityName())) {
+            throw new IllegalArgumentException("GROUP BY queries must select root entity: " + method.getName());
+        }
+        if (item.alias() != null && !item.alias().isBlank()) {
+            throw new IllegalArgumentException("GROUP BY root entity cannot be aliased: " + method.getName());
+        }
+    }
+
     private static void validateSelectItemsForNonProjection(JpqlAst.Query ast, Method method) {
         if (ast.selectItems() == null || ast.selectItems().isEmpty()) {
             return;
@@ -331,6 +394,21 @@ public final class JpqlQueryParser {
             return new ProjectionReturn(argClass, LogicalQuery.ReturnKind.MANY_SET);
         }
         return null;
+    }
+
+    private static Class<?> resolveMapKeyType(Method method, String methodName) {
+        Class<?> rawType = method.getReturnType();
+        if (!Map.class.isAssignableFrom(rawType)) {
+            return null;
+        }
+        java.lang.reflect.Type generic = method.getGenericReturnType();
+        if (generic instanceof java.lang.reflect.ParameterizedType parameterized) {
+            java.lang.reflect.Type[] args = parameterized.getActualTypeArguments();
+            if (args.length == 2 && args[0] instanceof Class<?> keyClass) {
+                return keyClass;
+            }
+        }
+        throw new IllegalArgumentException("Map return type must declare key type for grouping: " + methodName);
     }
 
     private static EntityMetadata.FieldMapping resolveProjectionField(EntityMetadata<?> metadata, String path) {
@@ -522,6 +600,82 @@ public final class JpqlQueryParser {
             }
         }
         return flattened;
+    }
+
+    private static List<LogicalQuery.Condition> flattenHavingConditions(JpqlAst.Expression expression,
+            Map<String, String> aliasMap,
+            BindingContext bindingContext) {
+        if (expression == null) {
+            return List.of();
+        }
+        JpqlAst.Expression normalized = normalize(expression);
+        List<List<ConditionSpec>> dnf = toHavingDnf(normalized, aliasMap, bindingContext);
+        List<LogicalQuery.Condition> flattened = new ArrayList<>();
+        for (int i = 0; i < dnf.size(); i++) {
+            List<ConditionSpec> group = dnf.get(i);
+            for (int j = 0; j < group.size(); j++) {
+                ConditionSpec spec = group.get(j);
+                LogicalQuery.Combinator combinator = (i < dnf.size() - 1 && j == group.size() - 1)
+                        ? LogicalQuery.Combinator.OR
+                        : LogicalQuery.Combinator.AND;
+                flattened.add(spec.withCombinator(combinator).toCondition());
+            }
+        }
+        return flattened;
+    }
+
+    private static List<List<ConditionSpec>> toHavingDnf(JpqlAst.Expression expression,
+            Map<String, String> aliasMap,
+            BindingContext bindingContext) {
+        if (expression instanceof JpqlAst.And(JpqlAst.Expression left, JpqlAst.Expression right)) {
+            List<List<ConditionSpec>> leftDnf = toHavingDnf(left, aliasMap, bindingContext);
+            List<List<ConditionSpec>> rightDnf = toHavingDnf(right, aliasMap, bindingContext);
+            List<List<ConditionSpec>> combined = new ArrayList<>();
+            for (List<ConditionSpec> l : leftDnf) {
+                for (List<ConditionSpec> r : rightDnf) {
+                    List<ConditionSpec> merged = new ArrayList<>(l.size() + r.size());
+                    merged.addAll(l);
+                    merged.addAll(r);
+                    combined.add(merged);
+                }
+            }
+            return combined;
+        }
+        if (expression instanceof JpqlAst.Or(JpqlAst.Expression left, JpqlAst.Expression right)) {
+            List<List<ConditionSpec>> leftDnf = toHavingDnf(left, aliasMap, bindingContext);
+            List<List<ConditionSpec>> rightDnf = toHavingDnf(right, aliasMap, bindingContext);
+            List<List<ConditionSpec>> combined = new ArrayList<>(leftDnf.size() + rightDnf.size());
+            combined.addAll(leftDnf);
+            combined.addAll(rightDnf);
+            return combined;
+        }
+        if (expression instanceof JpqlAst.Not) {
+            throw new UnsupportedOperationException("HAVING does not support NOT");
+        }
+        if (expression instanceof JpqlAst.PredicateExpr(JpqlAst.Predicate predicate)) {
+            ConditionSpec spec = flattenHavingPredicate(predicate, aliasMap, bindingContext);
+            return List.of(List.of(spec));
+        }
+        throw new IllegalArgumentException("Unsupported HAVING expression");
+    }
+
+    private static ConditionSpec flattenHavingPredicate(JpqlAst.Predicate predicate,
+            Map<String, String> aliasMap,
+            BindingContext bindingContext) {
+        if (predicate instanceof JpqlAst.Comparison(String path1, JpqlAst.ComparisonOp op, JpqlAst.Value value)) {
+            String normalized = path1.replace(" ", "").toLowerCase();
+            if (!normalized.startsWith("count(")) {
+                throw new UnsupportedOperationException("HAVING supports COUNT only");
+            }
+            ComparisonMapping mapping = mapComparison(op);
+            int argIndex = bindingContext.bindValue(value);
+            if (argIndex != 0) {
+                throw new IllegalArgumentException("HAVING count requires first parameter slot");
+            }
+            return new ConditionSpec("$COUNT", mapping.operator, argIndex, mapping.ignoreCase,
+                    LogicalQuery.Combinator.AND);
+        }
+        throw new UnsupportedOperationException("HAVING supports COUNT comparisons only");
     }
 
     private static JpqlAst.Expression normalize(JpqlAst.Expression expression) {
@@ -890,6 +1044,21 @@ public final class JpqlQueryParser {
                 where = parseExpression();
             }
 
+            List<String> groupBy = List.of();
+            JpqlAst.Expression having = null;
+            if (match(JpqlLexer.TokenType.GROUP)) {
+                expect(JpqlLexer.TokenType.BY);
+                List<String> paths = new ArrayList<>();
+                paths.add(parsePath());
+                while (match(JpqlLexer.TokenType.COMMA)) {
+                    paths.add(parsePath());
+                }
+                groupBy = paths;
+                if (match(JpqlLexer.TokenType.HAVING)) {
+                    having = parseExpression();
+                }
+            }
+
             List<JpqlAst.OrderBy> orderBy = new ArrayList<>();
             if (match(JpqlLexer.TokenType.ORDER)) {
                 expect(JpqlLexer.TokenType.BY);
@@ -900,7 +1069,7 @@ public final class JpqlQueryParser {
             }
 
             expect(JpqlLexer.TokenType.EOF);
-            return new JpqlAst.Query(count, distinct, selectItems, entity, alias, joins, where, orderBy);
+            return new JpqlAst.Query(count, distinct, selectItems, entity, alias, joins, where, groupBy, having, orderBy);
         }
 
         private List<JpqlAst.SelectItem> parseSelectItems() {
@@ -1037,7 +1206,7 @@ public final class JpqlQueryParser {
         }
 
         private JpqlAst.Predicate parsePredicate() {
-            String path = parsePath();
+            String path = parsePredicatePath();
 
             if (match(JpqlLexer.TokenType.NOT)) {
                 if (match(JpqlLexer.TokenType.LIKE)) {
@@ -1090,6 +1259,16 @@ public final class JpqlQueryParser {
             }
 
             throw new IllegalArgumentException("Expected operator after path: " + path);
+        }
+
+        private String parsePredicatePath() {
+            if (match(JpqlLexer.TokenType.COUNT)) {
+                expect(JpqlLexer.TokenType.LPAREN);
+                String inner = parsePath();
+                expect(JpqlLexer.TokenType.RPAREN);
+                return "count(" + inner + ")";
+            }
+            return parsePath();
         }
 
         private List<JpqlAst.Value> parseInList() {
@@ -1213,6 +1392,8 @@ public final class JpqlQueryParser {
                     || match(JpqlLexer.TokenType.NULL)
                     || match(JpqlLexer.TokenType.COUNT)
                     || match(JpqlLexer.TokenType.DISTINCT)
+                    || match(JpqlLexer.TokenType.GROUP)
+                    || match(JpqlLexer.TokenType.HAVING)
                     || match(JpqlLexer.TokenType.TRUE)
                     || match(JpqlLexer.TokenType.FALSE)
                     || match(JpqlLexer.TokenType.FETCH)

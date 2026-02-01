@@ -31,6 +31,8 @@ class JpqlAstTest {
                 "e",
                 List.of(join),
                 where,
+                List.of("e.department"),
+                null,
                 List.of(orderBy)
         );
 

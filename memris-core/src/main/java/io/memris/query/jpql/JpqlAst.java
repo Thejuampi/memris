@@ -17,6 +17,8 @@ public final class JpqlAst {
             String rootAlias,
             List<Join> joins,
             Expression where,
+            List<String> groupBy,
+            Expression having,
             List<OrderBy> orderBy
     ) implements Statement {
     }

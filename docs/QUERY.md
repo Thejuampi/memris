@@ -88,7 +88,7 @@ List<Product> findByNameAndPrice(@Param("name") String name, @Param("min") long 
 ```
 
 **Supported clauses:**
-- `SELECT` / `FROM` / `WHERE` / `ORDER BY`
+- `SELECT` / `FROM` / `WHERE` / `GROUP BY` / `HAVING` / `ORDER BY`
 - `JOIN` / `LEFT JOIN` (aliases supported)
 
 **Supported predicates:**
@@ -106,8 +106,8 @@ List<Product> findByNameAndPrice(@Param("name") String name, @Param("min") long 
 - If compiled with `-parameters`, unannotated names are also matched
 
 **Return types:**
-- `List<T>`, `Optional<T>`, `boolean`, `long`
-- `select count(x)` must return `long`
+- `List<T>`, `Optional<T>`, `boolean`, `long`, `Map<K, V>`
+- `select count(x)` must return `long` or `Map<K, Long>` when grouped
 
 **Literal handling:**
 - Integer literals are stored as `Long`
@@ -116,7 +116,8 @@ List<Product> findByNameAndPrice(@Param("name") String name, @Param("min") long 
 **Limitations (current):**
 - No `DISTINCT`
 - No projections (`select new ...`), no aggregates beyond `count`
-- No `GROUP BY` / `HAVING`
+- `GROUP BY` supports root-entity selects or `count`, with record-key Map return types
+- `HAVING` supports `count(...)` comparisons only
 - No subqueries
 - No `UPDATE` / `DELETE` queries
 - Single-column `ORDER BY` only

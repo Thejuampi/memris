@@ -943,7 +943,7 @@ public final class RepositoryRuntime<T> {
         boolean returnMap = query.returnKind() == LogicalQuery.ReturnKind.MANY_MAP;
         
         if (returnMap) {
-            return buildMapResult(query, rows, max);
+            return buildMapResult(query, rows, max, args);
         }
         
         List<T> results = returnSet ? null : new ArrayList<>(max);
@@ -969,24 +969,85 @@ public final class RepositoryRuntime<T> {
         };
     }
 
-    private Map<Object, ?> buildMapResult(CompiledQuery query, int[] rows, int max) {
+    private Map<Object, ?> buildMapResult(CompiledQuery query, int[] rows, int max, Object[] args) {
         CompiledQuery.CompiledGrouping grouping = query.grouping();
         if (grouping == null) {
             throw new IllegalStateException("MANY_MAP return kind requires grouping configuration");
         }
         
-        int groupColumnIndex = grouping.columnIndex();
-        byte groupTypeCode = plan.table().typeCodeAt(groupColumnIndex);
-        
-        return switch (grouping.valueType()) {
-            case LIST -> buildGroupList(query, rows, max, groupColumnIndex, groupTypeCode);
-            case SET -> buildGroupSet(query, rows, max, groupColumnIndex, groupTypeCode);
-            case COUNT -> buildGroupCount(rows, max, groupColumnIndex, groupTypeCode);
+        int[] groupColumnIndices = grouping.columnIndices();
+        byte[] groupTypeCodes = grouping.typeCodes();
+
+        Map<Object, ?> result = switch (grouping.valueType()) {
+            case LIST -> buildGroupList(query, rows, max, groupColumnIndices, groupTypeCodes);
+            case SET -> buildGroupSet(query, rows, max, groupColumnIndices, groupTypeCodes);
+            case COUNT -> buildGroupCount(query, rows, max, groupColumnIndices, groupTypeCodes);
+        };
+        CompiledQuery.CompiledCondition[] havingConditions = query.havingConditions();
+        if (havingConditions == null || havingConditions.length == 0) {
+            return result;
+        }
+        return applyHavingConditions(query, result, havingConditions, args);
+    }
+
+    private Map<Object, ?> applyHavingConditions(CompiledQuery query, Map<Object, ?> result,
+            CompiledQuery.CompiledCondition[] havingConditions, Object[] args) {
+        CompiledQuery.CompiledGrouping grouping = query.grouping();
+        if (grouping == null) {
+            return result;
+        }
+        boolean isCountGrouping = grouping.valueType() == LogicalQuery.Grouping.GroupValueType.COUNT;
+        Map<Object, Object> filtered = new java.util.LinkedHashMap<>();
+        for (Map.Entry<Object, ?> entry : result.entrySet()) {
+            Object value = entry.getValue();
+            if (!isCountGrouping) {
+                throw new UnsupportedOperationException("HAVING is only supported for COUNT groupings");
+            }
+            long countValue = value instanceof Number number ? number.longValue() : 0L;
+            if (matchesHaving(countValue, havingConditions, args)) {
+                filtered.put(entry.getKey(), value);
+            }
+        }
+        return filtered;
+    }
+
+    private boolean matchesHaving(long countValue, CompiledQuery.CompiledCondition[] havingConditions, Object[] args) {
+        boolean current = true;
+        for (int i = 0; i < havingConditions.length; i++) {
+            CompiledQuery.CompiledCondition condition = havingConditions[i];
+            boolean match = evaluateHavingCondition(condition, countValue, args);
+            if (i == 0) {
+                current = match;
+            } else {
+                LogicalQuery.Combinator combinator = havingConditions[i - 1].nextCombinator();
+                current = combinator == LogicalQuery.Combinator.OR ? (current || match) : (current && match);
+            }
+        }
+        return current;
+    }
+    private boolean evaluateHavingCondition(CompiledQuery.CompiledCondition condition, long countValue, Object[] args) {
+        if (args == null || args.length == 0) {
+            throw new UnsupportedOperationException("HAVING requires parameters");
+        }
+        int rhsIndex = condition.argumentIndex();
+        if (rhsIndex < 0 || rhsIndex >= args.length || !(args[rhsIndex] instanceof Number rhsNumber)) {
+            throw new UnsupportedOperationException("HAVING supports numeric comparisons only");
+        }
+        long lhs = countValue;
+        long rhs = rhsNumber.longValue();
+        return switch (condition.operator()) {
+            case EQ -> lhs == rhs;
+            case NE -> lhs != rhs;
+            case GT -> lhs > rhs;
+            case GTE -> lhs >= rhs;
+            case LT -> lhs < rhs;
+            case LTE -> lhs <= rhs;
+            default -> throw new UnsupportedOperationException("HAVING operator not supported: " + condition.operator());
         };
     }
 
-    private Map<Object, List<T>> buildGroupList(CompiledQuery query, int[] rows, int max, int groupColumnIndex,
-            byte groupTypeCode) {
+    private Map<Object, List<T>> buildGroupList(CompiledQuery query, int[] rows, int max, int[] groupColumnIndices,
+            byte[] groupTypeCodes) {
         Map<Object, List<T>> resultMap = new java.util.LinkedHashMap<>();
         for (int i = 0; i < max; i++) {
             int rowIndex = rows[i];
@@ -994,14 +1055,14 @@ public final class RepositoryRuntime<T> {
             applyPostLoad(entity);
             hydrateJoins(entity, rowIndex, query);
             hydrateCollections(entity, rowIndex);
-            Object key = readGroupingKey(groupColumnIndex, groupTypeCode, rowIndex);
+            Object key = readGroupingKey(query, groupColumnIndices, groupTypeCodes, rowIndex);
             resultMap.computeIfAbsent(key, k -> new ArrayList<>()).add(entity);
         }
         return resultMap;
     }
 
-    private Map<Object, java.util.Set<T>> buildGroupSet(CompiledQuery query, int[] rows, int max, int groupColumnIndex,
-            byte groupTypeCode) {
+    private Map<Object, java.util.Set<T>> buildGroupSet(CompiledQuery query, int[] rows, int max, int[] groupColumnIndices,
+            byte[] groupTypeCodes) {
         Map<Object, java.util.Set<T>> resultMap = new java.util.LinkedHashMap<>();
         for (int i = 0; i < max; i++) {
             int rowIndex = rows[i];
@@ -1009,23 +1070,43 @@ public final class RepositoryRuntime<T> {
             applyPostLoad(entity);
             hydrateJoins(entity, rowIndex, query);
             hydrateCollections(entity, rowIndex);
-            Object key = readGroupingKey(groupColumnIndex, groupTypeCode, rowIndex);
+            Object key = readGroupingKey(query, groupColumnIndices, groupTypeCodes, rowIndex);
             resultMap.computeIfAbsent(key, k -> new java.util.LinkedHashSet<>()).add(entity);
         }
         return resultMap;
     }
 
-    private Map<Object, Long> buildGroupCount(int[] rows, int max, int groupColumnIndex, byte groupTypeCode) {
+    private Map<Object, Long> buildGroupCount(CompiledQuery query, int[] rows, int max, int[] groupColumnIndices,
+            byte[] groupTypeCodes) {
         Map<Object, Long> resultMap = new java.util.LinkedHashMap<>();
         for (int i = 0; i < max; i++) {
             int rowIndex = rows[i];
-            Object key = readGroupingKey(groupColumnIndex, groupTypeCode, rowIndex);
+            Object key = readGroupingKey(query, groupColumnIndices, groupTypeCodes, rowIndex);
             resultMap.merge(key, 1L, Long::sum);
         }
         return resultMap;
     }
 
-    private Object readGroupingKey(int columnIndex, byte typeCode, int rowIndex) {
+    private Object readGroupingKey(CompiledQuery query, int[] columnIndices, byte[] typeCodes, int rowIndex) {
+        if (columnIndices.length == 1) {
+            return readGroupingValue(columnIndices[0], typeCodes[0], rowIndex);
+        }
+        CompiledQuery.CompiledGrouping grouping = query != null ? query.grouping() : null;
+        if (grouping == null || grouping.keyConstructor() == null) {
+            throw new IllegalStateException("Grouping key constructor required for multi-field grouping");
+        }
+        Object[] args = new Object[columnIndices.length];
+        for (int i = 0; i < columnIndices.length; i++) {
+            args[i] = readGroupingValue(columnIndices[i], typeCodes[i], rowIndex);
+        }
+        try {
+            return grouping.keyConstructor().invokeWithArguments(args);
+        } catch (Throwable e) {
+            throw new RuntimeException("Failed to construct grouping key", e);
+        }
+    }
+
+    private Object readGroupingValue(int columnIndex, byte typeCode, int rowIndex) {
         GeneratedTable table = plan.table();
         if (!table.isPresent(columnIndex, rowIndex)) {
             return null;
@@ -1034,6 +1115,18 @@ public final class RepositoryRuntime<T> {
             case TypeCodes.TYPE_STRING -> table.readString(columnIndex, rowIndex);
             case TypeCodes.TYPE_INT -> table.readInt(columnIndex, rowIndex);
             case TypeCodes.TYPE_LONG -> table.readLong(columnIndex, rowIndex);
+            case TypeCodes.TYPE_BOOLEAN -> table.readInt(columnIndex, rowIndex) != 0;
+            case TypeCodes.TYPE_BYTE -> (byte) table.readInt(columnIndex, rowIndex);
+            case TypeCodes.TYPE_SHORT -> (short) table.readInt(columnIndex, rowIndex);
+            case TypeCodes.TYPE_CHAR -> (char) table.readInt(columnIndex, rowIndex);
+            case TypeCodes.TYPE_FLOAT -> FloatEncoding.sortableIntToFloat(table.readInt(columnIndex, rowIndex));
+            case TypeCodes.TYPE_DOUBLE -> FloatEncoding.sortableLongToDouble(table.readLong(columnIndex, rowIndex));
+            case TypeCodes.TYPE_INSTANT,
+                    TypeCodes.TYPE_LOCAL_DATE,
+                    TypeCodes.TYPE_LOCAL_DATE_TIME,
+                    TypeCodes.TYPE_DATE -> table.readLong(columnIndex, rowIndex);
+            case TypeCodes.TYPE_BIG_DECIMAL,
+                    TypeCodes.TYPE_BIG_INTEGER -> table.readString(columnIndex, rowIndex);
             default -> throw new UnsupportedOperationException("Unsupported grouping key type: " + typeCode);
         };
     }

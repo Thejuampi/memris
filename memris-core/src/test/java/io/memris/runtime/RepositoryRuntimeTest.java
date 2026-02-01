@@ -555,4 +555,120 @@ class RepositoryRuntimeTest {
         assertThat(counts.get("Sales")).isEqualTo(2L);
         assertThat(counts.get("HR")).isEqualTo(1L);
     }
+
+    @Test
+    @DisplayName("Should group entities by department as set")
+    void shouldGroupEntitiesByDepartmentAsSet() {
+        TestEntityRepository repo = arena.createRepository(TestEntityRepository.class);
+        repo.save(new TestEntity(null, "Alice", 25, "Engineering"));
+        repo.save(new TestEntity(null, "Bob", 30, "Engineering"));
+        repo.save(new TestEntity(null, "Charlie", 35, "Sales"));
+        repo.save(new TestEntity(null, "David", 40, "Sales"));
+        repo.save(new TestEntity(null, "Eve", 45, "HR"));
+
+        Map<String, Set<TestEntity>> grouped = repo.findAllGroupingByDepartmentAsSet();
+
+        assertThat(grouped).hasSize(3);
+        assertThat(grouped.get("Engineering")).hasSize(2);
+        assertThat(grouped.get("Sales")).hasSize(2);
+        assertThat(grouped.get("HR")).hasSize(1);
+        assertThat(grouped.get("Engineering")).extracting(e -> e.name).containsExactlyInAnyOrder("Alice", "Bob");
+        assertThat(grouped.get("Sales")).extracting(e -> e.name).containsExactlyInAnyOrder("Charlie", "David");
+        assertThat(grouped.get("HR")).extracting(e -> e.name).containsExactlyInAnyOrder("Eve");
+    }
+
+    @Test
+    @DisplayName("Should group entities by department and age")
+    void shouldGroupEntitiesByDepartmentAndAge() {
+        TestEntityRepository repo = arena.createRepository(TestEntityRepository.class);
+        repo.save(new TestEntity(null, "Alice", 25, "Engineering"));
+        repo.save(new TestEntity(null, "Bob", 25, "Engineering"));
+        repo.save(new TestEntity(null, "Charlie", 35, "Sales"));
+        repo.save(new TestEntity(null, "David", 35, "Sales"));
+        repo.save(new TestEntity(null, "Eve", 45, "HR"));
+
+        Map<DepartmentAgeKey, List<TestEntity>> grouped = repo.findAllGroupingByDepartmentAndAge();
+
+        assertThat(grouped).hasSize(3);
+        assertThat(grouped.get(new DepartmentAgeKey("Engineering", 25))).hasSize(2);
+        assertThat(grouped.get(new DepartmentAgeKey("Sales", 35))).hasSize(2);
+        assertThat(grouped.get(new DepartmentAgeKey("HR", 45))).hasSize(1);
+        assertThat(grouped.get(new DepartmentAgeKey("Engineering", 25))).extracting(e -> e.name)
+                .containsExactlyInAnyOrder("Alice", "Bob");
+        assertThat(grouped.get(new DepartmentAgeKey("Sales", 35))).extracting(e -> e.name)
+                .containsExactlyInAnyOrder("Charlie", "David");
+        assertThat(grouped.get(new DepartmentAgeKey("HR", 45))).extracting(e -> e.name)
+                .containsExactlyInAnyOrder("Eve");
+    }
+
+    @Test
+    @DisplayName("Should count entities by department and age")
+    void shouldCountEntitiesByDepartmentAndAge() {
+        TestEntityRepository repo = arena.createRepository(TestEntityRepository.class);
+        repo.save(new TestEntity(null, "Alice", 25, "Engineering"));
+        repo.save(new TestEntity(null, "Bob", 25, "Engineering"));
+        repo.save(new TestEntity(null, "Charlie", 35, "Sales"));
+        repo.save(new TestEntity(null, "David", 35, "Sales"));
+        repo.save(new TestEntity(null, "Eve", 45, "HR"));
+
+        Map<DepartmentAgeKey, Long> counts = repo.countByDepartmentAndAge();
+
+        assertThat(counts).hasSize(3);
+        assertThat(counts.get(new DepartmentAgeKey("Engineering", 25))).isEqualTo(2L);
+        assertThat(counts.get(new DepartmentAgeKey("Sales", 35))).isEqualTo(2L);
+        assertThat(counts.get(new DepartmentAgeKey("HR", 45))).isEqualTo(1L);
+    }
+
+    @Test
+    @DisplayName("Should count entities by name grouped by department and age")
+    void shouldCountEntitiesByNameGroupedByDepartmentAndAge() {
+        TestEntityRepository repo = arena.createRepository(TestEntityRepository.class);
+        repo.save(new TestEntity(null, "Alice", 25, "Engineering"));
+        repo.save(new TestEntity(null, "Alice", 30, "Engineering"));
+        repo.save(new TestEntity(null, "Bob", 25, "Engineering"));
+        repo.save(new TestEntity(null, "Alice", 35, "Sales"));
+        repo.save(new TestEntity(null, "Eve", 45, "HR"));
+
+        Map<DepartmentAgeKey, Long> counts = repo.countByNameGroupingByDepartmentAndAge("Alice");
+
+        assertThat(counts).hasSize(3);
+        assertThat(counts.get(new DepartmentAgeKey("Engineering", 25))).isEqualTo(1L);
+        assertThat(counts.get(new DepartmentAgeKey("Engineering", 30))).isEqualTo(1L);
+        assertThat(counts.get(new DepartmentAgeKey("Sales", 35))).isEqualTo(1L);
+    }
+
+    @Test
+    @DisplayName("Should group entities by department and age via JPQL")
+    void shouldGroupEntitiesByDepartmentAndAgeViaJpql() {
+        TestEntityRepository repo = arena.createRepository(TestEntityRepository.class);
+        repo.save(new TestEntity(null, "Alice", 25, "Engineering"));
+        repo.save(new TestEntity(null, "Bob", 25, "Engineering"));
+        repo.save(new TestEntity(null, "Charlie", 35, "Sales"));
+        repo.save(new TestEntity(null, "David", 35, "Sales"));
+        repo.save(new TestEntity(null, "Eve", 45, "HR"));
+
+        Map<DepartmentAgeKey, List<TestEntity>> grouped = repo.findAllGroupedByDepartmentAndAgeJpql();
+
+        assertThat(grouped).hasSize(3);
+        assertThat(grouped.get(new DepartmentAgeKey("Engineering", 25))).hasSize(2);
+        assertThat(grouped.get(new DepartmentAgeKey("Sales", 35))).hasSize(2);
+        assertThat(grouped.get(new DepartmentAgeKey("HR", 45))).hasSize(1);
+    }
+
+    @Test
+    @DisplayName("Should count entities by department and age via JPQL having")
+    void shouldCountEntitiesByDepartmentAndAgeViaJpqlHaving() {
+        TestEntityRepository repo = arena.createRepository(TestEntityRepository.class);
+        repo.save(new TestEntity(null, "Alice", 25, "Engineering"));
+        repo.save(new TestEntity(null, "Bob", 25, "Engineering"));
+        repo.save(new TestEntity(null, "Charlie", 35, "Sales"));
+        repo.save(new TestEntity(null, "David", 35, "Sales"));
+        repo.save(new TestEntity(null, "Eve", 45, "HR"));
+
+        Map<DepartmentAgeKey, Long> counts = repo.countByDepartmentAndAgeHavingMin(1);
+
+        assertThat(counts).hasSize(2);
+        assertThat(counts.get(new DepartmentAgeKey("Engineering", 25))).isEqualTo(2L);
+        assertThat(counts.get(new DepartmentAgeKey("Sales", 35))).isEqualTo(2L);
+    }
 }

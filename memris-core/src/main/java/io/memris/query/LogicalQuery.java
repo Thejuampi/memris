@@ -27,6 +27,7 @@ public record LogicalQuery(
         Join[] joins,
         OrderBy[] orderBy,
         Grouping grouping,
+        Condition[] havingConditions,
         int limit,
         boolean distinct,
         Object[] boundValues,
@@ -39,7 +40,7 @@ public record LogicalQuery(
             ReturnKind returnKind,
             Condition[] conditions,
             OrderBy[] orderBy) {
-        return new LogicalQuery(opCode, returnKind, conditions, new UpdateAssignment[0], null, new Join[0], orderBy, null, 0, false, new Object[0], new int[0], conditions.length);
+        return new LogicalQuery(opCode, returnKind, conditions, new UpdateAssignment[0], null, new Join[0], orderBy, null, null, 0, false, new Object[0], new int[0], conditions.length);
     }
 
     public static LogicalQuery of(
@@ -49,7 +50,7 @@ public record LogicalQuery(
             Join[] joins,
             OrderBy[] orderBy,
             int parameterCount) {
-        return new LogicalQuery(opCode, returnKind, conditions, new UpdateAssignment[0], null, joins, orderBy, null, 0, false, new Object[0], new int[0], parameterCount);
+        return new LogicalQuery(opCode, returnKind, conditions, new UpdateAssignment[0], null, joins, orderBy, null, null, 0, false, new Object[0], new int[0], parameterCount);
     }
 
     public static LogicalQuery of(
@@ -60,7 +61,7 @@ public record LogicalQuery(
             OrderBy[] orderBy,
             int limit,
             int parameterCount) {
-        return new LogicalQuery(opCode, returnKind, conditions, new UpdateAssignment[0], null, joins, orderBy, null, limit, false, new Object[0], new int[0], parameterCount);
+        return new LogicalQuery(opCode, returnKind, conditions, new UpdateAssignment[0], null, joins, orderBy, null, null, limit, false, new Object[0], new int[0], parameterCount);
     }
 
     public static LogicalQuery of(
@@ -72,12 +73,13 @@ public record LogicalQuery(
             Join[] joins,
             OrderBy[] orderBy,
             Grouping grouping,
+            Condition[] havingConditions,
             int limit,
             boolean distinct,
             Object[] boundValues,
             int[] parameterIndices,
             int parameterCount) {
-        return new LogicalQuery(opCode, returnKind, conditions, updateAssignments, projection, joins, orderBy, grouping, limit, distinct, boundValues, parameterIndices, parameterCount);
+        return new LogicalQuery(opCode, returnKind, conditions, updateAssignments, projection, joins, orderBy, grouping, havingConditions, limit, distinct, boundValues, parameterIndices, parameterCount);
     }
 
     /**
@@ -89,7 +91,7 @@ public record LogicalQuery(
             Condition[] conditions,
             OrderBy[] orderBy,
             int parameterCount) {
-        return new LogicalQuery(opCode, returnKind, conditions, new UpdateAssignment[0], null, new Join[0], orderBy, null, 0, false, new Object[0], new int[0], parameterCount);
+        return new LogicalQuery(opCode, returnKind, conditions, new UpdateAssignment[0], null, new Join[0], orderBy, null, null, 0, false, new Object[0], new int[0], parameterCount);
     }
 
     /**
@@ -103,7 +105,12 @@ public record LogicalQuery(
      * @return a LogicalQuery for the CRUD operation
      */
     public static LogicalQuery crud(OpCode opCode, ReturnKind returnKind, int parameterCount) {
-        return new LogicalQuery(opCode, returnKind, new Condition[0], new UpdateAssignment[0], null, new Join[0], null, null, 0, false, new Object[0], new int[0], parameterCount);
+        return new LogicalQuery(opCode, returnKind, new Condition[0], new UpdateAssignment[0], null, new Join[0], null, null, null, 0, false, new Object[0], new int[0], parameterCount);
+    }
+
+    public LogicalQuery withHavingConditions(Condition[] havingConditions) {
+        return new LogicalQuery(opCode, returnKind, conditions, updateAssignments, projection, joins, orderBy, grouping,
+                havingConditions, limit, distinct, boundValues, parameterIndices, parameterCount);
     }
 
     /**
@@ -130,7 +137,9 @@ public record LogicalQuery(
                 && java.util.Arrays.equals(parameterIndices, that.parameterIndices)
                 && java.util.Arrays.equals(conditions, that.conditions)
                 && java.util.Arrays.equals(joins, that.joins)
-                && java.util.Arrays.equals(orderBy, that.orderBy);
+                && java.util.Arrays.equals(orderBy, that.orderBy)
+                && java.util.Objects.equals(grouping, that.grouping)
+                && java.util.Arrays.equals(havingConditions, that.havingConditions);
     }
 
     @Override
@@ -141,6 +150,8 @@ public record LogicalQuery(
         result = 31 * result + java.util.Arrays.hashCode(parameterIndices);
         result = 31 * result + java.util.Arrays.hashCode(conditions);
         result = 31 * result + java.util.Arrays.hashCode(joins);
+        result = 31 * result + java.util.Objects.hashCode(grouping);
+        result = 31 * result + java.util.Arrays.hashCode(havingConditions);
         return result;
     }
 
@@ -203,11 +214,13 @@ public record LogicalQuery(
      * Grouping configuration for Map return types.
      * <p>
      * Examples:
-     * - "findAllGroupingByDepartment" → keyProperty="department", valueType=LIST
-     * - "countByDepartment" → keyProperty="department", valueType=COUNT
+     * - "findAllGroupingByDepartment" → keyProperties=["department"], valueType=LIST
+     * - "countByDepartment" → keyProperties=["department"], valueType=COUNT
+     * - "findAllGroupingByDepartmentAndAge" → keyProperties=["department","age"], valueType=LIST
      */
     public record Grouping(
-            String keyProperty,
+            String[] keyProperties,
+            Class<?> keyType,
             GroupValueType valueType
     ) {
         public enum GroupValueType {

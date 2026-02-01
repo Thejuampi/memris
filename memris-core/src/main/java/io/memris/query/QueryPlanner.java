@@ -271,34 +271,61 @@ public final class QueryPlanner {
         // Tokenize using context-aware lexer
         List<QueryMethodToken> tokens = QueryMethodLexer.tokenize(entityClass, parseName);
         LogicalQuery.ReturnKind returnKind = determineReturnKind(parseName, returnType);
-        LogicalQuery.Grouping grouping = extractGrouping(parseName, returnType);
+        LogicalQuery.Grouping grouping = extractGrouping(method, parseName, returnType);
         if (isMapReturnType(returnType) && grouping == null) {
             throw new IllegalArgumentException(
                     "Map return types require GroupingBy or countBy with Map return: " + methodName);
         }
         if (grouping != null) {
-            if (paramTypes.length != 0) {
-                throw new IllegalArgumentException(
-                        "Grouping queries do not accept parameters: " + methodName);
-            }
             if (parseName.contains("OrderBy")) {
                 throw new IllegalArgumentException(
                         "Grouping queries do not support OrderBy: " + methodName);
             }
+            List<LogicalQuery.Condition> conditions = new ArrayList<>();
+            ParseState state = new ParseState();
+            boolean isCountGroupingWithoutConditions = parseName.toLowerCase().startsWith("countby")
+                    && !parseName.contains("GroupingBy")
+                    && returnKind == LogicalQuery.ReturnKind.MANY_MAP;
+            if (!isCountGroupingWithoutConditions) {
+                String parseNameForConditions = parseName;
+                int groupingIndex = parseName.indexOf("GroupingBy");
+                if (groupingIndex >= 0) {
+                    parseNameForConditions = parseName.substring(0, groupingIndex);
+                }
+                List<QueryMethodToken> groupingTokens = QueryMethodLexer.tokenize(entityClass, parseNameForConditions);
+                for (QueryMethodToken token : groupingTokens) {
+                    switch (token.type()) {
+                        case PROPERTY_PATH -> handlePropertyToken(token, state, methodName, conditions);
+                        case OPERATOR -> handleOperatorToken(token, state, methodName, conditions);
+                        case AND, OR -> handleCombinatorToken(token.type(), state, methodName, conditions);
+                        case ASC, DESC, FIND_BY, COUNT_BY, EXISTS_BY, DELETE_BY, DELETE, DELETE_ALL, OPERATION -> {
+                            // skip
+                        }
+                    }
+                }
+                validateHasPropertyAfterBy(state.hasPropertyAfterBy, state.inOrderBy, true, methodName);
+                validateNotEndingWithCombinator(state.lastTokenWasCombinator, methodName);
+                validateOrderByHasProperty(state.inOrderBy, state.pendingProperty, methodName);
+                if (state.pendingProperty != null && !state.inOrderBy) {
+                    state.argIndex = finalizeCondition(state.pendingProperty, state.pendingOperatorValue,
+                            state.pendingIgnoreCase, state.argIndex, conditions, state.nextCombinator, state);
+                }
+            }
             return LogicalQuery.of(
                     determineOpCodeForDerived(parseName, returnKind),
                     returnKind,
-                    new LogicalQuery.Condition[0],
+                    conditions.toArray(new LogicalQuery.Condition[0]),
                     new LogicalQuery.UpdateAssignment[0],
                     null,
                     new LogicalQuery.Join[0],
                     null,
                     grouping,
+                    null,
                     0,
                     false,
                     new Object[0],
                     new int[0],
-                    0);
+                    state.argIndex);
         }
         List<LogicalQuery.Condition> conditions = new ArrayList<>();
         LogicalQuery.OrderBy[] orderBy = null;
@@ -361,6 +388,7 @@ public final class QueryPlanner {
                 null,
                 new LogicalQuery.Join[0],
                 orderBy,
+                null,
                 null,
                 limitParse.limit(),
                 distinct,
@@ -629,38 +657,73 @@ public final class QueryPlanner {
      * - "findAllGroupingByDepartment" → Grouping("department", LIST)
      * - "countByDepartment" → Grouping("department", COUNT)
      */
-    private static LogicalQuery.Grouping extractGrouping(String methodName, Class<?> returnType) {
+    private static LogicalQuery.Grouping extractGrouping(Method method, String methodName, Class<?> returnType) {
         if (!isMapReturnType(returnType)) {
             return null;
         }
 
-        // Check for "GroupingBy" pattern
-        int groupingByIndex = methodName.indexOf("GroupingBy");
+        Class<?> keyType = resolveMapKeyType(method, methodName);
+        String groupingToken = "GroupingBy";
+        int groupingByIndex = methodName.indexOf(groupingToken);
         if (groupingByIndex >= 0) {
-            String propertyName = methodName.substring(groupingByIndex + "GroupingBy".length());
-            if (!propertyName.isEmpty()) {
-                // Convert property name to camelCase (first letter lowercase)
-                String camelCaseProperty = Character.toLowerCase(propertyName.charAt(0)) + propertyName.substring(1);
-                // Check for count aggregation in method name
-                if (methodName.toLowerCase().startsWith("count")) {
-                    return new LogicalQuery.Grouping(camelCaseProperty, LogicalQuery.Grouping.GroupValueType.COUNT);
-                }
-                return new LogicalQuery.Grouping(camelCaseProperty, LogicalQuery.Grouping.GroupValueType.LIST);
+            String afterGrouping = methodName.substring(groupingByIndex + groupingToken.length());
+            String groupingPart = afterGrouping;
+            int byIndex = afterGrouping.indexOf("By");
+            if (byIndex > 0) {
+                groupingPart = afterGrouping.substring(0, byIndex);
+            }
+            if (!groupingPart.isEmpty()) {
+                String[] properties = parseGroupingProperties(groupingPart, methodName);
+                LogicalQuery.Grouping.GroupValueType valueType = methodName.toLowerCase().startsWith("count")
+                        ? LogicalQuery.Grouping.GroupValueType.COUNT
+                        : (methodName.contains("AsSet")
+                                ? LogicalQuery.Grouping.GroupValueType.SET
+                                : LogicalQuery.Grouping.GroupValueType.LIST);
+                return new LogicalQuery.Grouping(properties, keyType, valueType);
             }
         }
 
-        // Check for "By" pattern with Map return (e.g., countByDepartment)
         int byIndex = methodName.indexOf("By");
         if (byIndex >= 0 && methodName.toLowerCase().startsWith("count")) {
             String afterBy = methodName.substring(byIndex + 2);
             if (!afterBy.isEmpty()) {
-                // Convert property name to camelCase (first letter lowercase)
-                String camelCaseProperty = Character.toLowerCase(afterBy.charAt(0)) + afterBy.substring(1);
-                return new LogicalQuery.Grouping(camelCaseProperty, LogicalQuery.Grouping.GroupValueType.COUNT);
+                String[] properties = parseGroupingProperties(afterBy, methodName);
+                return new LogicalQuery.Grouping(properties, keyType, LogicalQuery.Grouping.GroupValueType.COUNT);
             }
         }
 
         return null;
+    }
+
+    private static Class<?> resolveMapKeyType(Method method, String methodName) {
+        Type generic = method.getGenericReturnType();
+        if (generic instanceof ParameterizedType parameterized) {
+            Type[] args = parameterized.getActualTypeArguments();
+            if (args.length == 2 && args[0] instanceof Class<?> keyClass) {
+                return keyClass;
+            }
+        }
+        throw new IllegalArgumentException("Map return type must declare key type for grouping: " + methodName);
+    }
+
+    private static String[] parseGroupingProperties(String propertySuffix, String methodName) {
+        String normalized = propertySuffix;
+        if (normalized.endsWith("AsSet")) {
+            normalized = normalized.substring(0, normalized.length() - "AsSet".length());
+        }
+        String[] rawParts = normalized.split("And");
+        if (rawParts.length == 0) {
+            throw new IllegalArgumentException("GroupingBy requires properties: " + methodName);
+        }
+        String[] properties = new String[rawParts.length];
+        for (int i = 0; i < rawParts.length; i++) {
+            String raw = rawParts[i];
+            if (raw.isEmpty()) {
+                throw new IllegalArgumentException("GroupingBy has empty property segment: " + methodName);
+            }
+            properties[i] = Character.toLowerCase(raw.charAt(0)) + raw.substring(1);
+        }
+        return properties;
     }
 
     /**

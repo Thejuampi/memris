@@ -200,6 +200,20 @@ class JpqlLexerTest {
     }
 
     @Test
+    @DisplayName("Should tokenize GROUP BY and HAVING")
+    void shouldTokenizeGroupByAndHaving() {
+        String query = "SELECT COUNT(e) FROM Employee e GROUP BY e.department HAVING COUNT(e) > 1";
+        List<JpqlLexer.Token> tokens = JpqlLexer.tokenize(query);
+
+        assertThat(tokens.stream().map(JpqlLexer.Token::type)).contains(
+                JpqlLexer.TokenType.GROUP,
+                JpqlLexer.TokenType.BY,
+                JpqlLexer.TokenType.HAVING,
+                JpqlLexer.TokenType.COUNT
+        );
+    }
+
+    @Test
     @DisplayName("Should tokenize COUNT and DISTINCT")
     void shouldTokenizeCountAndDistinct() {
         String query = "SELECT COUNT(DISTINCT e.department) FROM Employee e";

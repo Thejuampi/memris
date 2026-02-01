@@ -182,6 +182,7 @@ public class Main {
 - `List<T>`, `Optional<T>`, `T` — Find methods
 - `long` — Count methods
 - `boolean` — Exists methods
+- `Map<K, V>` — Grouped results
 
 ### @Query (JPQL-like Syntax)
 
@@ -215,6 +216,17 @@ public record UserSummary(String name, int age) {}
 
 @Query("select u.name as name, u.age as age from User u where u.age > :minAge")
 List<UserSummary> findSummaries(@Param("minAge") int minAge);
+```
+
+**Grouping (Map return types):**
+```java
+public record DepartmentAgeKey(String department, int age) {}
+
+@Query("select e from TestEntity e group by e.department, e.age")
+Map<DepartmentAgeKey, List<TestEntity>> findAllGroupedByDepartmentAndAge();
+
+@Query("select count(e) from TestEntity e group by e.department, e.age having count(e) > :min")
+Map<DepartmentAgeKey, Long> countByDepartmentAndAgeHavingMin(@Param("min") long min);
 ```
 
 ### Built-in Repository Methods
@@ -282,7 +294,9 @@ Repository Method → QueryCompiler → HeapRuntimeKernel
 2. **Query Aggregates** — Only `COUNT` supported
    - No `SUM`, `AVG`, `MIN`, `MAX`
 
-3. **GROUP BY / HAVING** — Not implemented
+3. **GROUP BY / HAVING** — Limited support
+   - `GROUP BY` supports root-entity selects or `count`, using Map return types
+   - `HAVING` supports `count(...)` comparisons only
 
 4. **Subqueries** — Not implemented
 

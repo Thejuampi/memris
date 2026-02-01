@@ -1,5 +1,7 @@
 package io.memris.runtime;
 
+import io.memris.core.Param;
+import io.memris.core.Query;
 import io.memris.repository.MemrisRepository;
 
 import java.util.List;
@@ -60,4 +62,18 @@ public interface TestEntityRepository extends MemrisRepository<TestEntity> {
     Map<String, List<TestEntity>> findAllGroupingByDepartment();
 
     Map<String, Long> countByDepartment();
+
+    Map<DepartmentAgeKey, List<TestEntity>> findAllGroupingByDepartmentAndAge();
+
+    Map<DepartmentAgeKey, Long> countByDepartmentAndAge();
+
+    Map<String, Set<TestEntity>> findAllGroupingByDepartmentAsSet();
+
+    Map<DepartmentAgeKey, Long> countByNameGroupingByDepartmentAndAge(String name);
+
+    @Query("select e from TestEntity e group by e.department, e.age")
+    Map<DepartmentAgeKey, List<TestEntity>> findAllGroupedByDepartmentAndAgeJpql();
+
+    @Query("select count(e) from TestEntity e group by e.department, e.age having count(e) > :min")
+    Map<DepartmentAgeKey, Long> countByDepartmentAndAgeHavingMin(@Param("min") long min);
 }

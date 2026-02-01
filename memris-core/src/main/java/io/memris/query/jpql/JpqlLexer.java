@@ -42,6 +42,8 @@ public final class JpqlLexer {
         ILIKE,
         COUNT,
         DISTINCT,
+        GROUP,
+        HAVING,
         TRUE,
         FALSE,
         COMMA,
@@ -88,6 +90,8 @@ public final class JpqlLexer {
         KEYWORDS.put("ILIKE", TokenType.ILIKE);
         KEYWORDS.put("COUNT", TokenType.COUNT);
         KEYWORDS.put("DISTINCT", TokenType.DISTINCT);
+        KEYWORDS.put("GROUP", TokenType.GROUP);
+        KEYWORDS.put("HAVING", TokenType.HAVING);
         KEYWORDS.put("TRUE", TokenType.TRUE);
         KEYWORDS.put("FALSE", TokenType.FALSE);
     }

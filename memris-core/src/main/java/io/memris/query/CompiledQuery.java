@@ -33,6 +33,8 @@ public record CompiledQuery(
         CompiledOrderBy[] orderBy,
         /** Grouping configuration for Map return types (optional) */
         CompiledGrouping grouping,
+        /** HAVING conditions for grouped queries (optional) */
+        CompiledCondition[] havingConditions,
         /** Limit for Top/First queries (0 = none) */
         int limit,
         /** DISTINCT flag for result de-duplication */
@@ -57,7 +59,8 @@ public record CompiledQuery(
             OpCode opCode,
             LogicalQuery.ReturnKind returnKind,
             CompiledCondition[] conditions) {
-        return new CompiledQuery(opCode, returnKind, conditions, new CompiledUpdateAssignment[0], null, new CompiledJoin[0], null, null, 0, false, new Object[0], new int[0], conditions.length);
+        return new CompiledQuery(opCode, returnKind, conditions, new CompiledUpdateAssignment[0], null,
+                new CompiledJoin[0], null, null, null, 0, false, new Object[0], new int[0], conditions.length);
     }
 
     public static CompiledQuery of(
@@ -68,7 +71,27 @@ public record CompiledQuery(
             CompiledOrderBy[] orderBy,
             int limit,
             int arity) {
-        return new CompiledQuery(opCode, returnKind, conditions, new CompiledUpdateAssignment[0], null, joins, orderBy, null, limit, false, new Object[0], new int[0], arity);
+        return new CompiledQuery(opCode, returnKind, conditions, new CompiledUpdateAssignment[0], null, joins, orderBy,
+                null, null, limit, false, new Object[0], new int[0], arity);
+    }
+
+    public static CompiledQuery of(
+            OpCode opCode,
+            LogicalQuery.ReturnKind returnKind,
+            CompiledCondition[] conditions,
+            CompiledUpdateAssignment[] updateAssignments,
+            CompiledProjection projection,
+            CompiledJoin[] joins,
+            CompiledOrderBy[] orderBy,
+            CompiledGrouping grouping,
+            int limit,
+            boolean distinct,
+            Object[] boundValues,
+            int[] parameterIndices,
+            int arity,
+            CompiledCondition[] havingConditions) {
+        return new CompiledQuery(opCode, returnKind, conditions, updateAssignments, projection, joins, orderBy, grouping,
+                havingConditions, limit, distinct, boundValues, parameterIndices, arity);
     }
 
     public static CompiledQuery of(
@@ -85,11 +108,13 @@ public record CompiledQuery(
             Object[] boundValues,
             int[] parameterIndices,
             int arity) {
-        return new CompiledQuery(opCode, returnKind, conditions, updateAssignments, projection, joins, orderBy, grouping, limit, distinct, boundValues, parameterIndices, arity);
+        return new CompiledQuery(opCode, returnKind, conditions, updateAssignments, projection, joins, orderBy, grouping,
+                null, limit, distinct, boundValues, parameterIndices, arity);
     }
 
     public CompiledQuery withJoins(CompiledJoin[] joins) {
-        return new CompiledQuery(opCode, returnKind, conditions, updateAssignments, projection, joins, orderBy, grouping, limit, distinct, boundValues, parameterIndices, arity);
+        return new CompiledQuery(opCode, returnKind, conditions, updateAssignments, projection, joins, orderBy, grouping,
+                havingConditions, limit, distinct, boundValues, parameterIndices, arity);
     }
 
     /**
@@ -242,7 +267,11 @@ public record CompiledQuery(
      * Pre-compiled grouping configuration for Map return types.
      */
     public record CompiledGrouping(
-            int columnIndex,
+            int[] columnIndices,
+            byte[] typeCodes,
+            String[] keyProperties,
+            Class<?> keyType,
+            java.lang.invoke.MethodHandle keyConstructor,
             LogicalQuery.Grouping.GroupValueType valueType
     ) {
     }
