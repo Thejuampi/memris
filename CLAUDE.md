@@ -270,6 +270,13 @@ For complete operator reference, see **[docs/QUERY.md](docs/QUERY.md)**.
 2. **Order-sensitive tests**: Use `containsExactly()` when order matters (sorting tests)
 3. **Order-agnostic tests**: Use `containsExactlyInAnyOrder()` for most cases
 4. **ID fields**: Keep in comparison when testing specific entities
+5. **Float/Double precision**: For entities with float/double fields, use `usingComparator()` with delta:
+   ```java
+   // For floating-point comparisons
+   assertThat(actual).usingComparator(
+       (d1, d2) -> Math.abs(d1 - d2) < 0.001 ? 0 : Double.compare(d1, d2)
+   ).ignoringFields("created").isEqualTo(expected);
+   ```
 
 **Test Grouping:**
 
