@@ -1029,6 +1029,223 @@ class ECommerceRealWorldTest {
     }
 
     @Test
+    void shouldCoverOrCombinations() {
+        var repo = arena.createRepository(AnalyticsEventRepository.class);
+
+        repo.save(new AnalyticsEvent(
+            "Alpha",
+            true,
+            (byte) 1,
+            (short) 10,
+            'A',
+            1,
+            100L,
+            0.1f,
+            10.0,
+            new BigDecimal("1.00"),
+            new BigInteger("1"),
+            Instant.parse("2025-05-01T00:00:00Z"),
+            LocalDate.of(2025, 5, 1),
+            LocalDateTime.of(2025, 5, 1, 0, 0),
+            new Date(1746057600000L)
+        ));
+        repo.save(new AnalyticsEvent(
+            "Bravo",
+            false,
+            (byte) 2,
+            (short) 20,
+            'B',
+            2,
+            200L,
+            0.2f,
+            20.0,
+            new BigDecimal("2.00"),
+            new BigInteger("2"),
+            Instant.parse("2025-05-02T00:00:00Z"),
+            LocalDate.of(2025, 5, 2),
+            LocalDateTime.of(2025, 5, 2, 0, 0),
+            null
+        ));
+        repo.save(new AnalyticsEvent(
+            "Charlie",
+            true,
+            (byte) 3,
+            (short) 30,
+            'C',
+            3,
+            300L,
+            0.3f,
+            30.0,
+            new BigDecimal("3.00"),
+            new BigInteger("3"),
+            Instant.parse("2025-05-03T00:00:00Z"),
+            LocalDate.of(2025, 5, 3),
+            LocalDateTime.of(2025, 5, 3, 0, 0),
+            null
+        ));
+
+        var snapshot = new OrOperatorSnapshot(
+            repo.findByTitleStartingWithOrQuantityGreaterThan("Al", 2).size(),
+            repo.findByActiveFalseOrCostLessThan(15.0).size(),
+            repo.findByEventTimeGreaterThanOrLegacyDateIsNull(Instant.parse("2025-05-02T12:00:00Z")).size()
+        );
+
+        var expected = new OrOperatorSnapshot(2, 2, 2);
+
+        assertThat(snapshot).usingRecursiveComparison().isEqualTo(expected);
+    }
+
+    @Test
+    void shouldCoverTopAndOrdering() {
+        var repo = arena.createRepository(AnalyticsEventRepository.class);
+
+        repo.save(new AnalyticsEvent(
+            "Alpha",
+            true,
+            (byte) 1,
+            (short) 10,
+            'A',
+            1,
+            100L,
+            0.1f,
+            10.0,
+            new BigDecimal("1.00"),
+            new BigInteger("1"),
+            Instant.parse("2025-06-01T00:00:00Z"),
+            LocalDate.of(2025, 6, 1),
+            LocalDateTime.of(2025, 6, 1, 0, 0),
+            null
+        ));
+        repo.save(new AnalyticsEvent(
+            "Bravo",
+            false,
+            (byte) 2,
+            (short) 20,
+            'B',
+            2,
+            200L,
+            0.2f,
+            20.0,
+            new BigDecimal("2.00"),
+            new BigInteger("2"),
+            Instant.parse("2025-06-02T00:00:00Z"),
+            LocalDate.of(2025, 6, 2),
+            LocalDateTime.of(2025, 6, 2, 0, 0),
+            null
+        ));
+        repo.save(new AnalyticsEvent(
+            "Charlie",
+            true,
+            (byte) 3,
+            (short) 30,
+            'C',
+            3,
+            300L,
+            0.3f,
+            30.0,
+            new BigDecimal("3.00"),
+            new BigInteger("3"),
+            Instant.parse("2025-06-03T00:00:00Z"),
+            LocalDate.of(2025, 6, 3),
+            LocalDateTime.of(2025, 6, 3, 0, 0),
+            null
+        ));
+        repo.save(new AnalyticsEvent(
+            "Delta",
+            true,
+            (byte) 4,
+            (short) 40,
+            'D',
+            4,
+            400L,
+            0.4f,
+            40.0,
+            new BigDecimal("4.00"),
+            new BigInteger("4"),
+            Instant.parse("2025-06-04T00:00:00Z"),
+            LocalDate.of(2025, 6, 4),
+            LocalDateTime.of(2025, 6, 4, 0, 0),
+            null
+        ));
+
+        var snapshot = new OrderingSnapshot(
+            repo.findTop2ByActiveTrueOrderByRevenueDesc().size(),
+            repo.findTop2ByActiveTrueOrderByRevenueDesc().get(0).revenue,
+            repo.findFirstByActiveTrueOrderByTitleAsc().title
+        );
+
+        var expected = new OrderingSnapshot(2, 400L, "Alpha");
+
+        assertThat(snapshot).usingRecursiveComparison().isEqualTo(expected);
+    }
+
+    @Test
+    void shouldCoverDistinct() {
+        var repo = arena.createRepository(AnalyticsEventRepository.class);
+
+        repo.save(new AnalyticsEvent(
+            "Duplicate",
+            true,
+            (byte) 1,
+            (short) 10,
+            'A',
+            1,
+            100L,
+            0.1f,
+            10.0,
+            new BigDecimal("1.00"),
+            new BigInteger("1"),
+            Instant.parse("2025-07-01T00:00:00Z"),
+            LocalDate.of(2025, 7, 1),
+            LocalDateTime.of(2025, 7, 1, 0, 0),
+            null
+        ));
+        repo.save(new AnalyticsEvent(
+            "Duplicate",
+            false,
+            (byte) 2,
+            (short) 20,
+            'B',
+            2,
+            200L,
+            0.2f,
+            20.0,
+            new BigDecimal("2.00"),
+            new BigInteger("2"),
+            Instant.parse("2025-07-02T00:00:00Z"),
+            LocalDate.of(2025, 7, 2),
+            LocalDateTime.of(2025, 7, 2, 0, 0),
+            null
+        ));
+        repo.save(new AnalyticsEvent(
+            "Unique",
+            true,
+            (byte) 3,
+            (short) 30,
+            'C',
+            3,
+            300L,
+            0.3f,
+            30.0,
+            new BigDecimal("3.00"),
+            new BigInteger("3"),
+            Instant.parse("2025-07-03T00:00:00Z"),
+            LocalDate.of(2025, 7, 3),
+            LocalDateTime.of(2025, 7, 3, 0, 0),
+            null
+        ));
+
+        var snapshot = new DistinctSnapshot(
+            repo.findDistinctByTitle("Duplicate").size(),
+            repo.findDistinctByTitle("Unique").size()
+        );
+
+        var expected = new DistinctSnapshot(2, 1);
+
+        assertThat(snapshot).usingRecursiveComparison().isEqualTo(expected);
+    }
+
+    @Test
     void shouldHydrateManyToManyJoinCollections() {
         var studentRepo = arena.createRepository(ManyToManyStudentRepository.class);
         var courseRepo = arena.createRepository(ManyToManyCourseRepository.class);
@@ -1212,6 +1429,26 @@ class ECommerceRealWorldTest {
     ) {
     }
 
+    private record OrOperatorSnapshot(
+        int titleStartingWithOrQuantityGreaterThan,
+        int activeFalseOrCostLessThan,
+        int eventTimeGreaterThanOrLegacyDateIsNull
+    ) {
+    }
+
+    private record OrderingSnapshot(
+        int top2ByActiveSize,
+        long top2FirstRevenue,
+        String firstByActiveTitle
+    ) {
+    }
+
+    private record DistinctSnapshot(
+        int distinctDuplicate,
+        int distinctUnique
+    ) {
+    }
+
     public interface AnalyticsEventRepository extends MemrisRepository<AnalyticsEvent> {
         AnalyticsEvent save(AnalyticsEvent event);
 
@@ -1235,9 +1472,13 @@ class ECommerceRealWorldTest {
 
         List<AnalyticsEvent> findByTitleNotIn(List<String> titles);
 
+        List<AnalyticsEvent> findByTitleStartingWithOrQuantityGreaterThan(String prefix, int quantity);
+
         List<AnalyticsEvent> findByActiveTrue();
 
         List<AnalyticsEvent> findByActiveFalse();
+
+        List<AnalyticsEvent> findByActiveFalseOrCostLessThan(double cost);
 
         List<AnalyticsEvent> findByPriorityGreaterThan(byte priority);
 
@@ -1267,6 +1508,8 @@ class ECommerceRealWorldTest {
 
         List<AnalyticsEvent> findByEventTimeGreaterThan(Instant eventTime);
 
+        List<AnalyticsEvent> findByEventTimeGreaterThanOrLegacyDateIsNull(Instant eventTime);
+
         List<AnalyticsEvent> findByEventTimeBetween(Instant start, Instant end);
 
         List<AnalyticsEvent> findByEventTimeIn(List<Instant> eventTimes);
@@ -1292,5 +1535,11 @@ class ECommerceRealWorldTest {
         List<AnalyticsEvent> findByLegacyDateNotNull();
 
         List<AnalyticsEvent> findByLegacyDateIsNull();
+
+        List<AnalyticsEvent> findTop2ByActiveTrueOrderByRevenueDesc();
+
+        AnalyticsEvent findFirstByActiveTrueOrderByTitleAsc();
+
+        List<AnalyticsEvent> findDistinctByTitle(String title);
     }
 }

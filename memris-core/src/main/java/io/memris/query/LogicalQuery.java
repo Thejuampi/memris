@@ -168,6 +168,8 @@ public record LogicalQuery(
      * This allows unified compilation pipeline for all repository methods.
      */
     public enum ReturnKind {
+        /** Query: Single entity, nullable (findFirst/findTop) */
+        ONE,
         /** Query: Single entity, nullable (findById) */
         ONE_OPTIONAL,
         /** Query: Multiple entities (findBy*, findAll) */

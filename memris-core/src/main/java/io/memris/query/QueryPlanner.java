@@ -267,7 +267,7 @@ public final class QueryPlanner {
 
         // Tokenize using context-aware lexer
         List<QueryMethodToken> tokens = QueryMethodLexer.tokenize(entityClass, parseName);
-        var returnKind = determineReturnKind(parseName, returnType);
+        var returnKind = determineReturnKind(parseName, returnType, limitParse.limit() > 0);
         var grouping = extractGrouping(method, parseName, returnType);
         if (isMapReturnType(returnType) && grouping == null) {
             throw new IllegalArgumentException(
@@ -422,7 +422,7 @@ public final class QueryPlanner {
 
         // Otherwise, determine from ReturnKind
         return switch (returnKind) {
-            case MANY_LIST, MANY_SET, MANY_MAP, ONE_OPTIONAL -> OpCode.FIND;
+            case MANY_LIST, MANY_SET, MANY_MAP, ONE_OPTIONAL, ONE -> OpCode.FIND;
             case COUNT_LONG -> OpCode.COUNT;
             case EXISTS_BOOL -> OpCode.EXISTS;
             default -> throw new IllegalArgumentException("Unexpected return kind for derived query: " + returnKind);
@@ -605,7 +605,7 @@ public final class QueryPlanner {
      * QueryMethodLexer.classifyOperation)
      * to support both query and CRUD operations dynamically.
      */
-    private static LogicalQuery.ReturnKind determineReturnKind(String methodName, Class<?> returnType) {
+    private static LogicalQuery.ReturnKind determineReturnKind(String methodName, Class<?> returnType, boolean hasLimit) {
         var prefix = extractPrefix(methodName);
         var remaining = methodName.substring(prefix.length());
         var hasBy = remaining.startsWith("By");
@@ -622,13 +622,18 @@ public final class QueryPlanner {
                             : LogicalQuery.ReturnKind.MANY_LIST; // findAll()
                 if (hasBy) {
                     // findById() vs findByXxx()
-                    yield returnType.equals(java.util.Optional.class)
-                            ? LogicalQuery.ReturnKind.ONE_OPTIONAL
-                            : (isSetReturnType(returnType)
-                                    ? LogicalQuery.ReturnKind.MANY_SET
-                                    : (isMapReturnType(returnType)
-                                            ? LogicalQuery.ReturnKind.MANY_MAP
-                                            : LogicalQuery.ReturnKind.MANY_LIST));
+                    if (returnType.equals(java.util.Optional.class)) {
+                        yield LogicalQuery.ReturnKind.ONE_OPTIONAL;
+                    }
+                    if (hasLimit && !isSetReturnType(returnType) && !isMapReturnType(returnType)
+                            && !java.util.List.class.isAssignableFrom(returnType)) {
+                        yield LogicalQuery.ReturnKind.ONE;
+                    }
+                    yield isSetReturnType(returnType)
+                            ? LogicalQuery.ReturnKind.MANY_SET
+                            : (isMapReturnType(returnType)
+                                    ? LogicalQuery.ReturnKind.MANY_MAP
+                                    : LogicalQuery.ReturnKind.MANY_LIST);
                 }
                 throw new IllegalArgumentException("Invalid find method: " + methodName);
             }

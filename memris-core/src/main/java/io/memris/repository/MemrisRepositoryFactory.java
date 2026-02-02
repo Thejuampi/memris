@@ -53,20 +53,6 @@ public final class MemrisRepositoryFactory implements AutoCloseable {
     private final MemrisConfiguration configuration;
 
     /**
-     * Sorting algorithms for query results.
-     */
-    public enum SortAlgorithm {
-        /** Automatically choose the best algorithm based on data size */
-        AUTO,
-        /** Bubble sort - O(n²) but very fast for small n (< 100) */
-        BUBBLE,
-        /** Java's optimized sort - O(n log n) */
-        JAVA_SORT,
-        /** Parallel merge sort - O(n log n) with multiple threads */
-        PARALLEL_STREAM
-    }
-
-    /**
      * Creates a factory with default configuration.
      */
     public MemrisRepositoryFactory() {
@@ -99,9 +85,9 @@ public final class MemrisRepositoryFactory implements AutoCloseable {
     @SuppressWarnings("unchecked")
     private <T> Class<T> extractEntityClass(Class<? extends MemrisRepository<T>> repositoryInterface) {
         // Get the first generic interface that extends MemrisRepository
-        for (Type iface : repositoryInterface.getGenericInterfaces()) {
+        for (var iface : repositoryInterface.getGenericInterfaces()) {
             if (iface instanceof ParameterizedType pt) {
-                Type rawType = pt.getRawType();
+                var rawType = pt.getRawType();
                 if (rawType instanceof Class<?> clazz && MemrisRepository.class.isAssignableFrom(clazz)) {
                     Type[] typeArgs = pt.getActualTypeArguments();
                     if (typeArgs.length > 0 && typeArgs[0] instanceof Class<?>) {
@@ -122,7 +108,7 @@ public final class MemrisRepositoryFactory implements AutoCloseable {
      * Get index for a specific field, or null if no index exists.
      */
     Object getIndex(Class<?> entityClass, String fieldName) {
-        Map<String, Object> entityIndexes = indexes.get(entityClass);
+        var entityIndexes = indexes.get(entityClass);
         if (entityIndexes == null) {
             return null;
         }
@@ -133,7 +119,7 @@ public final class MemrisRepositoryFactory implements AutoCloseable {
      * Check if an index exists for a field.
      */
     boolean hasIndex(Class<?> entityClass, String fieldName) {
-        Map<String, Object> entityIndexes = indexes.get(entityClass);
+        var entityIndexes = indexes.get(entityClass);
         return entityIndexes != null && entityIndexes.containsKey(fieldName);
     }
 
@@ -147,7 +133,7 @@ public final class MemrisRepositoryFactory implements AutoCloseable {
      * @return Array of matching row indices, or null if no index available
      */
     public int[] queryIndex(Class<?> entityClass, String fieldName, Predicate.Operator operator, Object value) {
-        Map<String, Object> entityIndexes = indexes.get(entityClass);
+        var entityIndexes = indexes.get(entityClass);
         if (entityIndexes == null) {
             return null;
         }
@@ -214,11 +200,11 @@ public final class MemrisRepositoryFactory implements AutoCloseable {
     }
 
     public void removeIndexEntry(Class<?> entityClass, String fieldName, Object value, int rowIndex) {
-        Object index = getIndex(entityClass, fieldName);
+        var index = getIndex(entityClass, fieldName);
         if (index == null || value == null) {
             return;
         }
-        RowId rowId = RowId.fromLong(rowIndex);
+        var rowId = RowId.fromLong(rowIndex);
         switch (index) {
             case HashIndex hashIndex -> hashIndex.remove(value, rowId);
             case RangeIndex rangeIndex -> {
@@ -232,7 +218,7 @@ public final class MemrisRepositoryFactory implements AutoCloseable {
     }
 
     public void clearIndexes(Class<?> entityClass) {
-        Map<String, Object> entityIndexes = indexes.get(entityClass);
+        var entityIndexes = indexes.get(entityClass);
         if (entityIndexes == null) {
             return;
         }

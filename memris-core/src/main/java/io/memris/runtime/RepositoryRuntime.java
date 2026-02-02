@@ -837,6 +837,7 @@ public final class RepositoryRuntime<T> {
                 }
             }
             return switch (query.returnKind()) {
+                case ONE -> results.isEmpty() ? null : results.get(0);
                 case ONE_OPTIONAL -> results.isEmpty() ? Optional.empty() : Optional.of(results.get(0));
                 case MANY_LIST -> results;
                 case MANY_SET -> resultSet;
@@ -853,12 +854,18 @@ public final class RepositoryRuntime<T> {
 
         List results2 = returnSet2 ? null : new ArrayList<>(max);
         java.util.Set resultSet2 = returnSet2 ? new java.util.LinkedHashSet<>(Math.max(16, max)) : null;
+        java.util.Set<DistinctKey> distinctKeys = query.distinct()
+                ? new java.util.HashSet<>(Math.max(16, max))
+                : null;
         for (var i = 0; i < max; i++) {
             var rowIndex = rows[i];
             var entity = materializer.materialize(plan.kernel(), rowIndex);
             applyPostLoad(entity);
             hydrateJoins(entity, rowIndex, query);
             hydrateCollections(entity, rowIndex);
+            if (distinctKeys != null && !distinctKeys.add(DistinctKey.from(entity))) {
+                continue;
+            }
             if (returnSet2) {
                 resultSet2.add(entity);
             } else {
@@ -867,6 +874,7 @@ public final class RepositoryRuntime<T> {
         }
 
         return switch (query.returnKind()) {
+            case ONE -> results2.isEmpty() ? null : (T) results2.get(0);
             case ONE_OPTIONAL -> results2.isEmpty() ? Optional.empty() : Optional.of((T) results2.get(0));
             case MANY_LIST -> (List<T>) results2;
             case MANY_SET -> (java.util.Set<T>) resultSet2;
@@ -1036,6 +1044,15 @@ public final class RepositoryRuntime<T> {
         int[] result = new int[unique];
         System.arraycopy(rows, 0, result, 0, unique);
         return result;
+    }
+
+    private record DistinctKey(Class<?> type, Object value) {
+        private static DistinctKey from(Object entity) {
+            if (entity == null) {
+                return new DistinctKey(null, null);
+            }
+            return new DistinctKey(entity.getClass(), entity);
+        }
     }
 
     private long executeCount(CompiledQuery query, Object[] args) {
