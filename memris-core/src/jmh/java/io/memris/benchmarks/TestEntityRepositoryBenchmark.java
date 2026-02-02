@@ -1,6 +1,7 @@
 package io.memris.benchmarks;
 
 import io.memris.core.MemrisArena;
+import io.memris.core.MemrisConfiguration;
 import io.memris.repository.MemrisRepositoryFactory;
 import io.memris.runtime.TestEntity;
 import io.memris.runtime.TestEntityRepository;
@@ -56,7 +57,15 @@ public class TestEntityRepositoryBenchmark {
             if (savePct + updatePct + deletePct != 100) {
                 throw new IllegalStateException("save/update/delete percentages must sum to 100");
             }
-            factory = new MemrisRepositoryFactory();
+            int tablePageSize = 1024;
+            int tableMaxPages = 4096;
+            int tableInitialPages = 256;
+            MemrisConfiguration configuration = MemrisConfiguration.builder()
+                    .pageSize(tablePageSize)
+                    .maxPages(tableMaxPages)
+                    .initialPages(tableInitialPages)
+                    .build();
+            factory = new MemrisRepositoryFactory(configuration);
             arena = factory.createArena();
             repository = arena.createRepository(TestEntityRepository.class);
             prefilledIds = new long[initialRows];
