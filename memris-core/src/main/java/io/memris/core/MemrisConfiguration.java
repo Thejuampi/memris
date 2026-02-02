@@ -32,6 +32,9 @@ public final class MemrisConfiguration {
     // Audit configuration
     private final AuditProvider auditProvider;
 
+    // Code generation configuration
+    private final boolean codegenEnabled;
+
     private MemrisConfiguration(Builder builder) {
         this.tableImplementation = builder.tableImplementation;
         this.pageSize = builder.pageSize;
@@ -40,6 +43,7 @@ public final class MemrisConfiguration {
         this.enableParallelSorting = builder.enableParallelSorting;
         this.parallelSortThreshold = builder.parallelSortThreshold;
         this.auditProvider = builder.auditProvider;
+        this.codegenEnabled = builder.codegenEnabled;
     }
 
     /**
@@ -114,6 +118,15 @@ public final class MemrisConfiguration {
     }
 
     /**
+     * Check if code generation is enabled for runtime executors.
+     * 
+     * @return true if code generation is enabled (default: true)
+     */
+    public boolean codegenEnabled() {
+        return codegenEnabled;
+    }
+
+    /**
      * Table implementation strategy enum.
      */
     public enum TableImplementation {
@@ -143,6 +156,7 @@ public final class MemrisConfiguration {
         private boolean enableParallelSorting = true;
         private int parallelSortThreshold = 1000;
         private AuditProvider auditProvider;
+        private boolean codegenEnabled = true;
 
         private Builder() {
         }
@@ -218,6 +232,18 @@ public final class MemrisConfiguration {
          */
         public Builder auditProvider(AuditProvider auditProvider) {
             this.auditProvider = auditProvider;
+            return this;
+        }
+
+        /**
+         * Enable or disable code generation for runtime executors.
+         * When disabled, fallback implementations using runtime branching are used.
+         *
+         * @param codegenEnabled true to enable code generation (default: true)
+         * @return this builder for method chaining
+         */
+        public Builder codegenEnabled(boolean codegenEnabled) {
+            this.codegenEnabled = codegenEnabled;
             return this;
         }
 

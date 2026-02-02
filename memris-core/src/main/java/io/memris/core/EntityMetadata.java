@@ -82,7 +82,10 @@ public class EntityMetadata<T> {
         for (var i = 0; i < fields.size(); i++) {
             FieldMapping fm = fields.get(i);
             propertyMap.put(fm.name(), fm.columnPosition());
-            columnMap.put(fm.columnName(), fm.columnPosition());
+            var columnName = fm.columnName();
+            if (columnName != null && !columnName.isBlank()) {
+                columnMap.put(columnName, fm.columnPosition());
+            }
         }
         this.propertyToColumnPosition = Map.copyOf(propertyMap); // Immutable copy
         this.columnNameToColumnPosition = Map.copyOf(columnMap); // Immutable copy

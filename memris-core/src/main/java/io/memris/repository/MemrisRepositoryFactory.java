@@ -26,6 +26,7 @@ import io.memris.runtime.RepositoryMethodBinding;
 import io.memris.runtime.RepositoryMethodExecutor;
 import io.memris.runtime.RepositoryPlan;
 import io.memris.runtime.RepositoryRuntime;
+import io.memris.runtime.codegen.RuntimeExecutorGenerator;
 import io.memris.storage.GeneratedTable;
 import io.memris.storage.SimpleTable;
 import io.memris.storage.SimpleTable.ColumnSpec;
@@ -79,6 +80,7 @@ public final class MemrisRepositoryFactory implements AutoCloseable {
      */
     public MemrisRepositoryFactory(MemrisConfiguration configuration) {
         this.configuration = configuration;
+        RuntimeExecutorGenerator.setConfiguration(configuration);
     }
 
     /**

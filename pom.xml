@@ -227,6 +227,9 @@
                         <consoleOutput>true</consoleOutput>
                         <failsOnError>true</failsOnError>
                         <linkXRef>false</linkXRef>
+                        <systemPropertyVariables>
+                            <config_loc>${maven.multiModuleProjectDirectory}</config_loc>
+                        </systemPropertyVariables>
                     </configuration>
                     <dependencies>
                         <dependency>

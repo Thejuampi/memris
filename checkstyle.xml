@@ -4,32 +4,89 @@
         "https://checkstyle.org/dtds/configuration_1_3.dtd">
 
 <module name="Checker">
-    <property name="charset" value="UTF-8"/>
-    <property name="severity" value="warning"/>
-    <property name="fileExtensions" value="java, properties, xml"/>
 
-    <!-- Line Length: 160 characters -->
-    <module name="LineLength">
-        <property name="fileExtensions" value="java"/>
-        <property name="max" value="160"/>
-        <property name="ignorePattern" value="^package.*|^import.*|a href|href|http://|https://|ftp://"/>
+  <!-- ========= Global ========= -->
+  <property name="charset" value="UTF-8"/>
+  <property name="severity" value="error"/>
+  <property name="fileExtensions" value="java, properties, xml"/>
+
+  <!-- Fail-fast on config / suppression mistakes -->
+  <module name="SuppressionFilter">
+    <property name="file" value="checkstyle-suppressions.xml"/>
+    <property name="optional" value="true"/>
+  </module>
+
+  <!-- Avoid noisy generated/build output -->
+  <module name="BeforeExecutionExclusionFileFilter">
+    <property name="fileNamePattern"
+              value="module-info\.java|.*[\\/]generated[\\/].*|.*[\\/]build[\\/].*|.*[\\/]target[\\/].*"/>
+  </module>
+
+  <!-- ========= File-level hygiene ========= -->
+  <module name="NewlineAtEndOfFile"/>
+  <module name="FileTabCharacter">
+    <property name="eachLine" value="true"/>
+  </module>
+
+  <!-- Keep diffs readable; tune length to your repo conventions -->
+  <module name="LineLength">
+    <property name="max" value="140"/>
+    <property name="ignorePattern"
+              value="^package\s|^import\s|https?://|^\s*\*.*$"/>
+  </module>
+
+  <!-- ========= Java parsing ========= -->
+  <module name="TreeWalker">
+
+    <!-- ===== Imports: low noise, high ROI ===== -->
+    <module name="AvoidStarImport"/>
+    <module name="AvoidStaticImport"/>
+    <module name="UnusedImports"/>
+    <module name="RedundantImport"/>
+    <module name="CustomImportOrder">
+      <!-- Common format: static, then non-static; group by packages -->
+      <property name="customImportOrderRules"
+                value="STATIC###THIRD_PARTY_PACKAGE###SPECIAL_IMPORTS###STANDARD_JAVA_PACKAGE"/>
+      <property name="specialImportsRegExp" value="^(io\.memris|org\.springframework)\."/>
+      <property name="standardPackageRegExp" value="^(java|javax|jakarta)\."/>
+      <property name="separateLineBetweenGroups" value="true"/>
+      <property name="sortImportsInGroupAlphabetically" value="true"/>
     </module>
 
-    <module name="TreeWalker">
-        <!-- Imports -->
-        <module name="AvoidStarImport"/>
-        <module name="UnusedImports"/>
-        <!-- Blocks -->
-        <module name="NeedBraces"/>
-        <!-- Coding -->
-        <module name="EmptyStatement"/>
-        <module name="EqualsHashCode"/>
-        <!-- Naming -->
-        <module name="ConstantName"/>
-        <module name="LocalVariableName"/>
-        <module name="MethodName"/>
-        <module name="PackageName"/>
-        <module name="ParameterName"/>
-        <module name="TypeName"/>
+    <!-- ===== Naming: keep it simple and predictable ===== -->
+    <module name="PackageName"/>
+    <module name="TypeName"/>
+    <module name="MethodName"/>
+    <module name="MemberName"/>
+    <module name="ParameterName"/>
+    <module name="LocalVariableName"/>
+    <module name="ConstantName"/>
+
+    <!-- ===== Correctness / bug-prevention: very high signal ===== -->
+    <module name="EmptyStatement"/>
+    <module name="EmptyBlock">
+      <property name="option" value="TEXT"/>
     </module>
+    <module name="FallThrough"/>
+    <module name="MissingSwitchDefault"/>
+    <module name="OneStatementPerLine"/>
+    <module name="MultipleVariableDeclarations"/>
+    <module name="EqualsAvoidNull"/>
+    <module name="MissingOverride"/>
+
+    <!-- ===== Modifiers / visibility: keeps APIs sane ===== -->
+    <module name="ModifierOrder"/>
+    <module name="RedundantModifier"/>
+    <module name="VisibilityModifier">
+      <!-- conservative default; adjust if you use package-private heavily -->
+      <property name="packageAllowed" value="true"/>
+      <property name="protectedAllowed" value="true"/>
+      <property name="publicMemberPattern" value=".*"/>
+    </module>
+
+    <!-- ===== Whitespace: minimal set that prevents ugly code, not IDE wars ===== -->
+    <module name="WhitespaceAround"/>
+    <module name="WhitespaceAfter"/>
+    <module name="NoWhitespaceBefore"/>
+  </module>
 </module>

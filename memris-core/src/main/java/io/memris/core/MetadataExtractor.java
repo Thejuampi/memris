@@ -363,6 +363,13 @@ public final class MetadataExtractor {
             if (joinTableName == null || joinTableName.isBlank()) {
                 joinTableName = sourceEntity.getSimpleName() + "_" + targetEntity.getSimpleName();
             }
+            // Provide default column names if not specified
+            if (joinColumnName == null || joinColumnName.isBlank()) {
+                joinColumnName = sourceEntity.getSimpleName().toLowerCase() + "_id";
+            }
+            if (inverseJoinColumnName == null || inverseJoinColumnName.isBlank()) {
+                inverseJoinColumnName = targetEntity.getSimpleName().toLowerCase() + "_id";
+            }
         }
 
         Class<?> idFieldType = resolveIdFieldType(sourceEntity);

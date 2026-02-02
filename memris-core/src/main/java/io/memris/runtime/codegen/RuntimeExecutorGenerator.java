@@ -11,6 +11,8 @@ import net.bytebuddy.dynamic.DynamicType;
 import net.bytebuddy.implementation.MethodDelegation;
 import net.bytebuddy.implementation.bind.annotation.RuntimeType;
 
+import io.memris.core.MemrisConfiguration;
+
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -46,17 +48,34 @@ public final class RuntimeExecutorGenerator {
     private static final ConcurrentHashMap<String, Object> CACHE = new ConcurrentHashMap<>();
     private static final AtomicLong CLASS_COUNTER = new AtomicLong(0);
 
-    /** System property to disable code generation */
+    /** System property to disable code generation (deprecated, use MemrisConfiguration) */
     public static final String CODEGEN_ENABLED_PROPERTY = "memris.codegen.enabled";
+
+    private static volatile MemrisConfiguration configuration;
 
     private RuntimeExecutorGenerator() {
     }
 
     /**
+     * Set the configuration for runtime executor generation.
+     * This should be called when initializing the MemrisRepositoryFactory.
+     *
+     * @param config the MemrisConfiguration to use
+     */
+    public static void setConfiguration(MemrisConfiguration config) {
+        configuration = config;
+    }
+
+    /**
      * Check if code generation is enabled.
-     * Defaults to true; set -Dmemris.codegen.enabled=false to disable.
+     * Uses MemrisConfiguration if set, otherwise falls back to system property.
+     * Defaults to true; set -Dmemris.codegen.enabled=false to disable via property,
+     * or use MemrisConfiguration.builder().codegenEnabled(false).build() programmatically.
      */
     public static boolean isEnabled() {
+        if (configuration != null) {
+            return configuration.codegenEnabled();
+        }
         return !"false".equalsIgnoreCase(System.getProperty(CODEGEN_ENABLED_PROPERTY, "true"));
     }
 

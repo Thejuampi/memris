@@ -4,6 +4,8 @@ import io.memris.repository.MemrisRepositoryFactory;
 import io.memris.core.MemrisArena;
 import io.memris.repository.MemrisRepository;
 import io.memris.core.JoinColumn;
+import io.memris.core.JoinTable;
+import io.memris.core.ManyToMany;
 import io.memris.core.ManyToOne;
 import io.memris.core.OneToMany;
 
@@ -693,5 +695,76 @@ class ECommerceRealWorldTest {
     }
 
     private record JoinCollectionSnapshot(int customerCount, String customerName, List<String> orderStatuses) {
+    }
+
+    @Test
+    void shouldHydrateManyToManyJoinCollections() {
+        var studentRepo = arena.createRepository(ManyToManyStudentRepository.class);
+        var courseRepo = arena.createRepository(ManyToManyCourseRepository.class);
+
+        var student1 = studentRepo.save(new ManyToManyStudent("Student One"));
+        var student2 = studentRepo.save(new ManyToManyStudent("Student Two"));
+        var math = courseRepo.save(new ManyToManyCourse("Math"));
+        var physics = courseRepo.save(new ManyToManyCourse("Physics"));
+
+        // Create join table entries manually by using intermediate entities
+        // Student1 enrolled in Math and Physics
+        student1.courses = List.of(math, physics);
+        studentRepo.save(student1);
+
+        // Student2 enrolled in Math only
+        student2.courses = List.of(math);
+        studentRepo.save(student2);
+
+        // Query students by course name
+        var mathStudents = studentRepo.findByCoursesName("Math");
+
+        assertThat(mathStudents).hasSize(2);
+        assertThat(mathStudents).extracting(s -> s.name).containsExactlyInAnyOrder("Student One", "Student Two");
+
+        var physicsStudents = studentRepo.findByCoursesName("Physics");
+        assertThat(physicsStudents).hasSize(1);
+        assertThat(physicsStudents.get(0).name).isEqualTo("Student One");
+    }
+
+    public static class ManyToManyStudent {
+        public Long id;
+        public String name;
+
+        @ManyToMany
+        @JoinTable(name = "student_course", joinColumn = "student_id", inverseJoinColumn = "course_id")
+        public List<ManyToManyCourse> courses;
+
+        public ManyToManyStudent() {
+        }
+
+        public ManyToManyStudent(String name) {
+            this.name = name;
+        }
+    }
+
+    public static class ManyToManyCourse {
+        public Long id;
+        public String name;
+
+        @ManyToMany(mappedBy = "courses")
+        public List<ManyToManyStudent> students;
+
+        public ManyToManyCourse() {
+        }
+
+        public ManyToManyCourse(String name) {
+            this.name = name;
+        }
+    }
+
+    public interface ManyToManyStudentRepository extends MemrisRepository<ManyToManyStudent> {
+        ManyToManyStudent save(ManyToManyStudent student);
+
+        List<ManyToManyStudent> findByCoursesName(String name);
+    }
+
+    public interface ManyToManyCourseRepository extends MemrisRepository<ManyToManyCourse> {
+        ManyToManyCourse save(ManyToManyCourse course);
     }
 }
