@@ -6,8 +6,8 @@
 
 **Location:** `MemrisConfiguration.java` lines 129-130
 ```java
-private int defaultPageSize = 1024;
-private int defaultMaxPages = 1024;
+private int pageSize = 1024;
+private int maxPages = 1024;
 ```
 
 **Why the limit exists:**
@@ -176,7 +176,7 @@ This is a **breaking change** requiring:
 For immediate benchmark relief without full dynamic growth:
 ```java
 // MemrisConfiguration.builder()
-//     .defaultMaxPages(65536)  // 67M rows
+//     .maxPages(65536)  // 67M rows
 //     .build();
 ```
 
@@ -184,7 +184,7 @@ For immediate benchmark relief without full dynamic growth:
 
 ## Recommendation
 
-**Short-term:** Increase defaultMaxPages to 65536 for benchmarks (67M rows)
+**Short-term:** Increase maxPages to 65536 for benchmarks (67M rows)
 **Long-term:** Implement segment-based dynamic growth for true 4B row support
 
 The dynamic growth architecture will enable:

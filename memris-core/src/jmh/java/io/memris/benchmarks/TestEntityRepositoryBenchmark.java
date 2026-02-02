@@ -31,10 +31,10 @@ public class TestEntityRepositoryBenchmark {
 
     @State(Scope.Benchmark)
     public static class BenchmarkState {
-        @Param({ "1000000" })
+        @Param({ "750000" })
         public int initialRows;
 
-        @Param({ "1000000" })
+        @Param({ "750000" })
         public int opsPerInvocation;
 
         @Param({ "40" })

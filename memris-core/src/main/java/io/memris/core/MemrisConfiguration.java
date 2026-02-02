@@ -7,7 +7,7 @@ package io.memris.core;
  * <pre>
  * MemrisConfiguration config = MemrisConfiguration.builder()
  *     .tableImplementation(TableImplementation.BYTECODE)
- *     .defaultPageSize(2048)
+ *     .pageSize(2048)
  *     .build();
  * </pre>
  * <p>
@@ -20,10 +20,10 @@ public final class MemrisConfiguration {
     // Table implementation strategy
     private final TableImplementation tableImplementation;
 
-    // Table sizing defaults
-    private final int defaultPageSize;
-    private final int defaultMaxPages;
-    private final int defaultInitialPages;
+    // Table sizing
+    private final int pageSize;
+    private final int maxPages;
+    private final int initialPages;
 
     // Sorting configuration
     private final boolean enableParallelSorting;
@@ -34,9 +34,9 @@ public final class MemrisConfiguration {
 
     private MemrisConfiguration(Builder builder) {
         this.tableImplementation = builder.tableImplementation;
-        this.defaultPageSize = builder.defaultPageSize;
-        this.defaultMaxPages = builder.defaultMaxPages;
-        this.defaultInitialPages = builder.defaultInitialPages;
+        this.pageSize = builder.pageSize;
+        this.maxPages = builder.maxPages;
+        this.initialPages = builder.initialPages;
         this.enableParallelSorting = builder.enableParallelSorting;
         this.parallelSortThreshold = builder.parallelSortThreshold;
         this.auditProvider = builder.auditProvider;
@@ -61,30 +61,30 @@ public final class MemrisConfiguration {
     }
 
     /**
-     * Get the default page size for new tables.
+     * Get the page size for new tables.
      *
-     * @return default page size (number of rows per page)
+     * @return page size (number of rows per page)
      */
-    public int defaultPageSize() {
-        return defaultPageSize;
+    public int pageSize() {
+        return pageSize;
     }
 
     /**
-     * Get the default maximum number of pages for new tables.
+     * Get the maximum number of pages for new tables.
      *
-     * @return default max pages
+     * @return max pages
      */
-    public int defaultMaxPages() {
-        return defaultMaxPages;
+    public int maxPages() {
+        return maxPages;
     }
 
     /**
-     * Get the default initial number of pages for new tables.
+     * Get the initial number of pages for new tables.
      *
-     * @return default initial pages
+     * @return initial pages
      */
-    public int defaultInitialPages() {
-        return defaultInitialPages;
+    public int initialPages() {
+        return initialPages;
     }
 
     /**
@@ -137,9 +137,9 @@ public final class MemrisConfiguration {
      */
     public static class Builder {
         private TableImplementation tableImplementation = TableImplementation.BYTECODE;
-        private int defaultPageSize = 1024;
-        private int defaultMaxPages = 1024;
-        private int defaultInitialPages = 1024;
+        private int pageSize = 1024;
+        private int maxPages = 1024;
+        private int initialPages = 1024;
         private boolean enableParallelSorting = true;
         private int parallelSortThreshold = 1000;
         private AuditProvider auditProvider;
@@ -159,35 +159,35 @@ public final class MemrisConfiguration {
         }
 
         /**
-         * Set the default page size for new tables.
+         * Set the page size for new tables.
          *
-         * @param defaultPageSize the page size (number of rows per page)
+         * @param pageSize the page size (number of rows per page)
          * @return this builder for method chaining
          */
-        public Builder defaultPageSize(int defaultPageSize) {
-            this.defaultPageSize = defaultPageSize;
+        public Builder pageSize(int pageSize) {
+            this.pageSize = pageSize;
             return this;
         }
 
         /**
-         * Set the default maximum number of pages for new tables.
+         * Set the maximum number of pages for new tables.
          *
-         * @param defaultMaxPages the maximum number of pages
+         * @param maxPages the maximum number of pages
          * @return this builder for method chaining
          */
-        public Builder defaultMaxPages(int defaultMaxPages) {
-            this.defaultMaxPages = defaultMaxPages;
+        public Builder maxPages(int maxPages) {
+            this.maxPages = maxPages;
             return this;
         }
 
         /**
-         * Set the default initial number of pages for new tables.
+         * Set the initial number of pages for new tables.
          *
-         * @param defaultInitialPages the initial number of pages
+         * @param initialPages the initial number of pages
          * @return this builder for method chaining
          */
-        public Builder defaultInitialPages(int defaultInitialPages) {
-            this.defaultInitialPages = defaultInitialPages;
+        public Builder initialPages(int initialPages) {
+            this.initialPages = initialPages;
             return this;
         }
 

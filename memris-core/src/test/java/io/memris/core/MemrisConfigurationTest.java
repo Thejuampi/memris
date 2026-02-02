@@ -1,6 +1,5 @@
 package io.memris.core;
 
-import io.memris.core.MemrisConfiguration;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -15,9 +14,9 @@ class MemrisConfigurationTest {
         MemrisConfiguration config = MemrisConfiguration.builder().build();
 
         assertThat(config.tableImplementation()).isEqualTo(MemrisConfiguration.TableImplementation.BYTECODE);
-        assertThat(config.defaultPageSize()).isEqualTo(1024);
-        assertThat(config.defaultMaxPages()).isEqualTo(1024);
-        assertThat(config.defaultInitialPages()).isEqualTo(1024);
+        assertThat(config.pageSize()).isEqualTo(1024);
+        assertThat(config.maxPages()).isEqualTo(1024);
+        assertThat(config.initialPages()).isEqualTo(1024);
         assertThat(config.enableParallelSorting()).isTrue();
         assertThat(config.parallelSortThreshold()).isEqualTo(1000);
     }
@@ -26,17 +25,17 @@ class MemrisConfigurationTest {
     void shouldCreateConfigurationWithCustomValues() {
         MemrisConfiguration config = MemrisConfiguration.builder()
                 .tableImplementation(MemrisConfiguration.TableImplementation.METHOD_HANDLE)
-                .defaultPageSize(2048)
-                .defaultMaxPages(512)
-                .defaultInitialPages(2)
+                .pageSize(2048)
+                .maxPages(512)
+                .initialPages(2)
                 .enableParallelSorting(false)
                 .parallelSortThreshold(500)
                 .build();
 
         assertThat(config.tableImplementation()).isEqualTo(MemrisConfiguration.TableImplementation.METHOD_HANDLE);
-        assertThat(config.defaultPageSize()).isEqualTo(2048);
-        assertThat(config.defaultMaxPages()).isEqualTo(512);
-        assertThat(config.defaultInitialPages()).isEqualTo(2);
+        assertThat(config.pageSize()).isEqualTo(2048);
+        assertThat(config.maxPages()).isEqualTo(512);
+        assertThat(config.initialPages()).isEqualTo(2);
         assertThat(config.enableParallelSorting()).isFalse();
         assertThat(config.parallelSortThreshold()).isEqualTo(500);
     }
@@ -55,15 +54,15 @@ class MemrisConfigurationTest {
         // Test that we can chain multiple configuration options
         MemrisConfiguration config = MemrisConfiguration.builder()
                 .tableImplementation(MemrisConfiguration.TableImplementation.BYTECODE)
-                .defaultPageSize(4096)
-                .defaultMaxPages(1024)
-                .defaultInitialPages(4)
+                .pageSize(4096)
+                .maxPages(1024)
+                .initialPages(4)
                 .enableParallelSorting(true)
                 .parallelSortThreshold(2000)
                 .build();
 
-        assertThat(config.defaultPageSize()).isEqualTo(4096);
-        assertThat(config.defaultInitialPages()).isEqualTo(4);
+        assertThat(config.pageSize()).isEqualTo(4096);
+        assertThat(config.initialPages()).isEqualTo(4);
         assertThat(config.parallelSortThreshold()).isEqualTo(2000);
     }
 }
