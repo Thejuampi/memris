@@ -43,7 +43,8 @@ public final class RepositoryRuntime<T> {
     private final java.util.concurrent.ConcurrentHashMap<Class<?>, EntityMetadata<?>> projectionMetadata;
     private final java.util.concurrent.ConcurrentHashMap<Class<?>, MethodHandle> projectionConstructors;
     private final IndexFieldReader[] indexFieldReaders;
-    private static final AtomicLong idCounter = new AtomicLong(1L);
+    private final AtomicLong idCounter;
+    private static final ThreadLocal<SortBuffers> SORT_BUFFERS = ThreadLocal.withInitial(SortBuffers::new);
 
     /**
      * Create a RepositoryRuntime from a RepositoryPlan.
@@ -75,6 +76,7 @@ public final class RepositoryRuntime<T> {
         this.projectionMetadata.putAll(this.relatedMetadata);
         this.projectionConstructors = new java.util.concurrent.ConcurrentHashMap<>();
         this.entitySaver = plan.entitySaver();
+        this.idCounter = new AtomicLong(1L);
         this.indexFieldReaders = buildIndexFieldReaders(metadata);
     }
 
@@ -343,6 +345,57 @@ public final class RepositoryRuntime<T> {
             } catch (Throwable e) {
                 throw new RuntimeException("Failed to materialize projection", e);
             }
+        }
+    }
+
+    private static final class SortBuffers {
+        private int[] intKeys;
+        private long[] longKeys;
+        private float[] floatKeys;
+        private double[] doubleKeys;
+        private String[] stringKeys;
+        private boolean[] present;
+
+        private int[] intKeys(int size) {
+            if (intKeys == null || intKeys.length < size) {
+                intKeys = new int[size];
+            }
+            return intKeys;
+        }
+
+        private long[] longKeys(int size) {
+            if (longKeys == null || longKeys.length < size) {
+                longKeys = new long[size];
+            }
+            return longKeys;
+        }
+
+        private float[] floatKeys(int size) {
+            if (floatKeys == null || floatKeys.length < size) {
+                floatKeys = new float[size];
+            }
+            return floatKeys;
+        }
+
+        private double[] doubleKeys(int size) {
+            if (doubleKeys == null || doubleKeys.length < size) {
+                doubleKeys = new double[size];
+            }
+            return doubleKeys;
+        }
+
+        private String[] stringKeys(int size) {
+            if (stringKeys == null || stringKeys.length < size) {
+                stringKeys = new String[size];
+            }
+            return stringKeys;
+        }
+
+        private boolean[] present(int size) {
+            if (present == null || present.length < size) {
+                present = new boolean[size];
+            }
+            return present;
         }
     }
 
@@ -1937,8 +1990,9 @@ public final class RepositoryRuntime<T> {
         GeneratedTable table = plan.table();
         // Use quickselect-like approach: partial sort to find top k
         int[] result = rows.clone();
-        int[] keys = new int[result.length];
-        boolean[] present = new boolean[result.length];
+        SortBuffers buffers = SORT_BUFFERS.get();
+        int[] keys = buffers.intKeys(result.length);
+        boolean[] present = buffers.present(result.length);
         for (int i = 0; i < result.length; i++) {
             int row = result[i];
             present[i] = table.isPresent(columnIndex, row);
@@ -2008,8 +2062,9 @@ public final class RepositoryRuntime<T> {
     private int[] topKLong(int[] rows, int columnIndex, boolean ascending, int k) {
         GeneratedTable table = plan.table();
         int[] result = rows.clone();
-        long[] keys = new long[result.length];
-        boolean[] present = new boolean[result.length];
+        SortBuffers buffers = SORT_BUFFERS.get();
+        long[] keys = buffers.longKeys(result.length);
+        boolean[] present = buffers.present(result.length);
         for (int i = 0; i < result.length; i++) {
             int row = result[i];
             present[i] = table.isPresent(columnIndex, row);
@@ -2071,7 +2126,8 @@ public final class RepositoryRuntime<T> {
     private int[] topKString(int[] rows, int columnIndex, boolean ascending, int k) {
         GeneratedTable table = plan.table();
         int[] result = rows.clone();
-        String[] keys = new String[result.length];
+        SortBuffers buffers = SORT_BUFFERS.get();
+        String[] keys = buffers.stringKeys(result.length);
         for (int i = 0; i < result.length; i++) {
             keys[i] = table.readString(columnIndex, result[i]);
         }
@@ -2530,8 +2586,9 @@ public final class RepositoryRuntime<T> {
 
     private int[] sortByIntColumn(int[] rows, int columnIndex, boolean ascending) {
         int[] result = rows.clone();
-        int[] keys = new int[result.length];
-        boolean[] present = new boolean[result.length];
+        SortBuffers buffers = SORT_BUFFERS.get();
+        int[] keys = buffers.intKeys(result.length);
+        boolean[] present = buffers.present(result.length);
         GeneratedTable table = plan.table();
         for (int i = 0; i < result.length; i++) {
             int row = result[i];
@@ -2544,8 +2601,9 @@ public final class RepositoryRuntime<T> {
 
     private int[] sortByFloatColumn(int[] rows, int columnIndex, boolean ascending) {
         int[] result = rows.clone();
-        float[] keys = new float[result.length];
-        boolean[] present = new boolean[result.length];
+        SortBuffers buffers = SORT_BUFFERS.get();
+        float[] keys = buffers.floatKeys(result.length);
+        boolean[] present = buffers.present(result.length);
         GeneratedTable table = plan.table();
         for (int i = 0; i < result.length; i++) {
             int row = result[i];
@@ -2558,8 +2616,9 @@ public final class RepositoryRuntime<T> {
 
     private int[] sortByLongColumn(int[] rows, int columnIndex, boolean ascending) {
         int[] result = rows.clone();
-        long[] keys = new long[result.length];
-        boolean[] present = new boolean[result.length];
+        SortBuffers buffers = SORT_BUFFERS.get();
+        long[] keys = buffers.longKeys(result.length);
+        boolean[] present = buffers.present(result.length);
         GeneratedTable table = plan.table();
         for (int i = 0; i < result.length; i++) {
             int row = result[i];
@@ -2572,8 +2631,9 @@ public final class RepositoryRuntime<T> {
 
     private int[] sortByDoubleColumn(int[] rows, int columnIndex, boolean ascending) {
         int[] result = rows.clone();
-        double[] keys = new double[result.length];
-        boolean[] present = new boolean[result.length];
+        SortBuffers buffers = SORT_BUFFERS.get();
+        double[] keys = buffers.doubleKeys(result.length);
+        boolean[] present = buffers.present(result.length);
         GeneratedTable table = plan.table();
         for (int i = 0; i < result.length; i++) {
             int row = result[i];
@@ -2586,7 +2646,8 @@ public final class RepositoryRuntime<T> {
 
     private int[] sortByStringColumn(int[] rows, int columnIndex, boolean ascending) {
         int[] result = rows.clone();
-        String[] keys = new String[result.length];
+        SortBuffers buffers = SORT_BUFFERS.get();
+        String[] keys = buffers.stringKeys(result.length);
         GeneratedTable table = plan.table();
         for (int i = 0; i < result.length; i++) {
             keys[i] = table.readString(columnIndex, result[i]);

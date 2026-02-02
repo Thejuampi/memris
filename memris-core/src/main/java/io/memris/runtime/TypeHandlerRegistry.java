@@ -16,8 +16,8 @@ import io.memris.runtime.handler.BigIntegerTypeHandler;
 import io.memris.runtime.handler.ShortTypeHandler;
 import io.memris.runtime.handler.StringTypeHandler;
 
-import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Registry for type handlers.
@@ -42,8 +42,8 @@ import java.util.Map;
  */
 public class TypeHandlerRegistry {
     
-    private final Map<Byte, TypeHandler<?>> handlersByTypeCode = new HashMap<>();
-    private final Map<Class<?>, TypeHandler<?>> handlersByJavaType = new HashMap<>();
+    private final Map<Byte, TypeHandler<?>> handlersByTypeCode = new ConcurrentHashMap<>();
+    private final Map<Class<?>, TypeHandler<?>> handlersByJavaType = new ConcurrentHashMap<>();
     
     /**
      * Create a new registry with default handlers registered.

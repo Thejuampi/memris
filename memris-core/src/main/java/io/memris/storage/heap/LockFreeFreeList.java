@@ -1,6 +1,5 @@
 package io.memris.storage.heap;
 
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
@@ -12,7 +11,7 @@ import java.util.concurrent.atomic.AtomicReference;
 final class LockFreeFreeList {
     
     private final AtomicReference<Node> head = new AtomicReference<>();
-    private final AtomicInteger size = new AtomicInteger(0);
+    private volatile int size;
     
     /**
      * Push a row ID onto the stack.
@@ -26,7 +25,7 @@ final class LockFreeFreeList {
             Node currentHead = head.get();
             newHead.next = currentHead;
             if (head.compareAndSet(currentHead, newHead)) {
-                size.incrementAndGet();
+                size++;
                 return;
             }
             // CAS failed, retry
@@ -47,7 +46,7 @@ final class LockFreeFreeList {
             }
             Node newHead = currentHead.next;
             if (head.compareAndSet(currentHead, newHead)) {
-                size.decrementAndGet();
+                size--;
                 return currentHead.rowId;
             }
             // CAS failed, retry
@@ -69,12 +68,12 @@ final class LockFreeFreeList {
      * @return approximate number of entries
      */
     public int size() {
-        return size.get();
+        return size;
     }
     
     private static final class Node {
         final int rowId;
-        Node next;
+        volatile Node next;
         
         Node(int rowId) {
             this.rowId = rowId;

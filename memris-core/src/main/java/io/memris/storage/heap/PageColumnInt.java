@@ -1,6 +1,7 @@
 package io.memris.storage.heap;
 
 import java.util.concurrent.atomic.AtomicReferenceArray;
+import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
 
 /**
  * Primitive int column storage with SIMD-capable scan operations.
@@ -23,6 +24,8 @@ public final class PageColumnInt {
     private final int capacity;
     private final AtomicReferenceArray<ColumnPage> pages;
     private volatile int published;
+    private static final AtomicIntegerFieldUpdater<PageColumnInt> PUBLISHED_UPDATER =
+            AtomicIntegerFieldUpdater.newUpdater(PageColumnInt.class, "published");
 
     private static final class ColumnPage {
         private final int[] values;
@@ -165,11 +168,13 @@ public final class PageColumnInt {
         if (newPublished < 0 || newPublished > capacity) {
             throw new IndexOutOfBoundsException("newPublished out of range: " + newPublished);
         }
-        // Monotonic publish - only increase
-        int current = this.published;
-        if (newPublished > current) {
-            this.published = newPublished;
-        }
+        int current;
+        do {
+            current = this.published;
+            if (newPublished <= current) {
+                return;
+            }
+        } while (!PUBLISHED_UPDATER.compareAndSet(this, current, newPublished));
     }
 
     /**
