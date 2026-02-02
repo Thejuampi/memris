@@ -3,6 +3,9 @@ package io.memris.core;
 import io.memris.repository.MemrisRepositoryFactory;
 import io.memris.core.MemrisArena;
 import io.memris.repository.MemrisRepository;
+import io.memris.core.JoinColumn;
+import io.memris.core.ManyToOne;
+import io.memris.core.OneToMany;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -170,6 +173,31 @@ class ECommerceRealWorldTest {
         assertThat(foundOrder).isPresent();
         assertThat(foundOrder.orElseThrow()).usingRecursiveComparison().ignoringFields("id").isEqualTo(order);
         assertThat(orderItems).hasSize(2);
+    }
+
+    @Test
+    void shouldHydrateOneToManyJoinCollections() {
+        var customerRepo = arena.createRepository(JoinCustomerRepository.class);
+        var orderRepo = arena.createRepository(JoinOrderRepository.class);
+
+        var customer = customerRepo.save(new JoinCustomer("Join Customer"));
+        var paid = new JoinOrder(customer, "PAID");
+        var pending = new JoinOrder(customer, "PENDING");
+        orderRepo.save(paid);
+        orderRepo.save(pending);
+
+        var results = customerRepo.findByOrdersStatus("PAID");
+        var resolved = results.get(0);
+        var actual = new JoinCollectionSnapshot(
+                results.size(),
+                resolved.name,
+                resolved.orders.stream().map(order -> order.status).sorted().toList());
+        var expected = new JoinCollectionSnapshot(
+                1,
+                "Join Customer",
+                List.of("PAID", "PENDING").stream().sorted().toList());
+
+        assertThat(actual).usingRecursiveComparison().isEqualTo(expected);
     }
 
     @Test
@@ -620,5 +648,50 @@ class ECommerceRealWorldTest {
         // Then - should exclude "Alice" and null names (depending on implementation)
         assertThat(results).hasSize(2);
         assertThat(results).extracting(c -> c.name).containsExactlyInAnyOrder("Bob", "Charlie");
+    }
+
+    public static class JoinCustomer {
+        public Long id;
+        public String name;
+
+        @OneToMany(mappedBy = "customer")
+        public List<JoinOrder> orders;
+
+        public JoinCustomer() {
+        }
+
+        public JoinCustomer(String name) {
+            this.name = name;
+        }
+    }
+
+    public static class JoinOrder {
+        public Long id;
+        public String status;
+
+        @ManyToOne
+        @JoinColumn(name = "customer_id")
+        public JoinCustomer customer;
+
+        public JoinOrder() {
+        }
+
+        public JoinOrder(JoinCustomer customer, String status) {
+            this.customer = customer;
+            this.status = status;
+        }
+    }
+
+    public interface JoinCustomerRepository extends MemrisRepository<JoinCustomer> {
+        JoinCustomer save(JoinCustomer customer);
+
+        List<JoinCustomer> findByOrdersStatus(String status);
+    }
+
+    public interface JoinOrderRepository extends MemrisRepository<JoinOrder> {
+        JoinOrder save(JoinOrder order);
+    }
+
+    private record JoinCollectionSnapshot(int customerCount, String customerName, List<String> orderStatuses) {
     }
 }

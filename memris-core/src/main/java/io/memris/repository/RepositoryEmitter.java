@@ -1,53 +1,29 @@
 package io.memris.repository;
 
-import io.memris.core.MemrisArena;
 import io.memris.core.EntityMetadata;
 import io.memris.core.EntityMetadata.FieldMapping;
+import io.memris.core.MemrisArena;
 import io.memris.core.MetadataExtractor;
 import io.memris.core.TypeCodes;
 import io.memris.core.converter.TypeConverter;
+import io.memris.query.CompiledQuery;
+import io.memris.query.QueryCompiler;
+import io.memris.query.QueryPlanner;
+import io.memris.runtime.*;
 import io.memris.storage.GeneratedTable;
 import io.memris.storage.SimpleTable;
 import io.memris.storage.SimpleTable.ColumnSpec;
-import io.memris.query.CompiledQuery;
-import io.memris.query.LogicalQuery;
-import io.memris.query.QueryCompiler;
-import io.memris.query.QueryPlanner;
-import io.memris.runtime.ConditionExecutor;
-import io.memris.runtime.EntityMaterializer;
-import io.memris.runtime.EntityMaterializerGenerator;
-import io.memris.runtime.EntitySaver;
-import io.memris.runtime.HeapRuntimeKernel;
-import io.memris.runtime.JoinCollectionMaterializer;
-import io.memris.runtime.JoinExecutor;
-import io.memris.runtime.JoinExecutorImpl;
-import io.memris.runtime.JoinExecutorManyToMany;
-import io.memris.runtime.JoinMaterializer;
-import io.memris.runtime.JoinMaterializerImpl;
-import io.memris.runtime.NoopJoinMaterializer;
-import io.memris.runtime.OrderExecutor;
-import io.memris.runtime.ProjectionExecutor;
-import io.memris.runtime.RepositoryMethodBinding;
-import io.memris.runtime.RepositoryMethodExecutor;
-import io.memris.runtime.RepositoryPlan;
-import io.memris.runtime.RepositoryRuntime;
 import net.bytebuddy.ByteBuddy;
 import net.bytebuddy.description.modifier.TypeManifestation;
 import net.bytebuddy.description.modifier.Visibility;
-import net.bytebuddy.dynamic.DynamicType;
 import net.bytebuddy.implementation.MethodDelegation;
 import net.bytebuddy.matcher.ElementMatchers;
 
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
-import java.lang.reflect.Method;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
-import java.util.ArrayDeque;
-import java.util.Comparator;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 import static java.util.Locale.ROOT;
 
@@ -130,8 +106,7 @@ public final class RepositoryEmitter {
         // Create entity constructor handle
         MethodHandle entityConstructor;
         try {
-            entityConstructor = MethodHandles.lookup()
-                    .unreflectConstructor(metadata.entityConstructor());
+            entityConstructor = MethodHandles.lookup().unreflectConstructor(metadata.entityConstructor());
         } catch (IllegalAccessException e) {
             throw new RuntimeException("Failed to get entity constructor", e);
         }
