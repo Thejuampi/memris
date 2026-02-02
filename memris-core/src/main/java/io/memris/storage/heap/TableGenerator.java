@@ -33,12 +33,12 @@ public final class TableGenerator {
      */
     @SuppressWarnings("unchecked")
     public static Class<? extends AbstractTable> generate(TableMetadata metadata, MemrisConfiguration configuration) {
-        String className = metadata.entityName() + "Table";
-        String packageName = "io.memris.storage.generated";
+        var className = metadata.entityName() + "Table";
+        var packageName = "io.memris.storage.generated";
 
-        ByteBuddy byteBuddy = new ByteBuddy();
+        var byteBuddy = new ByteBuddy();
 
-        DynamicType.Builder<AbstractTable> builder = byteBuddy
+        var builder = byteBuddy
                 .subclass(AbstractTable.class)
                 .implement(io.memris.storage.GeneratedTable.class)
                 .name(packageName + "." + className)
@@ -46,13 +46,13 @@ public final class TableGenerator {
 
         // Collect column field info
         List<TableImplementationStrategy.ColumnFieldInfo> columnFields = new ArrayList<>();
-        int idx = 0;
+        var idx = 0;
         
         // Add fields for each column
         for (FieldMetadata field : metadata.fields()) {
-            String columnFieldName = field.name() + "Column";
-            Class<?> columnType = getColumnType(field.type());
-            byte typeCode = field.type();
+            var columnFieldName = field.name() + "Column";
+            var columnType = getColumnType(field.type());
+            var typeCode = field.type();
 
             builder = builder.defineField(columnFieldName,
                     columnType,
@@ -64,7 +64,7 @@ public final class TableGenerator {
         }
 
         // Add ID index field
-        Class<?> idIndexType = getIdIndexType(metadata.idTypeCode());
+        var idIndexType = getIdIndexType(metadata.idTypeCode());
         builder = builder.defineField("idIndex", idIndexType, Visibility.PUBLIC);
 
         // Add TYPE_CODES field (instance final)
@@ -85,7 +85,7 @@ public final class TableGenerator {
         }
 
         // Implement all GeneratedTable interface methods using pluggable strategy
-        TableImplementationStrategy strategy = configuration.tableImplementation() == MemrisConfiguration.TableImplementation.BYTECODE
+        var strategy = configuration.tableImplementation() == MemrisConfiguration.TableImplementation.BYTECODE
                 ? new BytecodeImplementation()
                 : new MethodHandleImplementation();
         builder = strategy.implementMethods(builder, columnFields, idIndexType);
@@ -110,35 +110,35 @@ public final class TableGenerator {
 
         @RuntimeType
         public void intercept(@This Object obj, @AllArguments Object[] args) throws Exception {
-            int pageSize = (int) args[0];
-            int maxPages = (int) args[1];
-            int initialPages = (int) args[2];
+            var pageSize = (int) args[0];
+            var maxPages = (int) args[1];
+            var initialPages = (int) args[2];
 
             // Initialize column fields
             for (TableImplementationStrategy.ColumnFieldInfo field : columnFields) {
-                Field declaredField = obj.getClass().getDeclaredField(field.fieldName());
+                var declaredField = obj.getClass().getDeclaredField(field.fieldName());
                 declaredField.setAccessible(true);
-                Object columnInstance = field.columnType()
+                var columnInstance = field.columnType()
                         .getDeclaredConstructor(int.class, int.class, int.class)
                         .newInstance(pageSize, maxPages, initialPages);
                 declaredField.set(obj, columnInstance);
             }
 
             // Initialize idIndex field
-            Field idIndexField = obj.getClass().getDeclaredField("idIndex");
+            var idIndexField = obj.getClass().getDeclaredField("idIndex");
             idIndexField.setAccessible(true);
-            Object idIndexInstance = idIndexType
+            var idIndexInstance = idIndexType
                     .getDeclaredConstructor(int.class)
                     .newInstance(DEFAULT_ID_INDEX_CAPACITY);
             idIndexField.set(obj, idIndexInstance);
 
             // Initialize static TYPE_CODES field
-            byte[] typeCodes = new byte[columnFields.size()];
+            var typeCodes = new byte[columnFields.size()];
             for (int i = 0; i < columnFields.size(); i++) {
                 typeCodes[i] = columnFields.get(i).typeCode();
             }
             
-            Field typeCodesField = obj.getClass().getDeclaredField("TYPE_CODES");
+            var typeCodesField = obj.getClass().getDeclaredField("TYPE_CODES");
             typeCodesField.setAccessible(true);
             typeCodesField.set(obj, typeCodes);
 

@@ -127,10 +127,12 @@ public record LogicalQuery(
         return parameterCount;
     }
 
+    // Exception to CLAUDE.md rule: Manual override needed because record has array components (Condition[], Join[], etc.),
+    // and auto-generated equals/hashCode use == instead of Arrays.equals for deep equality.
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;
-        if (o == null || getClass() != o.getClass()) return false;
+        if (!(o instanceof LogicalQuery)) return false;
         LogicalQuery that = (LogicalQuery) o;
         return parameterCount == that.parameterCount
                 && opCode == that.opCode

@@ -130,6 +130,14 @@ public final class TypeCodes {
 }
 ```
 
+### 6. Prefer 'var' for Local Variables
+Use the 'var' keyword instead of explicit Java type declarations when declaring local variables to improve readability and reduce verbosity.
+
+### 7. Java Records: No Override of equals/hashCode
+Java records automatically implement equals() and hashCode() methods. Do not manually override these methods as they are already provided.
+
+**Exception:** Records with array components (e.g., LogicalQuery) require manual overrides to use Arrays.equals for deep equality, as auto-generated methods use == for arrays.
+
 ---
 
 ## Package Structure

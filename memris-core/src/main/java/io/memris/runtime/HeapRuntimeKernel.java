@@ -77,30 +77,30 @@ public record HeapRuntimeKernel(GeneratedTable table, TypeHandlerRegistry handle
      */
     @SuppressWarnings({ "unchecked", "rawtypes" })
     public Selection executeCondition(CompiledQuery.CompiledCondition cc, Object[] args) {
-        int columnIndex = cc.columnIndex();
-        LogicalQuery.Operator operator = cc.operator();
+        var columnIndex = cc.columnIndex();
+        var operator = cc.operator();
         Object value = null;
         if (operator != LogicalQuery.Operator.IS_NULL && operator != LogicalQuery.Operator.NOT_NULL) {
             value = args[cc.argumentIndex()];
         }
 
         if (operator == LogicalQuery.Operator.IN || operator == LogicalQuery.Operator.NOT_IN) {
-            Selection inSelection = executeInList(columnIndex, value);
+            var inSelection = executeInList(columnIndex, value);
             if (operator == LogicalQuery.Operator.NOT_IN) {
-                int[] all = table.scanAll();
+                var all = table.scanAll();
                 return subtractSelections(all, inSelection);
             }
             return inSelection;
         }
 
         if (operator == LogicalQuery.Operator.BETWEEN) {
-            byte typeCode = table.typeCodeAt(columnIndex);
+            var typeCode = table.typeCodeAt(columnIndex);
             return RuntimeExecutorGenerator.generateBetweenExecutor(columnIndex, typeCode)
                     .execute(table, cc.argumentIndex(), args);
         }
 
-        byte typeCode = table.typeCodeAt(columnIndex);
-        TypeHandler handler = handlerRegistry.getHandler(typeCode);
+        var typeCode = table.typeCodeAt(columnIndex);
+        var handler = handlerRegistry.getHandler(typeCode);
 
         if (handler == null) {
             throw new IllegalArgumentException(
@@ -109,30 +109,31 @@ public record HeapRuntimeKernel(GeneratedTable table, TypeHandlerRegistry handle
         }
 
         // Convert the value to the handler's type if needed
-        Object convertedValue = value != null ? handler.convertValue(value) : null;
+        var convertedValue = value != null ? handler.convertValue(value) : null;
 
         return handler.executeCondition(table, columnIndex, operator, convertedValue, cc.ignoreCase());
     }
 
     private Selection executeInList(int columnIndex, Object value) {
-        byte typeCode = table.typeCodeAt(columnIndex);
+        var typeCode = table.typeCodeAt(columnIndex);
         return RuntimeExecutorGenerator.generateInListExecutor(columnIndex, typeCode)
                 .execute(table, value);
     }
 
     private Selection subtractSelections(int[] allRows, Selection toRemove) {
-        long[] packed = new long[allRows.length];
-        for (int i = 0; i < allRows.length; i++) {
-            int rowIndex = allRows[i];
+        var packed = new long[allRows.length];
+        for (var i = 0; i < allRows.length; i++) {
+            var rowIndex = allRows[i];
             packed[i] = Selection.pack(rowIndex, table.rowGeneration(rowIndex));
         }
         return new SelectionImpl(packed).subtract(toRemove);
     }
 
+    @SuppressWarnings("unused")
     private Selection createSelection(GeneratedTable table, int[] indices) {
-        long[] packed = new long[indices.length];
-        for (int i = 0; i < indices.length; i++) {
-            int rowIndex = indices[i];
+        var packed = new long[indices.length];
+        for (var i = 0; i < indices.length; i++) {
+            var rowIndex = indices[i];
             packed[i] = Selection.pack(rowIndex, table.rowGeneration(rowIndex));
         }
         return new SelectionImpl(packed);
