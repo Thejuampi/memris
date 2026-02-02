@@ -57,11 +57,11 @@ public final class JoinExecutorManyToMany implements JoinExecutor<Object, Object
 
         Set<Object> allowedTargets = null;
         if (targetSelection != null) {
-            long[] targetRefs = targetSelection.toRefArray();
+            var targetRefs = targetSelection.toRefArray();
             allowedTargets = new HashSet<>(Math.max(16, targetRefs.length * 2));
-            for (long ref : targetRefs) {
-                int row = io.memris.storage.Selection.index(ref);
-                Object id = readId(targetTable, targetIdColumnIndex, targetIdTypeCode, row);
+            for (var ref : targetRefs) {
+                var row = io.memris.storage.Selection.index(ref);
+                var id = readId(targetTable, targetIdColumnIndex, targetIdTypeCode, row);
                 if (id != null) {
                     allowedTargets.add(id);
                 }
@@ -71,21 +71,21 @@ public final class JoinExecutorManyToMany implements JoinExecutor<Object, Object
             }
         }
 
-        io.memris.kernel.Column<?> joinCol = joinTable.column(joinColumn);
-        io.memris.kernel.Column<?> inverseCol = joinTable.column(inverseJoinColumn);
+        var joinCol = joinTable.column(joinColumn);
+        var inverseCol = joinTable.column(inverseJoinColumn);
         if (joinCol == null || inverseCol == null) {
             return new SelectionImpl(new long[0]);
         }
 
-        long joinRowCount = joinTable.rowCount();
-        Set<Object> allowedSources = new HashSet<>(Math.max(16, (int) Math.min(joinRowCount * 2, Integer.MAX_VALUE)));
-        for (int i = 0; i < joinRowCount; i++) {
-            io.memris.kernel.RowId rowId = new io.memris.kernel.RowId(i >>> 16, i & 0xFFFF);
-            Object joinValue = joinCol.get(rowId);
+        var joinRowCount = joinTable.rowCount();
+        var allowedSources = new HashSet<>(Math.max(16, (int) Math.min(joinRowCount * 2, Integer.MAX_VALUE)));
+        for (var i = 0; i < joinRowCount; i++) {
+            var rowId = new io.memris.kernel.RowId(i >>> 16, i & 0xFFFF);
+            var joinValue = joinCol.get(rowId);
             if (joinValue == null) {
                 continue;
             }
-            Object inverseValue = inverseCol.get(rowId);
+            var inverseValue = inverseCol.get(rowId);
             if (inverseValue == null) {
                 continue;
             }
@@ -100,14 +100,14 @@ public final class JoinExecutorManyToMany implements JoinExecutor<Object, Object
         }
 
         if (sourceSelection == null) {
-            int[] rows = sourceTable.scanAll();
-            long[] packed = new long[rows.length];
-            int count = 0;
-            for (int row : rows) {
+            var rows = sourceTable.scanAll();
+            var packed = new long[rows.length];
+            var count = 0;
+            for (var row : rows) {
                 if (!sourceTable.isPresent(sourceIdColumnIndex, row)) {
                     continue;
                 }
-                Object sourceId = readId(sourceTable, sourceIdColumnIndex, sourceIdTypeCode, row);
+                var sourceId = readId(sourceTable, sourceIdColumnIndex, sourceIdTypeCode, row);
                 if (sourceId != null && allowedSources.contains(sourceId)) {
                     packed[count++] = io.memris.storage.Selection.pack(row, sourceTable.rowGeneration(row));
                 }
@@ -115,23 +115,23 @@ public final class JoinExecutorManyToMany implements JoinExecutor<Object, Object
             return new SelectionImpl(trim(packed, count));
         }
 
-        long[] refs = sourceSelection.toRefArray();
-        long[] packed = new long[refs.length];
-        int count = 0;
-        for (long ref : refs) {
-            int row = io.memris.storage.Selection.index(ref);
+        var refs = sourceSelection.toRefArray();
+        var packed2 = new long[refs.length];
+        var count2 = 0;
+        for (var ref : refs) {
+            var row = io.memris.storage.Selection.index(ref);
             if (row < 0) {
                 continue;
             }
             if (!sourceTable.isPresent(sourceIdColumnIndex, row)) {
                 continue;
             }
-            Object sourceId = readId(sourceTable, sourceIdColumnIndex, sourceIdTypeCode, row);
+            var sourceId = readId(sourceTable, sourceIdColumnIndex, sourceIdTypeCode, row);
             if (sourceId != null && allowedSources.contains(sourceId)) {
-                packed[count++] = io.memris.storage.Selection.pack(row, sourceTable.rowGeneration(row));
+                packed2[count2++] = io.memris.storage.Selection.pack(row, sourceTable.rowGeneration(row));
             }
         }
-        return new SelectionImpl(trim(packed, count));
+        return new SelectionImpl(trim(packed2, count2));
     }
 
     private Object readId(GeneratedTable table, int columnIndex, byte typeCode, int rowIndex) {
@@ -146,10 +146,10 @@ public final class JoinExecutorManyToMany implements JoinExecutor<Object, Object
     }
 
     private Selection selectAll(GeneratedTable table) {
-        int[] rows = table.scanAll();
-        long[] packed = new long[rows.length];
-        for (int i = 0; i < rows.length; i++) {
-            int rowIndex = rows[i];
+        var rows = table.scanAll();
+        var packed = new long[rows.length];
+        for (var i = 0; i < rows.length; i++) {
+            var rowIndex = rows[i];
             packed[i] = io.memris.storage.Selection.pack(rowIndex, table.rowGeneration(rowIndex));
         }
         return new SelectionImpl(packed);

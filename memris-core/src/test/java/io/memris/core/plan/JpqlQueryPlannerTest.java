@@ -11,7 +11,6 @@ import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Method;
 import java.util.List;
-import java.util.Optional;
 import java.util.Objects;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -22,7 +21,7 @@ class JpqlQueryPlannerTest {
     @Test
     void parseSelectWithNamedParam() throws Exception {
         Method method = TestRepository.class.getMethod("findByName", String.class);
-        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class, "id");
+        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class);
 
         assertThat(actual.opCode()).isEqualTo(OpCode.FIND);
         assertThat(actual.returnKind()).isEqualTo(LogicalQuery.ReturnKind.MANY_LIST);
@@ -36,7 +35,7 @@ class JpqlQueryPlannerTest {
     @Test
     void parseSelectProjectionWithAliases() throws Exception {
         Method method = TestRepository.class.getMethod("findProjection");
-        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class, "id");
+        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class);
 
         assertThat(actual.opCode()).isEqualTo(OpCode.FIND);
         assertThat(actual.returnKind()).isEqualTo(LogicalQuery.ReturnKind.MANY_LIST);
@@ -50,7 +49,7 @@ class JpqlQueryPlannerTest {
     @Test
     void parseSelectProjectionWithNestedPath() throws Exception {
         Method method = TestRepository.class.getMethod("findNestedProjection");
-        LogicalQuery actual = QueryPlanner.parse(method, NestedEntity.class, "id");
+        LogicalQuery actual = QueryPlanner.parse(method, NestedEntity.class);
 
         assertThat(actual.projection()).isNotNull();
         assertThat(actual.projection().projectionType()).isEqualTo(NestedProjection.class);
@@ -62,7 +61,7 @@ class JpqlQueryPlannerTest {
     @Test
     void parseSelectProjectionMissingAliasShouldFail() throws Exception {
         Method method = TestRepository.class.getMethod("findProjectionMissingAlias");
-        assertThatThrownBy(() -> QueryPlanner.parse(method, SimpleEntity.class, "id"))
+        assertThatThrownBy(() -> QueryPlanner.parse(method, SimpleEntity.class))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("aliases");
     }
@@ -70,7 +69,7 @@ class JpqlQueryPlannerTest {
     @Test
     void parseSelectWithNestedPropertyAndIlike() throws Exception {
         Method method = TestRepository.class.getMethod("findByDepartmentNameAndCity", String.class, String.class);
-        LogicalQuery actual = QueryPlanner.parse(method, NestedEntity.class, "id");
+        LogicalQuery actual = QueryPlanner.parse(method, NestedEntity.class);
 
         assertThat(actual.opCode()).isEqualTo(OpCode.FIND);
         assertThat(actual.returnKind()).isEqualTo(LogicalQuery.ReturnKind.MANY_LIST);
@@ -87,7 +86,7 @@ class JpqlQueryPlannerTest {
     @Test
     void parseBetweenUsesFirstParameterIndex() throws Exception {
         Method method = TestRepository.class.getMethod("findByAgeBetween", int.class, int.class);
-        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class, "id");
+        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class);
 
         assertThat(actual.conditions()).containsExactly(
                 LogicalQuery.Condition.of("age", LogicalQuery.Operator.BETWEEN, 0));
@@ -98,7 +97,7 @@ class JpqlQueryPlannerTest {
     @Test
     void parseInWithPositionalParam() throws Exception {
         Method method = TestRepository.class.getMethod("findByAgeIn", List.class);
-        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class, "id");
+        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class);
 
         assertThat(actual.conditions()).containsExactly(
                 LogicalQuery.Condition.of("age", LogicalQuery.Operator.IN, 0));
@@ -108,7 +107,7 @@ class JpqlQueryPlannerTest {
     @Test
     void parseIsNull() throws Exception {
         Method method = TestRepository.class.getMethod("findByDepartmentIsNull");
-        LogicalQuery actual = QueryPlanner.parse(method, NestedEntity.class, "id");
+        LogicalQuery actual = QueryPlanner.parse(method, NestedEntity.class);
 
         assertThat(actual.conditions()).containsExactly(
                 LogicalQuery.Condition.of("department", LogicalQuery.Operator.IS_NULL, 0));
@@ -120,7 +119,7 @@ class JpqlQueryPlannerTest {
     @Test
     void parseIsNotNull() throws Exception {
         Method method = TestRepository.class.getMethod("findByDepartmentIsNotNull");
-        LogicalQuery actual = QueryPlanner.parse(method, NestedEntity.class, "id");
+        LogicalQuery actual = QueryPlanner.parse(method, NestedEntity.class);
 
         assertThat(actual.conditions()).containsExactly(
                 LogicalQuery.Condition.of("department", LogicalQuery.Operator.NOT_NULL, 0));
@@ -132,7 +131,7 @@ class JpqlQueryPlannerTest {
     @Test
     void parseBooleanLiteralCreatesBoundValue() throws Exception {
         Method method = TestRepository.class.getMethod("findActive");
-        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class, "id");
+        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class);
 
         assertThat(actual.conditions()).containsExactly(
                 LogicalQuery.Condition.of("active", LogicalQuery.Operator.EQ, 0));
@@ -144,7 +143,7 @@ class JpqlQueryPlannerTest {
     @Test
     void parseStringAndNumberLiteralsCreateBoundValues() throws Exception {
         Method method = TestRepository.class.getMethod("findByLiteralNameAndAge");
-        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class, "id");
+        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class);
 
         assertThat(actual.conditions()).containsExactly(
                 LogicalQuery.Condition.of("name", LogicalQuery.Operator.EQ, 0),
@@ -159,7 +158,7 @@ class JpqlQueryPlannerTest {
     @Test
     void parseParenthesesAndOrBuildsDnf() throws Exception {
         Method method = TestRepository.class.getMethod("findAdultActiveOrNamed", int.class, String.class);
-        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class, "id");
+        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class);
 
         assertThat(actual.conditions()).containsExactly(
                 LogicalQuery.Condition.of("age", LogicalQuery.Operator.GT, 0),
@@ -173,7 +172,7 @@ class JpqlQueryPlannerTest {
     @Test
     void parseNotKeywordNegatesOperator() throws Exception {
         Method method = TestRepository.class.getMethod("findNotByName", String.class);
-        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class, "id");
+        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class);
 
         assertThat(actual.conditions()).containsExactly(
                 LogicalQuery.Condition.of("name", LogicalQuery.Operator.NE, 0));
@@ -183,7 +182,7 @@ class JpqlQueryPlannerTest {
     @Test
     void parseOrderByDesc() throws Exception {
         Method method = TestRepository.class.getMethod("findByNameOrderByAgeDesc", String.class);
-        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class, "id");
+        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class);
 
         assertThat(actual.orderBy()).containsExactly(LogicalQuery.OrderBy.desc("age"));
     }
@@ -191,7 +190,7 @@ class JpqlQueryPlannerTest {
     @Test
     void parseCountQueryUsesCountOpcode() throws Exception {
         Method method = TestRepository.class.getMethod("countActive");
-        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class, "id");
+        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class);
 
         assertThat(actual.opCode()).isEqualTo(OpCode.COUNT);
         assertThat(actual.returnKind()).isEqualTo(LogicalQuery.ReturnKind.COUNT_LONG);
@@ -202,7 +201,7 @@ class JpqlQueryPlannerTest {
     @Test
     void parseCountAllQueryUsesCountAllOpcode() throws Exception {
         Method method = TestRepository.class.getMethod("countAll");
-        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class, "id");
+        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class);
 
         assertThat(actual.opCode()).isEqualTo(OpCode.COUNT_ALL);
         assertThat(actual.returnKind()).isEqualTo(LogicalQuery.ReturnKind.COUNT_LONG);
@@ -214,7 +213,7 @@ class JpqlQueryPlannerTest {
     @Test
     void parseExistsReturnTypeUsesExistsOpcode() throws Exception {
         Method method = TestRepository.class.getMethod("existsByName", String.class);
-        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class, "id");
+        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class);
 
         assertThat(actual.opCode()).isEqualTo(OpCode.EXISTS);
         assertThat(actual.returnKind()).isEqualTo(LogicalQuery.ReturnKind.EXISTS_BOOL);
@@ -224,7 +223,7 @@ class JpqlQueryPlannerTest {
     @Test
     void parseJoinAliasRewritesPropertyPath() throws Exception {
         Method method = TestRepository.class.getMethod("findByDepartmentNameUsingJoin", String.class);
-        LogicalQuery actual = QueryPlanner.parse(method, NestedEntity.class, "id");
+        LogicalQuery actual = QueryPlanner.parse(method, NestedEntity.class);
 
         assertThat(actual.conditions()).containsExactly(
                 LogicalQuery.Condition.of("department.name", LogicalQuery.Operator.EQ, 0));
@@ -235,7 +234,7 @@ class JpqlQueryPlannerTest {
     void parseMissingNamedParamThrows() throws Exception {
         Method method = TestRepository.class.getMethod("findMissingParam", String.class);
 
-        assertThatThrownBy(() -> QueryPlanner.parse(method, SimpleEntity.class, "id"))
+        assertThatThrownBy(() -> QueryPlanner.parse(method, SimpleEntity.class))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("param");
     }

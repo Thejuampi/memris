@@ -46,19 +46,19 @@ public final class EntitySaverGenerator {
      * @return a generated EntitySaver instance
      */
     public static <T> EntitySaver<T, ?> generate(Class<T> entityClass, EntityMetadata<T> metadata) {
-        FieldInfo idField = resolveIdField(entityClass, metadata);
-        List<FieldInfo> fields = resolveFields(entityClass, metadata, idField.field.getName());
-        List<FieldInfo> converterFields = fields.stream().filter(f -> f.converter != null).toList();
-        List<FieldInfo> relationshipFields = fields.stream().filter(FieldInfo::isRelationship).toList();
-        Map<String, RelationshipInfo> relationships = resolveRelationships(entityClass, metadata);
+        var idField = resolveIdField(entityClass, metadata);
+        var fields = resolveFields(entityClass, metadata, idField.field.getName());
+        var converterFields = fields.stream().filter(f -> f.converter != null).toList();
+        var relationshipFields = fields.stream().filter(FieldInfo::isRelationship).toList();
+        var relationships = resolveRelationships(entityClass, metadata);
 
         // Assign indices to relationship fields for MethodHandle field access
         for (int i = 0; i < relationshipFields.size(); i++) {
             relationshipFields.get(i).idHandleIndex = i;
         }
 
-        String implName = entityClass.getName() + "$MemrisSaver$" + System.nanoTime();
-        DynamicType.Builder<?> builder = new ByteBuddy()
+        var implName = entityClass.getName() + "$MemrisSaver$" + System.nanoTime();
+        var builder = new ByteBuddy()
                 .subclass(Object.class)
                 .implement(EntitySaver.class)
                 .name(implName)
@@ -78,9 +78,9 @@ public final class EntitySaverGenerator {
         }
 
         // Build constructor parameter types: converters first, then MethodHandles
-        int totalParams = converterFields.size() + relationshipFields.size();
+        var totalParams = converterFields.size() + relationshipFields.size();
         if (totalParams > 0) {
-            Class<?>[] paramTypes = new Class<?>[totalParams];
+            var paramTypes = new Class<?>[totalParams];
             for (int i = 0; i < converterFields.size(); i++) {
                 paramTypes[i] = TypeConverter.class;
                 converterFields.get(i).converterIndex = i;
@@ -140,18 +140,18 @@ public final class EntitySaverGenerator {
                 .intercept(new Implementation.Simple(new ResolveRelationshipAppender(relationships)));
 
         // Build and load the class
-        try (DynamicType.Unloaded<?> unloaded = builder.make()) {
-            Class<?> implClass = unloaded.load(entityClass.getClassLoader()).getLoaded();
+        try (var unloaded = builder.make()) {
+            var implClass = unloaded.load(entityClass.getClassLoader()).getLoaded();
 
-            int totalArgs = converterFields.size() + relationshipFields.size();
+            var totalArgs = converterFields.size() + relationshipFields.size();
             if (totalArgs == 0) {
                 @SuppressWarnings("unchecked")
-                EntitySaver<T, ?> saver = (EntitySaver<T, ?>) implClass.getDeclaredConstructor().newInstance();
+                var saver = (EntitySaver<T, ?>) implClass.getDeclaredConstructor().newInstance();
                 return saver;
             }
 
-            Object[] args = new Object[totalArgs];
-            Class<?>[] paramTypes = new Class<?>[totalArgs];
+            var args = new Object[totalArgs];
+            var paramTypes = new Class<?>[totalArgs];
 
             // Populate converter args
             for (int i = 0; i < converterFields.size(); i++) {
@@ -161,15 +161,15 @@ public final class EntitySaverGenerator {
 
             // Create MethodHandles for relationship ID extraction (reflection happens ONCE
             // here)
-            MethodHandles.Lookup lookup = MethodHandles.lookup();
+            var lookup = MethodHandles.lookup();
             for (int i = 0; i < relationshipFields.size(); i++) {
-                FieldInfo rf = relationshipFields.get(i);
+                var rf = relationshipFields.get(i);
                 try {
-                    Field targetIdField = rf.targetEntityClass.getDeclaredField("id");
+                    var targetIdField = rf.targetEntityClass.getDeclaredField("id");
                     if (!Modifier.isPublic(targetIdField.getModifiers())) {
                         targetIdField.setAccessible(true);
                     }
-                    MethodHandle mh = lookup.unreflectGetter(targetIdField);
+                    var mh = lookup.unreflectGetter(targetIdField);
                     args[converterFields.size() + i] = mh;
                     paramTypes[converterFields.size() + i] = MethodHandle.class;
                 } catch (NoSuchFieldException | IllegalAccessException e) {
@@ -178,7 +178,7 @@ public final class EntitySaverGenerator {
             }
 
             @SuppressWarnings("unchecked")
-            EntitySaver<T, ?> saver = (EntitySaver<T, ?>) implClass.getDeclaredConstructor(paramTypes)
+            var saver = (EntitySaver<T, ?>) implClass.getDeclaredConstructor(paramTypes)
                     .newInstance(args);
             return saver;
         } catch (Exception e) {
@@ -197,11 +197,11 @@ public final class EntitySaverGenerator {
                 continue;
             }
             try {
-                Field field = entityClass.getDeclaredField(mapping.name());
+                var field = entityClass.getDeclaredField(mapping.name());
                 if (!Modifier.isPublic(field.getModifiers())) {
                     continue;
                 }
-                TypeConverter<?, ?> converter = metadata.converters().get(mapping.name());
+                var converter = metadata.converters().get(mapping.name());
 
                 // For relationship fields, resolve the target entity class
                 Class<?> targetEntityClass = null;
@@ -221,9 +221,9 @@ public final class EntitySaverGenerator {
     }
 
     private static FieldInfo resolveIdField(Class<?> entityClass, EntityMetadata<?> metadata) {
-        String idFieldName = metadata.idColumnName();
+        var idFieldName = metadata.idColumnName();
         try {
-            Field field = entityClass.getDeclaredField(idFieldName);
+            var field = entityClass.getDeclaredField(idFieldName);
             if (!Modifier.isPublic(field.getModifiers())) {
                 throw new RuntimeException("ID field must be public: " + idFieldName);
             }
@@ -248,16 +248,16 @@ public final class EntitySaverGenerator {
         for (FieldMapping mapping : metadata.fields()) {
             if (mapping.isRelationship()) {
                 try {
-                    Field field = entityClass.getDeclaredField(mapping.name());
+                    var field = entityClass.getDeclaredField(mapping.name());
                     if (!Modifier.isPublic(field.getModifiers())) {
                         continue;
                     }
                     // Find the ID field in the target entity class
-                    Class<?> targetEntity = mapping.targetEntity();
+                    var targetEntity = mapping.targetEntity();
                     if (targetEntity == null) {
                         targetEntity = field.getType();
                     }
-                    Field targetIdField = findIdField(targetEntity);
+                    var targetIdField = findIdField(targetEntity);
                     if (targetIdField != null) {
                         result.put(mapping.name(), new RelationshipInfo(mapping, field, targetEntity, targetIdField));
                     }
@@ -272,11 +272,11 @@ public final class EntitySaverGenerator {
         for (FieldMapping mapping : metadata.fields()) {
             if (!mapping.isRelationship() && !result.containsKey(mapping.name())) {
                 try {
-                    Field field = entityClass.getDeclaredField(mapping.name());
+                    var field = entityClass.getDeclaredField(mapping.name());
                     if (!Modifier.isPublic(field.getModifiers())) {
                         continue;
                     }
-                    Class<?> fieldType = field.getType();
+                    var fieldType = field.getType();
                     // Skip primitive types and common non-entity types
                     if (fieldType.isPrimitive() ||
                             fieldType == String.class ||
@@ -286,7 +286,7 @@ public final class EntitySaverGenerator {
                         continue;
                     }
                     // Check if the field type has an 'id' field (indicating it's an entity)
-                    Field targetIdField = findIdField(fieldType);
+                    var targetIdField = findIdField(fieldType);
                     if (targetIdField != null) {
                         // Create a synthetic relationship info
                         result.put(mapping.name(), new RelationshipInfo(mapping, field, fieldType, targetIdField));
@@ -301,7 +301,7 @@ public final class EntitySaverGenerator {
     }
 
     private static Field findIdField(Class<?> entityClass) {
-        for (Field field : entityClass.getDeclaredFields()) {
+        for (var field : entityClass.getDeclaredFields()) {
             if (field.getName().equals("id") ||
                     field.isAnnotationPresent(jakarta.persistence.Id.class) ||
                     field.isAnnotationPresent(io.memris.core.GeneratedValue.class)) {
@@ -603,14 +603,14 @@ public final class EntitySaverGenerator {
 
             // Build the class name -> relationship mapping string
             // Format: "fieldName1:className1,fieldName2:className2,..."
-            StringBuilder mappingBuilder = new StringBuilder();
-            for (Map.Entry<String, RelationshipInfo> entry : relationships.entrySet()) {
+            var mappingBuilder = new StringBuilder();
+            for (var entry : relationships.entrySet()) {
                 if (mappingBuilder.length() > 0) {
                     mappingBuilder.append(",");
                 }
                 mappingBuilder.append(entry.getKey()).append(":").append(entry.getValue().targetEntityClass.getName());
             }
-            String relationshipMapping = mappingBuilder.toString();
+            var relationshipMapping = mappingBuilder.toString();
 
             // Call helper method: resolveRelationshipIdHelper(fieldName, relatedEntity,
             // relationshipMapping)
@@ -677,11 +677,11 @@ public final class EntitySaverGenerator {
 
         // Parse the relationship mapping
         Map<String, Class<?>> fieldToClass = new HashMap<>();
-        for (String pair : relationshipMapping.split(",")) {
-            int colonIndex = pair.indexOf(':');
+        for (var pair : relationshipMapping.split(",")) {
+            var colonIndex = pair.indexOf(':');
             if (colonIndex > 0) {
-                String field = pair.substring(0, colonIndex);
-                String className = pair.substring(colonIndex + 1);
+                var field = pair.substring(0, colonIndex);
+                var className = pair.substring(colonIndex + 1);
                 try {
                     fieldToClass.put(field, Class.forName(className));
                 } catch (ClassNotFoundException e) {
@@ -690,14 +690,14 @@ public final class EntitySaverGenerator {
             }
         }
 
-        Class<?> targetClass = fieldToClass.get(fieldName);
+        var targetClass = fieldToClass.get(fieldName);
         if (targetClass == null) {
             return null;
         }
 
         // Find and access the id field
         try {
-            Field idField = targetClass.getDeclaredField("id");
+            var idField = targetClass.getDeclaredField("id");
             if (!Modifier.isPublic(idField.getModifiers())) {
                 idField.setAccessible(true);
             }

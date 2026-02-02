@@ -1,5 +1,6 @@
 package io.memris.query;
 
+import java.util.Locale;
 import jakarta.persistence.Embeddable;
 import jakarta.persistence.Embedded;
 import jakarta.persistence.Entity;
@@ -13,6 +14,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+
+import static java.util.Locale.ROOT;
 
 public final class QueryMethodLexer {
 
@@ -287,10 +290,8 @@ public final class QueryMethodLexer {
      */
     private static List<QueryMethodToken> tokenizeDerived(Class<?> entityClass, String methodName) {
         List<QueryMethodToken> tokens = new ArrayList<>();
-
-        // Extract prefix (case-insensitive)
-        String prefix = extractPrefix(methodName);
-        String remaining = methodName.substring(prefix.length());
+        var prefix = extractPrefix(methodName);
+        var remaining = methodName.substring(prefix.length());
 
         // Generic operation classification based on prefix + remaining
         if (entityClass != null) {
@@ -328,7 +329,7 @@ public final class QueryMethodLexer {
         boolean isAll = "All".equals(remaining);
         boolean isAllStarting = remaining.startsWith("All");
 
-        return switch (prefix.toLowerCase()) {
+        return switch (prefix.toLowerCase(ROOT)) {
             case "find", "read", "query", "get" -> {
                 // findAll() or findByXxx()
                 if (isAll || hasBy || remaining.isEmpty() || isAllStarting)
@@ -376,16 +377,15 @@ public final class QueryMethodLexer {
         }
 
         // Extract OrderBy (if any) before parsing predicates
-        String orderBy = extractOrderBy(remaining);
-        boolean hasOrderBy = (orderBy != null);
-        String predicatePart = removeOrderBy(remaining, orderBy);
-
-        EntityMetadata metadata = (entityClass != null) ? extractEntityMetadata(entityClass) : null;
+        var orderBy = extractOrderBy(remaining);
+        var hasOrderBy = (orderBy != null);
+        var predicatePart = removeOrderBy(remaining, orderBy);
+        var metadata = (entityClass != null) ? extractEntityMetadata(entityClass) : null;
 
         // Parse "By..." for query methods
         if (predicatePart.startsWith("By")) {
             int byOffset = baseOffset + 2;
-            String input = predicatePart.substring(2);
+            var input = predicatePart.substring(2);
 
             int pos = 0;
             while (pos < input.length()) {
@@ -394,9 +394,9 @@ public final class QueryMethodLexer {
                     tokenEnd = input.length();
                 }
 
-                String tokenValue = input.substring(pos, tokenEnd);
+                var tokenValue = input.substring(pos, tokenEnd);
                 if (!tokenValue.isEmpty()) {
-                    QueryMethodToken token = createToken(
+                    var token = createToken(
                             pos,
                             tokenEnd,
                             tokenValue,
@@ -428,9 +428,9 @@ public final class QueryMethodLexer {
             String value,
             EntityMetadata metadata,
             int absoluteBaseOffset) {
-        QueryMethodTokenType type = determineTokenType(value);
+        var type = determineTokenType(value);
         boolean ignoreCase = (type == QueryMethodTokenType.OPERATOR && "IgnoreCase".equals(value));
-        String normalizedValue = normalizePropertyValue(type, value, metadata);
+        var normalizedValue = normalizePropertyValue(type, value, metadata);
 
         int absStart = absoluteBaseOffset + start;
         int absEnd = absoluteBaseOffset + end;
@@ -459,7 +459,7 @@ public final class QueryMethodLexer {
             return value;
         }
         if (metadata == null) {
-            return value.toLowerCase();
+            return value.toLowerCase(ROOT);
         }
         return resolvePropertyPath(metadata, value);
     }
@@ -473,22 +473,21 @@ public final class QueryMethodLexer {
      *
      * Also supports "_" as an explicit segment boundary (common in your examples).
      */
+    @SuppressWarnings("StringSplitter")
     private static String resolvePropertyPath(EntityMetadata root, String propertyPath) {
         if (propertyPath == null || propertyPath.isEmpty()) {
             return propertyPath;
         }
-
-        String[] underscoreParts = propertyPath.split("_");
-        StringBuilder resolved = new StringBuilder();
-
-        EntityMetadata current = root;
+        var underscoreParts = propertyPath.split("_");
+        var resolved = new StringBuilder();
+        var current = root;
         boolean firstOut = true;
 
         for (String part : underscoreParts) {
-            String remaining = part;
+            var remaining = part;
 
             while (!remaining.isEmpty()) {
-                Match m = longestFieldPrefixMatch(current, remaining);
+                var m = longestFieldPrefixMatch(current, remaining);
 
                 if (m == null) {
                     // Could not resolve; append the rest as a single segment (lowercased) and stop
@@ -506,7 +505,7 @@ public final class QueryMethodLexer {
                 firstOut = false;
 
                 // Move into related type if present (for nested paths)
-                String relType = current.getRelatedEntityType(m.fieldName);
+                var relType = current.getRelatedEntityType(m.fieldName);
                 if (relType != null && !m.rest.isEmpty()) {
                     current = safeLoadMetadata(relType, current);
                 }
@@ -520,7 +519,7 @@ public final class QueryMethodLexer {
 
     private static EntityMetadata safeLoadMetadata(String fqcn, EntityMetadata fallback) {
         try {
-            Class<?> related = Class.forName(fqcn);
+            var related = Class.forName(fqcn);
             return extractEntityMetadata(related);
         } catch (ClassNotFoundException e) {
             return fallback;
@@ -535,13 +534,13 @@ public final class QueryMethodLexer {
             return null;
         }
 
-        String lower = camel.toLowerCase();
+        var lower = camel.toLowerCase(ROOT);
         String bestKey = null;
         String bestFieldName = null;
 
         // longest prefix match across known fields
         for (Map.Entry<String, Field> entry : metadata.fields.entrySet()) {
-            String fieldNameLower = entry.getKey(); // lowercase key
+            var fieldNameLower = entry.getKey(); // lowercase key
             if (lower.startsWith(fieldNameLower)) {
                 if (bestKey == null || fieldNameLower.length() > bestKey.length()) {
                     bestKey = fieldNameLower;
@@ -554,7 +553,7 @@ public final class QueryMethodLexer {
             return null;
         }
 
-        String rest = camel.substring(bestKey.length());
+        var rest = camel.substring(bestKey.length());
 
         // If remainder exists, it must start with a capital letter or be empty
         // This prevents matching "age" in "age2" and leaving "2" as remainder
@@ -566,7 +565,7 @@ public final class QueryMethodLexer {
     }
 
     private static String extractPrefix(String methodName) {
-        String lower = methodName.toLowerCase();
+        var lower = methodName.toLowerCase(ROOT);
         for (String prefix : PREFIXES) {
             if (lower.startsWith(prefix)) {
                 return methodName.substring(0, prefix.length());
@@ -599,7 +598,7 @@ public final class QueryMethodLexer {
     private static int findTokenEnd(String input, int start) {
         // If we're at the start of a known token (combinator/operator), return its
         // length
-        String firstToken = findTokenAtStart(input, start);
+        var firstToken = findTokenAtStart(input, start);
         if (firstToken != null) {
             return start + firstToken.length();
         }
@@ -615,30 +614,30 @@ public final class QueryMethodLexer {
      * Used to determine where a property path ends.
      */
     private static int findNextTokenStart(String input, int start) {
-        int earliest = input.length();
+        var earliest = input.length();
 
         // Check for OrderBy first (before checking for "Or")
-        int orderByIdx = input.indexOf("OrderBy", start);
+        var orderByIdx = input.indexOf("OrderBy", start);
         if (orderByIdx != -1) {
             earliest = orderByIdx;
         }
 
         // Check for "And" combinator - only valid if followed by uppercase or end
-        int andIdx = findCombinatorIndex(input, start, "And");
+        var andIdx = findCombinatorIndex(input, start, "And");
         if (andIdx != -1 && andIdx < earliest) {
             earliest = andIdx;
         }
 
         // Check for "Or" combinator - only valid if followed by uppercase or end
         // This prevents "Order" from matching "Or" in the middle
-        int orIdx = findCombinatorIndex(input, start, "Or");
+        var orIdx = findCombinatorIndex(input, start, "Or");
         if (orIdx != -1 && orIdx < earliest) {
             earliest = orIdx;
         }
 
         // Check for operators
         for (String operator : OPERATORS) {
-            int idx = input.indexOf(operator, start);
+            var idx = input.indexOf(operator, start);
             if (idx != -1 && idx < earliest) {
                 earliest = idx;
             }
@@ -654,12 +653,12 @@ public final class QueryMethodLexer {
      * This prevents "Order" from matching "Or" or "Anderson" from matching "And".
      */
     private static int findCombinatorIndex(String input, int start, String combinator) {
-        int idx = input.indexOf(combinator, start);
+        var idx = input.indexOf(combinator, start);
         if (idx == -1) {
             return -1;
         }
 
-        int afterCombinator = idx + combinator.length();
+        var afterCombinator = idx + combinator.length();
         // Valid if at end of string or followed by uppercase letter
         if (afterCombinator >= input.length() || Character.isUpperCase(input.charAt(afterCombinator))) {
             return idx;
@@ -670,7 +669,7 @@ public final class QueryMethodLexer {
     }
 
     private static int findMinIndex(int... idxs) {
-        int min = Integer.MAX_VALUE;
+        var min = Integer.MAX_VALUE;
         boolean found = false;
         for (int idx : idxs) {
             if (idx >= 0 && idx < min) {
@@ -688,7 +687,7 @@ public final class QueryMethodLexer {
 
         // Check for "And" - only if followed by uppercase or end of string
         if (input.startsWith("And", start)) {
-            int afterAnd = start + 3;
+            var afterAnd = start + 3;
             if (afterAnd >= input.length() || Character.isUpperCase(input.charAt(afterAnd))) {
                 return "And";
             }
@@ -697,7 +696,7 @@ public final class QueryMethodLexer {
         // Check for "Or" - only if followed by uppercase or end of string
         // This prevents "Order" from being split as "Or" + "der"
         if (input.startsWith("Or", start)) {
-            int afterOr = start + 2;
+            var afterOr = start + 2;
             if (afterOr >= input.length() || Character.isUpperCase(input.charAt(afterOr))) {
                 return "Or";
             }
@@ -764,15 +763,15 @@ public final class QueryMethodLexer {
                 continue;
             }
 
-            int ascIdx = remaining.indexOf("Asc", pos);
-            int descIdx = remaining.indexOf("Desc", pos);
+            var ascIdx = remaining.indexOf("Asc", pos);
+            var descIdx = remaining.indexOf("Desc", pos);
 
-            int nextDir = findMinIndex(ascIdx, descIdx);
+            var nextDir = findMinIndex(ascIdx, descIdx);
 
             if (nextDir == -1) {
                 // No direction: treat rest as property
-                String property = remaining.substring(segmentStart);
-                String resolvedProperty = (metadata != null) ? resolvePropertyPath(metadata, property)
+                var property = remaining.substring(segmentStart);
+                var resolvedProperty = (metadata != null) ? resolvePropertyPath(metadata, property)
                         : property.toLowerCase();
                 tokens.add(new QueryMethodToken(QueryMethodTokenType.PROPERTY_PATH, resolvedProperty,
                         base + segmentStart, base + remaining.length(), false));
@@ -780,8 +779,8 @@ public final class QueryMethodLexer {
             }
 
             // Property part up to direction
-            String property = remaining.substring(segmentStart, nextDir);
-            String resolvedProperty = (metadata != null) ? resolvePropertyPath(metadata, property)
+            var property = remaining.substring(segmentStart, nextDir);
+            var resolvedProperty = (metadata != null) ? resolvePropertyPath(metadata, property)
                     : property.toLowerCase();
             tokens.add(new QueryMethodToken(QueryMethodTokenType.PROPERTY_PATH, resolvedProperty,
                     base + segmentStart, base + nextDir, false));

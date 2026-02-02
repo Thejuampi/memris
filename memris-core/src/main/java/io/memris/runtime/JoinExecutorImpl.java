@@ -35,11 +35,11 @@ public final class JoinExecutorImpl implements JoinExecutor<Object, Object> {
 
         boolean[] targetAllowed = null;
         if (targetSelection != null) {
-            int size = Math.toIntExact(targetTable.allocatedCount());
+            var size = Math.toIntExact(targetTable.allocatedCount());
             targetAllowed = new boolean[size];
-            long[] refs = targetSelection.toRefArray();
-            for (long ref : refs) {
-                int row = io.memris.storage.Selection.index(ref);
+            var refs = targetSelection.toRefArray();
+            for (var ref : refs) {
+                var row = io.memris.storage.Selection.index(ref);
                 if (row >= 0 && row < size) {
                     targetAllowed[row] = true;
                 }
@@ -48,17 +48,17 @@ public final class JoinExecutorImpl implements JoinExecutor<Object, Object> {
 
         long[] sourceRefs;
         if (sourceSelection == null) {
-            int[] rows = sourceTable.scanAll();
+            var rows = sourceTable.scanAll();
             sourceRefs = new long[rows.length];
-            for (int i = 0; i < rows.length; i++) {
-                int rowIndex = rows[i];
+            for (var i = 0; i < rows.length; i++) {
+                var rowIndex = rows[i];
                 sourceRefs[i] = io.memris.storage.Selection.pack(rowIndex, sourceTable.rowGeneration(rowIndex));
             }
         } else {
             sourceRefs = sourceSelection.toRefArray();
         }
-        long[] matched = new long[sourceRefs.length];
-        int count = 0;
+        var matched = new long[sourceRefs.length];
+        var count = 0;
 
         long[] targetValues = null;
         if (!targetColumnIsId) {
@@ -68,19 +68,19 @@ public final class JoinExecutorImpl implements JoinExecutor<Object, Object> {
             }
         }
 
-        for (long ref : sourceRefs) {
-            int sourceRow = io.memris.storage.Selection.index(ref);
+        for (var ref : sourceRefs) {
+            var sourceRow = io.memris.storage.Selection.index(ref);
             if (!sourceTable.isPresent(sourceColumnIndex, sourceRow)) {
                 continue;
             }
-            long fkValue = readFkValue(sourceTable, sourceRow);
+            var fkValue = readFkValue(sourceTable, sourceRow);
 
             if (targetColumnIsId) {
-                long targetRef = targetTable.lookupById(fkValue);
+                var targetRef = targetTable.lookupById(fkValue);
                 if (targetRef < 0) {
                     continue;
                 }
-                int targetRow = io.memris.storage.Selection.index(targetRef);
+                var targetRow = io.memris.storage.Selection.index(targetRef);
                 if (targetAllowed != null && (targetRow < 0 || targetRow >= targetAllowed.length || !targetAllowed[targetRow])) {
                     continue;
                 }
@@ -93,7 +93,7 @@ public final class JoinExecutorImpl implements JoinExecutor<Object, Object> {
             matched[count++] = io.memris.storage.Selection.pack(sourceRow, sourceTable.rowGeneration(sourceRow));
         }
 
-        long[] packed = new long[count];
+        var packed = new long[count];
         System.arraycopy(matched, 0, packed, 0, count);
         return new SelectionImpl(packed);
     }
@@ -109,9 +109,9 @@ public final class JoinExecutorImpl implements JoinExecutor<Object, Object> {
             return new long[0];
         }
 
-        long[] values = new long[rows.length];
-        int count = 0;
-        for (int row : rows) {
+        var values = new long[rows.length];
+        var count = 0;
+        for (var row : rows) {
             if (!targetTable.isPresent(targetColumnIndex, row)) {
                 continue;
             }
@@ -176,10 +176,10 @@ public final class JoinExecutorImpl implements JoinExecutor<Object, Object> {
     }
 
     private Selection selectAll(GeneratedTable table) {
-        int[] rows = table.scanAll();
-        long[] packed = new long[rows.length];
-        for (int i = 0; i < rows.length; i++) {
-            int rowIndex = rows[i];
+        var rows = table.scanAll();
+        var packed = new long[rows.length];
+        for (var i = 0; i < rows.length; i++) {
+            var rowIndex = rows[i];
             packed[i] = io.memris.storage.Selection.pack(rowIndex, table.rowGeneration(rowIndex));
         }
         return new SelectionImpl(packed);

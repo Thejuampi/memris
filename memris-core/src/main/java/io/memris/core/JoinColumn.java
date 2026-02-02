@@ -12,21 +12,21 @@ import java.lang.annotation.Target;
  * 
  * <p>Example:
  * <pre>
- * @Entity
+ * {@literal @}Entity
  * public class Order {
- *     @Id
+ *     {@literal @}Id
  *     private Long id;
- *     
- *     @ManyToOne
- *     @JoinColumn(name = "customer_id", referencedColumnName = "id")
+ *
+ *     {@literal @}ManyToOne
+ *     {@literal @}JoinColumn(name = "customer_id", referencedColumnName = "id")
  *     private Customer customer;
  * }
  * 
- * @Entity  
+ * {@literal @}Entity
  * public class Customer {
- *     @Id
+ *     {@literal @}Id
  *     private Long id;
- *     
+ *
  *     private String email;
  * }
  * </pre>

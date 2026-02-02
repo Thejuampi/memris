@@ -14,28 +14,28 @@ public final class RowIdBitSet implements MutableRowIdSet {
         if (rowId == null) {
             throw new IllegalArgumentException("rowId required");
         }
-        int index = toIndex(rowId);
-        int wordIndex = index >>> 6;
-        long bitMask = 1L << (index & 63);
+        var index = toIndex(rowId);
+        var wordIndex = index >>> 6;
+        var bitMask = 1L << (index & 63);
 
         while (true) {
-            State current = state.get();
-            long[] words = current.words;
+            var current = state.get();
+            var words = current.words;
             if (wordIndex >= words.length) {
-                int newLength = Math.max(words.length * 2, wordIndex + 1);
-                long[] expanded = new long[newLength];
+                var newLength = Math.max(words.length * 2, wordIndex + 1);
+                var expanded = new long[newLength];
                 System.arraycopy(words, 0, expanded, 0, words.length);
                 words = expanded;
             }
 
-            long word = words[wordIndex];
+            var word = words[wordIndex];
             if ((word & bitMask) != 0L) {
                 return;
             }
 
-            long[] nextWords = words.clone();
+            var nextWords = words.clone();
             nextWords[wordIndex] = word | bitMask;
-            State next = new State(nextWords, current.size + 1);
+            var next = new State(nextWords, current.size + 1);
             if (state.compareAndSet(current, next)) {
                 return;
             }
@@ -47,22 +47,22 @@ public final class RowIdBitSet implements MutableRowIdSet {
         if (rowId == null) {
             return;
         }
-        int index = toIndex(rowId);
-        int wordIndex = index >>> 6;
-        long bitMask = 1L << (index & 63);
+        var index = toIndex(rowId);
+        var wordIndex = index >>> 6;
+        var bitMask = 1L << (index & 63);
 
         while (true) {
-            State current = state.get();
+            var current = state.get();
             if (wordIndex >= current.words.length) {
                 return;
             }
-            long word = current.words[wordIndex];
+            var word = current.words[wordIndex];
             if ((word & bitMask) == 0L) {
                 return;
             }
-            long[] nextWords = current.words.clone();
+            var nextWords = current.words.clone();
             nextWords[wordIndex] = word & ~bitMask;
-            State next = new State(nextWords, current.size - 1);
+            var next = new State(nextWords, current.size - 1);
             if (state.compareAndSet(current, next)) {
                 return;
             }
@@ -79,10 +79,10 @@ public final class RowIdBitSet implements MutableRowIdSet {
         if (rowId == null) {
             return false;
         }
-        int index = toIndex(rowId);
-        int wordIndex = index >>> 6;
-        long bitMask = 1L << (index & 63);
-        State current = state.get();
+        var index = toIndex(rowId);
+        var wordIndex = index >>> 6;
+        var bitMask = 1L << (index & 63);
+        var current = state.get();
         if (wordIndex >= current.words.length) {
             return false;
         }
@@ -91,14 +91,14 @@ public final class RowIdBitSet implements MutableRowIdSet {
 
     @Override
     public long[] toLongArray() {
-        State snapshot = state.get();
-        long[] values = new long[snapshot.size];
-        int index = 0;
-        long[] words = snapshot.words;
+        var snapshot = state.get();
+        var values = new long[snapshot.size];
+        var index = 0;
+        var words = snapshot.words;
         for (int wordIndex = 0; wordIndex < words.length; wordIndex++) {
-            long word = words[wordIndex];
+            var word = words[wordIndex];
             while (word != 0L) {
-                int bit = Long.numberOfTrailingZeros(word);
+                var bit = Long.numberOfTrailingZeros(word);
                 values[index++] = ((long) wordIndex * BITS_PER_WORD) + bit;
                 word &= word - 1L;
             }
@@ -108,7 +108,7 @@ public final class RowIdBitSet implements MutableRowIdSet {
 
     @Override
     public LongEnumerator enumerator() {
-        State snapshot = state.get();
+        var snapshot = state.get();
         return new LongEnumerator() {
             private int wordIndex;
             private long word = snapshot.words.length == 0 ? 0L : snapshot.words[0];
@@ -124,7 +124,7 @@ public final class RowIdBitSet implements MutableRowIdSet {
                 if (nextValue < 0L) {
                     throw new NoSuchElementException();
                 }
-                long value = nextValue;
+                var value = nextValue;
                 nextValue = findNextValue();
                 return value;
             }
@@ -132,7 +132,7 @@ public final class RowIdBitSet implements MutableRowIdSet {
             private long findNextValue() {
                 while (true) {
                     if (word != 0L) {
-                        int bit = Long.numberOfTrailingZeros(word);
+                        var bit = Long.numberOfTrailingZeros(word);
                         word &= word - 1L;
                         return ((long) wordIndex * BITS_PER_WORD) + bit;
                     }
@@ -147,7 +147,7 @@ public final class RowIdBitSet implements MutableRowIdSet {
     }
 
     private static int toIndex(RowId rowId) {
-        long value = rowId.value();
+        var value = rowId.value();
         if (value > Integer.MAX_VALUE) {
             throw new IllegalArgumentException("rowId too large for bitset: " + value);
         }

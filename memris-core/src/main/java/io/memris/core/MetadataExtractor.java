@@ -50,11 +50,11 @@ public final class MetadataExtractor {
             }
             
             // Build field mappings with relationship support
-            List<FieldMapping> fields = new ArrayList<>();
-            Map<String, TypeConverter<?, ?>> converters = new HashMap<>();
-            Set<String> foreignKeyColumns = new HashSet<>();
-            List<EntityMetadata.AuditField> auditFields = new ArrayList<>();
-            int colPos = 0;
+        var fields = new ArrayList<FieldMapping>();
+        var converters = new HashMap<String, TypeConverter<?, ?>>();
+        var foreignKeyColumns = new HashSet<String>();
+        var auditFields = new ArrayList<EntityMetadata.AuditField>();
+        var colPos = 0;
             
             for (var field : entityClass.getDeclaredFields()) {
                 if (java.lang.reflect.Modifier.isStatic(field.getModifiers())) {
@@ -144,8 +144,8 @@ public final class MetadataExtractor {
             }
             
             // Build MethodHandles for field access (for public fields)
-            Map<String, MethodHandle> fieldGetters = new HashMap<>();
-            Map<String, MethodHandle> fieldSetters = new HashMap<>();
+        var fieldGetters = new HashMap<String, MethodHandle>();
+        var fieldSetters = new HashMap<String, MethodHandle>();
             
             try {
                 java.lang.invoke.MethodHandles.Lookup lookup = java.lang.invoke.MethodHandles.publicLookup();
@@ -278,7 +278,7 @@ public final class MetadataExtractor {
             jpaOneToMany != null ? jpaOneToMany.targetEntity() : void.class
         );
 
-        String mappedBy = oneToMany != null ? oneToMany.mappedBy() : jpaOneToMany.mappedBy();
+        var mappedBy = oneToMany != null ? oneToMany.mappedBy() : jpaOneToMany.mappedBy();
         if (mappedBy == null || mappedBy.isBlank()) {
             throw new IllegalArgumentException("@OneToMany requires mappedBy: " + field.getDeclaringClass().getName() + "#" + field.getName());
         }
@@ -453,7 +453,7 @@ public final class MetadataExtractor {
 
     private static boolean hasAnnotationByName(AnnotatedElement element, String... annotationNames) {
         for (var annotation : element.getAnnotations()) {
-            String name = annotation.annotationType().getName();
+            var name = annotation.annotationType().getName();
             for (String expected : annotationNames) {
                 if (expected.equals(name)) {
                     return true;

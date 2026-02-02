@@ -52,7 +52,7 @@ public final class RangeIndex<K extends Comparable<K>> {
         if (key == null) {
             return RowIdSets.empty();
         }
-        MutableRowIdSet set = index.get(key);
+        var set = index.get(key);
         return set == null ? RowIdSets.empty() : set;
     }
 
@@ -172,13 +172,13 @@ public final class RangeIndex<K extends Comparable<K>> {
         if (map.isEmpty()) {
             return RowIdSets.empty();
         }
-        int expected = 0;
-        for (MutableRowIdSet set : map.values()) {
+        var expected = 0;
+        for (var set : map.values()) {
             expected += set.size();
         }
-        MutableRowIdSet result = setFactory.create(expected);
-        for (Map.Entry<K, MutableRowIdSet> entry : map.entrySet()) {
-            LongEnumerator e = entry.getValue().enumerator();
+        var result = setFactory.create(expected);
+        for (var entry : map.entrySet()) {
+            var e = entry.getValue().enumerator();
             while (e.hasNext()) {
                 result.add(RowId.fromLong(e.nextLong()));
             }
@@ -188,10 +188,10 @@ public final class RangeIndex<K extends Comparable<K>> {
     }
 
     private RowIdSet filterSet(RowIdSet set, java.util.function.Predicate<RowId> filter) {
-        MutableRowIdSet result = setFactory.create(1);
-        LongEnumerator e = set.enumerator();
+        var result = setFactory.create(1);
+        var e = set.enumerator();
         while (e.hasNext()) {
-            RowId rowId = RowId.fromLong(e.nextLong());
+            var rowId = RowId.fromLong(e.nextLong());
             if (filter.test(rowId)) {
                 result.add(rowId);
                 result = setFactory.maybeUpgrade(result);

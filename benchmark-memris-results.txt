@@ -1,0 +1,1155 @@
+[INFO] Scanning for projects...
+[INFO] 
+[INFO] -----------------------< io.memris:memris-core >------------------------
+[INFO] Building Memris Core Engine 1.0.0-SNAPSHOT
+[INFO]   from pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[WARNING] Parameter 'forks' is unknown for plugin 'jmh-maven-plugin:0.2.2:benchmark (default-cli)'
+[WARNING] Parameter 'measurementIterations' is unknown for plugin 'jmh-maven-plugin:0.2.2:benchmark (default-cli)'
+[INFO] 
+[INFO] >>> jmh:0.2.2:benchmark (default-cli) > process-test-resources @ memris-core >>>
+[INFO] 
+[INFO] --- jacoco:0.8.14:prepare-agent (prepare-agent) @ memris-core ---
+[INFO] jacocoArgLine set to -javaagent:C:\\Users\\Juan\\.m2\\repository\\org\\jacoco\\org.jacoco.agent\\0.8.14\\org.jacoco.agent-0.8.14-runtime.jar=destfile=G:\\dev\\repos\\memris\\memris-core\\target\\jacoco.exec,excludes=io/memris/storage/generated/**/*:io/memris/storage/heap/*:*$*
+[INFO] 
+[INFO] --- resources:3.3.1:resources (default-resources) @ memris-core ---
+[INFO] skip non existing resourceDirectory G:\dev\repos\memris\memris-core\src\main\resources
+[INFO] 
+[INFO] --- compiler:3.11.0:compile (default-compile) @ memris-core ---
+[INFO] Nothing to compile - all classes are up to date
+[INFO] 
+[INFO] --- build-helper:3.5.0:add-test-source (add-jmh-test-sources) @ memris-core ---
+[INFO] Test Source directory: G:\dev\repos\memris\memris-core\src\jmh\java added.
+[INFO] 
+[INFO] --- resources:3.3.1:testResources (default-testResources) @ memris-core ---
+[INFO] Copying 1 resource from src\test\resources to target\test-classes
+[INFO] 
+[INFO] <<< jmh:0.2.2:benchmark (default-cli) < process-test-resources @ memris-core <<<
+[INFO] 
+[INFO] 
+[INFO] --- jmh:0.2.2:benchmark (default-cli) @ memris-core ---
+[INFO] Nothing to compile - all classes are up to date
+[INFO] Executing the JMH benchmarks
+# JMH version: 1.37
+# VM version: JDK 21.0.7, OpenJDK 64-Bit Server VM, 21.0.7+6-LTS
+# VM invoker: C:\Program Files\Microsoft\jdk-21.0.7.6-hotspot\bin\java.exe
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 2 iterations, 2 s each
+# Measurement: 3 iterations, 5 s each
+# Timeout: 10 min per iteration
+# Threads: 2 threads (1 group; 1x "reader_1thread", 1x "writer_1thread" in each group), will synchronize iterations
+# Benchmark mode: Throughput, ops/time
+# Benchmark: io.memris.benchmarks.ConcurrentReadWriteBenchmark.write1_read1
+# Parameters: (initialRows = 100000)
+
+# Run progress: 0.00% complete, ETA 00:02:32
+# Fork: 1 of 1
+# Warmup Iteration   1: 467706.855 ops/s
+# Warmup Iteration   2: 490374.718 ops/s
+Iteration   1: 522019.395 ops/s
+                 reader_1thread: 391709.889 ops/s
+                 writer_1thread: 130309.505 ops/s
+
+Iteration   2: 527920.449 ops/s
+                 reader_1thread: 397059.352 ops/s
+                 writer_1thread: 130861.097 ops/s
+
+Iteration   3: <failure>
+
+java.lang.reflect.InvocationTargetException
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:118)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at io.memris.storage.heap.MethodHandleImplementation$InsertInterceptor.intercept(MethodHandleImplementation.java:806)
+	at io.memris.storage.generated.TestEntityTable.insertFrom(Unknown Source)
+	at io.memris.runtime.TestEntity$MemrisSaver$64509273588600.save(Unknown Source)
+	at io.memris.runtime.RepositoryRuntime.executeSaveOne(RepositoryRuntime.java:588)
+	at io.memris.runtime.RepositoryRuntime.saveOne(RepositoryRuntime.java:469)
+	at io.memris.repository.RepositoryEmitter$SaveOneInterceptor.intercept(RepositoryEmitter.java:616)
+	at io.memris.runtime.TestEntityRepository_MemrisImpl_64509281483000.save(Unknown Source)
+	at io.memris.benchmarks.ConcurrentReadWriteBenchmark.doWrite(ConcurrentReadWriteBenchmark.java:163)
+	at io.memris.benchmarks.ConcurrentReadWriteBenchmark.writer_1thread(ConcurrentReadWriteBenchmark.java:71)
+	at io.memris.benchmarks.jmh_generated.ConcurrentReadWriteBenchmark_write1_read1_jmhTest.writer_1thread_thrpt_jmhStub(ConcurrentReadWriteBenchmark_write1_read1_jmhTest.java:228)
+	at io.memris.benchmarks.jmh_generated.ConcurrentReadWriteBenchmark_write1_read1_jmhTest.write1_read1_Throughput(ConcurrentReadWriteBenchmark_write1_read1_jmhTest.java:153)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call(BenchmarkHandler.java:527)
+	at org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call(BenchmarkHandler.java:504)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:317)
+	at java.base/java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:572)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:317)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1144)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:642)
+	at java.base/java.lang.Thread.run(Thread.java:1583)
+Caused by: java.lang.IllegalStateException: Table capacity exceeded: 1048576
+	at io.memris.storage.heap.AbstractTable.allocateRowId(AbstractTable.java:188)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103)
+	... 22 more
+
+
+
+
+Result "io.memris.benchmarks.ConcurrentReadWriteBenchmark.write1_read1":
+  524969.922 ops/s
+
+Secondary result "io.memris.benchmarks.ConcurrentReadWriteBenchmark.write1_read1:reader_1thread":
+  394384.620 ops/s
+
+Secondary result "io.memris.benchmarks.ConcurrentReadWriteBenchmark.write1_read1:writer_1thread":
+  130585.301 ops/s
+
+
+# JMH version: 1.37
+# VM version: JDK 21.0.7, OpenJDK 64-Bit Server VM, 21.0.7+6-LTS
+# VM invoker: C:\Program Files\Microsoft\jdk-21.0.7.6-hotspot\bin\java.exe
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 2 iterations, 2 s each
+# Measurement: 3 iterations, 5 s each
+# Timeout: 10 min per iteration
+# Threads: 4 threads (1 group; 2x "reader_2threads", 2x "writer_2threads" in each group), will synchronize iterations
+# Benchmark mode: Throughput, ops/time
+# Benchmark: io.memris.benchmarks.ConcurrentReadWriteBenchmark.write2_read2
+# Parameters: (initialRows = 100000)
+
+# Run progress: 12.50% complete, ETA 00:01:56
+# Fork: 1 of 1
+# Warmup Iteration   1: 772971.024 ops/s
+# Warmup Iteration   2: 881092.021 ops/s
+Iteration   1: <failure>
+
+java.lang.reflect.InvocationTargetException
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:118)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at io.memris.storage.heap.MethodHandleImplementation$InsertInterceptor.intercept(MethodHandleImplementation.java:806)
+	at io.memris.storage.generated.TestEntityTable.insertFrom(Unknown Source)
+	at io.memris.runtime.TestEntity$MemrisSaver$64526818417000.save(Unknown Source)
+	at io.memris.runtime.RepositoryRuntime.executeSaveOne(RepositoryRuntime.java:588)
+	at io.memris.runtime.RepositoryRuntime.saveOne(RepositoryRuntime.java:469)
+	at io.memris.repository.RepositoryEmitter$SaveOneInterceptor.intercept(RepositoryEmitter.java:616)
+	at io.memris.runtime.TestEntityRepository_MemrisImpl_64526826409200.save(Unknown Source)
+	at io.memris.benchmarks.ConcurrentReadWriteBenchmark.doWrite(ConcurrentReadWriteBenchmark.java:163)
+	at io.memris.benchmarks.ConcurrentReadWriteBenchmark.writer_2threads(ConcurrentReadWriteBenchmark.java:86)
+	at io.memris.benchmarks.jmh_generated.ConcurrentReadWriteBenchmark_write2_read2_jmhTest.writer_2threads_thrpt_jmhStub(ConcurrentReadWriteBenchmark_write2_read2_jmhTest.java:228)
+	at io.memris.benchmarks.jmh_generated.ConcurrentReadWriteBenchmark_write2_read2_jmhTest.write2_read2_Throughput(ConcurrentReadWriteBenchmark_write2_read2_jmhTest.java:153)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call(BenchmarkHandler.java:527)
+	at org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call(BenchmarkHandler.java:504)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:317)
+	at java.base/java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:572)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:317)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1144)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:642)
+	at java.base/java.lang.Thread.run(Thread.java:1583)
+Caused by: java.lang.IllegalStateException: Table capacity exceeded: 1048576
+	at io.memris.storage.heap.AbstractTable.allocateRowId(AbstractTable.java:188)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103)
+	... 22 more
+
+java.lang.reflect.InvocationTargetException
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:118)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at io.memris.storage.heap.MethodHandleImplementation$InsertInterceptor.intercept(MethodHandleImplementation.java:806)
+	at io.memris.storage.generated.TestEntityTable.insertFrom(Unknown Source)
+	at io.memris.runtime.TestEntity$MemrisSaver$64526818417000.save(Unknown Source)
+	at io.memris.runtime.RepositoryRuntime.executeSaveOne(RepositoryRuntime.java:588)
+	at io.memris.runtime.RepositoryRuntime.saveOne(RepositoryRuntime.java:469)
+	at io.memris.repository.RepositoryEmitter$SaveOneInterceptor.intercept(RepositoryEmitter.java:616)
+	at io.memris.runtime.TestEntityRepository_MemrisImpl_64526826409200.save(Unknown Source)
+	at io.memris.benchmarks.ConcurrentReadWriteBenchmark.doWrite(ConcurrentReadWriteBenchmark.java:163)
+	at io.memris.benchmarks.ConcurrentReadWriteBenchmark.writer_2threads(ConcurrentReadWriteBenchmark.java:86)
+	at io.memris.benchmarks.jmh_generated.ConcurrentReadWriteBenchmark_write2_read2_jmhTest.writer_2threads_thrpt_jmhStub(ConcurrentReadWriteBenchmark_write2_read2_jmhTest.java:228)
+	at io.memris.benchmarks.jmh_generated.ConcurrentReadWriteBenchmark_write2_read2_jmhTest.write2_read2_Throughput(ConcurrentReadWriteBenchmark_write2_read2_jmhTest.java:153)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call(BenchmarkHandler.java:527)
+	at org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call(BenchmarkHandler.java:504)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:317)
+	at java.base/java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:572)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:317)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1144)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:642)
+	at java.base/java.lang.Thread.run(Thread.java:1583)
+Caused by: java.lang.IllegalStateException: Table capacity exceeded: 1048576
+	at io.memris.storage.heap.AbstractTable.allocateRowId(AbstractTable.java:188)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103)
+	... 22 more
+
+
+
+
+# JMH version: 1.37
+# VM version: JDK 21.0.7, OpenJDK 64-Bit Server VM, 21.0.7+6-LTS
+# VM invoker: C:\Program Files\Microsoft\jdk-21.0.7.6-hotspot\bin\java.exe
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 2 iterations, 2 s each
+# Measurement: 3 iterations, 5 s each
+# Timeout: 10 min per iteration
+# Threads: 8 threads (1 group; 4x "reader_4threads", 4x "writer_4threads" in each group), will synchronize iterations
+# Benchmark mode: Throughput, ops/time
+# Benchmark: io.memris.benchmarks.ConcurrentReadWriteBenchmark.write4_read4
+# Parameters: (initialRows = 100000)
+
+# Run progress: 25.00% complete, ETA 00:01:24
+# Fork: 1 of 1
+# Warmup Iteration   1: 1144441.452 ops/s
+# Warmup Iteration   2: 1490996.512 ops/s
+Iteration   1: <failure>
+
+java.lang.reflect.InvocationTargetException
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:118)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at io.memris.storage.heap.MethodHandleImplementation$InsertInterceptor.intercept(MethodHandleImplementation.java:806)
+	at io.memris.storage.generated.TestEntityTable.insertFrom(Unknown Source)
+	at io.memris.runtime.TestEntity$MemrisSaver$64537425454600.save(Unknown Source)
+	at io.memris.runtime.RepositoryRuntime.executeSaveOne(RepositoryRuntime.java:588)
+	at io.memris.runtime.RepositoryRuntime.saveOne(RepositoryRuntime.java:469)
+	at io.memris.repository.RepositoryEmitter$SaveOneInterceptor.intercept(RepositoryEmitter.java:616)
+	at io.memris.runtime.TestEntityRepository_MemrisImpl_64537433977000.save(Unknown Source)
+	at io.memris.benchmarks.ConcurrentReadWriteBenchmark.doWrite(ConcurrentReadWriteBenchmark.java:163)
+	at io.memris.benchmarks.ConcurrentReadWriteBenchmark.writer_4threads(ConcurrentReadWriteBenchmark.java:101)
+	at io.memris.benchmarks.jmh_generated.ConcurrentReadWriteBenchmark_write4_read4_jmhTest.writer_4threads_thrpt_jmhStub(ConcurrentReadWriteBenchmark_write4_read4_jmhTest.java:228)
+	at io.memris.benchmarks.jmh_generated.ConcurrentReadWriteBenchmark_write4_read4_jmhTest.write4_read4_Throughput(ConcurrentReadWriteBenchmark_write4_read4_jmhTest.java:153)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call(BenchmarkHandler.java:527)
+	at org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call(BenchmarkHandler.java:504)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:317)
+	at java.base/java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:572)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:317)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1144)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:642)
+	at java.base/java.lang.Thread.run(Thread.java:1583)
+Caused by: java.lang.IllegalStateException: Table capacity exceeded: 1048576
+	at io.memris.storage.heap.AbstractTable.allocateRowId(AbstractTable.java:188)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103)
+	... 22 more
+
+java.lang.reflect.InvocationTargetException
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:118)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at io.memris.storage.heap.MethodHandleImplementation$InsertInterceptor.intercept(MethodHandleImplementation.java:806)
+	at io.memris.storage.generated.TestEntityTable.insertFrom(Unknown Source)
+	at io.memris.runtime.TestEntity$MemrisSaver$64537425454600.save(Unknown Source)
+	at io.memris.runtime.RepositoryRuntime.executeSaveOne(RepositoryRuntime.java:588)
+	at io.memris.runtime.RepositoryRuntime.saveOne(RepositoryRuntime.java:469)
+	at io.memris.repository.RepositoryEmitter$SaveOneInterceptor.intercept(RepositoryEmitter.java:616)
+	at io.memris.runtime.TestEntityRepository_MemrisImpl_64537433977000.save(Unknown Source)
+	at io.memris.benchmarks.ConcurrentReadWriteBenchmark.doWrite(ConcurrentReadWriteBenchmark.java:163)
+	at io.memris.benchmarks.ConcurrentReadWriteBenchmark.writer_4threads(ConcurrentReadWriteBenchmark.java:101)
+	at io.memris.benchmarks.jmh_generated.ConcurrentReadWriteBenchmark_write4_read4_jmhTest.writer_4threads_thrpt_jmhStub(ConcurrentReadWriteBenchmark_write4_read4_jmhTest.java:228)
+	at io.memris.benchmarks.jmh_generated.ConcurrentReadWriteBenchmark_write4_read4_jmhTest.write4_read4_Throughput(ConcurrentReadWriteBenchmark_write4_read4_jmhTest.java:153)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call(BenchmarkHandler.java:527)
+	at org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call(BenchmarkHandler.java:504)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:317)
+	at java.base/java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:572)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:317)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1144)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:642)
+	at java.base/java.lang.Thread.run(Thread.java:1583)
+Caused by: java.lang.IllegalStateException: Table capacity exceeded: 1048576
+	at io.memris.storage.heap.AbstractTable.allocateRowId(AbstractTable.java:188)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103)
+	... 22 more
+
+java.lang.reflect.InvocationTargetException
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:118)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at io.memris.storage.heap.MethodHandleImplementation$InsertInterceptor.intercept(MethodHandleImplementation.java:806)
+	at io.memris.storage.generated.TestEntityTable.insertFrom(Unknown Source)
+	at io.memris.runtime.TestEntity$MemrisSaver$64537425454600.save(Unknown Source)
+	at io.memris.runtime.RepositoryRuntime.executeSaveOne(RepositoryRuntime.java:588)
+	at io.memris.runtime.RepositoryRuntime.saveOne(RepositoryRuntime.java:469)
+	at io.memris.repository.RepositoryEmitter$SaveOneInterceptor.intercept(RepositoryEmitter.java:616)
+	at io.memris.runtime.TestEntityRepository_MemrisImpl_64537433977000.save(Unknown Source)
+	at io.memris.benchmarks.ConcurrentReadWriteBenchmark.doWrite(ConcurrentReadWriteBenchmark.java:163)
+	at io.memris.benchmarks.ConcurrentReadWriteBenchmark.writer_4threads(ConcurrentReadWriteBenchmark.java:101)
+	at io.memris.benchmarks.jmh_generated.ConcurrentReadWriteBenchmark_write4_read4_jmhTest.writer_4threads_thrpt_jmhStub(ConcurrentReadWriteBenchmark_write4_read4_jmhTest.java:228)
+	at io.memris.benchmarks.jmh_generated.ConcurrentReadWriteBenchmark_write4_read4_jmhTest.write4_read4_Throughput(ConcurrentReadWriteBenchmark_write4_read4_jmhTest.java:153)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call(BenchmarkHandler.java:527)
+	at org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call(BenchmarkHandler.java:504)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:317)
+	at java.base/java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:572)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:317)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1144)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:642)
+	at java.base/java.lang.Thread.run(Thread.java:1583)
+Caused by: java.lang.IllegalStateException: Table capacity exceeded: 1048576
+	at io.memris.storage.heap.AbstractTable.allocateRowId(AbstractTable.java:188)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103)
+	... 22 more
+
+java.lang.reflect.InvocationTargetException
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:118)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at io.memris.storage.heap.MethodHandleImplementation$InsertInterceptor.intercept(MethodHandleImplementation.java:806)
+	at io.memris.storage.generated.TestEntityTable.insertFrom(Unknown Source)
+	at io.memris.runtime.TestEntity$MemrisSaver$64537425454600.save(Unknown Source)
+	at io.memris.runtime.RepositoryRuntime.executeSaveOne(RepositoryRuntime.java:588)
+	at io.memris.runtime.RepositoryRuntime.saveOne(RepositoryRuntime.java:469)
+	at io.memris.repository.RepositoryEmitter$SaveOneInterceptor.intercept(RepositoryEmitter.java:616)
+	at io.memris.runtime.TestEntityRepository_MemrisImpl_64537433977000.save(Unknown Source)
+	at io.memris.benchmarks.ConcurrentReadWriteBenchmark.doWrite(ConcurrentReadWriteBenchmark.java:163)
+	at io.memris.benchmarks.ConcurrentReadWriteBenchmark.writer_4threads(ConcurrentReadWriteBenchmark.java:101)
+	at io.memris.benchmarks.jmh_generated.ConcurrentReadWriteBenchmark_write4_read4_jmhTest.writer_4threads_thrpt_jmhStub(ConcurrentReadWriteBenchmark_write4_read4_jmhTest.java:228)
+	at io.memris.benchmarks.jmh_generated.ConcurrentReadWriteBenchmark_write4_read4_jmhTest.write4_read4_Throughput(ConcurrentReadWriteBenchmark_write4_read4_jmhTest.java:153)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call(BenchmarkHandler.java:527)
+	at org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call(BenchmarkHandler.java:504)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:317)
+	at java.base/java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:572)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:317)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1144)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:642)
+	at java.base/java.lang.Thread.run(Thread.java:1583)
+Caused by: java.lang.IllegalStateException: Table capacity exceeded: 1048576
+	at io.memris.storage.heap.AbstractTable.allocateRowId(AbstractTable.java:188)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103)
+	... 22 more
+
+
+
+
+# JMH version: 1.37
+# VM version: JDK 21.0.7, OpenJDK 64-Bit Server VM, 21.0.7+6-LTS
+# VM invoker: C:\Program Files\Microsoft\jdk-21.0.7.6-hotspot\bin\java.exe
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 2 iterations, 2 s each
+# Measurement: 3 iterations, 5 s each
+# Timeout: 10 min per iteration
+# Threads: 12 threads (1 group; 8x "reader_8threads_write4", 4x "writer_4threads_read8" in each group), will synchronize iterations
+# Benchmark mode: Throughput, ops/time
+# Benchmark: io.memris.benchmarks.ConcurrentReadWriteBenchmark.write4_read8
+# Parameters: (initialRows = 100000)
+
+# Run progress: 37.50% complete, ETA 00:00:59
+# Fork: 1 of 1
+# Warmup Iteration   1: 1520190.394 ops/s
+# Warmup Iteration   2: 1858725.412 ops/s
+Iteration   1: <failure>
+
+java.lang.reflect.InvocationTargetException
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:118)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at io.memris.storage.heap.MethodHandleImplementation$InsertInterceptor.intercept(MethodHandleImplementation.java:806)
+	at io.memris.storage.generated.TestEntityTable.insertFrom(Unknown Source)
+	at io.memris.runtime.TestEntity$MemrisSaver$64545968954100.save(Unknown Source)
+	at io.memris.runtime.RepositoryRuntime.executeSaveOne(RepositoryRuntime.java:588)
+	at io.memris.runtime.RepositoryRuntime.saveOne(RepositoryRuntime.java:469)
+	at io.memris.repository.RepositoryEmitter$SaveOneInterceptor.intercept(RepositoryEmitter.java:616)
+	at io.memris.runtime.TestEntityRepository_MemrisImpl_64545977483500.save(Unknown Source)
+	at io.memris.benchmarks.ConcurrentReadWriteBenchmark.doWrite(ConcurrentReadWriteBenchmark.java:163)
+	at io.memris.benchmarks.ConcurrentReadWriteBenchmark.writer_4threads_read8(ConcurrentReadWriteBenchmark.java:131)
+	at io.memris.benchmarks.jmh_generated.ConcurrentReadWriteBenchmark_write4_read8_jmhTest.writer_4threads_read8_thrpt_jmhStub(ConcurrentReadWriteBenchmark_write4_read8_jmhTest.java:228)
+	at io.memris.benchmarks.jmh_generated.ConcurrentReadWriteBenchmark_write4_read8_jmhTest.write4_read8_Throughput(ConcurrentReadWriteBenchmark_write4_read8_jmhTest.java:153)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call(BenchmarkHandler.java:527)
+	at org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call(BenchmarkHandler.java:504)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:317)
+	at java.base/java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:572)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:317)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1144)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:642)
+	at java.base/java.lang.Thread.run(Thread.java:1583)
+Caused by: java.lang.IllegalStateException: Table capacity exceeded: 1048576
+	at io.memris.storage.heap.AbstractTable.allocateRowId(AbstractTable.java:188)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103)
+	... 22 more
+
+java.lang.reflect.InvocationTargetException
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:118)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at io.memris.storage.heap.MethodHandleImplementation$InsertInterceptor.intercept(MethodHandleImplementation.java:806)
+	at io.memris.storage.generated.TestEntityTable.insertFrom(Unknown Source)
+	at io.memris.runtime.TestEntity$MemrisSaver$64545968954100.save(Unknown Source)
+	at io.memris.runtime.RepositoryRuntime.executeSaveOne(RepositoryRuntime.java:588)
+	at io.memris.runtime.RepositoryRuntime.saveOne(RepositoryRuntime.java:469)
+	at io.memris.repository.RepositoryEmitter$SaveOneInterceptor.intercept(RepositoryEmitter.java:616)
+	at io.memris.runtime.TestEntityRepository_MemrisImpl_64545977483500.save(Unknown Source)
+	at io.memris.benchmarks.ConcurrentReadWriteBenchmark.doWrite(ConcurrentReadWriteBenchmark.java:163)
+	at io.memris.benchmarks.ConcurrentReadWriteBenchmark.writer_4threads_read8(ConcurrentReadWriteBenchmark.java:131)
+	at io.memris.benchmarks.jmh_generated.ConcurrentReadWriteBenchmark_write4_read8_jmhTest.writer_4threads_read8_thrpt_jmhStub(ConcurrentReadWriteBenchmark_write4_read8_jmhTest.java:228)
+	at io.memris.benchmarks.jmh_generated.ConcurrentReadWriteBenchmark_write4_read8_jmhTest.write4_read8_Throughput(ConcurrentReadWriteBenchmark_write4_read8_jmhTest.java:153)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call(BenchmarkHandler.java:527)
+	at org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call(BenchmarkHandler.java:504)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:317)
+	at java.base/java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:572)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:317)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1144)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:642)
+	at java.base/java.lang.Thread.run(Thread.java:1583)
+Caused by: java.lang.IllegalStateException: Table capacity exceeded: 1048576
+	at io.memris.storage.heap.AbstractTable.allocateRowId(AbstractTable.java:188)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103)
+	... 22 more
+
+java.lang.reflect.InvocationTargetException
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:118)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at io.memris.storage.heap.MethodHandleImplementation$InsertInterceptor.intercept(MethodHandleImplementation.java:806)
+	at io.memris.storage.generated.TestEntityTable.insertFrom(Unknown Source)
+	at io.memris.runtime.TestEntity$MemrisSaver$64545968954100.save(Unknown Source)
+	at io.memris.runtime.RepositoryRuntime.executeSaveOne(RepositoryRuntime.java:588)
+	at io.memris.runtime.RepositoryRuntime.saveOne(RepositoryRuntime.java:469)
+	at io.memris.repository.RepositoryEmitter$SaveOneInterceptor.intercept(RepositoryEmitter.java:616)
+	at io.memris.runtime.TestEntityRepository_MemrisImpl_64545977483500.save(Unknown Source)
+	at io.memris.benchmarks.ConcurrentReadWriteBenchmark.doWrite(ConcurrentReadWriteBenchmark.java:163)
+	at io.memris.benchmarks.ConcurrentReadWriteBenchmark.writer_4threads_read8(ConcurrentReadWriteBenchmark.java:131)
+	at io.memris.benchmarks.jmh_generated.ConcurrentReadWriteBenchmark_write4_read8_jmhTest.writer_4threads_read8_thrpt_jmhStub(ConcurrentReadWriteBenchmark_write4_read8_jmhTest.java:228)
+	at io.memris.benchmarks.jmh_generated.ConcurrentReadWriteBenchmark_write4_read8_jmhTest.write4_read8_Throughput(ConcurrentReadWriteBenchmark_write4_read8_jmhTest.java:153)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call(BenchmarkHandler.java:527)
+	at org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call(BenchmarkHandler.java:504)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:317)
+	at java.base/java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:572)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:317)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1144)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:642)
+	at java.base/java.lang.Thread.run(Thread.java:1583)
+Caused by: java.lang.IllegalStateException: Table capacity exceeded: 1048576
+	at io.memris.storage.heap.AbstractTable.allocateRowId(AbstractTable.java:188)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103)
+	... 22 more
+
+java.lang.reflect.InvocationTargetException
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:118)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at io.memris.storage.heap.MethodHandleImplementation$InsertInterceptor.intercept(MethodHandleImplementation.java:806)
+	at io.memris.storage.generated.TestEntityTable.insertFrom(Unknown Source)
+	at io.memris.runtime.TestEntity$MemrisSaver$64545968954100.save(Unknown Source)
+	at io.memris.runtime.RepositoryRuntime.executeSaveOne(RepositoryRuntime.java:588)
+	at io.memris.runtime.RepositoryRuntime.saveOne(RepositoryRuntime.java:469)
+	at io.memris.repository.RepositoryEmitter$SaveOneInterceptor.intercept(RepositoryEmitter.java:616)
+	at io.memris.runtime.TestEntityRepository_MemrisImpl_64545977483500.save(Unknown Source)
+	at io.memris.benchmarks.ConcurrentReadWriteBenchmark.doWrite(ConcurrentReadWriteBenchmark.java:163)
+	at io.memris.benchmarks.ConcurrentReadWriteBenchmark.writer_4threads_read8(ConcurrentReadWriteBenchmark.java:131)
+	at io.memris.benchmarks.jmh_generated.ConcurrentReadWriteBenchmark_write4_read8_jmhTest.writer_4threads_read8_thrpt_jmhStub(ConcurrentReadWriteBenchmark_write4_read8_jmhTest.java:228)
+	at io.memris.benchmarks.jmh_generated.ConcurrentReadWriteBenchmark_write4_read8_jmhTest.write4_read8_Throughput(ConcurrentReadWriteBenchmark_write4_read8_jmhTest.java:153)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call(BenchmarkHandler.java:527)
+	at org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call(BenchmarkHandler.java:504)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:317)
+	at java.base/java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:572)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:317)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1144)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:642)
+	at java.base/java.lang.Thread.run(Thread.java:1583)
+Caused by: java.lang.IllegalStateException: Table capacity exceeded: 1048576
+	at io.memris.storage.heap.AbstractTable.allocateRowId(AbstractTable.java:188)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103)
+	... 22 more
+
+
+
+
+# JMH version: 1.37
+# VM version: JDK 21.0.7, OpenJDK 64-Bit Server VM, 21.0.7+6-LTS
+# VM invoker: C:\Program Files\Microsoft\jdk-21.0.7.6-hotspot\bin\java.exe
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 2 iterations, 2 s each
+# Measurement: 3 iterations, 5 s each
+# Timeout: 10 min per iteration
+# Threads: 12 threads (1 group; 4x "reader_4threads_write8", 8x "writer_8threads_read4" in each group), will synchronize iterations
+# Benchmark mode: Throughput, ops/time
+# Benchmark: io.memris.benchmarks.ConcurrentReadWriteBenchmark.write8_read4
+# Parameters: (initialRows = 100000)
+
+# Run progress: 50.00% complete, ETA 00:00:46
+# Fork: 1 of 1
+# Warmup Iteration   1: 903465.747 ops/s
+# Warmup Iteration   2: 1152777.151 ops/s
+Iteration   1: <failure>
+
+java.lang.reflect.InvocationTargetException
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:118)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at io.memris.storage.heap.MethodHandleImplementation$InsertInterceptor.intercept(MethodHandleImplementation.java:806)
+	at io.memris.storage.generated.TestEntityTable.insertFrom(Unknown Source)
+	at io.memris.runtime.TestEntity$MemrisSaver$64555416405000.save(Unknown Source)
+	at io.memris.runtime.RepositoryRuntime.executeSaveOne(RepositoryRuntime.java:588)
+	at io.memris.runtime.RepositoryRuntime.saveOne(RepositoryRuntime.java:469)
+	at io.memris.repository.RepositoryEmitter$SaveOneInterceptor.intercept(RepositoryEmitter.java:616)
+	at io.memris.runtime.TestEntityRepository_MemrisImpl_64555424462500.save(Unknown Source)
+	at io.memris.benchmarks.ConcurrentReadWriteBenchmark.doWrite(ConcurrentReadWriteBenchmark.java:163)
+	at io.memris.benchmarks.ConcurrentReadWriteBenchmark.writer_8threads_read4(ConcurrentReadWriteBenchmark.java:146)
+	at io.memris.benchmarks.jmh_generated.ConcurrentReadWriteBenchmark_write8_read4_jmhTest.writer_8threads_read4_thrpt_jmhStub(ConcurrentReadWriteBenchmark_write8_read4_jmhTest.java:228)
+	at io.memris.benchmarks.jmh_generated.ConcurrentReadWriteBenchmark_write8_read4_jmhTest.write8_read4_Throughput(ConcurrentReadWriteBenchmark_write8_read4_jmhTest.java:153)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call(BenchmarkHandler.java:527)
+	at org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call(BenchmarkHandler.java:504)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:317)
+	at java.base/java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:572)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:317)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1144)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:642)
+	at java.base/java.lang.Thread.run(Thread.java:1583)
+Caused by: java.lang.IllegalStateException: Table capacity exceeded: 1048576
+	at io.memris.storage.heap.AbstractTable.allocateRowId(AbstractTable.java:188)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103)
+	... 22 more
+
+java.lang.reflect.InvocationTargetException
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:118)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at io.memris.storage.heap.MethodHandleImplementation$InsertInterceptor.intercept(MethodHandleImplementation.java:806)
+	at io.memris.storage.generated.TestEntityTable.insertFrom(Unknown Source)
+	at io.memris.runtime.TestEntity$MemrisSaver$64555416405000.save(Unknown Source)
+	at io.memris.runtime.RepositoryRuntime.executeSaveOne(RepositoryRuntime.java:588)
+	at io.memris.runtime.RepositoryRuntime.saveOne(RepositoryRuntime.java:469)
+	at io.memris.repository.RepositoryEmitter$SaveOneInterceptor.intercept(RepositoryEmitter.java:616)
+	at io.memris.runtime.TestEntityRepository_MemrisImpl_64555424462500.save(Unknown Source)
+	at io.memris.benchmarks.ConcurrentReadWriteBenchmark.doWrite(ConcurrentReadWriteBenchmark.java:163)
+	at io.memris.benchmarks.ConcurrentReadWriteBenchmark.writer_8threads_read4(ConcurrentReadWriteBenchmark.java:146)
+	at io.memris.benchmarks.jmh_generated.ConcurrentReadWriteBenchmark_write8_read4_jmhTest.writer_8threads_read4_thrpt_jmhStub(ConcurrentReadWriteBenchmark_write8_read4_jmhTest.java:228)
+	at io.memris.benchmarks.jmh_generated.ConcurrentReadWriteBenchmark_write8_read4_jmhTest.write8_read4_Throughput(ConcurrentReadWriteBenchmark_write8_read4_jmhTest.java:153)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call(BenchmarkHandler.java:527)
+	at org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call(BenchmarkHandler.java:504)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:317)
+	at java.base/java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:572)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:317)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1144)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:642)
+	at java.base/java.lang.Thread.run(Thread.java:1583)
+Caused by: java.lang.IllegalStateException: Table capacity exceeded: 1048576
+	at io.memris.storage.heap.AbstractTable.allocateRowId(AbstractTable.java:188)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103)
+	... 22 more
+
+java.lang.reflect.InvocationTargetException
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:118)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at io.memris.storage.heap.MethodHandleImplementation$InsertInterceptor.intercept(MethodHandleImplementation.java:806)
+	at io.memris.storage.generated.TestEntityTable.insertFrom(Unknown Source)
+	at io.memris.runtime.TestEntity$MemrisSaver$64555416405000.save(Unknown Source)
+	at io.memris.runtime.RepositoryRuntime.executeSaveOne(RepositoryRuntime.java:588)
+	at io.memris.runtime.RepositoryRuntime.saveOne(RepositoryRuntime.java:469)
+	at io.memris.repository.RepositoryEmitter$SaveOneInterceptor.intercept(RepositoryEmitter.java:616)
+	at io.memris.runtime.TestEntityRepository_MemrisImpl_64555424462500.save(Unknown Source)
+	at io.memris.benchmarks.ConcurrentReadWriteBenchmark.doWrite(ConcurrentReadWriteBenchmark.java:163)
+	at io.memris.benchmarks.ConcurrentReadWriteBenchmark.writer_8threads_read4(ConcurrentReadWriteBenchmark.java:146)
+	at io.memris.benchmarks.jmh_generated.ConcurrentReadWriteBenchmark_write8_read4_jmhTest.writer_8threads_read4_thrpt_jmhStub(ConcurrentReadWriteBenchmark_write8_read4_jmhTest.java:228)
+	at io.memris.benchmarks.jmh_generated.ConcurrentReadWriteBenchmark_write8_read4_jmhTest.write8_read4_Throughput(ConcurrentReadWriteBenchmark_write8_read4_jmhTest.java:153)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call(BenchmarkHandler.java:527)
+	at org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call(BenchmarkHandler.java:504)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:317)
+	at java.base/java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:572)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:317)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1144)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:642)
+	at java.base/java.lang.Thread.run(Thread.java:1583)
+Caused by: java.lang.IllegalStateException: Table capacity exceeded: 1048576
+	at io.memris.storage.heap.AbstractTable.allocateRowId(AbstractTable.java:188)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103)
+	... 22 more
+
+java.lang.reflect.InvocationTargetException
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:118)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at io.memris.storage.heap.MethodHandleImplementation$InsertInterceptor.intercept(MethodHandleImplementation.java:806)
+	at io.memris.storage.generated.TestEntityTable.insertFrom(Unknown Source)
+	at io.memris.runtime.TestEntity$MemrisSaver$64555416405000.save(Unknown Source)
+	at io.memris.runtime.RepositoryRuntime.executeSaveOne(RepositoryRuntime.java:588)
+	at io.memris.runtime.RepositoryRuntime.saveOne(RepositoryRuntime.java:469)
+	at io.memris.repository.RepositoryEmitter$SaveOneInterceptor.intercept(RepositoryEmitter.java:616)
+	at io.memris.runtime.TestEntityRepository_MemrisImpl_64555424462500.save(Unknown Source)
+	at io.memris.benchmarks.ConcurrentReadWriteBenchmark.doWrite(ConcurrentReadWriteBenchmark.java:163)
+	at io.memris.benchmarks.ConcurrentReadWriteBenchmark.writer_8threads_read4(ConcurrentReadWriteBenchmark.java:146)
+	at io.memris.benchmarks.jmh_generated.ConcurrentReadWriteBenchmark_write8_read4_jmhTest.writer_8threads_read4_thrpt_jmhStub(ConcurrentReadWriteBenchmark_write8_read4_jmhTest.java:228)
+	at io.memris.benchmarks.jmh_generated.ConcurrentReadWriteBenchmark_write8_read4_jmhTest.write8_read4_Throughput(ConcurrentReadWriteBenchmark_write8_read4_jmhTest.java:153)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call(BenchmarkHandler.java:527)
+	at org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call(BenchmarkHandler.java:504)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:317)
+	at java.base/java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:572)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:317)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1144)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:642)
+	at java.base/java.lang.Thread.run(Thread.java:1583)
+Caused by: java.lang.IllegalStateException: Table capacity exceeded: 1048576
+	at io.memris.storage.heap.AbstractTable.allocateRowId(AbstractTable.java:188)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103)
+	... 22 more
+
+java.lang.reflect.InvocationTargetException
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:118)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at io.memris.storage.heap.MethodHandleImplementation$InsertInterceptor.intercept(MethodHandleImplementation.java:806)
+	at io.memris.storage.generated.TestEntityTable.insertFrom(Unknown Source)
+	at io.memris.runtime.TestEntity$MemrisSaver$64555416405000.save(Unknown Source)
+	at io.memris.runtime.RepositoryRuntime.executeSaveOne(RepositoryRuntime.java:588)
+	at io.memris.runtime.RepositoryRuntime.saveOne(RepositoryRuntime.java:469)
+	at io.memris.repository.RepositoryEmitter$SaveOneInterceptor.intercept(RepositoryEmitter.java:616)
+	at io.memris.runtime.TestEntityRepository_MemrisImpl_64555424462500.save(Unknown Source)
+	at io.memris.benchmarks.ConcurrentReadWriteBenchmark.doWrite(ConcurrentReadWriteBenchmark.java:163)
+	at io.memris.benchmarks.ConcurrentReadWriteBenchmark.writer_8threads_read4(ConcurrentReadWriteBenchmark.java:146)
+	at io.memris.benchmarks.jmh_generated.ConcurrentReadWriteBenchmark_write8_read4_jmhTest.writer_8threads_read4_thrpt_jmhStub(ConcurrentReadWriteBenchmark_write8_read4_jmhTest.java:228)
+	at io.memris.benchmarks.jmh_generated.ConcurrentReadWriteBenchmark_write8_read4_jmhTest.write8_read4_Throughput(ConcurrentReadWriteBenchmark_write8_read4_jmhTest.java:153)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call(BenchmarkHandler.java:527)
+	at org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call(BenchmarkHandler.java:504)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:317)
+	at java.base/java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:572)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:317)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1144)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:642)
+	at java.base/java.lang.Thread.run(Thread.java:1583)
+Caused by: java.lang.IllegalStateException: Table capacity exceeded: 1048576
+	at io.memris.storage.heap.AbstractTable.allocateRowId(AbstractTable.java:188)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103)
+	... 22 more
+
+java.lang.reflect.InvocationTargetException
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:118)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at io.memris.storage.heap.MethodHandleImplementation$InsertInterceptor.intercept(MethodHandleImplementation.java:806)
+	at io.memris.storage.generated.TestEntityTable.insertFrom(Unknown Source)
+	at io.memris.runtime.TestEntity$MemrisSaver$64555416405000.save(Unknown Source)
+	at io.memris.runtime.RepositoryRuntime.executeSaveOne(RepositoryRuntime.java:588)
+	at io.memris.runtime.RepositoryRuntime.saveOne(RepositoryRuntime.java:469)
+	at io.memris.repository.RepositoryEmitter$SaveOneInterceptor.intercept(RepositoryEmitter.java:616)
+	at io.memris.runtime.TestEntityRepository_MemrisImpl_64555424462500.save(Unknown Source)
+	at io.memris.benchmarks.ConcurrentReadWriteBenchmark.doWrite(ConcurrentReadWriteBenchmark.java:163)
+	at io.memris.benchmarks.ConcurrentReadWriteBenchmark.writer_8threads_read4(ConcurrentReadWriteBenchmark.java:146)
+	at io.memris.benchmarks.jmh_generated.ConcurrentReadWriteBenchmark_write8_read4_jmhTest.writer_8threads_read4_thrpt_jmhStub(ConcurrentReadWriteBenchmark_write8_read4_jmhTest.java:228)
+	at io.memris.benchmarks.jmh_generated.ConcurrentReadWriteBenchmark_write8_read4_jmhTest.write8_read4_Throughput(ConcurrentReadWriteBenchmark_write8_read4_jmhTest.java:153)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call(BenchmarkHandler.java:527)
+	at org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call(BenchmarkHandler.java:504)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:317)
+	at java.base/java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:572)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:317)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1144)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:642)
+	at java.base/java.lang.Thread.run(Thread.java:1583)
+Caused by: java.lang.IllegalStateException: Table capacity exceeded: 1048576
+	at io.memris.storage.heap.AbstractTable.allocateRowId(AbstractTable.java:188)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103)
+	... 22 more
+
+java.lang.reflect.InvocationTargetException
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:118)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at io.memris.storage.heap.MethodHandleImplementation$InsertInterceptor.intercept(MethodHandleImplementation.java:806)
+	at io.memris.storage.generated.TestEntityTable.insertFrom(Unknown Source)
+	at io.memris.runtime.TestEntity$MemrisSaver$64555416405000.save(Unknown Source)
+	at io.memris.runtime.RepositoryRuntime.executeSaveOne(RepositoryRuntime.java:588)
+	at io.memris.runtime.RepositoryRuntime.saveOne(RepositoryRuntime.java:469)
+	at io.memris.repository.RepositoryEmitter$SaveOneInterceptor.intercept(RepositoryEmitter.java:616)
+	at io.memris.runtime.TestEntityRepository_MemrisImpl_64555424462500.save(Unknown Source)
+	at io.memris.benchmarks.ConcurrentReadWriteBenchmark.doWrite(ConcurrentReadWriteBenchmark.java:163)
+	at io.memris.benchmarks.ConcurrentReadWriteBenchmark.writer_8threads_read4(ConcurrentReadWriteBenchmark.java:146)
+	at io.memris.benchmarks.jmh_generated.ConcurrentReadWriteBenchmark_write8_read4_jmhTest.writer_8threads_read4_thrpt_jmhStub(ConcurrentReadWriteBenchmark_write8_read4_jmhTest.java:228)
+	at io.memris.benchmarks.jmh_generated.ConcurrentReadWriteBenchmark_write8_read4_jmhTest.write8_read4_Throughput(ConcurrentReadWriteBenchmark_write8_read4_jmhTest.java:153)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call(BenchmarkHandler.java:527)
+	at org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call(BenchmarkHandler.java:504)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:317)
+	at java.base/java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:572)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:317)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1144)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:642)
+	at java.base/java.lang.Thread.run(Thread.java:1583)
+Caused by: java.lang.IllegalStateException: Table capacity exceeded: 1048576
+	at io.memris.storage.heap.AbstractTable.allocateRowId(AbstractTable.java:188)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103)
+	... 22 more
+
+java.lang.reflect.InvocationTargetException
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:118)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at io.memris.storage.heap.MethodHandleImplementation$InsertInterceptor.intercept(MethodHandleImplementation.java:806)
+	at io.memris.storage.generated.TestEntityTable.insertFrom(Unknown Source)
+	at io.memris.runtime.TestEntity$MemrisSaver$64555416405000.save(Unknown Source)
+	at io.memris.runtime.RepositoryRuntime.executeSaveOne(RepositoryRuntime.java:588)
+	at io.memris.runtime.RepositoryRuntime.saveOne(RepositoryRuntime.java:469)
+	at io.memris.repository.RepositoryEmitter$SaveOneInterceptor.intercept(RepositoryEmitter.java:616)
+	at io.memris.runtime.TestEntityRepository_MemrisImpl_64555424462500.save(Unknown Source)
+	at io.memris.benchmarks.ConcurrentReadWriteBenchmark.doWrite(ConcurrentReadWriteBenchmark.java:163)
+	at io.memris.benchmarks.ConcurrentReadWriteBenchmark.writer_8threads_read4(ConcurrentReadWriteBenchmark.java:146)
+	at io.memris.benchmarks.jmh_generated.ConcurrentReadWriteBenchmark_write8_read4_jmhTest.writer_8threads_read4_thrpt_jmhStub(ConcurrentReadWriteBenchmark_write8_read4_jmhTest.java:228)
+	at io.memris.benchmarks.jmh_generated.ConcurrentReadWriteBenchmark_write8_read4_jmhTest.write8_read4_Throughput(ConcurrentReadWriteBenchmark_write8_read4_jmhTest.java:153)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call(BenchmarkHandler.java:527)
+	at org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call(BenchmarkHandler.java:504)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:317)
+	at java.base/java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:572)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:317)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1144)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:642)
+	at java.base/java.lang.Thread.run(Thread.java:1583)
+Caused by: java.lang.IllegalStateException: Table capacity exceeded: 1048576
+	at io.memris.storage.heap.AbstractTable.allocateRowId(AbstractTable.java:188)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103)
+	... 22 more
+
+
+
+
+# JMH version: 1.37
+# VM version: JDK 21.0.7, OpenJDK 64-Bit Server VM, 21.0.7+6-LTS
+# VM invoker: C:\Program Files\Microsoft\jdk-21.0.7.6-hotspot\bin\java.exe
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 2 iterations, 2 s each
+# Measurement: 3 iterations, 5 s each
+# Timeout: 10 min per iteration
+# Threads: 16 threads (1 group; 8x "reader_8threads", 8x "writer_8threads" in each group), will synchronize iterations
+# Benchmark mode: Throughput, ops/time
+# Benchmark: io.memris.benchmarks.ConcurrentReadWriteBenchmark.write8_read8
+# Parameters: (initialRows = 100000)
+
+# Run progress: 62.50% complete, ETA 00:00:31
+# Fork: 1 of 1
+# Warmup Iteration   1: 1222307.181 ops/s
+# Warmup Iteration   2: 1562681.249 ops/s
+Iteration   1: <failure>
+
+java.lang.reflect.InvocationTargetException
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:118)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at io.memris.storage.heap.MethodHandleImplementation$InsertInterceptor.intercept(MethodHandleImplementation.java:806)
+	at io.memris.storage.generated.TestEntityTable.insertFrom(Unknown Source)
+	at io.memris.runtime.TestEntity$MemrisSaver$64562633131900.save(Unknown Source)
+	at io.memris.runtime.RepositoryRuntime.executeSaveOne(RepositoryRuntime.java:588)
+	at io.memris.runtime.RepositoryRuntime.saveOne(RepositoryRuntime.java:469)
+	at io.memris.repository.RepositoryEmitter$SaveOneInterceptor.intercept(RepositoryEmitter.java:616)
+	at io.memris.runtime.TestEntityRepository_MemrisImpl_64562641541400.save(Unknown Source)
+	at io.memris.benchmarks.ConcurrentReadWriteBenchmark.doWrite(ConcurrentReadWriteBenchmark.java:163)
+	at io.memris.benchmarks.ConcurrentReadWriteBenchmark.writer_8threads(ConcurrentReadWriteBenchmark.java:116)
+	at io.memris.benchmarks.jmh_generated.ConcurrentReadWriteBenchmark_write8_read8_jmhTest.writer_8threads_thrpt_jmhStub(ConcurrentReadWriteBenchmark_write8_read8_jmhTest.java:228)
+	at io.memris.benchmarks.jmh_generated.ConcurrentReadWriteBenchmark_write8_read8_jmhTest.write8_read8_Throughput(ConcurrentReadWriteBenchmark_write8_read8_jmhTest.java:153)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call(BenchmarkHandler.java:527)
+	at org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call(BenchmarkHandler.java:504)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:317)
+	at java.base/java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:572)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:317)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1144)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:642)
+	at java.base/java.lang.Thread.run(Thread.java:1583)
+Caused by: java.lang.IllegalStateException: Table capacity exceeded: 1048576
+	at io.memris.storage.heap.AbstractTable.allocateRowId(AbstractTable.java:188)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103)
+	... 22 more
+
+java.lang.reflect.InvocationTargetException
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:118)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at io.memris.storage.heap.MethodHandleImplementation$InsertInterceptor.intercept(MethodHandleImplementation.java:806)
+	at io.memris.storage.generated.TestEntityTable.insertFrom(Unknown Source)
+	at io.memris.runtime.TestEntity$MemrisSaver$64562633131900.save(Unknown Source)
+	at io.memris.runtime.RepositoryRuntime.executeSaveOne(RepositoryRuntime.java:588)
+	at io.memris.runtime.RepositoryRuntime.saveOne(RepositoryRuntime.java:469)
+	at io.memris.repository.RepositoryEmitter$SaveOneInterceptor.intercept(RepositoryEmitter.java:616)
+	at io.memris.runtime.TestEntityRepository_MemrisImpl_64562641541400.save(Unknown Source)
+	at io.memris.benchmarks.ConcurrentReadWriteBenchmark.doWrite(ConcurrentReadWriteBenchmark.java:163)
+	at io.memris.benchmarks.ConcurrentReadWriteBenchmark.writer_8threads(ConcurrentReadWriteBenchmark.java:116)
+	at io.memris.benchmarks.jmh_generated.ConcurrentReadWriteBenchmark_write8_read8_jmhTest.writer_8threads_thrpt_jmhStub(ConcurrentReadWriteBenchmark_write8_read8_jmhTest.java:228)
+	at io.memris.benchmarks.jmh_generated.ConcurrentReadWriteBenchmark_write8_read8_jmhTest.write8_read8_Throughput(ConcurrentReadWriteBenchmark_write8_read8_jmhTest.java:153)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call(BenchmarkHandler.java:527)
+	at org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call(BenchmarkHandler.java:504)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:317)
+	at java.base/java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:572)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:317)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1144)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:642)
+	at java.base/java.lang.Thread.run(Thread.java:1583)
+Caused by: java.lang.IllegalStateException: Table capacity exceeded: 1048576
+	at io.memris.storage.heap.AbstractTable.allocateRowId(AbstractTable.java:188)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103)
+	... 22 more
+
+java.lang.reflect.InvocationTargetException
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:118)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at io.memris.storage.heap.MethodHandleImplementation$InsertInterceptor.intercept(MethodHandleImplementation.java:806)
+	at io.memris.storage.generated.TestEntityTable.insertFrom(Unknown Source)
+	at io.memris.runtime.TestEntity$MemrisSaver$64562633131900.save(Unknown Source)
+	at io.memris.runtime.RepositoryRuntime.executeSaveOne(RepositoryRuntime.java:588)
+	at io.memris.runtime.RepositoryRuntime.saveOne(RepositoryRuntime.java:469)
+	at io.memris.repository.RepositoryEmitter$SaveOneInterceptor.intercept(RepositoryEmitter.java:616)
+	at io.memris.runtime.TestEntityRepository_MemrisImpl_64562641541400.save(Unknown Source)
+	at io.memris.benchmarks.ConcurrentReadWriteBenchmark.doWrite(ConcurrentReadWriteBenchmark.java:163)
+	at io.memris.benchmarks.ConcurrentReadWriteBenchmark.writer_8threads(ConcurrentReadWriteBenchmark.java:116)
+	at io.memris.benchmarks.jmh_generated.ConcurrentReadWriteBenchmark_write8_read8_jmhTest.writer_8threads_thrpt_jmhStub(ConcurrentReadWriteBenchmark_write8_read8_jmhTest.java:228)
+	at io.memris.benchmarks.jmh_generated.ConcurrentReadWriteBenchmark_write8_read8_jmhTest.write8_read8_Throughput(ConcurrentReadWriteBenchmark_write8_read8_jmhTest.java:153)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call(BenchmarkHandler.java:527)
+	at org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call(BenchmarkHandler.java:504)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:317)
+	at java.base/java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:572)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:317)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1144)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:642)
+	at java.base/java.lang.Thread.run(Thread.java:1583)
+Caused by: java.lang.IllegalStateException: Table capacity exceeded: 1048576
+	at io.memris.storage.heap.AbstractTable.allocateRowId(AbstractTable.java:188)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103)
+	... 22 more
+
+java.lang.reflect.InvocationTargetException
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:118)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at io.memris.storage.heap.MethodHandleImplementation$InsertInterceptor.intercept(MethodHandleImplementation.java:806)
+	at io.memris.storage.generated.TestEntityTable.insertFrom(Unknown Source)
+	at io.memris.runtime.TestEntity$MemrisSaver$64562633131900.save(Unknown Source)
+	at io.memris.runtime.RepositoryRuntime.executeSaveOne(RepositoryRuntime.java:588)
+	at io.memris.runtime.RepositoryRuntime.saveOne(RepositoryRuntime.java:469)
+	at io.memris.repository.RepositoryEmitter$SaveOneInterceptor.intercept(RepositoryEmitter.java:616)
+	at io.memris.runtime.TestEntityRepository_MemrisImpl_64562641541400.save(Unknown Source)
+	at io.memris.benchmarks.ConcurrentReadWriteBenchmark.doWrite(ConcurrentReadWriteBenchmark.java:163)
+	at io.memris.benchmarks.ConcurrentReadWriteBenchmark.writer_8threads(ConcurrentReadWriteBenchmark.java:116)
+	at io.memris.benchmarks.jmh_generated.ConcurrentReadWriteBenchmark_write8_read8_jmhTest.writer_8threads_thrpt_jmhStub(ConcurrentReadWriteBenchmark_write8_read8_jmhTest.java:228)
+	at io.memris.benchmarks.jmh_generated.ConcurrentReadWriteBenchmark_write8_read8_jmhTest.write8_read8_Throughput(ConcurrentReadWriteBenchmark_write8_read8_jmhTest.java:153)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call(BenchmarkHandler.java:527)
+	at org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call(BenchmarkHandler.java:504)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:317)
+	at java.base/java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:572)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:317)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1144)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:642)
+	at java.base/java.lang.Thread.run(Thread.java:1583)
+Caused by: java.lang.IllegalStateException: Table capacity exceeded: 1048576
+	at io.memris.storage.heap.AbstractTable.allocateRowId(AbstractTable.java:188)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103)
+	... 22 more
+
+java.lang.reflect.InvocationTargetException
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:118)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at io.memris.storage.heap.MethodHandleImplementation$InsertInterceptor.intercept(MethodHandleImplementation.java:806)
+	at io.memris.storage.generated.TestEntityTable.insertFrom(Unknown Source)
+	at io.memris.runtime.TestEntity$MemrisSaver$64562633131900.save(Unknown Source)
+	at io.memris.runtime.RepositoryRuntime.executeSaveOne(RepositoryRuntime.java:588)
+	at io.memris.runtime.RepositoryRuntime.saveOne(RepositoryRuntime.java:469)
+	at io.memris.repository.RepositoryEmitter$SaveOneInterceptor.intercept(RepositoryEmitter.java:616)
+	at io.memris.runtime.TestEntityRepository_MemrisImpl_64562641541400.save(Unknown Source)
+	at io.memris.benchmarks.ConcurrentReadWriteBenchmark.doWrite(ConcurrentReadWriteBenchmark.java:163)
+	at io.memris.benchmarks.ConcurrentReadWriteBenchmark.writer_8threads(ConcurrentReadWriteBenchmark.java:116)
+	at io.memris.benchmarks.jmh_generated.ConcurrentReadWriteBenchmark_write8_read8_jmhTest.writer_8threads_thrpt_jmhStub(ConcurrentReadWriteBenchmark_write8_read8_jmhTest.java:228)
+	at io.memris.benchmarks.jmh_generated.ConcurrentReadWriteBenchmark_write8_read8_jmhTest.write8_read8_Throughput(ConcurrentReadWriteBenchmark_write8_read8_jmhTest.java:153)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call(BenchmarkHandler.java:527)
+	at org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call(BenchmarkHandler.java:504)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:317)
+	at java.base/java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:572)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:317)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1144)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:642)
+	at java.base/java.lang.Thread.run(Thread.java:1583)
+Caused by: java.lang.IllegalStateException: Table capacity exceeded: 1048576
+	at io.memris.storage.heap.AbstractTable.allocateRowId(AbstractTable.java:188)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103)
+	... 22 more
+
+java.lang.reflect.InvocationTargetException
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:118)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at io.memris.storage.heap.MethodHandleImplementation$InsertInterceptor.intercept(MethodHandleImplementation.java:806)
+	at io.memris.storage.generated.TestEntityTable.insertFrom(Unknown Source)
+	at io.memris.runtime.TestEntity$MemrisSaver$64562633131900.save(Unknown Source)
+	at io.memris.runtime.RepositoryRuntime.executeSaveOne(RepositoryRuntime.java:588)
+	at io.memris.runtime.RepositoryRuntime.saveOne(RepositoryRuntime.java:469)
+	at io.memris.repository.RepositoryEmitter$SaveOneInterceptor.intercept(RepositoryEmitter.java:616)
+	at io.memris.runtime.TestEntityRepository_MemrisImpl_64562641541400.save(Unknown Source)
+	at io.memris.benchmarks.ConcurrentReadWriteBenchmark.doWrite(ConcurrentReadWriteBenchmark.java:163)
+	at io.memris.benchmarks.ConcurrentReadWriteBenchmark.writer_8threads(ConcurrentReadWriteBenchmark.java:116)
+	at io.memris.benchmarks.jmh_generated.ConcurrentReadWriteBenchmark_write8_read8_jmhTest.writer_8threads_thrpt_jmhStub(ConcurrentReadWriteBenchmark_write8_read8_jmhTest.java:228)
+	at io.memris.benchmarks.jmh_generated.ConcurrentReadWriteBenchmark_write8_read8_jmhTest.write8_read8_Throughput(ConcurrentReadWriteBenchmark_write8_read8_jmhTest.java:153)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call(BenchmarkHandler.java:527)
+	at org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call(BenchmarkHandler.java:504)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:317)
+	at java.base/java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:572)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:317)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1144)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:642)
+	at java.base/java.lang.Thread.run(Thread.java:1583)
+Caused by: java.lang.IllegalStateException: Table capacity exceeded: 1048576
+	at io.memris.storage.heap.AbstractTable.allocateRowId(AbstractTable.java:188)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103)
+	... 22 more
+
+java.lang.reflect.InvocationTargetException
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:118)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at io.memris.storage.heap.MethodHandleImplementation$InsertInterceptor.intercept(MethodHandleImplementation.java:806)
+	at io.memris.storage.generated.TestEntityTable.insertFrom(Unknown Source)
+	at io.memris.runtime.TestEntity$MemrisSaver$64562633131900.save(Unknown Source)
+	at io.memris.runtime.RepositoryRuntime.executeSaveOne(RepositoryRuntime.java:588)
+	at io.memris.runtime.RepositoryRuntime.saveOne(RepositoryRuntime.java:469)
+	at io.memris.repository.RepositoryEmitter$SaveOneInterceptor.intercept(RepositoryEmitter.java:616)
+	at io.memris.runtime.TestEntityRepository_MemrisImpl_64562641541400.save(Unknown Source)
+	at io.memris.benchmarks.ConcurrentReadWriteBenchmark.doWrite(ConcurrentReadWriteBenchmark.java:163)
+	at io.memris.benchmarks.ConcurrentReadWriteBenchmark.writer_8threads(ConcurrentReadWriteBenchmark.java:116)
+	at io.memris.benchmarks.jmh_generated.ConcurrentReadWriteBenchmark_write8_read8_jmhTest.writer_8threads_thrpt_jmhStub(ConcurrentReadWriteBenchmark_write8_read8_jmhTest.java:228)
+	at io.memris.benchmarks.jmh_generated.ConcurrentReadWriteBenchmark_write8_read8_jmhTest.write8_read8_Throughput(ConcurrentReadWriteBenchmark_write8_read8_jmhTest.java:153)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call(BenchmarkHandler.java:527)
+	at org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call(BenchmarkHandler.java:504)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:317)
+	at java.base/java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:572)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:317)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1144)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:642)
+	at java.base/java.lang.Thread.run(Thread.java:1583)
+Caused by: java.lang.IllegalStateException: Table capacity exceeded: 1048576
+	at io.memris.storage.heap.AbstractTable.allocateRowId(AbstractTable.java:188)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103)
+	... 22 more
+
+java.lang.reflect.InvocationTargetException
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:118)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at io.memris.storage.heap.MethodHandleImplementation$InsertInterceptor.intercept(MethodHandleImplementation.java:806)
+	at io.memris.storage.generated.TestEntityTable.insertFrom(Unknown Source)
+	at io.memris.runtime.TestEntity$MemrisSaver$64562633131900.save(Unknown Source)
+	at io.memris.runtime.RepositoryRuntime.executeSaveOne(RepositoryRuntime.java:588)
+	at io.memris.runtime.RepositoryRuntime.saveOne(RepositoryRuntime.java:469)
+	at io.memris.repository.RepositoryEmitter$SaveOneInterceptor.intercept(RepositoryEmitter.java:616)
+	at io.memris.runtime.TestEntityRepository_MemrisImpl_64562641541400.save(Unknown Source)
+	at io.memris.benchmarks.ConcurrentReadWriteBenchmark.doWrite(ConcurrentReadWriteBenchmark.java:163)
+	at io.memris.benchmarks.ConcurrentReadWriteBenchmark.writer_8threads(ConcurrentReadWriteBenchmark.java:116)
+	at io.memris.benchmarks.jmh_generated.ConcurrentReadWriteBenchmark_write8_read8_jmhTest.writer_8threads_thrpt_jmhStub(ConcurrentReadWriteBenchmark_write8_read8_jmhTest.java:228)
+	at io.memris.benchmarks.jmh_generated.ConcurrentReadWriteBenchmark_write8_read8_jmhTest.write8_read8_Throughput(ConcurrentReadWriteBenchmark_write8_read8_jmhTest.java:153)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call(BenchmarkHandler.java:527)
+	at org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call(BenchmarkHandler.java:504)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:317)
+	at java.base/java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:572)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:317)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1144)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:642)
+	at java.base/java.lang.Thread.run(Thread.java:1583)
+Caused by: java.lang.IllegalStateException: Table capacity exceeded: 1048576
+	at io.memris.storage.heap.AbstractTable.allocateRowId(AbstractTable.java:188)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103)
+	... 22 more
+
+
+
+
+# JMH version: 1.37
+# VM version: JDK 21.0.7, OpenJDK 64-Bit Server VM, 21.0.7+6-LTS
+# VM invoker: C:\Program Files\Microsoft\jdk-21.0.7.6-hotspot\bin\java.exe
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 2 iterations, 2 s each
+# Measurement: 3 iterations, 2 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Throughput, ops/time
+# Benchmark: io.memris.benchmarks.TestEntityRepositoryBenchmark.mixedSaveUpdateDelete
+# Parameters: (deletePct = 20, initialRows = 1000000, opsPerInvocation = 1000000, savePct = 40, updatePct = 40)
+
+# Run progress: 75.00% complete, ETA 00:00:20
+# Fork: 1 of 1
+# Warmup Iteration   1: <failure>
+
+java.lang.reflect.InvocationTargetException
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:118)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at io.memris.storage.heap.MethodHandleImplementation$InsertInterceptor.intercept(MethodHandleImplementation.java:806)
+	at io.memris.storage.generated.TestEntityTable.insertFrom(Unknown Source)
+	at io.memris.runtime.TestEntity$MemrisSaver$64569787504700.save(Unknown Source)
+	at io.memris.runtime.RepositoryRuntime.executeSaveOne(RepositoryRuntime.java:588)
+	at io.memris.runtime.RepositoryRuntime.saveOne(RepositoryRuntime.java:469)
+	at io.memris.repository.RepositoryEmitter$SaveOneInterceptor.intercept(RepositoryEmitter.java:616)
+	at io.memris.runtime.TestEntityRepository_MemrisImpl_64569796067300.save(Unknown Source)
+	at io.memris.benchmarks.TestEntityRepositoryBenchmark.mixedSaveUpdateDelete(TestEntityRepositoryBenchmark.java:114)
+	at io.memris.benchmarks.jmh_generated.TestEntityRepositoryBenchmark_mixedSaveUpdateDelete_jmhTest.mixedSaveUpdateDelete_thrpt_jmhStub(TestEntityRepositoryBenchmark_mixedSaveUpdateDelete_jmhTest.java:152)
+	at io.memris.benchmarks.jmh_generated.TestEntityRepositoryBenchmark_mixedSaveUpdateDelete_jmhTest.mixedSaveUpdateDelete_Throughput(TestEntityRepositoryBenchmark_mixedSaveUpdateDelete_jmhTest.java:89)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call(BenchmarkHandler.java:527)
+	at org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call(BenchmarkHandler.java:504)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:317)
+	at java.base/java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:572)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:317)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1144)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:642)
+	at java.base/java.lang.Thread.run(Thread.java:1583)
+Caused by: java.lang.IllegalStateException: Table capacity exceeded: 1048576
+	at io.memris.storage.heap.AbstractTable.allocateRowId(AbstractTable.java:188)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103)
+	... 21 more
+
+
+
+
+# JMH version: 1.37
+# VM version: JDK 21.0.7, OpenJDK 64-Bit Server VM, 21.0.7+6-LTS
+# VM invoker: C:\Program Files\Microsoft\jdk-21.0.7.6-hotspot\bin\java.exe
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 2 iterations, 1 s each
+# Measurement: 5 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: io.memris.benchmarks.MemrisBenchmarks.count_rows
+
+# Run progress: 81.58% complete, ETA 00:00:15
+# Fork: 1 of 1
+# Warmup Iteration   1: ? 10?? ms/op
+# Warmup Iteration   2: ? 10?? ms/op
+Iteration   1: ? 10?? ms/op
+Iteration   2: ? 10?? ms/op
+Iteration   3: ? 10?? ms/op
+Iteration   4: ? 10?? ms/op
+Iteration   5: ? 10?? ms/op
+
+
+Result "io.memris.benchmarks.MemrisBenchmarks.count_rows":
+  ? 10?? ms/op
+
+
+# JMH version: 1.37
+# VM version: JDK 21.0.7, OpenJDK 64-Bit Server VM, 21.0.7+6-LTS
+# VM invoker: C:\Program Files\Microsoft\jdk-21.0.7.6-hotspot\bin\java.exe
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 2 iterations, 1 s each
+# Measurement: 5 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: io.memris.benchmarks.MemrisBenchmarks.insert_100k_rows
+
+# Run progress: 86.18% complete, ETA 00:00:12
+# Fork: 1 of 1
+# Warmup Iteration   1: 0.008 ms/op
+# Warmup Iteration   2: 0.007 ms/op
+Iteration   1: 0.007 ms/op
+Iteration   2: 0.007 ms/op
+Iteration   3: 0.007 ms/op
+Iteration   4: 0.007 ms/op
+Iteration   5: 0.007 ms/op
+
+
+Result "io.memris.benchmarks.MemrisBenchmarks.insert_100k_rows":
+  0.007 ±(99.9%) 0.001 ms/op [Average]
+  (min, avg, max) = (0.007, 0.007, 0.007), stdev = 0.001
+  CI (99.9%): [0.006, 0.008] (assumes normal distribution)
+
+
+# JMH version: 1.37
+# VM version: JDK 21.0.7, OpenJDK 64-Bit Server VM, 21.0.7+6-LTS
+# VM invoker: C:\Program Files\Microsoft\jdk-21.0.7.6-hotspot\bin\java.exe
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 2 iterations, 1 s each
+# Measurement: 5 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: io.memris.benchmarks.MemrisBenchmarks.lookup_by_id
+
+# Run progress: 90.79% complete, ETA 00:00:09
+# Fork: 1 of 1
+# Warmup Iteration   1: 0.002 ms/op
+# Warmup Iteration   2: 0.002 ms/op
+Iteration   1: 0.002 ms/op
+Iteration   2: 0.002 ms/op
+Iteration   3: 0.002 ms/op
+Iteration   4: 0.002 ms/op
+Iteration   5: 0.002 ms/op
+
+
+Result "io.memris.benchmarks.MemrisBenchmarks.lookup_by_id":
+  0.002 ±(99.9%) 0.001 ms/op [Average]
+  (min, avg, max) = (0.002, 0.002, 0.002), stdev = 0.001
+  CI (99.9%): [0.002, 0.002] (assumes normal distribution)
+
+
+# JMH version: 1.37
+# VM version: JDK 21.0.7, OpenJDK 64-Bit Server VM, 21.0.7+6-LTS
+# VM invoker: C:\Program Files\Microsoft\jdk-21.0.7.6-hotspot\bin\java.exe
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 2 iterations, 1 s each
+# Measurement: 5 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: io.memris.benchmarks.MemrisBenchmarks.scan_all_rows
+
+# Run progress: 95.39% complete, ETA 00:00:04
+# Fork: 1 of 1
+# Warmup Iteration   1: 176.619 ms/op
+# Warmup Iteration   2: 170.924 ms/op
+Iteration   1: 168.182 ms/op
+Iteration   2: 171.986 ms/op
+Iteration   3: 169.194 ms/op
+Iteration   4: 168.444 ms/op
+Iteration   5: 169.310 ms/op
+
+
+Result "io.memris.benchmarks.MemrisBenchmarks.scan_all_rows":
+  169.423 ±(99.9%) 5.818 ms/op [Average]
+  (min, avg, max) = (168.182, 169.423, 171.986), stdev = 1.511
+  CI (99.9%): [163.605, 175.241] (assumes normal distribution)
+
+
+# Run complete. Total time: 00:01:51
+
+REMEMBER: The numbers below are just data. To gain reusable insights, you need to follow up on
+why the numbers are the way they are. Use profilers (see -prof, -lprof), design factorial
+experiments, perform baseline and negative tests that provide experimental control, make sure
+the benchmarking environment is safe on JVM/OS/HW level, ask for reviews from the domain experts.
+Do not assume the numbers tell you what you want them to tell.
+
+NOTE: Current JVM experimentally supports Compiler Blackholes, and they are in use. Please exercise
+extra caution when trusting the results, look into the generated code to check the benchmark still
+works, and factor in a small probability of new VM bugs. Additionally, while comparisons between
+different JVMs are already problematic, the performance difference caused by different Blackhole
+modes can be very significant. Please make sure you use the consistent Blackhole mode for comparisons.
+
+Benchmark                                                 (initialRows)   Mode  Cnt       Score    Error  Units
+ConcurrentReadWriteBenchmark.write1_read1                        100000  thrpt    2  524969.922           ops/s
+ConcurrentReadWriteBenchmark.write1_read1:reader_1thread         100000  thrpt    2  394384.620           ops/s
+ConcurrentReadWriteBenchmark.write1_read1:writer_1thread         100000  thrpt    2  130585.301           ops/s
+MemrisBenchmarks.count_rows                                         N/A   avgt    5      ? 10??           ms/op
+MemrisBenchmarks.insert_100k_rows                                   N/A   avgt    5       0.007 ±  0.001  ms/op
+MemrisBenchmarks.lookup_by_id                                       N/A   avgt    5       0.002 ±  0.001  ms/op
+MemrisBenchmarks.scan_all_rows                                      N/A   avgt    5     169.423 ±  5.818  ms/op
+[INFO] ------------------------------------------------------------------------
+[INFO] BUILD SUCCESS
+[INFO] ------------------------------------------------------------------------
+[INFO] Total time:  01:54 min
+[INFO] Finished at: 2026-02-01T19:26:46-05:00
+[INFO] ------------------------------------------------------------------------

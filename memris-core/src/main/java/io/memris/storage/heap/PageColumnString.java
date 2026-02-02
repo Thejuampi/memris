@@ -71,7 +71,7 @@ public final class PageColumnString {
         if (initialPages > maxPages) {
             throw new IllegalArgumentException("initialPages exceeds maxPages: " + initialPages);
         }
-        long total = (long) pageSize * (long) maxPages;
+        var total = (long) pageSize * (long) maxPages;
         if (total > Integer.MAX_VALUE) {
             throw new IllegalArgumentException("capacity exceeds Integer.MAX_VALUE: " + total);
         }
@@ -79,7 +79,7 @@ public final class PageColumnString {
         this.maxPages = maxPages;
         this.capacity = (int) total;
         this.pages = new AtomicReferenceArray<>(maxPages);
-        for (int pageId = 0; pageId < initialPages; pageId++) {
+        for (var pageId = 0; pageId < initialPages; pageId++) {
             getOrCreatePage(pageId);
         }
         this.published = 0;
@@ -104,9 +104,9 @@ public final class PageColumnString {
         if (offset < 0 || offset >= capacity) {
             throw new IndexOutOfBoundsException("offset out of range: " + offset);
         }
-        int pageId = offset / pageSize;
-        int pageOffset = offset % pageSize;
-        ColumnPage page = pages.get(pageId);
+        var pageId = offset / pageSize;
+        var pageOffset = offset % pageSize;
+        var page = pages.get(pageId);
         if (page == null || page.present[pageOffset] == 0) {
             return null;
         }
@@ -120,9 +120,9 @@ public final class PageColumnString {
         if (offset < 0 || offset >= capacity) {
             throw new IndexOutOfBoundsException("offset out of range: " + offset);
         }
-        int pageId = offset / pageSize;
-        int pageOffset = offset % pageSize;
-        ColumnPage page = pages.get(pageId);
+        var pageId = offset / pageSize;
+        var pageOffset = offset % pageSize;
+        var page = pages.get(pageId);
         return page != null && page.present[pageOffset] != 0;
     }
 
@@ -136,9 +136,9 @@ public final class PageColumnString {
         if (offset < 0 || offset >= capacity) {
             throw new IndexOutOfBoundsException("offset out of range: " + offset);
         }
-        int pageId = offset / pageSize;
-        int pageOffset = offset % pageSize;
-        ColumnPage page = getOrCreatePage(pageId);
+        var pageId = offset / pageSize;
+        var pageOffset = offset % pageSize;
+        var page = getOrCreatePage(pageId);
         page.values[pageOffset] = value;
         page.present[pageOffset] = 1;
     }
@@ -150,9 +150,9 @@ public final class PageColumnString {
         if (offset < 0 || offset >= capacity) {
             throw new IndexOutOfBoundsException("offset out of range: " + offset);
         }
-        int pageId = offset / pageSize;
-        int pageOffset = offset % pageSize;
-        ColumnPage page = getOrCreatePage(pageId);
+        var pageId = offset / pageSize;
+        var pageOffset = offset % pageSize;
+        var page = getOrCreatePage(pageId);
         page.values[pageOffset] = null;
         page.present[pageOffset] = 0;
     }
@@ -190,22 +190,22 @@ public final class PageColumnString {
             return scanNull(limit);
         }
 
-        int count = Math.min(published, limit);
-        int[] results = new int[count];
-        int found = 0;
+        var count = Math.min(published, limit);
+        var results = new int[count];
+        var found = 0;
 
-        int remaining = count;
-        for (int pageId = 0; pageId < maxPages && remaining > 0; pageId++) {
-            int pageLimit = Math.min(pageSize, remaining);
-            int base = pageId * pageSize;
-            ColumnPage page = pages.get(pageId);
+        var remaining = count;
+        for (var pageId = 0; pageId < maxPages && remaining > 0; pageId++) {
+            var pageLimit = Math.min(pageSize, remaining);
+            var base = pageId * pageSize;
+            var page = pages.get(pageId);
             if (page == null) {
                 remaining -= pageLimit;
                 continue;
             }
             byte[] present = page.present;
             String[] data = page.values;
-            for (int i = 0; i < pageLimit; i++) {
+            for (var i = 0; i < pageLimit; i++) {
                 if (present[i] != 0 && target.equals(data[i])) {
                     results[found++] = base + i;
                 }
@@ -228,27 +228,27 @@ public final class PageColumnString {
             return scanNull(limit);
         }
 
-        int count = Math.min(published, limit);
-        int[] results = new int[count];
-        int found = 0;
+        var count = Math.min(published, limit);
+        var results = new int[count];
+        var found = 0;
 
-        String lowerTarget = target.toLowerCase();
-        int remaining = count;
-        for (int pageId = 0; pageId < maxPages && remaining > 0; pageId++) {
-            int pageLimit = Math.min(pageSize, remaining);
-            int base = pageId * pageSize;
-            ColumnPage page = pages.get(pageId);
+        var lowerTarget = target.toLowerCase();
+        var remaining = count;
+        for (var pageId = 0; pageId < maxPages && remaining > 0; pageId++) {
+            var pageLimit = Math.min(pageSize, remaining);
+            var base = pageId * pageSize;
+            var page = pages.get(pageId);
             if (page == null) {
                 remaining -= pageLimit;
                 continue;
             }
             byte[] present = page.present;
             String[] data = page.values;
-            for (int i = 0; i < pageLimit; i++) {
+            for (var i = 0; i < pageLimit; i++) {
                 if (present[i] == 0) {
                     continue;
                 }
-                String value = data[i];
+                var value = data[i];
                 if (value != null && value.toLowerCase().equals(lowerTarget)) {
                     results[found++] = base + i;
                 }
@@ -274,29 +274,29 @@ public final class PageColumnString {
         }
 
         // Use HashSet for O(1) lookup - more efficient for large target sets
-        java.util.HashSet<String> targetSet = new java.util.HashSet<>(targets.length * 2);
+        var targetSet = new java.util.HashSet<>(targets.length * 2);
         for (String target : targets) {
             if (target != null) {
                 targetSet.add(target);
             }
         }
 
-        int count = Math.min(published, limit);
-        int[] results = new int[count];
-        int found = 0;
+        var count = Math.min(published, limit);
+        var results = new int[count];
+        var found = 0;
 
-        int remaining = count;
-        for (int pageId = 0; pageId < maxPages && remaining > 0; pageId++) {
-            int pageLimit = Math.min(pageSize, remaining);
-            int base = pageId * pageSize;
-            ColumnPage page = pages.get(pageId);
+        var remaining = count;
+        for (var pageId = 0; pageId < maxPages && remaining > 0; pageId++) {
+            var pageLimit = Math.min(pageSize, remaining);
+            var base = pageId * pageSize;
+            var page = pages.get(pageId);
             if (page == null) {
                 remaining -= pageLimit;
                 continue;
             }
             byte[] present = page.present;
             String[] data = page.values;
-            for (int i = 0; i < pageLimit; i++) {
+            for (var i = 0; i < pageLimit; i++) {
                 if (present[i] != 0 && targetSet.contains(data[i])) {
                     results[found++] = base + i;
                 }
@@ -311,21 +311,21 @@ public final class PageColumnString {
      * Scan for null values.
      */
     private int[] scanNull(int limit) {
-        int count = Math.min(published, limit);
-        int[] results = new int[count];
-        int found = 0;
+        var count = Math.min(published, limit);
+        var results = new int[count];
+        var found = 0;
 
-        int remaining = count;
-        for (int pageId = 0; pageId < maxPages && remaining > 0; pageId++) {
-            int pageLimit = Math.min(pageSize, remaining);
-            int base = pageId * pageSize;
-            ColumnPage page = pages.get(pageId);
+        var remaining = count;
+        for (var pageId = 0; pageId < maxPages && remaining > 0; pageId++) {
+            var pageLimit = Math.min(pageSize, remaining);
+            var base = pageId * pageSize;
+            var page = pages.get(pageId);
             if (page == null) {
                 remaining -= pageLimit;
                 continue;
             }
             byte[] present = page.present;
-            for (int i = 0; i < pageLimit; i++) {
+            for (var i = 0; i < pageLimit; i++) {
                 if (present[i] == 0) {
                     results[found++] = base + i;
                 }
@@ -344,7 +344,7 @@ public final class PageColumnString {
             return new int[0];
         }
         if (found < results.length) {
-            int[] trimmed = new int[found];
+            var trimmed = new int[found];
             System.arraycopy(results, 0, trimmed, 0, found);
             return trimmed;
         }
@@ -364,11 +364,11 @@ public final class PageColumnString {
         if (pageId < 0 || pageId >= maxPages) {
             throw new IndexOutOfBoundsException("pageId out of range: " + pageId);
         }
-        ColumnPage existing = pages.get(pageId);
+        var existing = pages.get(pageId);
         if (existing != null) {
             return existing;
         }
-        ColumnPage created = new ColumnPage(pageSize);
+        var created = new ColumnPage(pageSize);
         if (pages.compareAndSet(pageId, null, created)) {
             return created;
         }

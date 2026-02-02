@@ -44,11 +44,12 @@ import java.lang.reflect.Method;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 import java.util.ArrayDeque;
-import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+
+import static java.util.Locale.ROOT;
 
 /**
  * Generates repository implementations using ByteBuddy.
@@ -79,52 +80,52 @@ public final class RepositoryEmitter {
      */
     public static <T, R extends MemrisRepository<T>> R createRepository(Class<R> repositoryInterface,
             MemrisArena arena) {
-        RepositoryEmitter emitter = new RepositoryEmitter();
+        var emitter = new RepositoryEmitter();
 
         // Extract entity class and create/get table
         Class<T> entityClass = extractEntityClass(repositoryInterface);
-        GeneratedTable table = arena.getOrCreateTable(entityClass);
+        var table = arena.getOrCreateTable(entityClass);
 
         // Extract entity metadata
-        EntityMetadata<T> metadata = MetadataExtractor.extractEntityMetadata(entityClass);
+        var metadata = MetadataExtractor.extractEntityMetadata(entityClass);
 
         // Extract and compile query methods
-        Method[] methods = RepositoryMethodIntrospector.extractQueryMethods(repositoryInterface);
-        CompiledQuery[] compiledQueries = new CompiledQuery[methods.length];
+        var methods = RepositoryMethodIntrospector.extractQueryMethods(repositoryInterface);
+        var compiledQueries = new CompiledQuery[methods.length];
 
-        QueryCompiler compiler = new QueryCompiler(metadata);
+        var compiler = new QueryCompiler(metadata);
 
         for (int i = 0; i < methods.length; i++) {
-            Method method = methods[i];
-            LogicalQuery logicalQuery = QueryPlanner.parse(method, entityClass,
-                    metadata.idColumnName());
+            var method = methods[i];
+            var logicalQuery = QueryPlanner.parse(method, entityClass
+            );
             compiledQueries[i] = compiler.compile(logicalQuery);
         }
 
-        Map<Class<?>, GeneratedTable> tablesByEntity = buildJoinTables(metadata, arena);
-        Map<Class<?>, HeapRuntimeKernel> kernelsByEntity = buildJoinKernels(tablesByEntity);
-        Map<Class<?>, EntityMaterializer<?>> materializersByEntity = buildJoinMaterializers(
+        var tablesByEntity = buildJoinTables(metadata, arena);
+        var kernelsByEntity = buildJoinKernels(tablesByEntity);
+        var materializersByEntity = buildJoinMaterializers(
                 tablesByEntity);
-        Map<String, SimpleTable> joinTables = buildManyToManyJoinTables(metadata);
+        var joinTables = buildManyToManyJoinTables(metadata);
         compiledQueries = wireJoinRuntime(compiledQueries, metadata, tablesByEntity, kernelsByEntity,
                 materializersByEntity, joinTables);
 
-        RepositoryMethodBinding[] bindings = RepositoryMethodBinding.fromQueries(compiledQueries);
-        RepositoryMethodExecutor[] executors = buildExecutors(compiledQueries, bindings);
+        var bindings = RepositoryMethodBinding.fromQueries(compiledQueries);
+        var executors = buildExecutors(compiledQueries, bindings);
 
         // Extract column metadata for RepositoryPlan
-        String[] columnNames = extractColumnNames(metadata);
-        byte[] typeCodes = extractTypeCodes(metadata);
-        TypeConverter<?, ?>[] converters = extractConverters(metadata);
-        MethodHandle[] setters = extractSetters(metadata);
+        var columnNames = extractColumnNames(metadata);
+        var typeCodes = extractTypeCodes(metadata);
+        var converters = extractConverters(metadata);
+        var setters = extractSetters(metadata);
 
-        ConditionExecutor[][] conditionExecutors = RepositoryRuntime.buildConditionExecutors(
+        var conditionExecutors = RepositoryRuntime.buildConditionExecutors(
                 compiledQueries,
                 columnNames,
                 metadata.entityClass(),
                 false);
-        OrderExecutor[] orderExecutors = RepositoryRuntime.buildOrderExecutors(compiledQueries, table);
-        ProjectionExecutor[] projectionExecutors = RepositoryRuntime.buildProjectionExecutors(compiledQueries);
+        var orderExecutors = RepositoryRuntime.buildOrderExecutors(compiledQueries, table);
+        var projectionExecutors = RepositoryRuntime.buildProjectionExecutors(compiledQueries);
 
         // Create entity constructor handle
         MethodHandle entityConstructor;
@@ -136,10 +137,10 @@ public final class RepositoryEmitter {
         }
 
         // Generate EntitySaver for the entity
-        EntitySaver<T, ?> entitySaver = EntitySaverGenerator.generate(entityClass, metadata);
+        var entitySaver = EntitySaverGenerator.generate(entityClass, metadata);
 
         // Build RepositoryPlan with compiled queries
-        RepositoryPlan<T> plan = RepositoryPlan.fromGeneratedTable(
+        var plan = RepositoryPlan.fromGeneratedTable(
                 table,
                 entityClass,
                 metadata.idColumnName(),
@@ -161,7 +162,7 @@ public final class RepositoryEmitter {
                 entitySaver);
 
         // Create RepositoryRuntime
-        RepositoryRuntime<T> runtime = new RepositoryRuntime<>(plan, null, metadata);
+        var runtime = new RepositoryRuntime<>(plan, null, metadata);
 
         return emitter.emitAndInstantiate(repositoryInterface, runtime);
     }
@@ -177,16 +178,16 @@ public final class RepositoryEmitter {
 
         while (!queue.isEmpty()) {
             Class<?> current = queue.poll();
-            EntityMetadata<?> currentMetadata = MetadataExtractor.extractEntityMetadata(current);
+            var currentMetadata = MetadataExtractor.extractEntityMetadata(current);
             for (FieldMapping field : currentMetadata.fields()) {
                 if (!field.isRelationship() || field.targetEntity() == null) {
                     continue;
                 }
-                Class<?> target = field.targetEntity();
+                var target = field.targetEntity();
                 if (tablesByEntity.containsKey(target)) {
                     continue;
                 }
-                GeneratedTable table = arena.getOrCreateTable(target);
+                var table = arena.getOrCreateTable(target);
                 tablesByEntity.put(target, table);
                 queue.add(target);
             }
@@ -206,9 +207,9 @@ public final class RepositoryEmitter {
     private static Map<Class<?>, EntityMaterializer<?>> buildJoinMaterializers(
             Map<Class<?>, GeneratedTable> tablesByEntity) {
         Map<Class<?>, EntityMaterializer<?>> materializers = new HashMap<>();
-        EntityMaterializerGenerator generator = new EntityMaterializerGenerator();
-        for (Class<?> entityClass : tablesByEntity.keySet()) {
-            EntityMetadata<?> entityMetadata = MetadataExtractor.extractEntityMetadata(entityClass);
+        var generator = new EntityMaterializerGenerator();
+        for (var entityClass : tablesByEntity.keySet()) {
+            var entityMetadata = MetadataExtractor.extractEntityMetadata(entityClass);
             materializers.put(entityClass, generator.generate(entityMetadata));
         }
         return Map.copyOf(materializers);
@@ -216,7 +217,7 @@ public final class RepositoryEmitter {
 
     private static <T> Map<String, SimpleTable> buildManyToManyJoinTables(
             EntityMetadata<T> metadata) {
-        Map<String, SimpleTable> joinTables = new HashMap<>();
+        var joinTables = new HashMap<String, SimpleTable>();
         for (FieldMapping field : metadata.fields()) {
             if (!field.isRelationship() || field.relationshipType() != FieldMapping.RelationshipType.MANY_TO_MANY) {
                 continue;
@@ -225,26 +226,24 @@ public final class RepositoryEmitter {
                 continue;
             }
 
-            EntityMetadata<?> targetMetadata = MetadataExtractor.extractEntityMetadata(field.targetEntity());
-            FieldMapping sourceId = findIdField(metadata);
-            FieldMapping targetId = findIdField(targetMetadata);
+            var targetMetadata = MetadataExtractor.extractEntityMetadata(field.targetEntity());
+            var sourceId = findIdField(metadata);
+            var targetId = findIdField(targetMetadata);
 
             if (sourceId == null || targetId == null) {
                 continue;
             }
 
-            String joinColumn = field.columnName();
+            var joinColumn = field.columnName();
             if (joinColumn == null || joinColumn.isBlank()) {
-                joinColumn = metadata.entityClass().getSimpleName().toLowerCase() + "_" + metadata.idColumnName();
+                joinColumn = metadata.entityClass().getSimpleName().toLowerCase(ROOT) + "_" + metadata.idColumnName();
             }
-            String inverseJoinColumn = field.referencedColumnName();
+            var inverseJoinColumn = field.referencedColumnName();
             if (inverseJoinColumn == null || inverseJoinColumn.isBlank()) {
-                inverseJoinColumn = field.targetEntity().getSimpleName().toLowerCase() + "_"
-                        + targetMetadata.idColumnName();
+                inverseJoinColumn = field.targetEntity().getSimpleName().toLowerCase(ROOT) + "_" + targetMetadata.idColumnName();
             }
-
-            final String finalJoinColumn = joinColumn;
-            final String finalInverseJoinColumn = inverseJoinColumn;
+            var finalJoinColumn = joinColumn;
+            var finalInverseJoinColumn = inverseJoinColumn;
             joinTables.computeIfAbsent(field.joinTable(), name -> {
                 List<ColumnSpec<?>> specs = List.of(
                         new ColumnSpec<>(finalJoinColumn, sourceId.javaType()),
@@ -272,7 +271,7 @@ public final class RepositoryEmitter {
             Map<Class<?>, HeapRuntimeKernel> kernelsByEntity,
             Map<Class<?>, EntityMaterializer<?>> materializersByEntity,
             Map<String, SimpleTable> joinTables) {
-        CompiledQuery[] wired = new CompiledQuery[compiledQueries.length];
+        var wired = new CompiledQuery[compiledQueries.length];
         for (int i = 0; i < compiledQueries.length; i++) {
             var query = compiledQueries[i];
             var joins = query.joins();
@@ -280,18 +279,18 @@ public final class RepositoryEmitter {
                 wired[i] = query;
                 continue;
             }
-            CompiledQuery.CompiledJoin[] updated = new CompiledQuery.CompiledJoin[joins.length];
+            var updated = new CompiledQuery.CompiledJoin[joins.length];
             for (int j = 0; j < joins.length; j++) {
                 var join = joins[j];
                 var targetTable = tablesByEntity.get(join.targetEntity());
                 var targetKernel = kernelsByEntity.get(join.targetEntity());
                 var targetMaterializer = materializersByEntity.get(join.targetEntity());
-                EntityMetadata<?> targetMetadata = MetadataExtractor.extractEntityMetadata(join.targetEntity());
-                MethodHandle postLoadHandle = targetMetadata.postLoadHandle();
-                FieldMapping fieldMapping = findFieldMapping(metadata, join.relationshipFieldName());
-                JoinExecutor executor = buildJoinExecutor(metadata, targetMetadata, join, fieldMapping, joinTables);
-                MethodHandle setter = metadata.fieldSetters().get(join.relationshipFieldName());
-                JoinMaterializer materializer = buildJoinMaterializer(fieldMapping, join, setter, postLoadHandle);
+                var targetMetadata = MetadataExtractor.extractEntityMetadata(join.targetEntity());
+                var postLoadHandle = targetMetadata.postLoadHandle();
+                var fieldMapping = findFieldMapping(metadata, join.relationshipFieldName());
+                var executor = buildJoinExecutor(metadata, targetMetadata, join, fieldMapping, joinTables);
+                var setter = metadata.fieldSetters().get(join.relationshipFieldName());
+                var materializer = buildJoinMaterializer(fieldMapping, join, setter, postLoadHandle);
                 updated[j] = join.withRuntime(targetTable, targetKernel, targetMaterializer, executor, materializer);
             }
             wired[i] = query.withJoins(updated);
@@ -305,18 +304,18 @@ public final class RepositoryEmitter {
             FieldMapping fieldMapping,
             Map<String, SimpleTable> joinTables) {
         if (fieldMapping != null && fieldMapping.relationshipType() == FieldMapping.RelationshipType.MANY_TO_MANY) {
-            JoinTableInfo joinInfo = resolveJoinTableInfo(metadata, fieldMapping, joinTables);
+            var joinInfo = resolveJoinTableInfo(metadata, fieldMapping, joinTables);
             if (joinInfo == null) {
                 return new JoinExecutorManyToMany(null, null, null,
                         join.sourceColumnIndex(), join.fkTypeCode(), join.targetColumnIndex(), join.fkTypeCode(),
                         join.joinType());
             }
-            FieldMapping sourceId = findIdField(metadata);
-            FieldMapping targetId = findIdField(targetMetadata);
-            int sourceIdColumnIndex = metadata.resolveColumnPosition(metadata.idColumnName());
-            int targetIdColumnIndex = targetMetadata.resolveColumnPosition(targetMetadata.idColumnName());
-            byte sourceIdTypeCode = sourceId != null ? sourceId.typeCode() : join.fkTypeCode();
-            byte targetIdTypeCode = targetId != null ? targetId.typeCode() : join.fkTypeCode();
+            var sourceId = findIdField(metadata);
+            var targetId = findIdField(targetMetadata);
+            var sourceIdColumnIndex = metadata.resolveColumnPosition(metadata.idColumnName());
+            var targetIdColumnIndex = targetMetadata.resolveColumnPosition(targetMetadata.idColumnName());
+            var sourceIdTypeCode = sourceId != null ? sourceId.typeCode() : join.fkTypeCode();
+            var targetIdTypeCode = targetId != null ? targetId.typeCode() : join.fkTypeCode();
             return new JoinExecutorManyToMany(
                     joinInfo.table,
                     joinInfo.joinColumn,
@@ -344,7 +343,7 @@ public final class RepositoryEmitter {
             if (fieldMapping.relationshipType() == FieldMapping.RelationshipType.MANY_TO_MANY) {
                 return new NoopJoinMaterializer();
             }
-            Class<?> collectionType = fieldMapping.javaType();
+            var collectionType = fieldMapping.javaType();
             return new JoinCollectionMaterializer(
                     join.sourceColumnIndex(),
                     join.targetColumnIndex(),
@@ -370,8 +369,8 @@ public final class RepositoryEmitter {
                     MetadataExtractor.extractEntityMetadata(field.targetEntity()), false, joinTables);
         }
         if (field.mappedBy() != null && !field.mappedBy().isBlank()) {
-            EntityMetadata<?> targetMetadata = MetadataExtractor.extractEntityMetadata(field.targetEntity());
-            FieldMapping ownerField = findFieldMapping(targetMetadata, field.mappedBy());
+            var targetMetadata = MetadataExtractor.extractEntityMetadata(field.targetEntity());
+            var ownerField = findFieldMapping(targetMetadata, field.mappedBy());
             if (ownerField == null || ownerField.joinTable() == null || ownerField.joinTable().isBlank()) {
                 return null;
             }
@@ -389,7 +388,7 @@ public final class RepositoryEmitter {
         if (joinTableName == null || joinTableName.isBlank()) {
             return null;
         }
-        SimpleTable table = joinTables.get(joinTableName);
+        var table = joinTables.get(joinTableName);
         if (table == null) {
             return null;
         }
@@ -399,12 +398,12 @@ public final class RepositoryEmitter {
         if (!inverseSide) {
             joinColumn = ownerField.columnName();
             if (joinColumn == null || joinColumn.isBlank()) {
-                joinColumn = ownerMetadata.entityClass().getSimpleName().toLowerCase() + "_"
+                joinColumn = ownerMetadata.entityClass().getSimpleName().toLowerCase(ROOT) + "_"
                         + ownerMetadata.idColumnName();
             }
             inverseJoinColumn = ownerField.referencedColumnName();
             if (inverseJoinColumn == null || inverseJoinColumn.isBlank()) {
-                inverseJoinColumn = inverseMetadata.entityClass().getSimpleName().toLowerCase() + "_"
+                inverseJoinColumn = inverseMetadata.entityClass().getSimpleName().toLowerCase(ROOT) + "_"
                         + inverseMetadata.idColumnName();
             }
             return new JoinTableInfo(joinColumn, inverseJoinColumn, table);
@@ -412,12 +411,12 @@ public final class RepositoryEmitter {
 
         joinColumn = ownerField.referencedColumnName();
         if (joinColumn == null || joinColumn.isBlank()) {
-            joinColumn = inverseMetadata.entityClass().getSimpleName().toLowerCase() + "_"
+            joinColumn = inverseMetadata.entityClass().getSimpleName().toLowerCase(ROOT) + "_"
                     + inverseMetadata.idColumnName();
         }
         inverseJoinColumn = ownerField.columnName();
         if (inverseJoinColumn == null || inverseJoinColumn.isBlank()) {
-            inverseJoinColumn = ownerMetadata.entityClass().getSimpleName().toLowerCase() + "_"
+            inverseJoinColumn = ownerMetadata.entityClass().getSimpleName().toLowerCase(ROOT) + "_"
                     + ownerMetadata.idColumnName();
         }
         return new JoinTableInfo(joinColumn, inverseJoinColumn, table);
@@ -445,7 +444,7 @@ public final class RepositoryEmitter {
                 .filter(fm -> fm.columnPosition() >= 0)
                 .sorted(Comparator.comparingInt(FieldMapping::columnPosition))
                 .toList();
-        byte[] typeCodes = new byte[fields.size()];
+        var typeCodes = new byte[fields.size()];
         for (int i = 0; i < fields.size(); i++) {
             Byte tc = fields.get(i).typeCode();
             typeCodes[i] = tc != null ? tc.byteValue() : TypeCodes.TYPE_LONG;
@@ -496,7 +495,7 @@ public final class RepositoryEmitter {
             RepositoryRuntime<T> runtime) {
         try {
             // Generate the implementation class
-            Class<? extends R> implClass = generateImplementation(repositoryInterface, runtime);
+            var implClass = generateImplementation(repositoryInterface, runtime);
 
             // Instantiate using no-arg constructor
             return implClass.getDeclaredConstructor().newInstance();
@@ -512,26 +511,26 @@ public final class RepositoryEmitter {
     @SuppressWarnings("unchecked")
     private <T, R extends MemrisRepository<T>> Class<? extends R> generateImplementation(Class<R> repositoryInterface,
             RepositoryRuntime<T> runtime) {
-        String implClassName = repositoryInterface.getName() + "_MemrisImpl_" + System.nanoTime();
+        var implClassName = repositoryInterface.getName() + "_MemrisImpl_" + System.nanoTime();
 
-        DynamicType.Builder<?> builder = byteBuddy
+        var builder = byteBuddy
                 .subclass(Object.class)
                 .implement(repositoryInterface)
                 .name(implClassName)
                 .modifiers(Visibility.PUBLIC, TypeManifestation.FINAL);
 
-        Method[] queryMethods = RepositoryMethodIntrospector.extractQueryMethods(repositoryInterface);
+        var queryMethods = RepositoryMethodIntrospector.extractQueryMethods(repositoryInterface);
         for (int i = 0; i < queryMethods.length; i++) {
-            Method method = queryMethods[i];
-            CompiledQuery query = runtime.plan().queries()[i];
-            RepositoryMethodBinding binding = runtime.plan().bindings()[i];
-            Object interceptor = interceptorFor(runtime, query, binding);
+            var method = queryMethods[i];
+            var query = runtime.plan().queries()[i];
+            var binding = runtime.plan().bindings()[i];
+            var interceptor = interceptorFor(runtime, query, binding);
             builder = builder.method(ElementMatchers.named(method.getName())
                     .and(ElementMatchers.takesArguments(method.getParameterCount())))
                     .intercept(MethodDelegation.to(interceptor));
         }
 
-        try (DynamicType.Unloaded<?> unloaded = builder.make()) {
+        try (var unloaded = builder.make()) {
             return (Class<? extends R>) unloaded.load(repositoryInterface.getClassLoader()).getLoaded();
         }
     }
@@ -561,7 +560,7 @@ public final class RepositoryEmitter {
 
     private static RepositoryMethodExecutor[] buildExecutors(CompiledQuery[] queries,
             RepositoryMethodBinding[] bindings) {
-        RepositoryMethodExecutor[] executors = new RepositoryMethodExecutor[queries.length];
+        var executors = new RepositoryMethodExecutor[queries.length];
         for (int i = 0; i < queries.length; i++) {
             executors[i] = executorFor(queries[i], bindings[i]);
         }

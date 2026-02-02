@@ -77,9 +77,9 @@ public class EntityMetadata<T> {
         this.isRecord = isRecord;
 
         // Build O(1) lookup maps
-        Map<String, Integer> propertyMap = new HashMap<>(fields.size() * 2);
-        Map<String, Integer> columnMap = new HashMap<>(fields.size() * 2);
-        for (int i = 0; i < fields.size(); i++) {
+        var propertyMap = new HashMap<String, Integer>(fields.size() * 2);
+        var columnMap = new HashMap<String, Integer>(fields.size() * 2);
+        for (var i = 0; i < fields.size(); i++) {
             FieldMapping fm = fields.get(i);
             propertyMap.put(fm.name(), fm.columnPosition());
             columnMap.put(fm.columnName(), fm.columnPosition());

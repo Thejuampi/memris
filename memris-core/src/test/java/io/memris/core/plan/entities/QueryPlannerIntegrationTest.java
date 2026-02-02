@@ -21,7 +21,7 @@ class QueryPlannerIntegrationTest {
     @Test
     void parseSimpleFindBy_UsesEntityContext() throws Exception {
         Method method = TestRepository.class.getMethod("findByName", String.class);
-        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class, "id");
+        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class);
 
         assertThat(actual).isEqualTo(expectedFind("name", Operator.EQ, 0));
     }
@@ -29,7 +29,7 @@ class QueryPlannerIntegrationTest {
     @Test
     void parseWithGreaterThan_MapsCorrectly() throws Exception {
         Method method = TestRepository.class.getMethod("findByAgeGreaterThan", int.class);
-        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class, "id");
+        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class);
 
         assertThat(actual).isEqualTo(expectedFind("age", Operator.GT, 0));
     }
@@ -37,7 +37,7 @@ class QueryPlannerIntegrationTest {
     @Test
     void parseWithLessThan_MapsCorrectly() throws Exception {
         Method method = TestRepository.class.getMethod("findByAgeLessThan", int.class);
-        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class, "id");
+        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class);
 
         assertThat(actual).isEqualTo(expectedFind("age", Operator.LT, 0));
     }
@@ -45,7 +45,7 @@ class QueryPlannerIntegrationTest {
     @Test
     void parseWithGreaterThanOrEqual_MapsCorrectly() throws Exception {
         Method method = TestRepository.class.getMethod("findByAgeGreaterThanEqual", int.class);
-        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class, "id");
+        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class);
 
         assertThat(actual).isEqualTo(expectedFind("age", Operator.GTE, 0));
     }
@@ -53,7 +53,7 @@ class QueryPlannerIntegrationTest {
     @Test
     void parseWithLessThanOrEqual_MapsCorrectly() throws Exception {
         Method method = TestRepository.class.getMethod("findByAgeLessThanEqual", int.class);
-        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class, "id");
+        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class);
 
         assertThat(actual).isEqualTo(expectedFind("age", Operator.LTE, 0));
     }
@@ -61,7 +61,7 @@ class QueryPlannerIntegrationTest {
     @Test
     void parseWithNotEquals_MapsCorrectly() throws Exception {
         Method method = TestRepository.class.getMethod("findByNameNot", String.class);
-        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class, "id");
+        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class);
 
         assertThat(actual).isEqualTo(expectedFind("name", Operator.NE, 0));
     }
@@ -71,7 +71,7 @@ class QueryPlannerIntegrationTest {
     @Test
     void parseWithLike_MapsCorrectly() throws Exception {
         Method method = TestRepository.class.getMethod("findByNameLike", String.class);
-        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class, "id");
+        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class);
 
         assertThat(actual).isEqualTo(expectedFind("name", Operator.LIKE, 0));
     }
@@ -79,7 +79,7 @@ class QueryPlannerIntegrationTest {
     @Test
     void parseWithNotLike_MapsCorrectly() throws Exception {
         Method method = TestRepository.class.getMethod("findByNameNotLike", String.class);
-        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class, "id");
+        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class);
 
         assertThat(actual).isEqualTo(expectedFind("name", Operator.NOT_LIKE, 0));
     }
@@ -87,7 +87,7 @@ class QueryPlannerIntegrationTest {
     @Test
     void parseWithLikeIgnoreCase_CombinesModifier() throws Exception {
         Method method = TestRepository.class.getMethod("findByNameLikeIgnoreCase", String.class);
-        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class, "id");
+        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class);
 
         assertThat(actual).isEqualTo(expectedFind("name", Operator.IGNORE_CASE_LIKE, 0, true));
     }
@@ -95,7 +95,7 @@ class QueryPlannerIntegrationTest {
     @Test
     void parseWithStartingWith_MapsCorrectly() throws Exception {
         Method method = TestRepository.class.getMethod("findByNameStartingWith", String.class);
-        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class, "id");
+        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class);
 
         assertThat(actual).isEqualTo(expectedFind("name", Operator.STARTING_WITH, 0));
     }
@@ -103,7 +103,7 @@ class QueryPlannerIntegrationTest {
     @Test
     void parseWithNotStartingWith_MapsCorrectly() throws Exception {
         Method method = TestRepository.class.getMethod("findByNameNotStartingWith", String.class);
-        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class, "id");
+        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class);
 
         assertThat(actual).isEqualTo(expectedFind("name", Operator.NOT_STARTING_WITH, 0));
     }
@@ -111,7 +111,7 @@ class QueryPlannerIntegrationTest {
     @Test
     void parseWithEndingWith_MapsCorrectly() throws Exception {
         Method method = TestRepository.class.getMethod("findByNameEndingWith", String.class);
-        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class, "id");
+        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class);
 
         assertThat(actual).isEqualTo(expectedFind("name", Operator.ENDING_WITH, 0));
     }
@@ -119,7 +119,7 @@ class QueryPlannerIntegrationTest {
     @Test
     void parseWithNotEndingWith_MapsCorrectly() throws Exception {
         Method method = TestRepository.class.getMethod("findByNameNotEndingWith", String.class);
-        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class, "id");
+        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class);
 
         assertThat(actual).isEqualTo(expectedFind("name", Operator.NOT_ENDING_WITH, 0));
     }
@@ -127,7 +127,7 @@ class QueryPlannerIntegrationTest {
     @Test
     void parseWithContaining_MapsCorrectly() throws Exception {
         Method method = TestRepository.class.getMethod("findByNameContaining", String.class);
-        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class, "id");
+        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class);
 
         assertThat(actual).isEqualTo(expectedFind("name", Operator.CONTAINING, 0));
     }
@@ -135,7 +135,7 @@ class QueryPlannerIntegrationTest {
     @Test
     void parseWithNotContaining_MapsCorrectly() throws Exception {
         Method method = TestRepository.class.getMethod("findByNameNotContaining", String.class);
-        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class, "id");
+        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class);
 
         assertThat(actual).isEqualTo(expectedFind("name", Operator.NOT_CONTAINING, 0));
     }
@@ -145,7 +145,7 @@ class QueryPlannerIntegrationTest {
     @Test
     void parseWithNullOperator_MapsCorrectly() throws Exception {
         Method method = TestRepository.class.getMethod("findByDepartmentIdIsNull");
-        LogicalQuery actual = QueryPlanner.parse(method, NestedEntity.class, "id");
+        LogicalQuery actual = QueryPlanner.parse(method, NestedEntity.class);
 
         assertThat(actual).isEqualTo(expectedFind(
                 conds(cond("department.id", Operator.IS_NULL, 0)),
@@ -155,7 +155,7 @@ class QueryPlannerIntegrationTest {
     @Test
     void parseWithNotNullOperator_MapsCorrectly() throws Exception {
         Method method = TestRepository.class.getMethod("findByDepartmentIdNotNull");
-        LogicalQuery actual = QueryPlanner.parse(method, NestedEntity.class, "id");
+        LogicalQuery actual = QueryPlanner.parse(method, NestedEntity.class);
 
         assertThat(actual).isEqualTo(expectedFind(
                 conds(cond("department.id", Operator.NOT_NULL, 0)),
@@ -167,7 +167,7 @@ class QueryPlannerIntegrationTest {
     @Test
     void parseWithTrueOperator_MapsCorrectly() throws Exception {
         Method method = TestRepository.class.getMethod("findByActiveTrue");
-        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class, "id");
+        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class);
 
         assertThat(actual).isEqualTo(expectedFind(
                 conds(cond("active", Operator.IS_TRUE, 0)),
@@ -177,7 +177,7 @@ class QueryPlannerIntegrationTest {
     @Test
     void parseWithFalseOperator_MapsCorrectly() throws Exception {
         Method method = TestRepository.class.getMethod("findByActiveFalse");
-        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class, "id");
+        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class);
 
         assertThat(actual).isEqualTo(expectedFind(
                 conds(cond("active", Operator.IS_FALSE, 0)),
@@ -189,7 +189,7 @@ class QueryPlannerIntegrationTest {
     @Test
     void parseWithInOperator_MapsCorrectly() throws Exception {
         Method method = TestRepository.class.getMethod("findByAgeIn", List.class);
-        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class, "id");
+        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class);
 
         assertThat(actual).isEqualTo(expectedFind("age", Operator.IN, 0));
     }
@@ -197,7 +197,7 @@ class QueryPlannerIntegrationTest {
     @Test
     void parseWithNotInOperator_MapsCorrectly() throws Exception {
         Method method = TestRepository.class.getMethod("findByAgeNotIn", List.class);
-        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class, "id");
+        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class);
 
         assertThat(actual).isEqualTo(expectedFind("age", Operator.NOT_IN, 0));
     }
@@ -207,7 +207,7 @@ class QueryPlannerIntegrationTest {
     @Test
     void parseWithBetweenOperator_MapsCorrectly() throws Exception {
         Method method = TestRepository.class.getMethod("findByAgeBetween", int.class, int.class);
-        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class, "id");
+        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class);
 
         assertThat(actual).isEqualTo(expectedFind(
                 conds(cond("age", Operator.BETWEEN, 0)),
@@ -219,7 +219,7 @@ class QueryPlannerIntegrationTest {
     @Test
     void parseWithBeforeOperator_MapsCorrectly() throws Exception {
         Method method = TestRepository.class.getMethod("findByCreatedAtBefore", Date.class);
-        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class, "id");
+        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class);
 
         assertThat(actual).isEqualTo(expectedFind("createdat", Operator.BEFORE, 0));
     }
@@ -227,7 +227,7 @@ class QueryPlannerIntegrationTest {
     @Test
     void parseWithAfterOperator_MapsCorrectly() throws Exception {
         Method method = TestRepository.class.getMethod("findByCreatedAtAfter", Date.class);
-        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class, "id");
+        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class);
 
         assertThat(actual).isEqualTo(expectedFind("createdat", Operator.AFTER, 0));
     }
@@ -237,7 +237,7 @@ class QueryPlannerIntegrationTest {
     @Test
     void parseWithAnd_CreatesMultipleConditions() throws Exception {
         Method method = TestRepository.class.getMethod("findByNameAndAge", String.class, int.class);
-        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class, "id");
+        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class);
 
         assertThat(actual).isEqualTo(expectedFind(
                 conds(cond("name", Operator.EQ, 0), cond("age", Operator.EQ, 1)),
@@ -247,7 +247,7 @@ class QueryPlannerIntegrationTest {
     @Test
     void parseWithOr_CreatesMultipleConditions() throws Exception {
         Method method = TestRepository.class.getMethod("findByNameOrAge", String.class, int.class);
-        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class, "id");
+        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class);
 
         assertThat(actual).isEqualTo(expectedFind(
                 conds(cond("name", Operator.EQ, 0, LogicalQuery.Combinator.OR), cond("age", Operator.EQ, 1)),
@@ -257,7 +257,7 @@ class QueryPlannerIntegrationTest {
     @Test
     void parseWithAndOperator_CombinesWithCondition() throws Exception {
         Method method = TestRepository.class.getMethod("findByNameAndAgeGreaterThan", String.class, int.class);
-        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class, "id");
+        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class);
 
         assertThat(actual).isEqualTo(expectedFind(
                 conds(cond("name", Operator.EQ, 0), cond("age", Operator.GT, 1)),
@@ -267,7 +267,7 @@ class QueryPlannerIntegrationTest {
     @Test
     void parseWithOrOperator_CombinesWithCondition() throws Exception {
         Method method = TestRepository.class.getMethod("findByNameOrAgeLessThan", String.class, int.class);
-        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class, "id");
+        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class);
 
         assertThat(actual).isEqualTo(expectedFind(
                 conds(cond("name", Operator.EQ, 0, LogicalQuery.Combinator.OR), cond("age", Operator.LT, 1)),
@@ -279,7 +279,7 @@ class QueryPlannerIntegrationTest {
     @Test
     void parseWithOrderBy_CreatesOrderBy() throws Exception {
         Method method = TestRepository.class.getMethod("findByNameOrderByAgeDesc", String.class);
-        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class, "id");
+        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class);
 
         assertThat(actual).isEqualTo(expectedFind(cond("name", Operator.EQ, 0), new OrderBy[] { OrderBy.desc("age") }));
     }
@@ -287,7 +287,7 @@ class QueryPlannerIntegrationTest {
     @Test
     void parseWithTopPrefix_ExtractsLimit() throws Exception {
         Method method = TestRepository.class.getMethod("findTop5ByName", String.class);
-        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class, "id");
+        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class);
 
         assertThat(actual).isEqualTo(expectedFindWithLimit(
                 conds(cond("name", Operator.EQ, 0)),
@@ -298,7 +298,7 @@ class QueryPlannerIntegrationTest {
     @Test
     void parseWithFirstPrefix_ExtractsLimit() throws Exception {
         Method method = TestRepository.class.getMethod("findFirstByAge", int.class);
-        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class, "id");
+        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class);
 
         assertThat(actual).isEqualTo(expectedFindWithLimit(
                 conds(cond("age", Operator.EQ, 0)),
@@ -311,7 +311,7 @@ class QueryPlannerIntegrationTest {
     @Test
     void parseWithCountPrefix_DeterminesReturnKind() throws Exception {
         Method method = TestRepository.class.getMethod("countByName", String.class);
-        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class, "id");
+        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class);
 
         assertThat(actual).isEqualTo(expectedCount("name", Operator.EQ, 0));
     }
@@ -319,7 +319,7 @@ class QueryPlannerIntegrationTest {
     @Test
     void parseCount_ReturnsLong() throws Exception {
         Method method = TestRepository.class.getMethod("count");
-        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class, "id");
+        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class);
 
         assertThat(actual).isEqualTo(expectedCountAll());
     }
@@ -329,7 +329,7 @@ class QueryPlannerIntegrationTest {
     @Test
     void parseWithExistsPrefix_DeterminesReturnKind() throws Exception {
         Method method = TestRepository.class.getMethod("existsByName", String.class);
-        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class, "id");
+        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class);
 
         assertThat(actual).isEqualTo(expectedExists("name", Operator.EQ, 0));
     }
@@ -339,7 +339,7 @@ class QueryPlannerIntegrationTest {
     @Test
     void parseNestedProperty_ResolvesDotNotation() throws Exception {
         Method method = TestRepository.class.getMethod("findByDepartmentName", String.class);
-        LogicalQuery actual = QueryPlanner.parse(method, NestedEntity.class, "id");
+        LogicalQuery actual = QueryPlanner.parse(method, NestedEntity.class);
 
         assertThat(actual).isEqualTo(expectedFind("department.name", Operator.EQ, 0));
     }
@@ -347,7 +347,7 @@ class QueryPlannerIntegrationTest {
     @Test
     void parseDeepNesting_ResolvesCorrectly() throws Exception {
         Method method = TestRepository.class.getMethod("findByDepartmentAddressCity", String.class);
-        LogicalQuery actual = QueryPlanner.parse(method, DeepNestedEntity.class, "id");
+        LogicalQuery actual = QueryPlanner.parse(method, DeepNestedEntity.class);
 
         assertThat(actual).isEqualTo(expectedFind("department.address.city", Operator.EQ, 0));
     }
@@ -357,7 +357,7 @@ class QueryPlannerIntegrationTest {
     @Test
     void parseFindById_ReturnsOptional() throws Exception {
         Method method = TestRepository.class.getMethod("findById", Long.class);
-        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class, "id");
+        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class);
 
         assertThat(actual).isEqualTo(expectedFindById(0));
     }
@@ -365,7 +365,7 @@ class QueryPlannerIntegrationTest {
     @Test
     void parseFindAll_ReturnsList() throws Exception {
         Method method = TestRepository.class.getMethod("findAll");
-        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class, "id");
+        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class);
 
         assertThat(actual).isEqualTo(expectedFindAll());
     }
@@ -373,7 +373,7 @@ class QueryPlannerIntegrationTest {
     @Test
     void parseExistsById_ReturnsBoolean() throws Exception {
         Method method = TestRepository.class.getMethod("existsById", Long.class);
-        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class, "id");
+        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class);
 
         assertThat(actual).isEqualTo(expectedExistsById(0));
     }
@@ -383,7 +383,7 @@ class QueryPlannerIntegrationTest {
     @Test
     void parseSave_ReturnsCrudQuery() throws Exception {
         Method method = TestRepository.class.getMethod("save", SimpleEntity.class);
-        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class, "id");
+        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class);
 
         assertThat(actual).isEqualTo(expectedSave(1));
     }
@@ -391,7 +391,7 @@ class QueryPlannerIntegrationTest {
     @Test
     void parseSaveAll_ReturnsCrudQuery() throws Exception {
         Method method = TestRepository.class.getMethod("saveAll", List.class);
-        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class, "id");
+        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class);
 
         assertThat(actual).isEqualTo(expectedSaveAll(1));
     }
@@ -399,7 +399,7 @@ class QueryPlannerIntegrationTest {
     @Test
     void parseDelete_ReturnsCrudQuery() throws Exception {
         Method method = TestRepository.class.getMethod("delete", SimpleEntity.class);
-        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class, "id");
+        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class);
 
         assertThat(actual).isEqualTo(expectedDelete(1));
     }
@@ -407,7 +407,7 @@ class QueryPlannerIntegrationTest {
     @Test
     void parseDeleteAll_ReturnsCrudQuery() throws Exception {
         Method method = TestRepository.class.getMethod("deleteAll");
-        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class, "id");
+        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class);
 
         assertThat(actual).isEqualTo(expectedDeleteAll());
     }
@@ -415,7 +415,7 @@ class QueryPlannerIntegrationTest {
     @Test
     void parseDeleteById_ReturnsCrudQuery() throws Exception {
         Method method = TestRepository.class.getMethod("deleteById", Long.class);
-        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class, "id");
+        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class);
 
         assertThat(actual).isEqualTo(expectedDeleteById(0));
     }
@@ -423,7 +423,7 @@ class QueryPlannerIntegrationTest {
     @Test
     void parseDeleteByReturnsQuery() throws Exception {
         Method method = TestRepository.class.getMethod("deleteByName", String.class);
-        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class, "id");
+        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class);
 
         assertThat(actual).isEqualTo(expectedDeleteBy("name", Operator.EQ, 0));
     }
@@ -433,7 +433,7 @@ class QueryPlannerIntegrationTest {
     @Test
     void parseWithNoPropertyAfterBy_ThrowsException() throws Exception {
         Method method = TestRepository.class.getMethod("findBy");
-        assertThatThrownBy(() -> QueryPlanner.parse(method, SimpleEntity.class, "id"))
+        assertThatThrownBy(() -> QueryPlanner.parse(method, SimpleEntity.class))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("property");
     }
@@ -441,7 +441,7 @@ class QueryPlannerIntegrationTest {
     @Test
     void parseEndingWithCombinator_ThrowsException() throws Exception {
         Method method = TestRepository.class.getMethod("findByNameAnd");
-        assertThatThrownBy(() -> QueryPlanner.parse(method, SimpleEntity.class, "id"))
+        assertThatThrownBy(() -> QueryPlanner.parse(method, SimpleEntity.class))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("property");
     }
@@ -449,7 +449,7 @@ class QueryPlannerIntegrationTest {
     @Test
     void parseWithConsecutiveCombinators_ThrowsException() throws Exception {
         Method method = TestRepository.class.getMethod("findByNameAndAndAge");
-        assertThatThrownBy(() -> QueryPlanner.parse(method, SimpleEntity.class, "id"))
+        assertThatThrownBy(() -> QueryPlanner.parse(method, SimpleEntity.class))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("combinator");
     }
@@ -457,7 +457,7 @@ class QueryPlannerIntegrationTest {
     @Test
     void parseWithConsecutiveOperators_ThrowsException() throws Exception {
         Method method = TestRepository.class.getMethod("findByNameEqualsEquals");
-        assertThatThrownBy(() -> QueryPlanner.parse(method, SimpleEntity.class, "id"))
+        assertThatThrownBy(() -> QueryPlanner.parse(method, SimpleEntity.class))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("operator");
     }
@@ -465,7 +465,7 @@ class QueryPlannerIntegrationTest {
     @Test
     void parseWithPropertyAfterOperatorWithoutOperator_ThrowsException() throws Exception {
         Method method = TestRepository.class.getMethod("findByNameEqualsAge");
-        assertThatThrownBy(() -> QueryPlanner.parse(method, SimpleEntity.class, "id"))
+        assertThatThrownBy(() -> QueryPlanner.parse(method, SimpleEntity.class))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("operator");
     }
@@ -473,7 +473,7 @@ class QueryPlannerIntegrationTest {
     @Test
     void parseOrderByWithoutProperty_ThrowsException() throws Exception {
         Method method = TestRepository.class.getMethod("findByNameOrderBy");
-        assertThatThrownBy(() -> QueryPlanner.parse(method, SimpleEntity.class, "id"))
+        assertThatThrownBy(() -> QueryPlanner.parse(method, SimpleEntity.class))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("property");
     }
@@ -481,7 +481,7 @@ class QueryPlannerIntegrationTest {
     @Test
     void parseCountByGroupingWithoutConditionsRejectsParameters() throws Exception {
         Method method = TestRepository.class.getMethod("countByNameAndAge", String.class, int.class);
-        assertThatThrownBy(() -> QueryPlanner.parse(method, SimpleEntity.class, "id"))
+        assertThatThrownBy(() -> QueryPlanner.parse(method, SimpleEntity.class))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("does not accept parameters");
     }
@@ -489,7 +489,7 @@ class QueryPlannerIntegrationTest {
     @Test
     void parseCountByGroupingWithoutConditionsRejectsOrOperator() throws Exception {
         Method method = TestRepository.class.getMethod("countByNameOrAge");
-        assertThatThrownBy(() -> QueryPlanner.parse(method, SimpleEntity.class, "id"))
+        assertThatThrownBy(() -> QueryPlanner.parse(method, SimpleEntity.class))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("only supports simple property paths");
     }

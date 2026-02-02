@@ -8,8 +8,11 @@ import io.memris.query.CompiledQuery;
 public final class RepositoryMethodBinding {
 
     private final CompiledQuery query;
+    @SuppressWarnings("unused")
     private final int[] parameterIndices;
+    @SuppressWarnings("unused")
     private final Object[] boundValues;
+    @SuppressWarnings("unused")
     private final int slotCount;
     private final ArgResolver resolver;
 

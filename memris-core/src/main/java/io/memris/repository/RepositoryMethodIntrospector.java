@@ -89,14 +89,14 @@ public final class RepositoryMethodIntrospector {
      * consistent ordering across different JVM implementations.
      */
     private static final Comparator<Method> METHOD_ORDER = (m1, m2) -> {
-        int nameCompare = m1.getName().compareTo(m2.getName());
+        var nameCompare = m1.getName().compareTo(m2.getName());
         if (nameCompare != 0) {
             return nameCompare;
         }
 
         // Same name - compare parameter types
-        Class<?>[] params1 = m1.getParameterTypes();
-        Class<?>[] params2 = m2.getParameterTypes();
+        var params1 = m1.getParameterTypes();
+        var params2 = m2.getParameterTypes();
 
         return compareParameterTypes(params1, params2);
     };
@@ -105,13 +105,13 @@ public final class RepositoryMethodIntrospector {
      * Compare parameter types for deterministic ordering.
      */
     private static int compareParameterTypes(Class<?>[] params1, Class<?>[] params2) {
-        int lenCompare = Integer.compare(params1.length, params2.length);
+        var lenCompare = Integer.compare(params1.length, params2.length);
         if (lenCompare != 0) {
             return lenCompare;
         }
 
         for (int i = 0; i < params1.length; i++) {
-            int typeCompare = params1[i].getName().compareTo(params2[i].getName());
+            var typeCompare = params1[i].getName().compareTo(params2[i].getName());
             if (typeCompare != 0) {
                 return typeCompare;
             }
@@ -165,14 +165,14 @@ public final class RepositoryMethodIntrospector {
                 return false;
             }
 
-            Class<?>[] paramTypes = method.getParameterTypes();
+            var paramTypes = method.getParameterTypes();
             if (parameterTypes.size() != paramTypes.length) {
                 return false;
             }
 
             for (int i = 0; i < paramTypes.length; i++) {
-                Class<?> expected = parameterTypes.get(i);
-                Class<?> actual = paramTypes[i];
+                var expected = parameterTypes.get(i);
+                var actual = paramTypes[i];
 
                 // Special handling for IdParam marker
                 if (expected == io.memris.query.IdParam.class) {
@@ -190,39 +190,6 @@ public final class RepositoryMethodIntrospector {
             }
 
             return true;
-        }
-
-        /**
-         * Compute hash code using name and parameter types.
-         * <p>
-         * Important: Uses Class objects directly (not names) for proper hashing.
-         */
-        @Override
-        public int hashCode() {
-            int result = name.hashCode();
-            result = 31 * result + parameterTypes.hashCode();
-            return result;
-        }
-
-        /**
-         * Check equality with another MethodKey.
-         * <p>
-         * Uses exact Class equality (not isAssignableFrom) for proper Map key behavior.
-         * The matches() method handles subtype relationships separately.
-         */
-        @Override
-        public boolean equals(Object obj) {
-            if (this == obj) {
-                return true;
-            }
-            if (obj == null || getClass() != obj.getClass()) {
-                return false;
-            }
-            MethodKey other = (MethodKey) obj;
-            if (!name.equals(other.name)) {
-                return false;
-            }
-            return parameterTypes.equals(other.parameterTypes);
         }
     }
 }

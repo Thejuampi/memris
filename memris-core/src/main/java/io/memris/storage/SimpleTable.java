@@ -94,6 +94,7 @@ public final class SimpleTable implements Table {
         capacity = newCapacity;
     }
 
+    @SuppressWarnings("IntLongMath")
     private int rowIndex(RowId rowId) {
         long index = (rowId.page() << OFFSET_BITS) | (rowId.offset() & 0xFFFFL);
         if (index >= size) {

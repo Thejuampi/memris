@@ -4,10 +4,12 @@ import java.lang.reflect.Method;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 import java.util.ArrayList;
-import java.util.List;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+
+import static java.util.Locale.ROOT;
 
 /**
  * Enum of Spring Data JPA query method operators with their LogicalQuery
@@ -224,10 +226,9 @@ public final class QueryPlanner {
      *
      * @param method       repository method to parse
      * @param entityClass  entity class for context-aware property resolution
-     * @param idColumnName name of ID column (e.g., "id")
      * @return a LogicalQuery representing the semantic meaning of the method
      */
-    public static LogicalQuery parse(Method method, Class<?> entityClass, String idColumnName) {
+    public static LogicalQuery parse(Method method, Class<?> entityClass) {
         String methodName = method.getName();
         Class<?> returnType = method.getReturnType();
         Class<?>[] paramTypes = method.getParameterTypes();
@@ -245,7 +246,7 @@ public final class QueryPlanner {
         // Uses BuiltInResolver for deterministic tie-breaking and ambiguity detection
 
         // First check active built-ins
-        OpCode builtInOp = BuiltInResolver.resolveBuiltInOpCode(method, QueryMethodLexer.BUILT_INS);
+        var builtInOp = BuiltInResolver.resolveBuiltInOpCode(method, QueryMethodLexer.BUILT_INS);
 
         // If not found, check reserved built-ins (for future Spring Data compatibility)
         if (builtInOp == null) {
@@ -258,20 +259,16 @@ public final class QueryPlanner {
         }
 
         // Otherwise: derived query parsing
-        LimitParseResult limitParse = parseLimit(methodName);
-        if (limitParse.limit() > 0 && !isFindPrefix(extractPrefix(methodName))) {
-            throw new IllegalArgumentException(
-                    "Top/First is only supported for find/read/query/get methods: " + methodName);
-        }
-        String parseName = limitParse.normalizedName();
-        DistinctParseResult distinctParse = parseDistinct(parseName);
+        var limitParse = parseLimit(methodName);
+        var parseName = limitParse.normalizedName();
+        var distinctParse = parseDistinct(parseName);
         parseName = distinctParse.normalizedName();
-        boolean distinct = distinctParse.distinct();
+        var distinct = distinctParse.distinct();
 
         // Tokenize using context-aware lexer
         List<QueryMethodToken> tokens = QueryMethodLexer.tokenize(entityClass, parseName);
-        LogicalQuery.ReturnKind returnKind = determineReturnKind(parseName, returnType);
-        LogicalQuery.Grouping grouping = extractGrouping(method, parseName, returnType);
+        var returnKind = determineReturnKind(parseName, returnType);
+        var grouping = extractGrouping(method, parseName, returnType);
         if (isMapReturnType(returnType) && grouping == null) {
             throw new IllegalArgumentException(
                     "Map return types require GroupingBy or countBy with Map return: " + methodName);
@@ -282,10 +279,10 @@ public final class QueryPlanner {
                         "Grouping queries do not support OrderBy: " + methodName);
             }
             List<LogicalQuery.Condition> conditions = new ArrayList<>();
-            ParseState state = new ParseState();
-            boolean isCountGroupingWithoutConditions = parseName.toLowerCase().startsWith("countby")
-                    && !parseName.contains("GroupingBy")
-                    && returnKind == LogicalQuery.ReturnKind.MANY_MAP;
+        var state = new ParseState();
+        var isCountGroupingWithoutConditions = parseName.toLowerCase(ROOT).startsWith("countby")
+                && !parseName.contains("GroupingBy")
+                && returnKind == LogicalQuery.ReturnKind.MANY_MAP;
             if (isCountGroupingWithoutConditions) {
                 if (paramTypes.length > 0) {
                     throw new IllegalArgumentException(
@@ -302,8 +299,8 @@ public final class QueryPlanner {
                 }
             }
             if (!isCountGroupingWithoutConditions) {
-                String parseNameForConditions = parseName;
-                int groupingIndex = parseName.indexOf("GroupingBy");
+                var parseNameForConditions = parseName;
+                var groupingIndex = parseName.indexOf("GroupingBy");
                 if (groupingIndex >= 0) {
                     parseNameForConditions = parseName.substring(0, groupingIndex);
                 }
@@ -395,7 +392,7 @@ public final class QueryPlanner {
         }
 
         // Determine OpCode for derived queries based on method prefix
-        OpCode opCode = determineOpCodeForDerived(parseName, returnKind);
+        var opCode = determineOpCodeForDerived(parseName, returnKind);
 
         return LogicalQuery.of(opCode, returnKind,
                 conditions.toArray(new LogicalQuery.Condition[0]),
@@ -416,7 +413,7 @@ public final class QueryPlanner {
      * Determine OpCode for derived queries based on method prefix and ReturnKind.
      */
     private static OpCode determineOpCodeForDerived(String methodName, LogicalQuery.ReturnKind returnKind) {
-        String lower = methodName.toLowerCase();
+        String lower = methodName.toLowerCase(ROOT);
 
         // Check for deleteBy prefix
         if (lower.startsWith("deleteby")) {
@@ -609,12 +606,12 @@ public final class QueryPlanner {
      * to support both query and CRUD operations dynamically.
      */
     private static LogicalQuery.ReturnKind determineReturnKind(String methodName, Class<?> returnType) {
-        String prefix = extractPrefix(methodName);
-        String remaining = methodName.substring(prefix.length());
-        boolean hasBy = remaining.startsWith("By");
-        boolean isAll = "All".equals(remaining);
+        var prefix = extractPrefix(methodName);
+        var remaining = methodName.substring(prefix.length());
+        var hasBy = remaining.startsWith("By");
+        var isAll = "All".equals(remaining);
 
-        return switch (prefix.toLowerCase()) {
+        return switch (prefix.toLowerCase(ROOT)) {
             case "find", "read", "query", "get" -> {
                 if (remaining.startsWith("AllGroupingBy")) {
                     yield LogicalQuery.ReturnKind.MANY_MAP;
@@ -677,30 +674,30 @@ public final class QueryPlanner {
             return null;
         }
 
-        Class<?> keyType = resolveMapKeyType(method, methodName);
-        String groupingToken = "GroupingBy";
-        int groupingByIndex = methodName.indexOf(groupingToken);
+        var keyType = resolveMapKeyType(method, methodName);
+        var groupingToken = "GroupingBy";
+        var groupingByIndex = methodName.indexOf(groupingToken);
         if (groupingByIndex >= 0) {
-            String afterGrouping = methodName.substring(groupingByIndex + groupingToken.length());
-            String groupingPart = afterGrouping;
-            int byIndex = afterGrouping.indexOf("By");
+        var afterGrouping = methodName.substring(groupingByIndex + groupingToken.length());
+        var groupingPart = afterGrouping;
+            var byIndex = afterGrouping.indexOf("By");
             if (byIndex > 0) {
                 groupingPart = afterGrouping.substring(0, byIndex);
             }
             if (!groupingPart.isEmpty()) {
-                String[] properties = parseGroupingProperties(groupingPart, methodName);
-                LogicalQuery.Grouping.GroupValueType valueType = methodName.toLowerCase().startsWith("count")
-                        ? LogicalQuery.Grouping.GroupValueType.COUNT
-                        : (methodName.contains("AsSet")
-                                ? LogicalQuery.Grouping.GroupValueType.SET
-                                : LogicalQuery.Grouping.GroupValueType.LIST);
+        String[] properties = parseGroupingProperties(groupingPart, methodName);
+        var valueType = methodName.toLowerCase().startsWith("count")
+                ? LogicalQuery.Grouping.GroupValueType.COUNT
+                : (methodName.contains("AsSet")
+                        ? LogicalQuery.Grouping.GroupValueType.SET
+                        : LogicalQuery.Grouping.GroupValueType.LIST);
                 return new LogicalQuery.Grouping(properties, keyType, valueType);
             }
         }
 
-        int byIndex = methodName.indexOf("By");
+        var byIndex = methodName.indexOf("By");
         if (byIndex >= 0 && methodName.toLowerCase().startsWith("count")) {
-            String afterBy = methodName.substring(byIndex + 2);
+            var afterBy = methodName.substring(byIndex + 2);
             if (!afterBy.isEmpty()) {
                 String[] properties = parseGroupingProperties(afterBy, methodName);
                 return new LogicalQuery.Grouping(properties, keyType, LogicalQuery.Grouping.GroupValueType.COUNT);
@@ -721,6 +718,7 @@ public final class QueryPlanner {
         throw new IllegalArgumentException("Map return type must declare key type for grouping: " + methodName);
     }
 
+    @SuppressWarnings("StringSplitter")
     private static String[] parseGroupingProperties(String propertySuffix, String methodName) {
         String normalized = propertySuffix;
         if (normalized.endsWith("AsSet")) {

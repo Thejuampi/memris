@@ -53,9 +53,9 @@ public final class FloatEncoding {
      * @return sortable integer representation
      */
     public static int floatToSortableInt(float value) {
-        int bits = Float.floatToRawIntBits(value);
+        var bits = Float.floatToRawIntBits(value);
         if (bits < 0) {
-            return (~bits) ^ 0x80000000;
+            return ~bits ^ 0x80000000;
         }
         return bits;
     }
@@ -90,9 +90,9 @@ public final class FloatEncoding {
      * @return sortable long representation
      */
     public static long doubleToSortableLong(double value) {
-        long bits = Double.doubleToRawLongBits(value);
+        var bits = Double.doubleToRawLongBits(value);
         if (bits < 0) {
-            return (~bits) ^ 0x8000000000000000L;
+            return ~bits ^ 0x8000000000000000L;
         }
         return bits;
     }

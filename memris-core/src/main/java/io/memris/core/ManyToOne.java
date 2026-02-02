@@ -13,28 +13,25 @@ import java.lang.annotation.Target;
  * 
  * <p>Example usage:
  * <pre>
- * @Entity
+ * {@literal @}Entity
  * public class Order {
- *     @Id
+ *     {@literal @}Id
  *     private Long id;
- *     
- *     @ManyToOne
- *     @JoinColumn(name = "customer_id")
+ *
+ *     {@literal @}ManyToOne
+ *     {@literal @}JoinColumn(name = "customer_id")
  *     private Customer customer;
- *     
+ *
  *     private long total;
  * }
- * 
- * @Entity
+ *
+ * {@literal @}Entity
  * public class Customer {
- *     @Id
+ *     {@literal @}Id
  *     private Long id;
- *     
+ *
  *     private String email;
  * }
- * 
- * // Query with implicit join:
- * List<Order> orders = orderRepo.findByCustomerEmail("john@example.com");
  * </pre>
  * 
  * <p>The relationship can be queried using dot notation in repository method names.

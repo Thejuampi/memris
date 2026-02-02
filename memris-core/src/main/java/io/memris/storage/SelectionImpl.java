@@ -51,8 +51,8 @@ public final class SelectionImpl implements Selection {
 
     @Override
     public int[] toIntArray() {
-        int[] result = new int[refs.length];
-        for (int i = 0; i < refs.length; i++) {
+        var result = new int[refs.length];
+        for (var i = 0; i < refs.length; i++) {
             result[i] = Selection.index(refs[i]);
         }
         return result;
@@ -60,8 +60,8 @@ public final class SelectionImpl implements Selection {
 
     @Override
     public Selection union(Selection other) {
-        long[] a = ensureSorted(refs);
-        long[] b = ensureSorted(other.toRefArray());
+        var a = ensureSorted(refs);
+        var b = ensureSorted(other.toRefArray());
 
         if (a.length == 0) {
             return new SelectionImpl(b);
@@ -70,14 +70,14 @@ public final class SelectionImpl implements Selection {
             return new SelectionImpl(a);
         }
 
-        long[] combined = new long[a.length + b.length];
-        int i = 0;
-        int j = 0;
-        int k = 0;
+        var combined = new long[a.length + b.length];
+        var i = 0;
+        var j = 0;
+        var k = 0;
 
         while (i < a.length && j < b.length) {
-            long va = a[i];
-            long vb = b[j];
+            var va = a[i];
+            var vb = b[j];
             if (va == vb) {
                 combined[k++] = va;
                 i++;
@@ -103,21 +103,21 @@ public final class SelectionImpl implements Selection {
 
     @Override
     public Selection intersect(Selection other) {
-        long[] a = ensureSorted(refs);
-        long[] b = ensureSorted(other.toRefArray());
+        var a = ensureSorted(refs);
+        var b = ensureSorted(other.toRefArray());
 
         if (a.length == 0 || b.length == 0) {
             return new SelectionImpl(new long[0]);
         }
 
-        long[] result = new long[Math.min(a.length, b.length)];
-        int i = 0;
-        int j = 0;
-        int k = 0;
+        var result = new long[Math.min(a.length, b.length)];
+        var i = 0;
+        var j = 0;
+        var k = 0;
 
         while (i < a.length && j < b.length) {
-            long va = a[i];
-            long vb = b[j];
+            var va = a[i];
+            var vb = b[j];
             if (va == vb) {
                 result[k++] = va;
                 i++;
@@ -134,8 +134,8 @@ public final class SelectionImpl implements Selection {
 
     @Override
     public Selection subtract(Selection other) {
-        long[] a = ensureSorted(refs);
-        long[] b = ensureSorted(other.toRefArray());
+        var a = ensureSorted(refs);
+        var b = ensureSorted(other.toRefArray());
 
         if (a.length == 0) {
             return new SelectionImpl(new long[0]);
@@ -144,14 +144,14 @@ public final class SelectionImpl implements Selection {
             return new SelectionImpl(a);
         }
 
-        long[] result = new long[a.length];
-        int i = 0;
-        int j = 0;
-        int k = 0;
+        var result = new long[a.length];
+        var i = 0;
+        var j = 0;
+        var k = 0;
 
         while (i < a.length && j < b.length) {
-            long va = a[i];
-            long vb = b[j];
+            var va = a[i];
+            var vb = b[j];
             if (va == vb) {
                 i++;
                 j++;
@@ -174,9 +174,9 @@ public final class SelectionImpl implements Selection {
         if (refs.length < 2) {
             return refs;
         }
-        for (int i = 1; i < refs.length; i++) {
+        for (var i = 1; i < refs.length; i++) {
             if (refs[i] < refs[i - 1]) {
-                long[] copy = refs.clone();
+                var copy = refs.clone();
                 Arrays.sort(copy);
                 return copy;
             }
@@ -195,7 +195,7 @@ public final class SelectionImpl implements Selection {
         if (length == 0) {
             return new long[0];
         }
-        long[] result = new long[length];
+        var result = new long[length];
         System.arraycopy(refs, 0, result, 0, length);
         return result;
     }

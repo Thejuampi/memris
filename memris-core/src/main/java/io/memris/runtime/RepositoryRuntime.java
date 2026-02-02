@@ -122,14 +122,14 @@ public final class RepositoryRuntime<T> {
             return new ConditionExecutor(condition.nextCombinator(),
                     (runtime, args) -> runtime.plan().kernel().executeCondition(condition, args));
         }
-        String fieldName = (condition.columnIndex() >= 0 && condition.columnIndex() < columnNames.length)
+        var fieldName = (condition.columnIndex() >= 0 && condition.columnIndex() < columnNames.length)
                 ? columnNames[condition.columnIndex()]
                 : null;
         if (fieldName == null) {
             return new ConditionExecutor(condition.nextCombinator(),
                     (runtime, args) -> runtime.plan().kernel().executeCondition(condition, args));
         }
-        LogicalQuery.Operator operator = condition.operator();
+        var operator = condition.operator();
         return switch (operator) {
             case IN -> new ConditionExecutor(condition.nextCombinator(), (runtime, args) -> {
                 Selection selection = selectWithIndexForIn(runtime, entityClass, fieldName,
@@ -151,7 +151,7 @@ public final class RepositoryRuntime<T> {
                 if (indexFactory == null) {
                     return runtime.plan().kernel().executeCondition(condition, args);
                 }
-                Object value = args[condition.argumentIndex()];
+                var value = args[condition.argumentIndex()];
                 int[] rows = indexFactory.queryIndex(entityClass, fieldName, operator.toPredicateOperator(), value);
                 return rows != null ? runtime.selectionFromRows(rows)
                         : runtime.plan().kernel().executeCondition(condition, args);
@@ -219,7 +219,7 @@ public final class RepositoryRuntime<T> {
         if (orderBy == null || orderBy.length == 0) {
             return null;
         }
-        int limit = query.limit();
+        var limit = query.limit();
         if (orderBy.length == 1) {
             int columnIndex = orderBy[0].columnIndex();
             boolean ascending = orderBy[0].ascending();
@@ -279,33 +279,33 @@ public final class RepositoryRuntime<T> {
     }
 
     private static ProjectionExecutor buildProjectionExecutor(CompiledQuery query) {
-        CompiledQuery.CompiledProjection projection = query.projection();
+        var projection = query.projection();
         if (projection == null) {
             return null;
         }
-        CompiledQuery.CompiledProjectionItem[] items = projection.items();
-        ProjectionItemExecutor[] itemExecutors = new ProjectionItemExecutor[items.length];
-        for (int i = 0; i < items.length; i++) {
+        var items = projection.items();
+        var itemExecutors = new ProjectionItemExecutor[items.length];
+        for (var i = 0; i < items.length; i++) {
             itemExecutors[i] = buildProjectionItemExecutor(items[i]);
         }
         return new ProjectionExecutorImpl(projection, itemExecutors);
     }
 
     private static ProjectionItemExecutor buildProjectionItemExecutor(CompiledQuery.CompiledProjectionItem item) {
-        ProjectionStepExecutor[] steps = new ProjectionStepExecutor[item.steps().length];
-        for (int i = 0; i < item.steps().length; i++) {
+        var steps = new ProjectionStepExecutor[item.steps().length];
+        for (var i = 0; i < item.steps().length; i++) {
             steps[i] = buildProjectionStepExecutor(item.steps()[i]);
         }
         EntityMetadata<?> fieldMetadata = io.memris.core.MetadataExtractor
                 .extractEntityMetadata(item.fieldEntity());
-        TypeConverter<?, ?> converter = fieldMetadata.converters().get(item.fieldName());
-        FieldValueReader reader = buildFieldValueReader(item.columnIndex(), item.typeCode(), converter);
+        var converter = fieldMetadata.converters().get(item.fieldName());
+        var reader = buildFieldValueReader(item.columnIndex(), item.typeCode(), converter);
         return new ProjectionItemExecutor(item.fieldEntity(), steps, reader);
     }
 
     private static ProjectionStepExecutor buildProjectionStepExecutor(CompiledQuery.CompiledProjectionStep step) {
-        FkReader fkReader = buildFkReader(step.fkTypeCode(), step.sourceColumnIndex());
-        TargetRowResolver resolver = buildTargetRowResolver(step);
+        var fkReader = buildFkReader(step.fkTypeCode(), step.sourceColumnIndex());
+        var resolver = buildTargetRowResolver(step);
         return new ProjectionStepExecutor(step.sourceEntity(), step.targetEntity(), fkReader, resolver);
     }
 
@@ -551,17 +551,17 @@ public final class RepositoryRuntime<T> {
     }
 
     private T executeSaveOne(Object[] args) {
-        T entity = (T) args[0];
-        GeneratedTable table = plan.table();
+        var entity = (T) args[0];
+        var table = plan.table();
 
         // Use EntitySaver for ID extraction and field access
         // Cast to raw type to work around wildcard capture issues
         @SuppressWarnings("rawtypes")
         EntitySaver rawSaver = entitySaver;
-        Object currentId = rawSaver != null ? rawSaver.extractId(entity) : null;
-        boolean isNew = (currentId == null) || isZeroId(currentId);
+        var currentId = rawSaver != null ? rawSaver.extractId(entity) : null;
+        var isNew = (currentId == null) || isZeroId(currentId);
 
-        Object id = currentId;
+        var id = currentId;
         if (isNew) {
             id = generateNextId();
             if (rawSaver != null) {
@@ -575,9 +575,9 @@ public final class RepositoryRuntime<T> {
         }
 
         if (!isNew) {
-            long existingRef = resolvePackedRefById(table, id);
+            var existingRef = resolvePackedRefById(table, id);
             if (existingRef >= 0) {
-                int existingRowIndex = io.memris.storage.Selection.index(existingRef);
+                var existingRowIndex = io.memris.storage.Selection.index(existingRef);
                 updateIndexesOnDelete(existingRowIndex);
                 table.tombstone(existingRef);
             }
@@ -585,10 +585,10 @@ public final class RepositoryRuntime<T> {
 
         // EntitySaver handles all field extraction, converters, and relationships
         @SuppressWarnings("unchecked")
-        T savedEntity = rawSaver != null ? (T) rawSaver.save(entity, table, id) : entity;
+        var savedEntity = rawSaver != null ? (T) rawSaver.save(entity, table, id) : entity;
 
         // Look up row index by ID for index updates
-        int rowIndex = resolveRowIndexById(table, id);
+        var rowIndex = resolveRowIndexById(table, id);
 
         // Update indexes after save - read values back from table
         if (metadata != null && rowIndex >= 0) {
@@ -749,17 +749,17 @@ public final class RepositoryRuntime<T> {
     }
 
     private List<T> executeSaveAll(Object[] args) {
-        Iterable<T> entities = (Iterable<T>) args[0];
-        List<T> saved = new ArrayList<>();
-        for (T entity : entities) {
+        var entities = (Iterable<T>) args[0];
+        var saved = new ArrayList<T>();
+        for (var entity : entities) {
             saved.add(executeSaveOne(new Object[] { entity }));
         }
         return saved;
     }
 
     private Optional<T> executeFindById(Object[] args) {
-        Object id = args[0];
-        GeneratedTable table = plan.table();
+        var id = args[0];
+        var table = plan.table();
 
         long packedRef;
         if (id instanceof Long longId) {
@@ -774,20 +774,20 @@ public final class RepositoryRuntime<T> {
             return Optional.empty();
         }
 
-        int rowIndex = io.memris.storage.Selection.index(packedRef);
-        T entity = table.readWithSeqLock(rowIndex, () -> materializer.materialize(plan.kernel(), rowIndex));
+        var rowIndex = io.memris.storage.Selection.index(packedRef);
+        var entity = table.readWithSeqLock(rowIndex, () -> materializer.materialize(plan.kernel(), rowIndex));
         applyPostLoad(entity);
         hydrateCollections(entity, rowIndex);
         return Optional.of(entity);
     }
 
     private List<T> executeFindAll() {
-        GeneratedTable table = plan.table();
+        var table = plan.table();
         int[] rowIndices = table.scanAll();
 
-        List<T> results = new ArrayList<>(rowIndices.length);
-        for (int rowIndex : rowIndices) {
-            T entity = materializer.materialize(plan.kernel(), rowIndex);
+        var results = new ArrayList<T>(rowIndices.length);
+        for (var rowIndex : rowIndices) {
+            var entity = materializer.materialize(plan.kernel(), rowIndex);
             applyPostLoad(entity);
             hydrateCollections(entity, rowIndex);
             results.add(entity);
@@ -796,15 +796,15 @@ public final class RepositoryRuntime<T> {
     }
 
     private Object executeFind(CompiledQuery query, Object[] args) {
-        Selection selection = executeConditions(query, args);
+        var selection = executeConditions(query, args);
 
         int[] rows = selection.toIntArray();
         if (query.distinct()) {
             rows = distinctRows(rows);
         }
 
-        int limit = query.limit();
-        OrderExecutor orderExecutor = plan.orderExecutorFor(query);
+        var limit = query.limit();
+        var orderExecutor = plan.orderExecutorFor(query);
         if (orderExecutor != null) {
             rows = orderExecutor.apply(this, rows);
         } else {
@@ -816,17 +816,17 @@ public final class RepositoryRuntime<T> {
             }
         }
 
-        int max = (limit > 0 && limit < rows.length) ? limit : rows.length;
+        var max = (limit > 0 && limit < rows.length) ? limit : rows.length;
 
-        CompiledQuery.CompiledProjection projection = query.projection();
-        ProjectionExecutor projectionExecutor = plan.projectionExecutorFor(query);
+        var projection = query.projection();
+        var projectionExecutor = plan.projectionExecutorFor(query);
         if (projection != null) {
-            boolean returnSet = query.returnKind() == LogicalQuery.ReturnKind.MANY_SET;
+            var returnSet = query.returnKind() == LogicalQuery.ReturnKind.MANY_SET;
             List<Object> results = returnSet ? null : new ArrayList<>(max);
             java.util.Set<Object> resultSet = returnSet ? new java.util.LinkedHashSet<>(Math.max(16, max)) : null;
-            for (int i = 0; i < max; i++) {
-                int rowIndex = rows[i];
-                Object value = projectionExecutor != null
+            for (var i = 0; i < max; i++) {
+                var rowIndex = rows[i];
+                var value = projectionExecutor != null
                         ? projectionExecutor.materialize(this, rowIndex)
                         : materializeProjection(projection, rowIndex);
                 if (returnSet) {
@@ -843,32 +843,32 @@ public final class RepositoryRuntime<T> {
             };
         }
 
-        boolean returnSet = query.returnKind() == LogicalQuery.ReturnKind.MANY_SET;
-        boolean returnMap = query.returnKind() == LogicalQuery.ReturnKind.MANY_MAP;
+        var returnSet2 = query.returnKind() == LogicalQuery.ReturnKind.MANY_SET;
+        var returnMap = query.returnKind() == LogicalQuery.ReturnKind.MANY_MAP;
 
         if (returnMap) {
             return buildMapResult(query, rows, max, args);
         }
 
-        List<T> results = returnSet ? null : new ArrayList<>(max);
-        java.util.Set<T> resultSet = returnSet ? new java.util.LinkedHashSet<>(Math.max(16, max)) : null;
-        for (int i = 0; i < max; i++) {
-            int rowIndex = rows[i];
-            T entity = materializer.materialize(plan.kernel(), rowIndex);
+        List results2 = returnSet2 ? null : new ArrayList<>(max);
+        java.util.Set resultSet2 = returnSet2 ? new java.util.LinkedHashSet<>(Math.max(16, max)) : null;
+        for (var i = 0; i < max; i++) {
+            var rowIndex = rows[i];
+            var entity = materializer.materialize(plan.kernel(), rowIndex);
             applyPostLoad(entity);
             hydrateJoins(entity, rowIndex, query);
             hydrateCollections(entity, rowIndex);
-            if (returnSet) {
-                resultSet.add(entity);
+            if (returnSet2) {
+                resultSet2.add(entity);
             } else {
-                results.add(entity);
+                results2.add(entity);
             }
         }
 
         return switch (query.returnKind()) {
-            case ONE_OPTIONAL -> results.isEmpty() ? Optional.empty() : Optional.of(results.get(0));
-            case MANY_LIST -> results;
-            case MANY_SET -> resultSet;
+            case ONE_OPTIONAL -> results2.isEmpty() ? Optional.empty() : Optional.of((T) results2.get(0));
+            case MANY_LIST -> (List<T>) results2;
+            case MANY_SET -> (java.util.Set<T>) resultSet2;
             default -> throw new IllegalStateException("Unexpected return kind for FIND: " + query.returnKind());
         };
     }
@@ -1313,6 +1313,7 @@ public final class RepositoryRuntime<T> {
             size = bitSet.cardinality();
         }
 
+        @SuppressWarnings("unused")
         int[] toIntArray() {
             if (bitSet != null) {
                 int[] result = new int[size];
