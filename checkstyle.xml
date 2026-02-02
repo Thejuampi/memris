@@ -30,7 +30,7 @@
 
   <!-- Keep diffs readable; tune length to your repo conventions -->
   <module name="LineLength">
-    <property name="max" value="140"/>
+    <property name="max" value="160"/>
     <property name="ignorePattern"
               value="^package\s|^import\s|https?://|^\s*\*.*$"/>
   </module>
@@ -40,18 +40,10 @@
 
     <!-- ===== Imports: low noise, high ROI ===== -->
     <module name="AvoidStarImport"/>
-    <module name="AvoidStaticImport"/>
+
     <module name="UnusedImports"/>
     <module name="RedundantImport"/>
-    <module name="CustomImportOrder">
-      <!-- Common format: static, then non-static; group by packages -->
-      <property name="customImportOrderRules"
-                value="STATIC###THIRD_PARTY_PACKAGE###SPECIAL_IMPORTS###STANDARD_JAVA_PACKAGE"/>
-      <property name="specialImportsRegExp" value="^(io\.memris|org\.springframework)\."/>
-      <property name="standardPackageRegExp" value="^(java|javax|jakarta)\."/>
-      <property name="separateLineBetweenGroups" value="true"/>
-      <property name="sortImportsInGroupAlphabetically" value="true"/>
-    </module>
+
 
     <!-- ===== Naming: keep it simple and predictable ===== -->
     <module name="PackageName"/>

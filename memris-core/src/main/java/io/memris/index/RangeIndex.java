@@ -1,13 +1,11 @@
 package io.memris.index;
 
-import io.memris.kernel.LongEnumerator;
 import io.memris.kernel.MutableRowIdSet;
 import io.memris.kernel.RowId;
 import io.memris.kernel.RowIdSet;
 import io.memris.kernel.RowIdSetFactory;
 import io.memris.kernel.RowIdSets;
 
-import java.util.Map;
 import java.util.NavigableMap;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentSkipListMap;

@@ -76,6 +76,16 @@ public class BooleanTypeHandler extends AbstractTypeHandler<Boolean> {
         int intValue = value ? 1 : 0;
         return createSelection(table, table.scanInInt(columnIndex, new int[]{intValue}));
     }
+
+    @Override
+    public Selection executeCondition(GeneratedTable table, int columnIndex,
+                                      io.memris.query.LogicalQuery.Operator operator, Boolean value, boolean ignoreCase) {
+        return switch (operator) {
+            case IS_TRUE -> executeIsTrue(table, columnIndex);
+            case IS_FALSE -> executeIsFalse(table, columnIndex);
+            default -> super.executeCondition(table, columnIndex, operator, value, ignoreCase);
+        };
+    }
     
     /**
      * Execute IS_TRUE check.

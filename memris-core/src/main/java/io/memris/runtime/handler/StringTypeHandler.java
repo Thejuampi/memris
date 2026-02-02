@@ -80,6 +80,10 @@ public class StringTypeHandler extends AbstractTypeHandler<String> {
             case NOT_LIKE -> executeNotLike(table, columnIndex, value, ignoreCase);
             case CONTAINING -> executeContaining(table, columnIndex, value, ignoreCase);
             case NOT_CONTAINING -> executeNotContaining(table, columnIndex, value, ignoreCase);
+            case STARTING_WITH -> executeStartingWith(table, columnIndex, value, ignoreCase);
+            case NOT_STARTING_WITH -> executeNotStartingWith(table, columnIndex, value, ignoreCase);
+            case ENDING_WITH -> executeEndingWith(table, columnIndex, value, ignoreCase);
+            case NOT_ENDING_WITH -> executeNotEndingWith(table, columnIndex, value, ignoreCase);
             default -> super.executeCondition(table, columnIndex, operator, value, ignoreCase);
         };
     }
@@ -188,7 +192,31 @@ public class StringTypeHandler extends AbstractTypeHandler<String> {
      * Not yet implemented.
      */
     public Selection executeStartingWith(GeneratedTable table, int columnIndex, String prefix, boolean ignoreCase) {
-        throw new UnsupportedOperationException("STARTING_WITH operator not yet implemented for String");
+        if (prefix == null) {
+            return createSelection(table, new int[0]);
+        }
+        int[] rows = table.scanAll();
+        int[] matches = new int[rows.length];
+        int count = 0;
+        if (ignoreCase) {
+            String needle = prefix.toLowerCase();
+            for (int row : rows) {
+                String value = table.readString(columnIndex, row);
+                if (value != null && value.toLowerCase().startsWith(needle)) {
+                    matches[count++] = row;
+                }
+            }
+        } else {
+            for (int row : rows) {
+                String value = table.readString(columnIndex, row);
+                if (value != null && value.startsWith(prefix)) {
+                    matches[count++] = row;
+                }
+            }
+        }
+        int[] trimmed = new int[count];
+        System.arraycopy(matches, 0, trimmed, 0, count);
+        return createSelection(table, trimmed);
     }
     
     /**
@@ -196,7 +224,43 @@ public class StringTypeHandler extends AbstractTypeHandler<String> {
      * Not yet implemented.
      */
     public Selection executeEndingWith(GeneratedTable table, int columnIndex, String suffix, boolean ignoreCase) {
-        throw new UnsupportedOperationException("ENDING_WITH operator not yet implemented for String");
+        if (suffix == null) {
+            return createSelection(table, new int[0]);
+        }
+        int[] rows = table.scanAll();
+        int[] matches = new int[rows.length];
+        int count = 0;
+        if (ignoreCase) {
+            String needle = suffix.toLowerCase();
+            for (int row : rows) {
+                String value = table.readString(columnIndex, row);
+                if (value != null && value.toLowerCase().endsWith(needle)) {
+                    matches[count++] = row;
+                }
+            }
+        } else {
+            for (int row : rows) {
+                String value = table.readString(columnIndex, row);
+                if (value != null && value.endsWith(suffix)) {
+                    matches[count++] = row;
+                }
+            }
+        }
+        int[] trimmed = new int[count];
+        System.arraycopy(matches, 0, trimmed, 0, count);
+        return createSelection(table, trimmed);
+    }
+
+    public Selection executeNotStartingWith(GeneratedTable table, int columnIndex, String prefix, boolean ignoreCase) {
+        int[] all = table.scanAll();
+        Selection startingWith = executeStartingWith(table, columnIndex, prefix, ignoreCase);
+        return subtractSelections(table, all, startingWith);
+    }
+
+    public Selection executeNotEndingWith(GeneratedTable table, int columnIndex, String suffix, boolean ignoreCase) {
+        int[] all = table.scanAll();
+        Selection endingWith = executeEndingWith(table, columnIndex, suffix, ignoreCase);
+        return subtractSelections(table, all, endingWith);
     }
 
     private static boolean matchesLike(String value, String pattern) {

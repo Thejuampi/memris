@@ -9,7 +9,21 @@ import io.memris.core.converter.TypeConverter;
 import io.memris.query.CompiledQuery;
 import io.memris.query.QueryCompiler;
 import io.memris.query.QueryPlanner;
-import io.memris.runtime.*;
+import io.memris.runtime.EntityMaterializer;
+import io.memris.runtime.EntityMaterializerGenerator;
+import io.memris.runtime.HeapRuntimeKernel;
+import io.memris.runtime.JoinExecutor;
+import io.memris.runtime.JoinExecutorImpl;
+import io.memris.runtime.JoinExecutorManyToMany;
+import io.memris.runtime.JoinCollectionMaterializer;
+import io.memris.runtime.JoinMaterializer;
+import io.memris.runtime.JoinMaterializerImpl;
+import io.memris.runtime.NoopJoinMaterializer;
+import io.memris.runtime.RepositoryMethodBinding;
+import io.memris.runtime.RepositoryMethodExecutor;
+import io.memris.runtime.RepositoryPlan;
+import io.memris.runtime.RepositoryRuntime;
+
 import io.memris.storage.GeneratedTable;
 import io.memris.storage.SimpleTable;
 import io.memris.storage.SimpleTable.ColumnSpec;
@@ -23,7 +37,12 @@ import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
-import java.util.*;
+import java.util.ArrayDeque;
+import java.util.List;
+import java.util.ArrayList;
+import java.util.Map;
+import java.util.HashMap;
+import java.util.Comparator;
 
 import static java.util.Locale.ROOT;
 

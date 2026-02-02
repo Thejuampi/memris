@@ -490,7 +490,7 @@ public final class QueryPlanner {
     private static void handleOperatorToken(QueryMethodToken token, ParseState state,
             String methodName, List<LogicalQuery.Condition> conditions) {
         String value = token.value();
-        if (value.equals("OrderBy")) {
+            if ("OrderBy".equals(value)) {
             state.inOrderBy = true;
             if (state.pendingProperty != null) {
                 state.argIndex = finalizeCondition(state.pendingProperty, state.pendingOperatorValue,
@@ -499,7 +499,7 @@ public final class QueryPlanner {
                 state.pendingOperatorValue = null;
                 state.pendingIgnoreCase = false;
             }
-        } else if (value.equals("IgnoreCase")) {
+        } else             if ("IgnoreCase".equals(value)) {
             state.pendingIgnoreCase = true;
         } else {
             validateNoConsecutiveOperators(state.lastTokenWasOperator, state.pendingOperatorValue, methodName, value);

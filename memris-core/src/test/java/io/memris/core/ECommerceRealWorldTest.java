@@ -14,6 +14,12 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
+import java.math.BigDecimal;
+import java.math.BigInteger;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.Date;
 import java.util.List;
 import java.util.Optional;
 
@@ -698,6 +704,183 @@ class ECommerceRealWorldTest {
     }
 
     @Test
+    void shouldQueryTypedFieldsAcrossHandlers() {
+        var repo = arena.createRepository(AnalyticsEventRepository.class);
+
+        var baseInstant = Instant.parse("2025-01-01T00:00:00Z");
+        var baseDate = LocalDate.of(2025, 1, 1);
+        var baseDateTime = LocalDateTime.of(2025, 1, 1, 0, 0);
+
+        repo.save(new AnalyticsEvent(
+            "Pro Plan",
+            true,
+            (byte) 5,
+            (short) 200,
+            'B',
+            10,
+            1500L,
+            1.5f,
+            99.9,
+            new BigDecimal("19.99"),
+            new BigInteger("1000"),
+            baseInstant.plusSeconds(60),
+            baseDate.plusDays(1),
+            baseDateTime.plusHours(1),
+            Date.from(baseInstant.plusSeconds(120))
+        ));
+        repo.save(new AnalyticsEvent(
+            "Starter",
+            false,
+            (byte) 1,
+            (short) 50,
+            'D',
+            3,
+            200L,
+            0.2f,
+            12.5,
+            new BigDecimal("9.99"),
+            new BigInteger("10"),
+            baseInstant.minusSeconds(60),
+            baseDate.minusDays(1),
+            baseDateTime.minusHours(1),
+            Date.from(baseInstant.minusSeconds(120))
+        ));
+        repo.save(new AnalyticsEvent(
+            "Enterprise Pro",
+            true,
+            (byte) 9,
+            (short) 500,
+            'A',
+            20,
+            5000L,
+            3.1f,
+            250.0,
+            new BigDecimal("19.99"),
+            new BigInteger("9999"),
+            baseInstant.plusSeconds(3600),
+            baseDate.plusDays(5),
+            baseDateTime.plusHours(5),
+            Date.from(baseInstant.plusSeconds(7200))
+        ));
+
+        var snapshot = new HandlerCoverageSnapshot(
+            repo.findByTitleLike("%Pro%").size(),
+            repo.findByTitleNotLike("%Starter%").size(),
+            repo.findByTitleContaining("Plan").size(),
+            repo.findByTitleNotContaining("Enterprise").size(),
+            repo.findByActiveTrue().size(),
+            repo.findByActiveFalse().size(),
+            repo.findByPriorityGreaterThan((byte) 4).size(),
+            repo.findByRatingLessThan((short) 300).size(),
+            repo.findByGradeGreaterThanEqual('B').size(),
+            repo.findByQuantityLessThanEqual(10).size(),
+            repo.findByRevenueGreaterThan(1000L).size(),
+            repo.findByRatioGreaterThan(1.0f).size(),
+            repo.findByCostLessThan(200.0).size(),
+            repo.findByAmount(new BigDecimal("19.99")).size(),
+            repo.findByBigCountNot(new BigInteger("10")).size(),
+            repo.findByEventTimeGreaterThan(baseInstant).size(),
+            repo.findByShipDateLessThan(baseDate).size(),
+            repo.findByProcessedAtGreaterThanEqual(baseDateTime).size(),
+            repo.findByLegacyDateLessThan(Date.from(baseInstant)).size()
+        );
+
+        var expected = new HandlerCoverageSnapshot(
+            2,
+            2,
+            1,
+            2,
+            2,
+            1,
+            2,
+            2,
+            2,
+            2,
+            2,
+            2,
+            2,
+            2,
+            2,
+            2,
+            1,
+            2,
+            1
+        );
+
+        assertThat(snapshot).usingRecursiveComparison().isEqualTo(expected);
+    }
+
+    @Test
+    void shouldCoverNullsAndStringOperators() {
+        var repo = arena.createRepository(AnalyticsEventRepository.class);
+
+        repo.save(new AnalyticsEvent(
+            "Pro Starter",
+            true,
+            (byte) 1,
+            (short) 10,
+            'A',
+            1,
+            100L,
+            0.5f,
+            10.0,
+            new BigDecimal("1.00"),
+            new BigInteger("1"),
+            Instant.parse("2025-02-01T00:00:00Z"),
+            LocalDate.of(2025, 2, 1),
+            LocalDateTime.of(2025, 2, 1, 0, 0),
+            new Date(1706745600000L)
+        ));
+        repo.save(new AnalyticsEvent(
+            "Enterprise",
+            false,
+            (byte) 2,
+            (short) 20,
+            'B',
+            2,
+            200L,
+            1.5f,
+            20.0,
+            new BigDecimal("2.00"),
+            new BigInteger("2"),
+            Instant.parse("2025-02-02T00:00:00Z"),
+            LocalDate.of(2025, 2, 2),
+            LocalDateTime.of(2025, 2, 2, 0, 0),
+            null
+        ));
+        repo.save(new AnalyticsEvent(
+            null,
+            true,
+            (byte) 3,
+            (short) 30,
+            'C',
+            3,
+            300L,
+            2.5f,
+            30.0,
+            new BigDecimal("3.00"),
+            new BigInteger("3"),
+            Instant.parse("2025-02-03T00:00:00Z"),
+            LocalDate.of(2025, 2, 3),
+            LocalDateTime.of(2025, 2, 3, 0, 0),
+            null
+        ));
+
+        var snapshot = new StringOperatorSnapshot(
+            repo.findByTitleStartingWith("Pro").size(),
+            repo.findByTitleEndingWith("ter").size(),
+            repo.findByTitleNotContaining("prise").size(),
+            repo.findByTitleNotLike("%Pro%").size(),
+            repo.findByTitleIsNull().size(),
+            repo.findByLegacyDateNotNull().size()
+        );
+
+        var expected = new StringOperatorSnapshot(1, 1, 2, 2, 1, 1);
+
+        assertThat(snapshot).usingRecursiveComparison().isEqualTo(expected);
+    }
+
+    @Test
     void shouldHydrateManyToManyJoinCollections() {
         var studentRepo = arena.createRepository(ManyToManyStudentRepository.class);
         var courseRepo = arena.createRepository(ManyToManyCourseRepository.class);
@@ -766,5 +949,144 @@ class ECommerceRealWorldTest {
 
     public interface ManyToManyCourseRepository extends MemrisRepository<ManyToManyCourse> {
         ManyToManyCourse save(ManyToManyCourse course);
+    }
+
+    public static class AnalyticsEvent {
+        public Long id;
+        public String title;
+        public boolean active;
+        public byte priority;
+        public short rating;
+        public char grade;
+        public int quantity;
+        public long revenue;
+        public float ratio;
+        public double cost;
+        public BigDecimal amount;
+        public BigInteger bigCount;
+        public Instant eventTime;
+        public LocalDate shipDate;
+        public LocalDateTime processedAt;
+        public Date legacyDate;
+
+        public AnalyticsEvent() {
+        }
+
+        public AnalyticsEvent(
+            String title,
+            boolean active,
+            byte priority,
+            short rating,
+            char grade,
+            int quantity,
+            long revenue,
+            float ratio,
+            double cost,
+            BigDecimal amount,
+            BigInteger bigCount,
+            Instant eventTime,
+            LocalDate shipDate,
+            LocalDateTime processedAt,
+            Date legacyDate
+        ) {
+            this.title = title;
+            this.active = active;
+            this.priority = priority;
+            this.rating = rating;
+            this.grade = grade;
+            this.quantity = quantity;
+            this.revenue = revenue;
+            this.ratio = ratio;
+            this.cost = cost;
+            this.amount = amount;
+            this.bigCount = bigCount;
+            this.eventTime = eventTime;
+            this.shipDate = shipDate;
+            this.processedAt = processedAt;
+            this.legacyDate = legacyDate;
+        }
+    }
+
+    private record HandlerCoverageSnapshot(
+        int titleLike,
+        int titleNotLike,
+        int titleContaining,
+        int titleNotContaining,
+        int activeTrue,
+        int activeFalse,
+        int priorityGreaterThan,
+        int ratingLessThan,
+        int gradeGreaterThanEqual,
+        int quantityLessThanEqual,
+        int revenueGreaterThan,
+        int ratioGreaterThan,
+        int costLessThan,
+        int amountEquals,
+        int bigCountNot,
+        int eventTimeAfter,
+        int shipDateBefore,
+        int processedAtGreaterThanEqual,
+        int legacyDateLessThan
+    ) {
+    }
+
+    private record StringOperatorSnapshot(
+        int startingWith,
+        int endingWith,
+        int notContaining,
+        int notLike,
+        int titleIsNull,
+        int legacyDateIsNotNull
+    ) {
+    }
+
+    public interface AnalyticsEventRepository extends MemrisRepository<AnalyticsEvent> {
+        AnalyticsEvent save(AnalyticsEvent event);
+
+        List<AnalyticsEvent> findByTitleLike(String pattern);
+
+        List<AnalyticsEvent> findByTitleNotLike(String pattern);
+
+        List<AnalyticsEvent> findByTitleContaining(String keyword);
+
+        List<AnalyticsEvent> findByTitleNotContaining(String keyword);
+
+        List<AnalyticsEvent> findByTitleStartingWith(String prefix);
+
+        List<AnalyticsEvent> findByTitleEndingWith(String suffix);
+
+        List<AnalyticsEvent> findByActiveTrue();
+
+        List<AnalyticsEvent> findByActiveFalse();
+
+        List<AnalyticsEvent> findByPriorityGreaterThan(byte priority);
+
+        List<AnalyticsEvent> findByRatingLessThan(short rating);
+
+        List<AnalyticsEvent> findByGradeGreaterThanEqual(char grade);
+
+        List<AnalyticsEvent> findByQuantityLessThanEqual(int quantity);
+
+        List<AnalyticsEvent> findByRevenueGreaterThan(long revenue);
+
+        List<AnalyticsEvent> findByRatioGreaterThan(float ratio);
+
+        List<AnalyticsEvent> findByCostLessThan(double cost);
+
+        List<AnalyticsEvent> findByAmount(BigDecimal amount);
+
+        List<AnalyticsEvent> findByBigCountNot(BigInteger bigCount);
+
+        List<AnalyticsEvent> findByEventTimeGreaterThan(Instant eventTime);
+
+        List<AnalyticsEvent> findByShipDateLessThan(LocalDate shipDate);
+
+        List<AnalyticsEvent> findByProcessedAtGreaterThanEqual(LocalDateTime processedAt);
+
+        List<AnalyticsEvent> findByLegacyDateLessThan(Date legacyDate);
+
+        List<AnalyticsEvent> findByTitleIsNull();
+
+        List<AnalyticsEvent> findByLegacyDateNotNull();
     }
 }

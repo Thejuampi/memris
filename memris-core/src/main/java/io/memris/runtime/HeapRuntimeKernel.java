@@ -80,7 +80,10 @@ public record HeapRuntimeKernel(GeneratedTable table, TypeHandlerRegistry handle
         var columnIndex = cc.columnIndex();
         var operator = cc.operator();
         Object value = null;
-        if (operator != LogicalQuery.Operator.IS_NULL && operator != LogicalQuery.Operator.NOT_NULL) {
+        if (operator != LogicalQuery.Operator.IS_NULL
+            && operator != LogicalQuery.Operator.NOT_NULL
+            && operator != LogicalQuery.Operator.IS_TRUE
+            && operator != LogicalQuery.Operator.IS_FALSE) {
             value = args[cc.argumentIndex()];
         }
 

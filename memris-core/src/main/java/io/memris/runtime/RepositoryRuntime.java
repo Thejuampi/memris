@@ -656,6 +656,7 @@ public final class RepositoryRuntime<T> {
                     }
                     value = coerceUser(currentUser, auditField.javaType());
                 }
+                default -> throw new IllegalArgumentException("Unsupported audit field type: " + auditField.type());
             }
             if (value == null) {
                 continue;

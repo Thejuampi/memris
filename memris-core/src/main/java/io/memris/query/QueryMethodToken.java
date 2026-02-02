@@ -6,4 +6,4 @@ public record QueryMethodToken(
     int start,
     int end,
     boolean ignoreCase
-) {}
+) { }

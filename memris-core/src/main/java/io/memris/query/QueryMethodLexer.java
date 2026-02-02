@@ -1,6 +1,5 @@
 package io.memris.query;
 
-import java.util.Locale;
 import jakarta.persistence.Embeddable;
 import jakarta.persistence.Embedded;
 import jakarta.persistence.Entity;

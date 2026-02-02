@@ -139,9 +139,8 @@ Always use imports instead of fully qualified class names. Never use fully quali
 ### 7. Java Records: No Override of equals/hashCode
 Java records automatically implement equals() and hashCode() methods. Do not manually override these methods as they are already provided.
 
-**Exception:** Records with array components (e.g., LogicalQuery) require manual overrides to use Arrays.equals for deep equality, as auto-generated methods use == for arrays.
-
----
+### 8. Tool Usage: Relative Paths Only
+When calling tools for project files, always use relative paths from the project root instead of absolute paths. This ensures portability and avoids hardcoding system-specific paths.
 
 ## Package Structure
 

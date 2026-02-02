@@ -1,6 +1,8 @@
 package io.memris.repository;
 
 import io.memris.core.EntityMetadata;
+import io.memris.core.EntityMetadata.FieldMapping;
+import static io.memris.core.EntityMetadata.FieldMapping.RelationshipType.MANY_TO_MANY;
 import io.memris.core.GeneratedValue;
 import io.memris.core.Index;
 import io.memris.core.MemrisArena;
@@ -15,7 +17,6 @@ import io.memris.query.CompiledQuery;
 import io.memris.query.QueryCompiler;
 import io.memris.query.QueryPlanner;
 import io.memris.runtime.EntityMaterializer;
-import io.memris.runtime.EntitySaver;
 import io.memris.runtime.HeapRuntimeKernel;
 import io.memris.runtime.JoinCollectionMaterializer;
 import io.memris.runtime.JoinExecutorImpl;
@@ -41,8 +42,7 @@ import java.util.Map;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 
-import static io.memris.core.EntityMetadata.*;
-import static io.memris.core.EntityMetadata.FieldMapping.RelationshipType.*;
+
 
 public final class MemrisRepositoryFactory implements AutoCloseable {
 
@@ -335,7 +335,7 @@ public final class MemrisRepositoryFactory implements AutoCloseable {
         }
 
         // 9. Generate EntitySaver for the entity
-        var entitySaver = EntitySaverGenerator.generate(entityClass,metadata);
+        var entitySaver = EntitySaverGenerator.generate(entityClass, metadata);
 
         // 10. Build RepositoryPlan
         var plan = RepositoryPlan.fromGeneratedTable(
