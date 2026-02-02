@@ -87,22 +87,30 @@ public final class TypeConverterRegistry {
         }
 
         // Try boxed to primitive lookup
-        if (javaType == Integer.class)
+        if (javaType == Integer.class) {
             return (TypeConverter<J, ?>) converters.get(int.class);
-        if (javaType == Long.class)
+        }
+        if (javaType == Long.class) {
             return (TypeConverter<J, ?>) converters.get(long.class);
-        if (javaType == Boolean.class)
+        }
+        if (javaType == Boolean.class) {
             return (TypeConverter<J, ?>) converters.get(boolean.class);
-        if (javaType == Byte.class)
+        }
+        if (javaType == Byte.class) {
             return (TypeConverter<J, ?>) converters.get(byte.class);
-        if (javaType == Short.class)
+        }
+        if (javaType == Short.class) {
             return (TypeConverter<J, ?>) converters.get(short.class);
-        if (javaType == Float.class)
+        }
+        if (javaType == Float.class) {
             return (TypeConverter<J, ?>) converters.get(float.class);
-        if (javaType == Double.class)
+        }
+        if (javaType == Double.class) {
             return (TypeConverter<J, ?>) converters.get(double.class);
-        if (javaType == Character.class)
+        }
+        if (javaType == Character.class) {
             return (TypeConverter<J, ?>) converters.get(char.class);
+        }
 
         return null;
     }

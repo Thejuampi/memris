@@ -158,6 +158,11 @@
                                 <artifactId>error_prone_core</artifactId>
                                 <version>${error_prone.version}</version>
                             </path>
+                            <path>
+                                <groupId>org.openjdk.jmh</groupId>
+                                <artifactId>jmh-generator-annprocess</artifactId>
+                                <version>${jmh.version}</version>
+                            </path>
                         </annotationProcessorPaths>
                     </configuration>
                 </plugin>

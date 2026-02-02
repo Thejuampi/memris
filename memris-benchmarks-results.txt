@@ -1,0 +1,95 @@
+[INFO] Scanning for projects...
+[INFO] 
+[INFO] -----------------------< io.memris:memris-core >------------------------
+[INFO] Building Memris Core Engine 1.0.0-SNAPSHOT
+[INFO]   from pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- exec:3.1.0:java (default-cli) @ memris-core ---
+# JMH version: 1.37
+# VM version: JDK 21.0.7, OpenJDK 64-Bit Server VM, 21.0.7+6-LTS
+# VM invoker: C:\Program Files\Microsoft\jdk-21.0.7.6-hotspot\bin\java.exe
+# VM options: -Dclassworlds.conf=C:\ProgramData\chocolatey\lib\maven\apache-maven-3.9.9\bin\m2.conf -Dmaven.home=C:\ProgramData\chocolatey\lib\maven\apache-maven-3.9.9 -Dlibrary.jansi.path=C:\ProgramData\chocolatey\lib\maven\apache-maven-3.9.9\lib\jansi-native -Dmaven.multiModuleProjectDirectory=G:\dev\repos\memris
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 2 iterations, 2 s each
+# Measurement: 3 iterations, 5 s each
+# Timeout: 10 min per iteration
+# Threads: 2 threads (1 group; 1x "reader_1thread", 1x "writer_1thread" in each group), will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: io.memris.benchmarks.ConcurrentReadWriteBenchmark.write1_read1
+# Parameters: (initialRows = 100000)
+
+# Run progress: 0.00% complete, ETA 00:02:24
+# Fork: N/A, test runs in the host VM
+# *** WARNING: Non-forked runs may silently omit JVM options, mess up profilers, disable compiler hints, etc. ***
+# *** WARNING: Use non-forked runs only for debugging purposes, not for actual performance runs. ***
+# Warmup Iteration   1: 0.006 ms/op
+# Warmup Iteration   2: 0.005 ms/op
+Iteration   1: 0.005 ms/op
+                 reader_1thread: 0.002 ms/op
+                 writer_1thread: 0.008 ms/op
+
+Iteration   2: 0.005 ms/op
+                 reader_1thread: 0.002 ms/op
+                 writer_1thread: 0.008 ms/op
+
+Iteration   3: <failure>
+
+java.lang.reflect.InvocationTargetException
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:118)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at io.memris.storage.heap.MethodHandleImplementation$InsertInterceptor.intercept(MethodHandleImplementation.java:797)
+	at io.memris.storage.generated.TestEntityTable.insertFrom(Unknown Source)
+	at io.memris.runtime.TestEntity$MemrisSaver$54040179215900.save(Unknown Source)
+	at io.memris.runtime.RepositoryRuntime.executeSaveOne(RepositoryRuntime.java:535)
+	at io.memris.runtime.RepositoryRuntime.saveOne(RepositoryRuntime.java:416)
+	at io.memris.repository.RepositoryEmitter$SaveOneInterceptor.intercept(RepositoryEmitter.java:613)
+	at io.memris.runtime.TestEntityRepository_MemrisImpl_54040189157500.save(Unknown Source)
+	at io.memris.benchmarks.ConcurrentReadWriteBenchmark.doWrite(ConcurrentReadWriteBenchmark.java:163)
+	at io.memris.benchmarks.ConcurrentReadWriteBenchmark.writer_1thread(ConcurrentReadWriteBenchmark.java:71)
+	at io.memris.benchmarks.jmh_generated.ConcurrentReadWriteBenchmark_write1_read1_jmhTest.writer_1thread_avgt_jmhStub(ConcurrentReadWriteBenchmark_write1_read1_jmhTest.java:404)
+	at io.memris.benchmarks.jmh_generated.ConcurrentReadWriteBenchmark_write1_read1_jmhTest.write1_read1_AverageTime(ConcurrentReadWriteBenchmark_write1_read1_jmhTest.java:329)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call(BenchmarkHandler.java:527)
+	at org.openjdk.jmh.runner.BenchmarkHandler$BenchmarkTask.call(BenchmarkHandler.java:504)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:317)
+	at java.base/java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:572)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:317)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1144)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:642)
+	at java.base/java.lang.Thread.run(Thread.java:1583)
+Caused by: java.lang.IllegalStateException: Table capacity exceeded: 1048576
+	at io.memris.storage.heap.AbstractTable.allocateRowId(AbstractTable.java:135)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103)
+	... 22 more
+
+
+[WARNING] 
+java.lang.IndexOutOfBoundsException: Index 0 out of bounds for length 0
+    at jdk.internal.util.Preconditions.outOfBounds (Preconditions.java:100)
+    at jdk.internal.util.Preconditions.outOfBoundsCheckIndex (Preconditions.java:106)
+    at jdk.internal.util.Preconditions.checkIndex (Preconditions.java:302)
+    at java.util.Objects.checkIndex (Objects.java:385)
+    at java.util.ArrayList.get (ArrayList.java:427)
+    at org.openjdk.jmh.runner.BaseRunner.runBenchmarksEmbedded (BaseRunner.java:113)
+    at org.openjdk.jmh.runner.Runner.runBenchmarks (Runner.java:552)
+    at org.openjdk.jmh.runner.Runner.internalRun (Runner.java:309)
+    at org.openjdk.jmh.runner.Runner.run (Runner.java:208)
+    at org.openjdk.jmh.Main.main (Main.java:71)
+    at io.memris.benchmarks.MemrisBenchmarks.main (MemrisBenchmarks.java:113)
+    at org.codehaus.mojo.exec.ExecJavaMojo$1.run (ExecJavaMojo.java:279)
+    at java.lang.Thread.run (Thread.java:1583)
+[INFO] ------------------------------------------------------------------------
+[INFO] BUILD FAILURE
+[INFO] ------------------------------------------------------------------------
+[INFO] Total time:  17.812 s
+[INFO] Finished at: 2026-02-01T16:30:42-05:00
+[INFO] ------------------------------------------------------------------------
+[ERROR] Failed to execute goal org.codehaus.mojo:exec-maven-plugin:3.1.0:java (default-cli) on project memris-core: An exception occurred while executing the Java class. Index 0 out of bounds for length 0 -> [Help 1]
+[ERROR] 
+[ERROR] To see the full stack trace of the errors, re-run Maven with the -e switch.
+[ERROR] Re-run Maven using the -X switch to enable full debug logging.
+[ERROR] 
+[ERROR] For more information about the errors and possible solutions, please read the following articles:
+[ERROR] [Help 1] http://cwiki.apache.org/confluence/display/MAVEN/MojoExecutionException

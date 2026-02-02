@@ -38,9 +38,13 @@ public record LogicalQuery(
     public static LogicalQuery of(
             OpCode opCode,
             ReturnKind returnKind,
-            Condition[] conditions,
-            OrderBy[] orderBy) {
-        return new LogicalQuery(opCode, returnKind, conditions, new UpdateAssignment[0], null, new Join[0], orderBy, null, null, 0, false, new Object[0], new int[0], conditions.length);
+             Condition[] conditions,
+             OrderBy[] orderBy) {
+        return new LogicalQuery(
+            opCode, returnKind, conditions,
+            new UpdateAssignment[0], null, new Join[0],
+            orderBy, null, null, 0, false,
+            new Object[0], new int[0], conditions.length);
     }
 
     public static LogicalQuery of(

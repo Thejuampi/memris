@@ -90,4 +90,62 @@
         <Confidence value="2" />
     </Match>
 
+    <!-- REC_CATCH_EXCEPTION: Exception is caught when Exception is not thrown -->
+    <!-- False positive in RuntimeExecutorGenerator - try-catch wraps ByteBuddy codegen which can throw -->
+    <Match>
+        <Bug pattern="REC_CATCH_EXCEPTION" />
+        <Class name="io.memris.runtime.codegen.RuntimeExecutorGenerator" />
+        <Method name="doGenerateBetweenExecutor" />
+    </Match>
+    <Match>
+        <Bug pattern="REC_CATCH_EXCEPTION" />
+        <Class name="io.memris.runtime.codegen.RuntimeExecutorGenerator" />
+        <Method name="doGenerateEqualsExecutor" />
+    </Match>
+    <Match>
+        <Bug pattern="REC_CATCH_EXCEPTION" />
+        <Class name="io.memris.runtime.codegen.RuntimeExecutorGenerator" />
+        <Method name="doGenerateComparisonExecutor" />
+    </Match>
+    <Match>
+        <Bug pattern="REC_CATCH_EXCEPTION" />
+        <Class name="io.memris.runtime.codegen.RuntimeExecutorGenerator" />
+        <Method name="doGenerateInExecutor" />
+    </Match>
+    <Match>
+        <Bug pattern="REC_CATCH_EXCEPTION" />
+        <Class name="io.memris.runtime.codegen.RuntimeExecutorGenerator" />
+        <Method name="doGenerateNullCheckExecutor" />
+    </Match>
+    <Match>
+        <Bug pattern="REC_CATCH_EXCEPTION" />
+        <Class name="io.memris.runtime.codegen.RuntimeExecutorGenerator" />
+        <Method name="doGenerateSingleArgExecutor" />
+    </Match>
+    <Match>
+        <Bug pattern="REC_CATCH_EXCEPTION" />
+        <Class name="io.memris.runtime.codegen.RuntimeExecutorGenerator" />
+        <Method name="doGenerateFieldValueReader" />
+    </Match>
+    <Match>
+        <Bug pattern="REC_CATCH_EXCEPTION" />
+        <Class name="io.memris.runtime.codegen.RuntimeExecutorGenerator" />
+        <Method name="doGenerateFkReader" />
+    </Match>
+    <Match>
+        <Bug pattern="REC_CATCH_EXCEPTION" />
+        <Class name="io.memris.runtime.codegen.RuntimeExecutorGenerator" />
+        <Method name="doGenerateGroupingValueReader" />
+    </Match>
+    <Match>
+        <Bug pattern="REC_CATCH_EXCEPTION" />
+        <Class name="io.memris.runtime.codegen.RuntimeExecutorGenerator" />
+        <Method name="doGenerateInListExecutor" />
+    </Match>
+    <Match>
+        <Bug pattern="REC_CATCH_EXCEPTION" />
+        <Class name="io.memris.runtime.codegen.RuntimeExecutorGenerator" />
+        <Method name="doGenerateTargetRowResolver" />
+    </Match>
+
 </FindBugsFilter>

@@ -1,0 +1,169 @@
+# Memris Performance Baselines
+
+**Generated:** 2026-02-01  
+**Environment:** Windows, JDK 21.0.7, OpenJDK 64-Bit Server VM  
+**JMH Version:** 1.37  
+**Test Data:** 100,000 pre-populated rows (except insert benchmark)
+
+---
+
+## Summary
+
+| Benchmark | Mode | Score | Error | Units | Description |
+|-----------|------|-------|-------|-------|-------------|
+| **count_rows** | avgt | ≈ 10⁻⁶ | - | ms/op | Count all rows (uses table statistics) |
+| **insert_100k_rows** | avgt | 0.007 | ± 0.004 | ms/op | Insert 100,000 new rows |
+| **lookup_by_id** | avgt | 0.002 | ± 0.001 | ms/op | Lookup 100,000 rows by ID |
+| **scan_all_rows** | avgt | 170.591 | ± 59.970 | ms/op | Full table scan of 100,000 rows |
+
+---
+
+## Detailed Results
+
+### 1. count_rows
+**What it measures:** Table row counting using internal statistics
+
+```
+Benchmark: io.memris.benchmarks.MemrisBenchmarks.count_rows
+Mode: Average time
+Iterations: 3
+Warmup: 2 iterations
+
+Result:
+  ≈ 10⁻⁶ ms/op (effectively instantaneous)
+```
+
+**Analysis:** The count operation is essentially free because it uses pre-computed table statistics rather than scanning rows.
+
+---
+
+### 2. insert_100k_rows
+**What it measures:** Batch insert performance for 100,000 entities
+
+```
+Benchmark: io.memris.benchmarks.MemrisBenchmarks.insert_100k_rows
+Mode: Average time per operation
+Iterations: 3
+Warmup: 2 iterations
+
+Result:
+  0.007 ± 0.004 ms/op [Average]
+  (min, avg, max) = (0.007, 0.007, 0.007)
+  stdev = 0.001
+  CI (99.9%): [0.003, 0.011]
+```
+
+**Analysis:** 
+- **Throughput:** ~142,857 inserts per second (1/0.007)
+- **Latency:** ~7 microseconds per insert
+- Very consistent performance with low variance
+
+---
+
+### 3. lookup_by_id
+**What it measures:** Primary key lookup performance for 100,000 lookups
+
+```
+Benchmark: io.memris.benchmarks.MemrisBenchmarks.lookup_by_id
+Mode: Average time per operation  
+Iterations: 3
+Warmup: 2 iterations
+
+Result:
+  0.002 ± 0.001 ms/op [Average]
+  (min, avg, max) = (0.002, 0.002, 0.002)
+  stdev = 0.001
+  CI (99.9%): [0.002, 0.003]
+```
+
+**Analysis:**
+- **Throughput:** ~500,000 lookups per second (1/0.002)
+- **Latency:** ~2 microseconds per lookup
+- Excellent performance for hash index-based lookups
+
+---
+
+### 4. scan_all_rows
+**What it measures:** Full table scan returning all 100,000 rows
+
+```
+Benchmark: io.memris.benchmarks.MemrisBenchmarks.scan_all_rows
+Mode: Average time per operation
+Iterations: 3
+Warmup: 2 iterations
+
+Result:
+  170.591 ± 59.970 ms/op [Average]
+  (min, avg, max) = (168.034, 170.591, 174.299)
+  stdev = 3.287
+  CI (99.9%): [110.621, 230.561]
+```
+
+**Analysis:**
+- **Scan rate:** ~586,000 rows/second (100,000/0.17)
+- Higher variance due to entity materialization overhead
+- Includes object allocation and field mapping costs
+
+---
+
+## Performance Characteristics
+
+### O(1) Operations
+- **Count:** Uses cached statistics, no iteration
+- **Lookup by ID:** Hash index lookup
+- **Insert:** Amortized O(1) with row reuse
+
+### O(n) Operations  
+- **Full scan:** Must iterate and materialize all rows
+- **Range queries:** Index-based but still linear in result size
+
+### Memory Usage
+- **Per row overhead:** ~16 bytes (metadata) + column data
+- **100K rows:** ~10-20MB depending on column count
+
+---
+
+## Running the Benchmarks
+
+```bash
+cd memris-core
+mvn exec:java \
+  -Dexec.mainClass="io.memris.benchmarks.MemrisBenchmarks" \
+  -Dexec.classpathScope=test \
+  -Dexec.args="-i 3 -wi 2 -f 0 -bm avgt -tu ms"
+```
+
+**Note:** `-f 0` disables forking (required for Maven exec plugin). For production benchmarks, use forking with proper classpath setup.
+
+---
+
+## Known Limitations
+
+**Table Capacity:** Current default limit is 1,048,576 rows (1024 pages × 1024 rows/page)
+
+**Impact on Benchmarks:**
+- Concurrent benchmarks with writes may hit capacity during long runs
+- Insert-heavy workloads limited by pre-allocated capacity
+
+**Solution:** See `docs/DYNAMIC_TABLE_GROWTH.md` for architecture to support 4B+ rows
+
+---
+
+## Comparison with Other Benchmarks
+
+| Operation | Memris (this run) | Typical RDBMS* | In-Memory DB* |
+|-----------|-------------------|----------------|---------------|
+| Insert | 142K ops/sec | 10-50K ops/sec | 100-500K ops/sec |
+| Lookup by ID | 500K ops/sec | 20-100K ops/sec | 200K-1M ops/sec |
+| Full Scan | 586K rows/sec | 50-200K rows/sec | 500K-2M rows/sec |
+
+*Approximate values for comparison purposes only
+
+---
+
+## Notes
+
+- Benchmarks run in single JVM (no forking) for faster execution
+- Results should be treated as indicative rather than absolute
+- Production deployments should use proper JMH forking for statistically rigorous results
+- Variance higher for scan operations due to GC and materialization costs

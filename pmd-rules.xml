@@ -20,7 +20,6 @@
         <exclude name="AtLeastOneConstructor" /><!-- Records don't need explicit constructors -->
         <exclude name="CallSuperInConstructor" /><!-- Not always needed -->
         <exclude name="CommentDefaultAccessModifier" /><!-- Package-private is intentional -->
-        <exclude name="DefaultPackage" /><!-- Allow default package in tests -->
         <exclude name="EmptyControlStatement" /><!-- Sometimes intentional for clarity -->
         <exclude name="LongVariable" /><!-- Long descriptive names are good -->
         <exclude name="OnlyOneReturn" /><!-- Early returns are preferred -->
@@ -28,6 +27,8 @@
         <exclude name="ShortMethodName" /><!-- Short names like gt(), lt() are intentional -->
         <exclude name="ShortVariable" /><!-- Short names like i, j in loops are fine -->
         <exclude name="UseUnderscoresInNumericLiterals" /><!-- 1024 vs 1_024 - either is fine -->
+        <exclude name="MethodArgumentCouldBeFinal" /><!-- Not adding final keywords per user request -->
+        <exclude name="LocalVariableCouldBeFinal" /><!-- Not adding final keywords per user request -->
     </rule>
 
     <!-- Import Management -->
@@ -40,8 +41,6 @@
         <exclude name="CouplingBetweenObjects" /><!-- High coupling is acceptable in this design -->
         <exclude name="CyclomaticComplexity" /><!-- Complex switch statements are OK -->
         <exclude name="DataClass" /><!-- Records are intentionally data classes -->
-        <exclude name="ExcessiveClassLength" /><!-- Large files are OK if focused -->
-        <exclude name="ExcessiveMethodLength" /><!-- Long methods with switch statements OK -->
         <exclude name="ExcessiveParameterList" /><!-- Sometimes needed for completeness -->
         <exclude name="ExcessivePublicCount" /><!-- Public API classes need many methods -->
         <exclude name="LawOfDemeter" /><!-- Chain calls are common in builders -->
@@ -64,16 +63,13 @@
     <rule ref="category/java/errorprone.xml">
         <exclude name="AvoidFieldNameMatchingMethodName" /><!-- Common in this codebase -->
         <exclude name="AvoidFieldNameMatchingTypeName" /><!-- Common in this codebase -->
-        <exclude name="BeanMembersShouldSerialize" /><!-- Not a bean-based project -->
         <exclude name="CompareObjectsWithEquals" /><!-- Sometimes intentional for identity -->
         <exclude name="ConstructorCallsOverridableMethod" /><!-- Not an issue with final classes -->
-        <exclude name="DataflowAnomalyAnalysis" /><!-- Many false positives -->
         <exclude name="DoNotTerminateVM" /><!-- System.exit() is sometimes needed -->
-        <exclude name="EmptyIfStmt" /><!-- Sometimes intentional -->
         <exclude name="MissingSerialVersionUID" /><!-- Not using serialization -->
         <exclude name="NullAssignment" /><!-- Sometimes necessary for initialization -->
         <exclude name="ReturnEmptyCollectionRatherThanNull" /><!-- Null has semantic meaning sometimes -->
-        <exclude name="UseProperClassLoader" />><!-- Not applicable -->
+        <exclude name="UseProperClassLoader" /><!-- Not applicable -->
     </rule>
 
     <!-- Multithreading -->
@@ -88,7 +84,6 @@
         <exclude name="AvoidInstantiatingObjectsInLoops" /><!-- Sometimes necessary -->
         <exclude name="InsufficientStringBufferDeclaration" /><!-- Premature optimization -->
         <exclude name="RedundantFieldInitializer" /><!-- Explicit initialization is clearer -->
-        <exclude name="TooFewBranchesForASwitchStatement" /><!-- Even 2 cases is fine for switch -->
     </rule>
 
     <!-- Security -->
