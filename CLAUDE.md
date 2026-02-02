@@ -133,6 +133,9 @@ public final class TypeCodes {
 ### 6. Prefer 'var' for Local Variables
 Use the 'var' keyword instead of explicit Java type declarations when declaring local variables to improve readability and reduce verbosity.
 
+### 6.1 Imports Only (No Fully Qualified Names)
+Always use imports instead of fully qualified class names. Never use fully qualified names in code when an import can be used.
+
 ### 7. Java Records: No Override of equals/hashCode
 Java records automatically implement equals() and hashCode() methods. Do not manually override these methods as they are already provided.
 
