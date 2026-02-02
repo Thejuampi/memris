@@ -881,6 +881,154 @@ class ECommerceRealWorldTest {
     }
 
     @Test
+    void shouldCoverInNotInAndNullsAcrossTypes() {
+        var repo = arena.createRepository(AnalyticsEventRepository.class);
+
+        repo.save(new AnalyticsEvent(
+            "Alpha",
+            true,
+            (byte) 1,
+            (short) 10,
+            'A',
+            1,
+            100L,
+            0.1f,
+            10.0,
+            new BigDecimal("1.00"),
+            new BigInteger("1"),
+            Instant.parse("2025-03-01T00:00:00Z"),
+            LocalDate.of(2025, 3, 1),
+            LocalDateTime.of(2025, 3, 1, 0, 0),
+            new Date(1740787200000L)
+        ));
+        repo.save(new AnalyticsEvent(
+            "Bravo",
+            false,
+            (byte) 2,
+            (short) 20,
+            'B',
+            2,
+            200L,
+            0.2f,
+            20.0,
+            new BigDecimal("2.00"),
+            new BigInteger("2"),
+            Instant.parse("2025-03-02T00:00:00Z"),
+            LocalDate.of(2025, 3, 2),
+            LocalDateTime.of(2025, 3, 2, 0, 0),
+            null
+        ));
+        repo.save(new AnalyticsEvent(
+            "Charlie",
+            true,
+            (byte) 3,
+            (short) 30,
+            'C',
+            3,
+            300L,
+            0.3f,
+            30.0,
+            new BigDecimal("3.00"),
+            new BigInteger("3"),
+            Instant.parse("2025-03-03T00:00:00Z"),
+            LocalDate.of(2025, 3, 3),
+            LocalDateTime.of(2025, 3, 3, 0, 0),
+            null
+        ));
+
+        var snapshot = new InOperatorSnapshot(
+            repo.findByTitleIn(List.of("Alpha", "Charlie")).size(),
+            repo.findByTitleNotIn(List.of("Alpha", "Charlie")).size(),
+            repo.findByPriorityIn(new byte[] { 1, 3 }).size(),
+            repo.findByQuantityNotIn(List.of(1, 2)).size(),
+            repo.findByAmountIn(List.of(new BigDecimal("2.00"), new BigDecimal("3.00"))).size(),
+            repo.findByBigCountNotIn(List.of(new BigInteger("1"))).size(),
+            repo.findByEventTimeIn(List.of(Instant.parse("2025-03-01T00:00:00Z"), Instant.parse("2025-03-03T00:00:00Z"))).size(),
+            repo.findByShipDateNotIn(List.of(LocalDate.of(2025, 3, 2))).size(),
+            repo.findByProcessedAtIn(List.of(LocalDateTime.of(2025, 3, 2, 0, 0))).size(),
+            repo.findByLegacyDateIsNull().size()
+        );
+
+        var expected = new InOperatorSnapshot(2, 1, 2, 1, 2, 2, 2, 2, 1, 2);
+
+        assertThat(snapshot).usingRecursiveComparison().isEqualTo(expected);
+    }
+
+    @Test
+    void shouldCoverBetweenAndNotStringPrefixes() {
+        var repo = arena.createRepository(AnalyticsEventRepository.class);
+
+        var instantStart = Instant.parse("2025-04-01T00:00:00Z");
+        var instantMiddle = Instant.parse("2025-04-02T00:00:00Z");
+        var instantEnd = Instant.parse("2025-04-03T00:00:00Z");
+
+        repo.save(new AnalyticsEvent(
+            "Pro Alpha",
+            true,
+            (byte) 1,
+            (short) 10,
+            'A',
+            1,
+            100L,
+            0.1f,
+            10.0,
+            new BigDecimal("1.00"),
+            new BigInteger("1"),
+            instantStart,
+            LocalDate.of(2025, 4, 1),
+            LocalDateTime.of(2025, 4, 1, 0, 0),
+            new Date(1743465600000L)
+        ));
+        repo.save(new AnalyticsEvent(
+            "Beta End",
+            false,
+            (byte) 2,
+            (short) 20,
+            'B',
+            2,
+            200L,
+            0.2f,
+            20.0,
+            new BigDecimal("2.00"),
+            new BigInteger("2"),
+            instantMiddle,
+            LocalDate.of(2025, 4, 2),
+            LocalDateTime.of(2025, 4, 2, 0, 0),
+            new Date(1743552000000L)
+        ));
+        repo.save(new AnalyticsEvent(
+            "Gamma End",
+            true,
+            (byte) 3,
+            (short) 30,
+            'C',
+            3,
+            300L,
+            0.3f,
+            30.0,
+            new BigDecimal("3.00"),
+            new BigInteger("3"),
+            instantEnd,
+            LocalDate.of(2025, 4, 3),
+            LocalDateTime.of(2025, 4, 3, 0, 0),
+            new Date(1743638400000L)
+        ));
+
+        var snapshot = new BetweenOperatorSnapshot(
+            repo.findByTitleNotStartingWith("Pro").size(),
+            repo.findByTitleNotEndingWith("End").size(),
+            repo.findByEventTimeBetween(instantStart, instantEnd).size(),
+            repo.findByShipDateBetween(LocalDate.of(2025, 4, 1), LocalDate.of(2025, 4, 2)).size(),
+            repo.findByProcessedAtBetween(LocalDateTime.of(2025, 4, 2, 0, 0), LocalDateTime.of(2025, 4, 3, 0, 0)).size(),
+            repo.findByLegacyDateBetween(new Date(1743465600000L), new Date(1743552000000L)).size()
+        );
+
+        var expected = new BetweenOperatorSnapshot(2, 1, 3, 2, 2, 2);
+
+        assertThat(snapshot).usingRecursiveComparison().isEqualTo(expected);
+    }
+
+    @Test
     void shouldHydrateManyToManyJoinCollections() {
         var studentRepo = arena.createRepository(ManyToManyStudentRepository.class);
         var courseRepo = arena.createRepository(ManyToManyCourseRepository.class);
@@ -1040,6 +1188,30 @@ class ECommerceRealWorldTest {
     ) {
     }
 
+    private record InOperatorSnapshot(
+        int titleIn,
+        int titleNotIn,
+        int priorityIn,
+        int quantityNotIn,
+        int amountIn,
+        int bigCountNotIn,
+        int eventTimeIn,
+        int shipDateNotIn,
+        int processedAtIn,
+        int legacyDateIsNull
+    ) {
+    }
+
+    private record BetweenOperatorSnapshot(
+        int titleNotStartingWith,
+        int titleNotEndingWith,
+        int eventTimeBetween,
+        int shipDateBetween,
+        int processedAtBetween,
+        int legacyDateBetween
+    ) {
+    }
+
     public interface AnalyticsEventRepository extends MemrisRepository<AnalyticsEvent> {
         AnalyticsEvent save(AnalyticsEvent event);
 
@@ -1055,17 +1227,29 @@ class ECommerceRealWorldTest {
 
         List<AnalyticsEvent> findByTitleEndingWith(String suffix);
 
+        List<AnalyticsEvent> findByTitleNotStartingWith(String prefix);
+
+        List<AnalyticsEvent> findByTitleNotEndingWith(String suffix);
+
+        List<AnalyticsEvent> findByTitleIn(List<String> titles);
+
+        List<AnalyticsEvent> findByTitleNotIn(List<String> titles);
+
         List<AnalyticsEvent> findByActiveTrue();
 
         List<AnalyticsEvent> findByActiveFalse();
 
         List<AnalyticsEvent> findByPriorityGreaterThan(byte priority);
 
+        List<AnalyticsEvent> findByPriorityIn(byte[] priorities);
+
         List<AnalyticsEvent> findByRatingLessThan(short rating);
 
         List<AnalyticsEvent> findByGradeGreaterThanEqual(char grade);
 
         List<AnalyticsEvent> findByQuantityLessThanEqual(int quantity);
+
+        List<AnalyticsEvent> findByQuantityNotIn(List<Integer> quantities);
 
         List<AnalyticsEvent> findByRevenueGreaterThan(long revenue);
 
@@ -1075,18 +1259,38 @@ class ECommerceRealWorldTest {
 
         List<AnalyticsEvent> findByAmount(BigDecimal amount);
 
+        List<AnalyticsEvent> findByAmountIn(List<BigDecimal> amounts);
+
         List<AnalyticsEvent> findByBigCountNot(BigInteger bigCount);
+
+        List<AnalyticsEvent> findByBigCountNotIn(List<BigInteger> bigCounts);
 
         List<AnalyticsEvent> findByEventTimeGreaterThan(Instant eventTime);
 
+        List<AnalyticsEvent> findByEventTimeBetween(Instant start, Instant end);
+
+        List<AnalyticsEvent> findByEventTimeIn(List<Instant> eventTimes);
+
         List<AnalyticsEvent> findByShipDateLessThan(LocalDate shipDate);
+
+        List<AnalyticsEvent> findByShipDateBetween(LocalDate start, LocalDate end);
+
+        List<AnalyticsEvent> findByShipDateNotIn(List<LocalDate> shipDates);
 
         List<AnalyticsEvent> findByProcessedAtGreaterThanEqual(LocalDateTime processedAt);
 
+        List<AnalyticsEvent> findByProcessedAtBetween(LocalDateTime start, LocalDateTime end);
+
+        List<AnalyticsEvent> findByProcessedAtIn(List<LocalDateTime> processedAt);
+
         List<AnalyticsEvent> findByLegacyDateLessThan(Date legacyDate);
+
+        List<AnalyticsEvent> findByLegacyDateBetween(Date start, Date end);
 
         List<AnalyticsEvent> findByTitleIsNull();
 
         List<AnalyticsEvent> findByLegacyDateNotNull();
+
+        List<AnalyticsEvent> findByLegacyDateIsNull();
     }
 }

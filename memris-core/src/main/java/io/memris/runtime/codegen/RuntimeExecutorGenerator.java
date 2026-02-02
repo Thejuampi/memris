@@ -1442,6 +1442,41 @@ public final class RuntimeExecutorGenerator {
         if (value instanceof int[] ints) {
             return ints;
         }
+        if (value instanceof byte[] bytes) {
+            int[] result = new int[bytes.length];
+            for (int i = 0; i < bytes.length; i++) {
+                result[i] = convertToInt(typeCode, bytes[i]);
+            }
+            return result;
+        }
+        if (value instanceof short[] shorts) {
+            int[] result = new int[shorts.length];
+            for (int i = 0; i < shorts.length; i++) {
+                result[i] = convertToInt(typeCode, shorts[i]);
+            }
+            return result;
+        }
+        if (value instanceof char[] chars) {
+            int[] result = new int[chars.length];
+            for (int i = 0; i < chars.length; i++) {
+                result[i] = convertToInt(typeCode, chars[i]);
+            }
+            return result;
+        }
+        if (value instanceof boolean[] bools) {
+            int[] result = new int[bools.length];
+            for (int i = 0; i < bools.length; i++) {
+                result[i] = convertToInt(typeCode, bools[i]);
+            }
+            return result;
+        }
+        if (value instanceof float[] floats) {
+            int[] result = new int[floats.length];
+            for (int i = 0; i < floats.length; i++) {
+                result[i] = convertToInt(typeCode, floats[i]);
+            }
+            return result;
+        }
         if (value instanceof Object[] objects) {
             int[] result = new int[objects.length];
             for (int i = 0; i < objects.length; i++) {
