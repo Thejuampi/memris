@@ -38,7 +38,11 @@ jobs:
           set -e
           mkdir -p ~/.gnupg
           chmod 700 ~/.gnupg
-          printf "%s" "$GPG_PRIVATE_KEY" | gpg --batch --import
+          if printf "%s" "$GPG_PRIVATE_KEY" | grep -q "BEGIN PGP PRIVATE KEY BLOCK"; then
+            printf "%s" "$GPG_PRIVATE_KEY" | gpg --batch --import
+          else
+            printf "%s" "$GPG_PRIVATE_KEY" | base64 --decode | gpg --batch --import
+          fi
           echo "allow-loopback-pinentry" >> ~/.gnupg/gpg-agent.conf || true
           gpgconf --kill gpg-agent || true
 
