@@ -35,14 +35,20 @@ jobs:
         env:
           GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
         run: |
-          set -e
+          set -euo pipefail
           mkdir -p ~/.gnupg
           chmod 700 ~/.gnupg
-          if printf "%s" "$GPG_PRIVATE_KEY" | grep -q "BEGIN PGP PRIVATE KEY BLOCK"; then
-            printf "%s" "$GPG_PRIVATE_KEY" | gpg --batch --import
+          printf "%s" "$GPG_PRIVATE_KEY" > ~/.gnupg/private.key
+          chmod 600 ~/.gnupg/private.key
+          if grep -q "BEGIN PGP PRIVATE KEY BLOCK" ~/.gnupg/private.key; then
+            gpg --batch --import ~/.gnupg/private.key
           else
-            printf "%s" "$GPG_PRIVATE_KEY" | base64 --decode | gpg --batch --import
+            base64 --decode ~/.gnupg/private.key > ~/.gnupg/private.key.dec
+            chmod 600 ~/.gnupg/private.key.dec
+            gpg --batch --import ~/.gnupg/private.key.dec
+            rm -f ~/.gnupg/private.key.dec
           fi
+          rm -f ~/.gnupg/private.key
           echo "allow-loopback-pinentry" >> ~/.gnupg/gpg-agent.conf || true
           gpgconf --kill gpg-agent || true
 
