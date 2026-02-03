@@ -19,9 +19,8 @@ jobs:
         uses: googleapis/release-please-action@v4
         with:
           release-type: maven
-          package-name: memris
           path: .
-          signoff: true
+          config-file: .release-please-config.json
 
   release:
     if: startsWith(github.ref, 'refs/tags/v')
