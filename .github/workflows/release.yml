@@ -1,0 +1,80 @@
+name: Release to Maven Central
+
+on:
+  push:
+    tags:
+      - 'v*'
+    branches:
+      - main
+
+jobs:
+  release-please:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Run release-please
+        uses: googleapis/release-please-action@v4
+        with:
+          release-type: maven
+          package-name: memris
+          path: .
+          signoff: true
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: Import GPG private key
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+        run: |
+          set -e
+          mkdir -p ~/.gnupg
+          chmod 700 ~/.gnupg
+          printf "%s" "$GPG_PRIVATE_KEY" | gpg --batch --import
+          echo "allow-loopback-pinentry" >> ~/.gnupg/gpg-agent.conf || true
+          gpgconf --kill gpg-agent || true
+
+      - name: Configure Maven settings.xml with OSSRH credentials
+        env:
+          OSSRH_USERNAME: ${{ secrets.OSSRH_USERNAME }}
+          OSSRH_TOKEN: ${{ secrets.OSSRH_TOKEN }}
+        run: |
+          mkdir -p ~/.m2
+          printf '%s\n' "<settings xmlns=\"http://maven.apache.org/SETTINGS/1.0.0\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xsi:schemaLocation=\"http://maven.apache.org/SETTINGS/1.0.0 https://maven.apache.org/xsd/settings-1.0.0.xsd\">" > ~/.m2/settings.xml
+          printf '%s\n' "  <servers>" >> ~/.m2/settings.xml
+          printf '%s\n' "    <server>" >> ~/.m2/settings.xml
+          printf '%s\n' "      <id>ossrh</id>" >> ~/.m2/settings.xml
+          printf '%s\n' "      <username>$OSSRH_USERNAME</username>" >> ~/.m2/settings.xml
+          printf '%s\n' "      <password>$OSSRH_TOKEN</password>" >> ~/.m2/settings.xml
+          printf '%s\n' "    </server>" >> ~/.m2/settings.xml
+          printf '%s\n' "  </servers>" >> ~/.m2/settings.xml
+          printf '%s\n' "</settings>" >> ~/.m2/settings.xml
+
+      - name: Build and deploy to OSSRH (staging)
+        env:
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+        run: |
+          set -e
+          mvn -B -DskipTests \
+            -Dgpg.passphrase="$GPG_PASSPHRASE" \
+            -Dgpg.executable=gpg \
+            -Dgpg.useagent=false \
+            -P release deploy
