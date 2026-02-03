@@ -79,5 +79,11 @@ jobs:
             -Dgpg.useagent=false \
             -P release \
             release:prepare \
+            -Darguments="-DskipTests -Dgpg.passphrase=$GPG_PASSPHRASE -Dgpg.executable=gpg -Dgpg.useagent=false"
+          mvn -B -DskipTests \
+            -Dgpg.passphrase="$GPG_PASSPHRASE" \
+            -Dgpg.executable=gpg \
+            -Dgpg.useagent=false \
+            -P release \
             release:perform \
             -Darguments="-DskipTests -Dgpg.passphrase=$GPG_PASSPHRASE -Dgpg.executable=gpg -Dgpg.useagent=false"
