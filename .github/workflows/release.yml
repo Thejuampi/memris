@@ -43,10 +43,8 @@ jobs:
           if grep -q "BEGIN PGP PRIVATE KEY BLOCK" ~/.gnupg/private.key; then
             gpg --batch --import ~/.gnupg/private.key
           else
-            base64 --decode ~/.gnupg/private.key > ~/.gnupg/private.key.dec
-            chmod 600 ~/.gnupg/private.key.dec
-            gpg --batch --import ~/.gnupg/private.key.dec
-            rm -f ~/.gnupg/private.key.dec
+            echo "GPG_PRIVATE_KEY must be ASCII-armored (-----BEGIN PGP PRIVATE KEY BLOCK-----)." >&2
+            exit 1
           fi
           rm -f ~/.gnupg/private.key
           echo "allow-loopback-pinentry" >> ~/.gnupg/gpg-agent.conf || true
