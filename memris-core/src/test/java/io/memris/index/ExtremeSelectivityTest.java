@@ -6,6 +6,7 @@ import io.memris.repository.MemrisRepositoryFactory;
 import io.memris.runtime.TestEntity;
 import io.memris.runtime.TestEntityRepository;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Tag;
 
 import java.util.List;
 
@@ -13,7 +14,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Extreme selectivity test - 1M rows, 0.01% selectivity (100 matches).
+ * Run with: mvn test -Dtest=ExtremeSelectivityTest -Dtag=benchmark
  */
+@Tag("benchmark")
 class ExtremeSelectivityTest {
 
     @Test

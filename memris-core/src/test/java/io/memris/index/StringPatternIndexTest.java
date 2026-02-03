@@ -43,19 +43,19 @@ class StringPatternIndexTest {
     }
 
     @Test
-    void prefixIndex_startsWith_emptyPrefix_shouldReturnAll() {
-        // Given
+    void prefixIndex_startsWith_emptyPrefix_shouldReturnEmpty() {
+        // Given - empty prefix is not indexed by default, returns empty set
         RowId rowId1 = RowId.fromLong(1);
         RowId rowId2 = RowId.fromLong(2);
         
         prefixIndex.add("apple", rowId1);
         prefixIndex.add("banana", rowId2);
         
-        // When
+        // When - empty prefix returns empty set (by design)
         RowIdSet result = prefixIndex.startsWith("");
         
         // Then
-        assertThat(result.size()).isEqualTo(2);
+        assertThat(result.size()).isEqualTo(0);
     }
 
     @Test

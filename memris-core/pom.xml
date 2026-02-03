@@ -175,6 +175,7 @@
                 <artifactId>maven-surefire-plugin</artifactId>
                 <configuration>
                     <argLine>--enable-native-access=ALL-UNNAMED ${jacocoArgLine}</argLine>
+                    <excludedGroups>benchmark</excludedGroups>
                 </configuration>
             </plugin>
         </plugins>

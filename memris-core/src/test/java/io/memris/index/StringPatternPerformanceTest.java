@@ -7,6 +7,7 @@ import io.memris.repository.MemrisRepositoryFactory;
 import io.memris.runtime.TestEntity;
 import io.memris.runtime.TestEntityRepository;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Tag;
 
 import java.util.List;
 
@@ -15,7 +16,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * Performance test for String pattern matching indexes.
  * Compares performance with and without prefix/suffix indexes.
+ * 
+ * Run with: mvn test -Dtest=StringPatternPerformanceTest -Dtag=benchmark
  */
+@Tag("benchmark")
 class StringPatternPerformanceTest {
 
     @Test

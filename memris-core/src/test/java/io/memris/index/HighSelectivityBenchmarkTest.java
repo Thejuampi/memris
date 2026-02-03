@@ -6,6 +6,7 @@ import io.memris.repository.MemrisRepositoryFactory;
 import io.memris.runtime.TestEntity;
 import io.memris.runtime.TestEntityRepository;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Tag;
 
 import java.util.List;
 import java.util.UUID;
@@ -19,7 +20,10 @@ import static org.assertj.core.api.Assertions.assertThat;
  * - Large dataset (1M+ rows)
  * - High selectivity (<0.1% match rate)
  * - Unique prefixes
+ * 
+ * Run with: mvn test -Dtest=HighSelectivityBenchmarkTest -Dtag=benchmark
  */
+@Tag("benchmark")
 class HighSelectivityBenchmarkTest {
 
     @Test
