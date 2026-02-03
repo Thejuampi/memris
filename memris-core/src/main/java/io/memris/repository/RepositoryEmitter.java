@@ -81,6 +81,9 @@ public final class RepositoryEmitter {
         Class<T> entityClass = extractEntityClass(repositoryInterface);
         var table = arena.getOrCreateTable(entityClass);
 
+        // Build indexes for the entity class (respects arena configuration)
+        buildIndexesForEntity(entityClass, arena);
+
         // Extract entity metadata
         var metadata = MetadataExtractor.extractEntityMetadata(entityClass);
 
@@ -155,8 +158,8 @@ public final class RepositoryEmitter {
                 joinTables,
                 entitySaver);
 
-        // Create RepositoryRuntime
-        var runtime = new RepositoryRuntime<>(plan, null, metadata);
+        // Create RepositoryRuntime with factory and arena references for index queries
+        var runtime = new RepositoryRuntime<>(plan, arena.getFactory(), arena, metadata);
 
         return emitter.emitAndInstantiate(repositoryInterface, runtime);
     }
@@ -812,5 +815,54 @@ public final class RepositoryEmitter {
     }
 
     private record JoinTableInfo(String joinColumn, String inverseJoinColumn, SimpleTable table) {
+    }
+
+    /**
+     * Build indexes for the given entity class within an arena.
+     * This respects the arena's factory configuration for prefix/suffix indexes.
+     */
+    private static <T> void buildIndexesForEntity(Class<T> entityClass, MemrisArena arena) {
+        var indexes = arena.getOrCreateIndexes(entityClass);
+        var factory = arena.getFactory();
+        var config = factory.getConfiguration();
+
+        // Always create a HashIndex on the ID field for O(1) lookups
+        for (var field : entityClass.getDeclaredFields()) {
+            if (field.isAnnotationPresent(io.memris.core.GeneratedValue.class) ||
+                    field.isAnnotationPresent(jakarta.persistence.Id.class) ||
+                    field.getName().equals("id")) {
+                indexes.put(field.getName(), new io.memris.index.HashIndex<>());
+                break;
+            }
+        }
+
+        // Build indexes for @Index annotated fields
+        for (var field : entityClass.getDeclaredFields()) {
+            if (field.isAnnotationPresent(io.memris.core.Index.class)) {
+                var fieldName = field.getName();
+                var indexAnnotation = field.getAnnotation(io.memris.core.Index.class);
+                var fieldType = field.getType();
+
+                Object index;
+                if (indexAnnotation.type() == io.memris.core.Index.IndexType.BTREE) {
+                    index = new io.memris.index.RangeIndex<>();
+                } else if (indexAnnotation.type() == io.memris.core.Index.IndexType.PREFIX) {
+                    if (fieldType == String.class && config.enablePrefixIndex()) {
+                        index = new io.memris.index.StringPrefixIndex();
+                    } else {
+                        index = new io.memris.index.HashIndex<>();
+                    }
+                } else if (indexAnnotation.type() == io.memris.core.Index.IndexType.SUFFIX) {
+                    if (fieldType == String.class && config.enableSuffixIndex()) {
+                        index = new io.memris.index.StringSuffixIndex();
+                    } else {
+                        index = new io.memris.index.HashIndex<>();
+                    }
+                } else {
+                    index = new io.memris.index.HashIndex<>();
+                }
+                indexes.put(fieldName, index);
+            }
+        }
     }
 }

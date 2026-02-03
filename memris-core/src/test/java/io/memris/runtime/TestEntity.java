@@ -1,5 +1,6 @@
 package io.memris.runtime;
 
+import io.memris.core.Index;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 
@@ -7,7 +8,10 @@ import jakarta.persistence.Id;
 public class TestEntity {
     @Id
     public Long id;
+    
+    @Index(type = Index.IndexType.PREFIX)
     public String name;
+    
     public int age;
     public String department;
 

@@ -38,6 +38,10 @@ public @interface Index {
         /** Hash-based index for equality lookups (O(1)) */
         HASH,
         /** B-tree/skip-list index for range queries (O(log n)) */
-        BTREE
+        BTREE,
+        /** Prefix tree (trie) index for STARTING_WITH queries (O(k)) */
+        PREFIX,
+        /** Reverse string index for ENDING_WITH queries (O(k)) */
+        SUFFIX
     }
 }

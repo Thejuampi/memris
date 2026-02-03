@@ -36,6 +36,7 @@ public final class RepositoryRuntime<T> {
 
     private final RepositoryPlan<T> plan;
     private final MemrisRepositoryFactory factory;
+    private final io.memris.core.MemrisArena arena;
     private final EntityMaterializer<T> materializer;
     private final EntityMetadata<T> metadata;
     private final java.util.Map<Class<?>, EntityMetadata<?>> relatedMetadata;
@@ -54,11 +55,24 @@ public final class RepositoryRuntime<T> {
      * @param metadata entity metadata for ID generation and field access
      */
     public RepositoryRuntime(RepositoryPlan<T> plan, MemrisRepositoryFactory factory, EntityMetadata<T> metadata) {
+        this(plan, factory, null, metadata);
+    }
+
+    /**
+     * Create a RepositoryRuntime from a RepositoryPlan with arena support.
+     *
+     * @param plan     the compiled repository plan
+     * @param factory  the repository factory (for index queries)
+     * @param arena    the arena (for arena-scoped index queries)
+     * @param metadata entity metadata for ID generation and field access
+     */
+    public RepositoryRuntime(RepositoryPlan<T> plan, MemrisRepositoryFactory factory, io.memris.core.MemrisArena arena, EntityMetadata<T> metadata) {
         if (plan == null) {
             throw new IllegalArgumentException("plan required");
         }
         this.plan = plan;
         this.factory = factory;
+        this.arena = arena;
         this.metadata = metadata;
         if (metadata != null && plan.materializersByEntity() != null) {
             @SuppressWarnings("unchecked")
@@ -1808,13 +1822,21 @@ public final class RepositoryRuntime<T> {
 
         if (operator == LogicalQuery.Operator.BETWEEN) {
             Object[] range = new Object[] { args[condition.argumentIndex()], args[condition.argumentIndex() + 1] };
-            int[] rows = factory.queryIndex(metadata.entityClass(), fieldName, operator.toPredicateOperator(), range);
+            int[] rows = queryIndex(metadata.entityClass(), fieldName, operator.toPredicateOperator(), range);
             return rows != null ? selectionFromRows(rows) : plan.kernel().executeCondition(condition, args);
         }
 
         switch (operator) {
             case EQ, GT, GTE, LT, LTE -> {
-                int[] rows = factory.queryIndex(metadata.entityClass(), fieldName, operator.toPredicateOperator(),
+                int[] rows = queryIndex(metadata.entityClass(), fieldName, operator.toPredicateOperator(),
+                        value);
+                if (rows != null) {
+                    return selectionFromRows(rows);
+                }
+            }
+            case STARTING_WITH, ENDING_WITH -> {
+                // Check if prefix/suffix index is available for pattern matching
+                int[] rows = queryIndex(metadata.entityClass(), fieldName, operator.toPredicateOperator(),
                         value);
                 if (rows != null) {
                     return selectionFromRows(rows);
@@ -1825,6 +1847,73 @@ public final class RepositoryRuntime<T> {
         }
 
         return plan.kernel().executeCondition(condition, args);
+    }
+
+    /**
+     * Query index from either arena (if available) or factory.
+     */
+    private int[] queryIndex(Class<?> entityClass, String fieldName, Predicate.Operator operator, Object value) {
+        if (arena != null) {
+            // Use arena-scoped indexes
+            var entityIndexes = arena.getIndexes(entityClass);
+            if (entityIndexes != null) {
+                Object index = entityIndexes.get(fieldName);
+                if (index != null) {
+                    return queryIndexFromObject(index, operator, value);
+                }
+            }
+        }
+        // Fall back to factory indexes
+        return factory.queryIndex(entityClass, fieldName, operator, value);
+    }
+
+    /**
+     * Query a specific index object based on its type.
+     */
+    private int[] queryIndexFromObject(Object index, Predicate.Operator operator, Object value) {
+        if (index instanceof io.memris.index.HashIndex hashIndex && value != null) {
+            return rowIdSetToIntArray(hashIndex.lookup(value, createRowValidator()));
+        } else if (index instanceof io.memris.index.RangeIndex rangeIndex && value instanceof Comparable comp) {
+            return switch (operator) {
+                case EQ -> rowIdSetToIntArray(rangeIndex.lookup(comp, createRowValidator()));
+                case GT -> rowIdSetToIntArray(rangeIndex.greaterThan(comp, createRowValidator()));
+                case GTE -> rowIdSetToIntArray(rangeIndex.greaterThanOrEqual(comp, createRowValidator()));
+                case LT -> rowIdSetToIntArray(rangeIndex.lessThan(comp, createRowValidator()));
+                case LTE -> rowIdSetToIntArray(rangeIndex.lessThanOrEqual(comp, createRowValidator()));
+                default -> null;
+            };
+        } else if (index instanceof io.memris.index.StringPrefixIndex prefixIndex && value instanceof String s) {
+            if (operator == Predicate.Operator.STARTING_WITH) {
+                return rowIdSetToIntArray(prefixIndex.startsWith(s));
+            }
+        } else if (index instanceof io.memris.index.StringSuffixIndex suffixIndex && value instanceof String s) {
+            if (operator == Predicate.Operator.ENDING_WITH) {
+                return rowIdSetToIntArray(suffixIndex.endsWith(s));
+            }
+        }
+        return null;
+    }
+
+    private java.util.function.Predicate<io.memris.kernel.RowId> createRowValidator() {
+        GeneratedTable table = plan.table();
+        return rowId -> {
+            int rowIndex = (int) rowId.value();
+            long generation = table.rowGeneration(rowIndex);
+            long ref = io.memris.storage.Selection.pack(rowIndex, generation);
+            return table.isLive(ref);
+        };
+    }
+
+    private static int[] rowIdSetToIntArray(io.memris.kernel.RowIdSet rowIdSet) {
+        if (rowIdSet == null || rowIdSet.size() == 0) {
+            return new int[0];
+        }
+        long[] longArray = rowIdSet.toLongArray();
+        int[] intArray = new int[longArray.length];
+        for (int i = 0; i < longArray.length; i++) {
+            intArray[i] = (int) longArray[i];
+        }
+        return intArray;
     }
 
     private Selection selectWithIndexForIn(String fieldName, Object value) {
@@ -1839,7 +1928,7 @@ public final class RepositoryRuntime<T> {
             if (value instanceof int[] ints) {
                 Selection combined = null;
                 for (int v : ints) {
-                    int[] rows = factory.queryIndex(metadata.entityClass(), fieldName, Predicate.Operator.EQ, v);
+                    int[] rows = queryIndex(metadata.entityClass(), fieldName, Predicate.Operator.EQ, v);
                     if (rows == null) {
                         return null;
                     }
@@ -1851,7 +1940,7 @@ public final class RepositoryRuntime<T> {
             if (value instanceof long[] longs) {
                 Selection combined = null;
                 for (long v : longs) {
-                    int[] rows = factory.queryIndex(metadata.entityClass(), fieldName, Predicate.Operator.EQ, v);
+                    int[] rows = queryIndex(metadata.entityClass(), fieldName, Predicate.Operator.EQ, v);
                     if (rows == null) {
                         return null;
                     }
@@ -1865,7 +1954,7 @@ public final class RepositoryRuntime<T> {
 
         Selection combined = null;
         for (Object item : iterable) {
-            int[] rows = factory.queryIndex(metadata.entityClass(), fieldName, Predicate.Operator.EQ, item);
+            int[] rows = queryIndex(metadata.entityClass(), fieldName, Predicate.Operator.EQ, item);
             if (rows == null) {
                 return null;
             }

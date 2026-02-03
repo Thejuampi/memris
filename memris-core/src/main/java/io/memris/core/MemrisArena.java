@@ -50,6 +50,13 @@ public final class MemrisArena implements AutoCloseable {
     }
 
     /**
+     * Get the factory that created this arena.
+     */
+    public MemrisRepositoryFactory getFactory() {
+        return factory;
+    }
+
+    /**
      * Create or get a repository for the given interface in this arena.
      * <p>
      * If the repository already exists in this arena, returns the cached instance.

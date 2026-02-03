@@ -35,6 +35,10 @@ public final class MemrisConfiguration {
     // Code generation configuration
     private final boolean codegenEnabled;
 
+    // String pattern matching optimizations
+    private final boolean enablePrefixIndex;
+    private final boolean enableSuffixIndex;
+
     private MemrisConfiguration(Builder builder) {
         this.tableImplementation = builder.tableImplementation;
         this.pageSize = builder.pageSize;
@@ -44,6 +48,8 @@ public final class MemrisConfiguration {
         this.parallelSortThreshold = builder.parallelSortThreshold;
         this.auditProvider = builder.auditProvider;
         this.codegenEnabled = builder.codegenEnabled;
+        this.enablePrefixIndex = builder.enablePrefixIndex;
+        this.enableSuffixIndex = builder.enableSuffixIndex;
     }
 
     /**
@@ -127,6 +133,24 @@ public final class MemrisConfiguration {
     }
 
     /**
+     * Check if prefix index optimization is enabled for STARTING_WITH queries.
+     * 
+     * @return true if prefix index is enabled (default: true)
+     */
+    public boolean enablePrefixIndex() {
+        return enablePrefixIndex;
+    }
+
+    /**
+     * Check if suffix index optimization is enabled for ENDING_WITH queries.
+     * 
+     * @return true if suffix index is enabled (default: true)
+     */
+    public boolean enableSuffixIndex() {
+        return enableSuffixIndex;
+    }
+
+    /**
      * Table implementation strategy enum.
      */
     public enum TableImplementation {
@@ -157,6 +181,8 @@ public final class MemrisConfiguration {
         private int parallelSortThreshold = 1000;
         private AuditProvider auditProvider;
         private boolean codegenEnabled = true;
+        private boolean enablePrefixIndex = true;
+        private boolean enableSuffixIndex = true;
 
         private Builder() {
         }
@@ -244,6 +270,32 @@ public final class MemrisConfiguration {
          */
         public Builder codegenEnabled(boolean codegenEnabled) {
             this.codegenEnabled = codegenEnabled;
+            return this;
+        }
+
+        /**
+         * Enable or disable prefix index optimization for STARTING_WITH queries.
+         * When enabled, creates trie-based indexes for String fields annotated with
+         * @Index(type = IndexType.PREFIX), providing O(k) lookup instead of O(n) scans.
+         *
+         * @param enablePrefixIndex true to enable prefix index (default: true)
+         * @return this builder for method chaining
+         */
+        public Builder enablePrefixIndex(boolean enablePrefixIndex) {
+            this.enablePrefixIndex = enablePrefixIndex;
+            return this;
+        }
+
+        /**
+         * Enable or disable suffix index optimization for ENDING_WITH queries.
+         * When enabled, creates reverse-string indexes for String fields annotated with
+         * @Index(type = IndexType.SUFFIX), providing O(k) lookup instead of O(n) scans.
+         *
+         * @param enableSuffixIndex true to enable suffix index (default: true)
+         * @return this builder for method chaining
+         */
+        public Builder enableSuffixIndex(boolean enableSuffixIndex) {
+            this.enableSuffixIndex = enableSuffixIndex;
             return this;
         }
 

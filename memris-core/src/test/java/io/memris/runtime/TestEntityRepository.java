@@ -34,6 +34,13 @@ public interface TestEntityRepository extends MemrisRepository<TestEntity> {
     // Query methods
     List<TestEntity> findByName(String name);
 
+    // Pattern matching queries
+    List<TestEntity> findByNameStartingWith(String prefix);
+
+    List<TestEntity> findByNameEndingWith(String suffix);
+
+    List<TestEntity> findByNameContaining(String substring);
+
     List<TestEntity> findByNameIn(List<String> names);
 
     List<TestEntity> findByNameIn(String[] names);

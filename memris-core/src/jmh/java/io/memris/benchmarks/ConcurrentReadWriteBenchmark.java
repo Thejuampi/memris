@@ -44,7 +44,7 @@ public class ConcurrentReadWriteBenchmark {
 
     @Setup(Level.Trial)
     public void setup() {
-        int tablePageSize = 1024;
+        int tablePageSize = 4096;
         int tableMaxPages = 4096;
         int tableInitialPages = 256;
         MemrisConfiguration configuration = MemrisConfiguration.builder()

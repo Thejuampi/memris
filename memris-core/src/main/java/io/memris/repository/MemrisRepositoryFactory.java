@@ -177,6 +177,21 @@ public final class MemrisRepositoryFactory implements AutoCloseable {
                 }
                 yield null;
             }
+            case io.memris.index.StringPrefixIndex prefixIndex when value instanceof String s -> {
+                if (operator == Predicate.Operator.STARTING_WITH) {
+                    yield rowIdSetToIntArray(prefixIndex.startsWith(s));
+                } else if (operator == Predicate.Operator.EQ) {
+                    // Prefix index can also handle exact matches
+                    yield rowIdSetToIntArray(prefixIndex.startsWith(s));
+                }
+                yield null;
+            }
+            case io.memris.index.StringSuffixIndex suffixIndex when value instanceof String s -> {
+                if (operator == Predicate.Operator.ENDING_WITH) {
+                    yield rowIdSetToIntArray(suffixIndex.endsWith(s));
+                }
+                yield null;
+            }
             default -> null;
         };
     }
@@ -192,6 +207,16 @@ public final class MemrisRepositoryFactory implements AutoCloseable {
             case RangeIndex rangeIndex -> {
                 if (value instanceof Comparable comp) {
                     rangeIndex.add(comp, rowId);
+                }
+            }
+            case io.memris.index.StringPrefixIndex prefixIndex -> {
+                if (value instanceof String s) {
+                    prefixIndex.add(s, rowId);
+                }
+            }
+            case io.memris.index.StringSuffixIndex suffixIndex -> {
+                if (value instanceof String s) {
+                    suffixIndex.add(s, rowId);
                 }
             }
             default -> {
@@ -212,6 +237,16 @@ public final class MemrisRepositoryFactory implements AutoCloseable {
                     rangeIndex.remove(comp, rowId);
                 }
             }
+            case io.memris.index.StringPrefixIndex prefixIndex -> {
+                if (value instanceof String s) {
+                    prefixIndex.remove(s, rowId);
+                }
+            }
+            case io.memris.index.StringSuffixIndex suffixIndex -> {
+                if (value instanceof String s) {
+                    suffixIndex.remove(s, rowId);
+                }
+            }
             default -> {
             }
         }
@@ -226,6 +261,8 @@ public final class MemrisRepositoryFactory implements AutoCloseable {
             switch (index) {
                 case HashIndex hashIndex -> hashIndex.clear();
                 case RangeIndex rangeIndex -> rangeIndex.clear();
+                case io.memris.index.StringPrefixIndex prefixIndex -> prefixIndex.clear();
+                case io.memris.index.StringSuffixIndex suffixIndex -> suffixIndex.clear();
                 default -> {
                 }
             }
@@ -773,10 +810,25 @@ public final class MemrisRepositoryFactory implements AutoCloseable {
             if (field.isAnnotationPresent(Index.class)) {
                 var fieldName = field.getName();
                 var indexAnnotation = field.getAnnotation(Index.class);
+                var fieldType = field.getType();
 
                 Object index;
                 if (indexAnnotation.type() == Index.IndexType.BTREE) {
                     index = new io.memris.index.RangeIndex<>();
+                } else if (indexAnnotation.type() == Index.IndexType.PREFIX) {
+                    if (fieldType == String.class && configuration.enablePrefixIndex()) {
+                        index = new io.memris.index.StringPrefixIndex();
+                    } else {
+                        // Prefix index only supports String or is disabled, fall back to HashIndex
+                        index = new io.memris.index.HashIndex<>();
+                    }
+                } else if (indexAnnotation.type() == Index.IndexType.SUFFIX) {
+                    if (fieldType == String.class && configuration.enableSuffixIndex()) {
+                        index = new io.memris.index.StringSuffixIndex();
+                    } else {
+                        // Suffix index only supports String or is disabled, fall back to HashIndex
+                        index = new io.memris.index.HashIndex<>();
+                    }
                 } else {
                     index = new io.memris.index.HashIndex<>();
                 }
