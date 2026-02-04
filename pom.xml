@@ -203,6 +203,7 @@
                         <autoVersionSubmodules>true</autoVersionSubmodules>
                         <tagNameFormat>v@{project.version}</tagNameFormat>
                         <releaseProfiles>release</releaseProfiles>
+                        <pushChanges>false</pushChanges>
                     </configuration>
                 </plugin>
                 <plugin>

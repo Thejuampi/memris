@@ -82,3 +82,9 @@ jobs:
             -Dgpg.passphrase="$GPG_PASSPHRASE" \
             -Dgpg.executable=gpg \
             -Dgpg.useagent=false
+
+      - name: Push release changes and tags
+        if: success()
+        run: |
+          git push origin HEAD
+          git push origin --tags
