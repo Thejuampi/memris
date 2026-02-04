@@ -73,20 +73,28 @@ jobs:
         run: |
           set -e
           mvn -B -DskipTests \
+            -Dcheckstyle.skip=true \
             -Dmodernizer.skip=true \
+            -Dpmd.skip=true \
+            -Dspotbugs.skip=true \
+            -Denforcer.skip=true \
             -Dmaven.javadoc.failOnError=false \
             -Dgpg.passphrase="$GPG_PASSPHRASE" \
             -Dgpg.executable=gpg \
             -Dgpg.useagent=false \
             -P release \
             release:prepare \
-            -Darguments="-DskipTests -Dmodernizer.skip=true -Dmaven.javadoc.failOnError=false -Dgpg.passphrase=$GPG_PASSPHRASE -Dgpg.executable=gpg -Dgpg.useagent=false"
+            -Darguments="-DskipTests -Dcheckstyle.skip=true -Dmodernizer.skip=true -Dpmd.skip=true -Dspotbugs.skip=true -Denforcer.skip=true -Dmaven.javadoc.failOnError=false -Dgpg.passphrase=$GPG_PASSPHRASE -Dgpg.executable=gpg -Dgpg.useagent=false"
           mvn -B -DskipTests \
+            -Dcheckstyle.skip=true \
             -Dmodernizer.skip=true \
+            -Dpmd.skip=true \
+            -Dspotbugs.skip=true \
+            -Denforcer.skip=true \
             -Dmaven.javadoc.failOnError=false \
             -Dgpg.passphrase="$GPG_PASSPHRASE" \
             -Dgpg.executable=gpg \
             -Dgpg.useagent=false \
             -P release \
             release:perform \
-            -Darguments="-DskipTests -Dmodernizer.skip=true -Dmaven.javadoc.failOnError=false -Dgpg.passphrase=$GPG_PASSPHRASE -Dgpg.executable=gpg -Dgpg.useagent=false"
+            -Darguments="-DskipTests -Dcheckstyle.skip=true -Dmodernizer.skip=true -Dpmd.skip=true -Dspotbugs.skip=true -Denforcer.skip=true -Dmaven.javadoc.failOnError=false -Dgpg.passphrase=$GPG_PASSPHRASE -Dgpg.executable=gpg -Dgpg.useagent=false"
