@@ -5,43 +5,50 @@
     <modelVersion>4.0.0</modelVersion>
 
     <parent>
-        <groupId>io.memris</groupId>
+        <groupId>io.github.thejuampi</groupId>
         <artifactId>memris-parent</artifactId>
-        <version>1.0.0-SNAPSHOT</version>
+        <version>0.1.0-SNAPSHOT</version>
+        <relativePath>../pom.xml</relativePath>
     </parent>
 
-    <artifactId>memris-core</artifactId>
-    <name>Memris Core Engine</name>
+    <artifactId>memris</artifactId>
+    <name>Memris</name>
     <description>Core in-memory storage engine with vectorized execution and indexes</description>
 
     <dependencies>
+        <!-- Core -->
+        <dependency>
+            <groupId>net.bytebuddy</groupId>
+            <artifactId>byte-buddy</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.roaringbitmap</groupId>
+            <artifactId>RoaringBitmap</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.zaxxer</groupId>
+            <artifactId>SparseBitSet</artifactId>
+        </dependency>
 
+        <!-- Provided -->
+        <dependency>
+            <groupId>jakarta.persistence</groupId>
+            <artifactId>jakarta.persistence-api</artifactId>
+            <version>3.1.0</version>
+            <scope>provided</scope>
+        </dependency>
         <dependency>
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>
         </dependency>
 
-        <!-- ArchUnit for architectural testing -->
+        <!-- Tests -->
         <dependency>
             <groupId>com.tngtech.archunit</groupId>
             <artifactId>archunit-junit5</artifactId>
             <version>${archunit.version}</version>
             <scope>test</scope>
         </dependency>
-
-        <!-- RoaringBitmap for compressed indexes -->
-        <dependency>
-            <groupId>org.roaringbitmap</groupId>
-            <artifactId>RoaringBitmap</artifactId>
-        </dependency>
-        
-        <!-- SparseBitSet from Brett Wooldridge - faster for sparse indexes -->
-        <dependency>
-            <groupId>com.zaxxer</groupId>
-            <artifactId>SparseBitSet</artifactId>
-        </dependency>
-
-        <!-- JUnit 5 for TDD -->
         <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter-api</artifactId>
@@ -57,15 +64,11 @@
             <artifactId>junit-jupiter-params</artifactId>
             <scope>test</scope>
         </dependency>
-
-        <!-- AssertJ for fluent assertions -->
         <dependency>
             <groupId>org.assertj</groupId>
             <artifactId>assertj-core</artifactId>
             <scope>test</scope>
         </dependency>
-
-        <!-- JMH for benchmarks -->
         <dependency>
             <groupId>org.openjdk.jmh</groupId>
             <artifactId>jmh-core</artifactId>
@@ -76,28 +79,10 @@
             <artifactId>jmh-generator-annprocess</artifactId>
             <scope>test</scope>
         </dependency>
-
-        <!-- Jakarta Persistence annotations -->
-        <dependency>
-            <groupId>jakarta.persistence</groupId>
-            <artifactId>jakarta.persistence-api</artifactId>
-            <version>3.1.0</version>
-            <scope>provided</scope>
-        </dependency>
-
-        <!-- ByteBuddy for dynamic class generation -->
-        <dependency>
-            <groupId>net.bytebuddy</groupId>
-            <artifactId>byte-buddy</artifactId>
-        </dependency>
     </dependencies>
 
     <build>
         <plugins>
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-compiler-plugin</artifactId>
-            </plugin>
             <plugin>
                 <groupId>org.codehaus.mojo</groupId>
                 <artifactId>build-helper-maven-plugin</artifactId>
@@ -118,22 +103,8 @@
                 </executions>
             </plugin>
             <plugin>
-                <groupId>pw.krejci</groupId>
-                <artifactId>jmh-maven-plugin</artifactId>
-                <version>${jmh.plugin.version}</version>
-                <executions>
-                    <execution>
-                        <id>run-benchmarks</id>
-                        <goals>
-                            <goal>benchmark</goal>
-                        </goals>
-                    </execution>
-                </executions>
-                <configuration>
-                    <warmupIterations>2</warmupIterations>
-                    <measurementIterations>3</measurementIterations>
-                    <forks>1</forks>
-                </configuration>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
             </plugin>
             <plugin>
                 <groupId>org.jacoco</groupId>
@@ -176,6 +147,24 @@
                 <configuration>
                     <argLine>--enable-native-access=ALL-UNNAMED ${jacocoArgLine}</argLine>
                     <excludedGroups>benchmark</excludedGroups>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>pw.krejci</groupId>
+                <artifactId>jmh-maven-plugin</artifactId>
+                <version>${jmh.plugin.version}</version>
+                <executions>
+                    <execution>
+                        <id>run-benchmarks</id>
+                        <goals>
+                            <goal>benchmark</goal>
+                        </goals>
+                    </execution>
+                </executions>
+                <configuration>
+                    <warmupIterations>2</warmupIterations>
+                    <measurementIterations>3</measurementIterations>
+                    <forks>1</forks>
                 </configuration>
             </plugin>
         </plugins>
