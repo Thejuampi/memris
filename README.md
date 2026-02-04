@@ -1,28 +1,56 @@
 # Memris
 
 [![CI](https://github.com/Thejuampi/memris/actions/workflows/ci.yml/badge.svg)](https://github.com/Thejuampi/memris/actions/workflows/ci.yml)
-[![Maven Central](https://img.shields.io/maven-central/v/io.github.thejuampi/memris.svg)](https://central.sonatype.com/artifact/io.github.thejuampi/memris)
+[![Maven Central](https://img.shields.io/maven-central/v/io.github.thejuampi/memris.svg?label=maven%20central)](https://central.sonatype.com/artifact/io.github.thejuampi/memris)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-**Memris** = "Memory" + "Iris" — a heap-based, zero-reflection in-memory storage engine for Java 21. Like iris (the eye), it provides vision/insight into your data. Like iris (a flower), it blooms fast.
+---
 
-> "Iris suggests looking through data/vision. It sounds like an engine that can 'see' through the heap instantly."
+**Memris** — blazing fast, heap-based, zero-reflection in-memory storage for Java 21.
 
-## What is Memris?
+Memris combines columnar, primitive-backed storage with ByteBuddy-generated tables and a Spring-Data-like query surface. Built for ultra-low-latency reads and concurrent, lock-free writes.
 
-**Memris** is a blazingly fast, concurrency-safe, in-memory storage engine for Java 21 with Spring Data-compatible query method patterns.
+---
 
-Built on 100% Java heap storage with ByteBuddy bytecode generation, Memris delivers columnar storage performance with familiar query patterns. Zero reflection in hot paths, O(1) design principles, and primitive-only APIs ensure maximum throughput.
+## ✨ Highlights
 
-**Key highlights:**
-- **100% Heap-Based**: Uses primitive arrays (int[], long[], String[]) — no FFM/MemorySegment required
-- **ByteBuddy Table Generation**: Generates optimized table classes at runtime (~1ns overhead)
-- **Spring Data-Compatible**: Use familiar JPA query method patterns (findBy, countBy, existsBy)
-- **Zero Reflection**: Compile-time query derivation with type-safe dispatch
-- **Custom Annotations**: `@Entity`, `@Index`, `@GeneratedValue` (not Jakarta/JPA)
-- **Multi-Reader, Multi-Writer**: Lock-free row writes with SeqLock coordination (eventual index consistency)
+- 🚀 **100% heap-based columns** (primitive arrays) — no off-heap required
+- ⚡ **ByteBuddy-generated tables** for zero-reflection hot paths
+- 🎯 **Spring Data-style queries** (`findBy*`, `countBy*`, `existsBy*`)
+- 🔍 **Lightweight indexes** — hash (O(1)) and range (O(log n))
+- ☕ **Targeted for Java 21** — leverages modern language features
 
-## Quick Start
+---
+
+## 🚀 Quick Start
+
+Add the library from Maven Central:
+
+### Maven
+
+```xml
+<dependency>
+  <groupId>io.github.thejuampi</groupId>
+  <artifactId>memris</artifactId>
+  <version>0.1.4</version>
+</dependency>
+```
+
+### Gradle (Groovy)
+
+```groovy
+implementation 'io.github.thejuampi:memris:0.1.4'
+```
+
+### Gradle (Kotlin)
+
+```kotlin
+implementation("io.github.thejuampi:memris:0.1.4")
+```
+
+---
+
+## 📖 Complete Example
 
 ### 1. Define Your Entity
 
@@ -51,6 +79,11 @@ public class User {
         this.name = name;
         this.age = age;
     }
+    
+    public Long getId() { return id; }
+    public String getEmail() { return email; }
+    public String getName() { return name; }
+    public int getAge() { return age; }
 }
 ```
 
@@ -64,13 +97,15 @@ import java.util.List;
 import java.util.Optional;
 
 public interface UserRepository extends MemrisRepository<User> {
-    // Built-in methods
+    
     Optional<User> findByEmail(String email);
+    
     List<User> findByAgeBetween(int min, int max);
+    
     long countByAgeGreaterThan(int age);
+    
     boolean existsByEmail(String email);
     
-    // @Query with JPQL
     @Query("select u from User u where u.name ilike :name")
     List<User> findByNameContaining(@Param("name") String name);
 }
@@ -86,314 +121,167 @@ public class Main {
     static void main(String[] args) throws Exception {
         MemrisRepositoryFactory factory = new MemrisRepositoryFactory();
         MemrisArena arena = factory.createArena();
-        
-        // Create repository
         UserRepository repo = arena.createRepository(UserRepository.class);
         
-        // Save entity
-        User user = repo.save(new User("john@example.com", "John Doe", 30));
+        User user = repo.save(new User("alice@example.com", "Alice", 30));
+        Optional<User> found = repo.findByEmail("alice@example.com");
         
-        // Find by email
-        Optional<User> found = repo.findByEmail("john@example.com");
-        
-        // Query methods
         List<User> adults = repo.findByAgeBetween(18, 65);
         long count = repo.countByAgeGreaterThan(25);
         
-        // Cleanup
         factory.close();
     }
 }
 ```
 
-## Supported Features
+---
+
+## 🎯 When to Use Memris
+
+| Scenario | Why Memris? |
+|----------|-------------|
+| **High-throughput applications** | O(1) hash index lookups and columnar scans |
+| **Low-latency requirements** | Zero reflection in hot paths, ~1ns ByteBuddy overhead |
+| **In-memory caching** | 100% heap-based, no external dependencies |
+| **Spring Data migration** | Familiar query method patterns, easy to learn |
+| **Concurrent workloads** | Multi-reader, multi-writer with SeqLock coordination |
+
+---
+
+## 📊 Performance
+
+| Operation | Complexity | Implementation |
+|-----------|------------|----------------|
+| Hash index lookup | **O(1)** | ConcurrentHashMap |
+| Range index lookup | **O(log n)** | ConcurrentSkipListMap |
+| Column scan | O(n) | Early termination, dense arrays |
+| IN operation | O(n) | Optimized via HashSet |
+
+### Design Principles
+
+1. **O(1) First, O(log n) Second, O(n) Forbidden** — for hot paths
+2. **Primitive-Only APIs** — no boxing in critical sections
+3. **TypeCode Switch** — Java 21 pattern matching with static byte constants
+4. **Zero Reflection Hot Path** — compile-time metadata extraction
+5. **Dense Arrays Over Maps** — column indices, type codes in indexed arrays
+
+---
+
+## 🧩 Supported Features
 
 ### Entity Annotations
 
-| Annotation | Purpose | Status |
-|------------|---------|--------|
-| `@Entity` | Marks class as persistable | ✅ Implemented |
-| `@Index` | Creates HASH or BTREE index | ✅ Implemented |
-| `@GeneratedValue` | Auto ID generation | ✅ Implemented |
-| `@OneToOne` | One-to-one relationship | ✅ Implemented |
-| `@ManyToOne` | Many-to-one relationship | ✅ Implemented |
-| `@OneToMany` | One-to-many relationship | ✅ Implemented |
-| `@ManyToMany` | Many-to-many relationship | ✅ Implemented |
-| `@JoinColumn` | Specifies foreign key column | ✅ Implemented |
-| `@Query` | JPQL-like query string | ✅ Implemented |
-| `@Param` | Named parameter binding | ✅ Implemented |
-
-### GenerationType Options
-
-- **AUTO**: Auto-detect based on field type (numeric → IDENTITY, UUID → UUID)
-- **IDENTITY**: Numeric atomic increment (uses AtomicLong)
-- **UUID**: Random UUID generation
-- **CUSTOM**: User-provided IdGenerator implementation
+| Annotation | Purpose |
+|------------|---------|
+| `@Entity` | Marks class as persistable |
+| `@Index` | Creates HASH or BTREE index |
+| `@GeneratedValue` | Auto ID generation |
+| `@OneToOne` | One-to-one relationship |
+| `@ManyToOne` | Many-to-one relationship |
+| `@OneToMany` | One-to-many relationship |
+| `@ManyToMany` | Many-to-many relationship |
+| `@JoinColumn` | Specifies foreign key column |
+| `@Query` | JPQL-like query string |
+| `@Param` | Named parameter binding |
 
 ### Supported Field Types
 
 | Type | Storage | Notes |
 |------|---------|-------|
-| `int`, `Integer` | Primitive int | TYPE_INT |
-| `long`, `Long` | Primitive long | TYPE_LONG |
-| `boolean`, `Boolean` | Primitive boolean | TYPE_BOOLEAN |
-| `byte`, `Byte` | Primitive byte | TYPE_BYTE |
-| `short`, `Short` | Primitive short | TYPE_SHORT |
-| `float`, `Float` | Primitive float | TYPE_FLOAT |
-| `double`, `Double` | Primitive double | TYPE_DOUBLE |
-| `char`, `Character` | Primitive char | TYPE_CHAR |
-| `String` | String | TYPE_STRING |
-| `Instant` | long (epoch millis) | TYPE_INSTANT |
-| `LocalDate` | long (epoch day) | TYPE_LOCAL_DATE |
-| `LocalDateTime` | long (epoch millis) | TYPE_LOCAL_DATE_TIME |
-| `java.util.Date` | long (epoch millis) | TYPE_DATE |
-| `BigDecimal` | String | TYPE_BIG_DECIMAL (EQ/NE/IN/NOT_IN only) |
-| `BigInteger` | String | TYPE_BIG_INTEGER (EQ/NE/IN/NOT_IN only) |
+| `int`, `Integer` | `int[]` | TYPE_INT |
+| `long`, `Long` | `long[]` | TYPE_LONG |
+| `boolean`, `Boolean` | `boolean[]` | TYPE_BOOLEAN |
+| `byte`, `Byte` | `byte[]` | TYPE_BYTE |
+| `short`, `Short` | `short[]` | TYPE_SHORT |
+| `float`, `Float` | `float[]` | TYPE_FLOAT |
+| `double`, `Double` | `double[]` | TYPE_DOUBLE |
+| `char`, `Character` | `char[]` | TYPE_CHAR |
+| `String` | `String[]` | TYPE_STRING |
+| `Instant` | `long[]` (epoch millis) | TYPE_INSTANT |
+| `LocalDate` | `long[]` (epoch day) | TYPE_LOCAL_DATE |
+| `LocalDateTime` | `long[]` (epoch millis) | TYPE_LOCAL_DATE_TIME |
+| `java.util.Date` | `long[]` (epoch millis) | TYPE_DATE |
+| `BigDecimal` | `String[]` | TYPE_BIG_DECIMAL (EQ/NE/IN/NOT_IN) |
+| `BigInteger` | `String[]` | TYPE_BIG_INTEGER (EQ/NE/IN/NOT_IN) |
 
 ### Query Method Patterns
 
-**Comparison Operators:**
+**Comparison Operators**
 - `findByAgeEquals(int)` / `findByAge(int)` — Equality
 - `findByAgeNotEqual(int)` / `findByAgeNot(int)` — Inequality
 - `findByAgeGreaterThan(int)` / `findByAgeAfter(int)` — Greater than
 - `findByAgeLessThan(int)` / `findByAgeBefore(int)` — Less than
 - `findByAgeBetween(int, int)` — Range query
 
-**String Operators:**
+**String Operators**
 - `findByNameContaining(String)` — Substring match
 - `findByNameStartingWith(String)` — Prefix match
 - `findByNameEndingWith(String)` — Suffix match
 - `findByNameLike(String)` — Pattern match
 - `findByNameContainingIgnoreCase(String)` — Case-insensitive
 
-**Null & Boolean:**
+**Null & Boolean**
 - `findByDepartmentIsNull()` / `findByDepartmentIsNotNull()`
 - `findByActiveTrue()` / `findByActiveFalse()`
 
-**Collection:**
+**Collection**
 - `findBySkuIn(List<String>)` — IN query
 - `findByStatusNotIn(List<String>)` — NOT IN query
 
-**Logical Operators:**
+**Logical Operators**
 - `findByCustomerIdAndStatus(Long, String)` — AND
 - `findByPriceLessThanOrStockEqual(int, long)` — OR
 
-**Ordering & Limiting:**
+**Ordering & Limiting**
 - `findByPriceOrderByPriceDesc(long)` — ORDER BY
 - `findTopByOrderByPriceDesc()` — Top/First
 
-**Return Types:**
+**Return Types**
 - `List<T>`, `Optional<T>`, `T` — Find methods
 - `Set<T>` — Find methods (unique results)
 - `long` — Count methods
 - `boolean` — Exists methods
 - `Map<K, V>` — Grouped results
 
-### @Query (JPQL-like Syntax)
+---
 
-**Basic Query:**
-```java
-@Query("select u from User u where u.email = :email")
-Optional<User> findByEmail(@Param("email") String email);
-```
-
-**Range Query:**
-```java
-@Query("select u from User u where u.age between :min and :max")
-List<User> findByAgeRange(@Param("min") int min, @Param("max") int max);
-```
-
-**Case-Insensitive ILIKE:**
-```java
-@Query("select u from User u where u.name ilike :name")
-List<User> findByNameContaining(@Param("name") String name);
-```
-
-**Joins:**
-```java
-@Query("select o from Order o join o.customer c where c.email = :email")
-List<Order> findByCustomerEmail(@Param("email") String email);
-```
-
-**Projections (Records):**
-```java
-public record UserSummary(String name, int age) {}
-
-@Query("select u.name as name, u.age as age from User u where u.age > :minAge")
-List<UserSummary> findSummaries(@Param("minAge") int minAge);
-```
-
-**Grouping (Map return types):**
-```java
-public record DepartmentAgeKey(String department, int age) {}
-
-@Query("select e from TestEntity e group by e.department, e.age")
-Map<DepartmentAgeKey, List<TestEntity>> findAllGroupedByDepartmentAndAge();
-
-@Query("select count(e) from TestEntity e group by e.department, e.age having count(e) > :min")
-Map<DepartmentAgeKey, Long> countByDepartmentAndAgeHavingMin(@Param("min") long min);
-```
-
-### Built-in Repository Methods
-
-| Method | Return Type | Description |
-|--------|------------|-------------|
-| `save(T entity)` | `T` | Saves entity (generates ID if needed) |
-| `findById(ID id)` | `Optional<T>` | Find by ID (O(1) via HashIndex) |
-| `findAll()` | `List<T>` | Returns all entities |
-| `delete(T entity)` | `void` | Deletes entity |
-| `deleteById(ID id)` | `void` | Deletes by ID |
-| `deleteAll()` | `void` | Deletes all entities |
-| `count()` | `long` | Counts all entities |
-| `existsById(ID id)` | `boolean` | Checks if entity exists |
-
-## Architecture
-
-### Build-Time (Runtime, per entity type)
-```
-Entity Class → EntityMetadata → ByteBuddy → GeneratedTable Class
-```
-
-### Runtime (Hot Path)
-```
-Repository Method → QueryCompiler → HeapRuntimeKernel 
-    → GeneratedTable.scan*() / Index lookup → Results
-```
-
-### Storage Layer
-
-| Component | Purpose | Complexity |
-|-----------|---------|------------|
-| `PageColumnInt` | int[] column with scans | O(1) access |
-| `PageColumnLong` | long[] column with scans | O(1) access |
-| `PageColumnString` | String[] column with scans | O(1) access |
-| `HashIndex` | ConcurrentHashMap for equality | O(1) lookup |
-| `RangeIndex` | ConcurrentSkipListMap for ranges | O(log n) lookup |
-| `LongIdIndex` | Primary key index (long) | O(1) lookup |
-| `StringIdIndex` | Primary key index (String) | O(1) lookup |
-
-## Current Limitations
-
-1. **DISTINCT** — Tokenized but execution incomplete
-   - Workaround: Use `Stream.distinct()` on results
-
-2. **Query Aggregates** — Only `COUNT` supported
-   - No `SUM`, `AVG`, `MIN`, `MAX`
-
-3. **GROUP BY / HAVING** — Limited support
-   - `GROUP BY` supports root-entity selects or `count`, using Map return types
-   - `HAVING` supports `count(...)` comparisons only
-
-4. **Subqueries** — Not implemented
-
-5. **Transactions** — Not supported (no persistence context)
-
-### Type Limitations
-
-1. **BigDecimal/BigInteger** — Only EQ/NE/IN/NOT_IN operators
-2. **STARTING_WITH / ENDING_WITH** — For String type: NOT YET implemented
-3. **BETWEEN for Double** — NOT YET implemented
-
-### Enterprise Features
-
-- ✅ `@Embeddable` components
-- ✅ `@Enumerated` types
-- ✅ Lifecycle callbacks (@PrePersist, @PostLoad, @PreUpdate)
-- No inheritance hierarchies
-- No composite keys
-
-## Performance
-
-| Operation | Complexity | Notes |
-|-----------|------------|-------|
-| HashIndex lookup | O(1) | Via ConcurrentHashMap |
-| RangeIndex lookup | O(log n) | Via ConcurrentSkipListMap |
-| Table scan | O(n) | With early termination |
-| IN operation | O(n) | Optimized via HashSet |
-
-**Design Principles:**
-1. **O(1) First, O(log n) Second, O(n) Forbidden** (for hot paths)
-2. **Primitive-Only APIs** — No boxing in hot paths
-3. **TypeCode Switch** — Java 21 pattern matching with static byte constants
-4. **Zero Reflection Hot Path** — Compile-time metadata extraction
-5. **Dense Arrays Over Maps** — Column indices, type codes in indexed arrays
-
-## Requirements
+## 🛠️ Requirements
 
 - **Java Version**: 21 (required)
-- **Maven**: 3.8+
-- **Platforms**: Windows/Linux/Mac
-- **JVM Flags**: None required for production (100% heap-based)
+- **Maven**: 3.8+ (for building from source)
 
-## Building
+---
+
+## 🔧 Build Locally
 
 ```bash
-# Full clean build
-mvn.cmd clean compile
-
-# Run all tests
-mvn.cmd -q -e -pl memris-core test
-
-# Run single test class
-mvn.cmd -q -e -pl memris-core test -Dtest=ClassName
-
-# Run single test method
-mvn.cmd -q -e -pl memris-core test -Dtest=ClassName#methodName
-
-# Package and install
-mvn.cmd clean install
+mvn -B clean install
 ```
 
-## Maven Dependency
+---
 
-Memris is currently in SNAPSHOT version (1.0.0-SNAPSHOT). Build locally to use:
+## 📚 Documentation
 
-```xml
-<dependency>
-    <groupId>io.github.thejuampi</groupId>
-    <artifactId>memris</artifactId>
-    <version>0.1.0-SNAPSHOT</version>
-</dependency>
-```
+- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — Architecture and design
+- [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) — Development and testing guidelines
+- [`docs/QUERY.md`](docs/QUERY.md) — Query method reference and operators
+- [`docs/SPRING_DATA.md`](docs/SPRING_DATA.md) — Spring Data integration details
+- [`docs/CONCURRENCY.md`](docs/CONCURRENCY.md) — Concurrency model and guarantees
 
-**Transitive Dependencies:**
-- ByteBuddy 1.18.4 (dynamic bytecode generation)
-- RoaringBitmap 1.0.0 (compressed indexes)
-- SparseBitSet 1.2 (sparse indexes)
-- Lombok 1.18.36 (compile-time annotation processing)
-- Error Prone 2.24.1 (compile-time bug detection)
-- Modernizer 3.0.0 (detect legacy API usage)
-- ArchUnit 1.2.1 (architectural rule enforcement)
+---
 
-## Documentation
+## 🤝 Contributing
 
-- [ARCHITECTURE.md](docs/ARCHITECTURE.md) — Detailed architecture documentation
-- [DEVELOPMENT.md](docs/DEVELOPMENT.md) — Development guidelines and code style
-- [QUERY.md](docs/QUERY.md) — Query method reference and operators
-- [SPRING_DATA.md](docs/SPRING_DATA.md) — Spring Data integration details
-- [CONCURRENCY.md](docs/CONCURRENCY.md) — Concurrency model and guarantees
+Contributions welcome — open an issue or a PR. See [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) for the development workflow and test guidelines.
 
-## Roadmap
+---
 
-- **FFM Off-Heap Storage** — For large datasets (reduces GC pressure)
-- **MVCC** — Snapshot isolation for better concurrency
-- **SIMD Vectorization** — Via Vector API for scan operations
-- **Striped Index Updates** — 4-8x better write throughput
-- **Projections from Method Names** — Without @Query annotation
-- **Aggregate Functions** — SUM, AVG, MIN, MAX
-- **DISTINCT** — Full implementation
-- **Persistence** — Disk-based storage with crash recovery
+## 📄 License
 
-### Future Enhancements
+This project is licensed under the **MIT License** — see the [`LICENSE`](LICENSE) file for details.
 
-- No inheritance hierarchies
-- No composite keys
-- Schema evolution (online changes)
+---
 
-## Acknowledgements
+## 👤 Author
 
-If you use this project in your own work, a mention or credit to the author (**Juan Pablo Abelardo Lescano**) would be greatly appreciated!
-
-## License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+**Juan Pablo Abelardo Lescano** — [@Thejuampi](https://github.com/Thejuampi)
