@@ -204,6 +204,7 @@
                         <tagNameFormat>v@{project.version}</tagNameFormat>
                         <releaseProfiles>release</releaseProfiles>
                         <pushChanges>false</pushChanges>
+                        <localCheckout>true</localCheckout>
                     </configuration>
                 </plugin>
                 <plugin>
