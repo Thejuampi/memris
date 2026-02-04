@@ -26,6 +26,12 @@ jobs:
           distribution: temurin
           java-version: '21'
           cache: maven
+          server-id: central
+          server-username: OSSRH_USERNAME
+          server-password: OSSRH_TOKEN
+        env:
+          OSSRH_USERNAME: ${{ secrets.OSSRH_USERNAME }}
+          OSSRH_TOKEN: ${{ secrets.OSSRH_TOKEN }}
 
       - name: Configure git author
         run: |
@@ -51,21 +57,6 @@ jobs:
           echo "allow-loopback-pinentry" >> ~/.gnupg/gpg-agent.conf || true
           gpgconf --kill gpg-agent || true
 
-      - name: Configure Maven settings.xml with OSSRH credentials
-        env:
-          OSSRH_USERNAME: ${{ secrets.OSSRH_USERNAME }}
-          OSSRH_TOKEN: ${{ secrets.OSSRH_TOKEN }}
-        run: |
-          mkdir -p ~/.m2
-          printf '%s\n' "<settings xmlns=\"http://maven.apache.org/SETTINGS/1.0.0\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xsi:schemaLocation=\"http://maven.apache.org/SETTINGS/1.0.0 https://maven.apache.org/xsd/settings-1.0.0.xsd\">" > ~/.m2/settings.xml
-          printf '%s\n' "  <servers>" >> ~/.m2/settings.xml
-          printf '%s\n' "    <server>" >> ~/.m2/settings.xml
-          printf '%s\n' "      <id>central</id>" >> ~/.m2/settings.xml
-          printf '%s\n' "      <username>$OSSRH_USERNAME</username>" >> ~/.m2/settings.xml
-          printf '%s\n' "      <password>$OSSRH_TOKEN</password>" >> ~/.m2/settings.xml
-          printf '%s\n' "    </server>" >> ~/.m2/settings.xml
-          printf '%s\n' "  </servers>" >> ~/.m2/settings.xml
-          printf '%s\n' "</settings>" >> ~/.m2/settings.xml
 
       - name: Release with Maven
         env:
