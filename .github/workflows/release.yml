@@ -60,7 +60,7 @@ jobs:
           printf '%s\n' "<settings xmlns=\"http://maven.apache.org/SETTINGS/1.0.0\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xsi:schemaLocation=\"http://maven.apache.org/SETTINGS/1.0.0 https://maven.apache.org/xsd/settings-1.0.0.xsd\">" > ~/.m2/settings.xml
           printf '%s\n' "  <servers>" >> ~/.m2/settings.xml
           printf '%s\n' "    <server>" >> ~/.m2/settings.xml
-          printf '%s\n' "      <id>ossrh</id>" >> ~/.m2/settings.xml
+          printf '%s\n' "      <id>central</id>" >> ~/.m2/settings.xml
           printf '%s\n' "      <username>$OSSRH_USERNAME</username>" >> ~/.m2/settings.xml
           printf '%s\n' "      <password>$OSSRH_TOKEN</password>" >> ~/.m2/settings.xml
           printf '%s\n' "    </server>" >> ~/.m2/settings.xml
@@ -78,23 +78,23 @@ jobs:
             -Dpmd.skip=true \
             -Dspotbugs.skip=true \
             -Denforcer.skip=true \
-            -Dmaven.javadoc.failOnError=false \
+            -Dmaven.javadoc.skip=true \
             -Dgpg.passphrase="$GPG_PASSPHRASE" \
             -Dgpg.executable=gpg \
             -Dgpg.useagent=false \
             -P release \
             release:prepare \
-            -Darguments="-DskipTests -Dcheckstyle.skip=true -Dmodernizer.skip=true -Dpmd.skip=true -Dspotbugs.skip=true -Denforcer.skip=true -Dmaven.javadoc.failOnError=false -Dgpg.passphrase=$GPG_PASSPHRASE -Dgpg.executable=gpg -Dgpg.useagent=false"
+            -Darguments="-DskipTests -Dcheckstyle.skip=true -Dmodernizer.skip=true -Dpmd.skip=true -Dspotbugs.skip=true -Denforcer.skip=true -Dmaven.javadoc.skip=true -Dgpg.passphrase=$GPG_PASSPHRASE -Dgpg.executable=gpg -Dgpg.useagent=false"
           mvn -B -DskipTests \
             -Dcheckstyle.skip=true \
             -Dmodernizer.skip=true \
             -Dpmd.skip=true \
             -Dspotbugs.skip=true \
             -Denforcer.skip=true \
-            -Dmaven.javadoc.failOnError=false \
+            -Dmaven.javadoc.skip=true \
             -Dgpg.passphrase="$GPG_PASSPHRASE" \
             -Dgpg.executable=gpg \
             -Dgpg.useagent=false \
             -P release \
             release:perform \
-            -Darguments="-DskipTests -Dcheckstyle.skip=true -Dmodernizer.skip=true -Dpmd.skip=true -Dspotbugs.skip=true -Denforcer.skip=true -Dmaven.javadoc.failOnError=false -Dgpg.passphrase=$GPG_PASSPHRASE -Dgpg.executable=gpg -Dgpg.useagent=false"
+            -Darguments="-DskipTests -Dcheckstyle.skip=true -Dmodernizer.skip=true -Dpmd.skip=true -Dspotbugs.skip=true -Denforcer.skip=true -Dmaven.javadoc.skip=true -Dgpg.passphrase=$GPG_PASSPHRASE -Dgpg.executable=gpg -Dgpg.useagent=false"
