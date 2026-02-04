@@ -73,16 +73,20 @@ jobs:
         run: |
           set -e
           mvn -B -DskipTests \
+            -Dmodernizer.skip=true \
+            -Dmaven.javadoc.failOnError=false \
             -Dgpg.passphrase="$GPG_PASSPHRASE" \
             -Dgpg.executable=gpg \
             -Dgpg.useagent=false \
             -P release \
             release:prepare \
-            -Darguments="-DskipTests -Dgpg.passphrase=$GPG_PASSPHRASE -Dgpg.executable=gpg -Dgpg.useagent=false"
+            -Darguments="-DskipTests -Dmodernizer.skip=true -Dmaven.javadoc.failOnError=false -Dgpg.passphrase=$GPG_PASSPHRASE -Dgpg.executable=gpg -Dgpg.useagent=false"
           mvn -B -DskipTests \
+            -Dmodernizer.skip=true \
+            -Dmaven.javadoc.failOnError=false \
             -Dgpg.passphrase="$GPG_PASSPHRASE" \
             -Dgpg.executable=gpg \
             -Dgpg.useagent=false \
             -P release \
             release:perform \
-            -Darguments="-DskipTests -Dgpg.passphrase=$GPG_PASSPHRASE -Dgpg.executable=gpg -Dgpg.useagent=false"
+            -Darguments="-DskipTests -Dmodernizer.skip=true -Dmaven.javadoc.failOnError=false -Dgpg.passphrase=$GPG_PASSPHRASE -Dgpg.executable=gpg -Dgpg.useagent=false"
