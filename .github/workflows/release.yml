@@ -72,6 +72,7 @@ jobs:
           GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
         run: |
           mvn -B release:prepare release:perform \
+            -Darguments="-DskipTests -Dcheckstyle.skip=true -Dmodernizer.skip=true -Dpmd.skip=true -Dspotbugs.skip=true -Denforcer.skip=true -Dgpg.passphrase=$GPG_PASSPHRASE -Dgpg.executable=gpg -Dgpg.useagent=false -Dmaven.deploy.skip=true" \
             -DskipTests \
             -Dcheckstyle.skip=true \
             -Dmodernizer.skip=true \
@@ -80,5 +81,4 @@ jobs:
             -Denforcer.skip=true \
             -Dgpg.passphrase="$GPG_PASSPHRASE" \
             -Dgpg.executable=gpg \
-            -Dgpg.useagent=false \
-            -Darguments="-DskipTests -Dcheckstyle.skip=true -Dmodernizer.skip=true -Dpmd.skip=true -Dspotbugs.skip=true -Denforcer.skip=true -Dgpg.passphrase=$GPG_PASSPHRASE -Dgpg.executable=gpg -Dgpg.useagent=false"
+            -Dgpg.useagent=false
