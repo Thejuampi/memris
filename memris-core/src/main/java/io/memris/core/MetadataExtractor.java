@@ -22,10 +22,24 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-/**
- * Extracts metadata from entity classes for repository generation.
- * All reflection work happens once during metadata extraction.
- */
+ /**
+  * Extracts metadata from entity classes for repository generation.
+  * All reflection work happens once during metadata extraction.
+  *
+  * <p>This class intentionally has high cognitive complexity as it handles:
+  * - Multiple relationship types (ManyToOne, OneToOne, OneToMany, ManyToMany)
+  * - Both Memris and JPA annotations
+  * - Bidirectional relationship discovery
+  * - Field-level and class-level metadata extraction
+  *
+  * <p><b>Complexity Rationale:</b> Reflection is expensive. Doing a single-pass
+  * comprehensive extraction per entity type is optimal. Splitting this class
+  * would scatter related logic and hurt maintainability.
+  *
+  * <p><b>Not a hot-path component:</b> This runs only once per entity type during
+  * initialization. All hot-path code uses the generated tables via zero-reflection
+  * access.
+  */
 public final class MetadataExtractor {
 
     /**

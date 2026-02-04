@@ -54,7 +54,21 @@ public record LogicalQuery(
             Join[] joins,
             OrderBy[] orderBy,
             int parameterCount) {
-        return new LogicalQuery(opCode, returnKind, conditions, new UpdateAssignment[0], null, joins, orderBy, null, null, 0, false, new Object[0], new int[0], parameterCount);
+        return new LogicalQuery(
+                opCode,
+                returnKind,
+                conditions,
+                new UpdateAssignment[0],
+                null,
+                joins,
+                orderBy,
+                null,
+                null,
+                0,
+                false,
+                new Object[0],
+                new int[0],
+                parameterCount);
     }
 
     public static LogicalQuery of(
@@ -65,7 +79,21 @@ public record LogicalQuery(
             OrderBy[] orderBy,
             int limit,
             int parameterCount) {
-        return new LogicalQuery(opCode, returnKind, conditions, new UpdateAssignment[0], null, joins, orderBy, null, null, limit, false, new Object[0], new int[0], parameterCount);
+        return new LogicalQuery(
+                opCode,
+                returnKind,
+                conditions,
+                new UpdateAssignment[0],
+                null,
+                joins,
+                orderBy,
+                null,
+                null,
+                limit,
+                false,
+                new Object[0],
+                new int[0],
+                parameterCount);
     }
 
     public static LogicalQuery of(
@@ -83,7 +111,21 @@ public record LogicalQuery(
             Object[] boundValues,
             int[] parameterIndices,
             int parameterCount) {
-        return new LogicalQuery(opCode, returnKind, conditions, updateAssignments, projection, joins, orderBy, grouping, havingConditions, limit, distinct, boundValues, parameterIndices, parameterCount);
+        return new LogicalQuery(
+                opCode,
+                returnKind,
+                conditions,
+                updateAssignments,
+                projection,
+                joins,
+                orderBy,
+                grouping,
+                havingConditions,
+                limit,
+                distinct,
+                boundValues,
+                parameterIndices,
+                parameterCount);
     }
 
     /**
@@ -95,7 +137,21 @@ public record LogicalQuery(
             Condition[] conditions,
             OrderBy[] orderBy,
             int parameterCount) {
-        return new LogicalQuery(opCode, returnKind, conditions, new UpdateAssignment[0], null, new Join[0], orderBy, null, null, 0, false, new Object[0], new int[0], parameterCount);
+        return new LogicalQuery(
+                opCode,
+                returnKind,
+                conditions,
+                new UpdateAssignment[0],
+                null,
+                new Join[0],
+                orderBy,
+                null,
+                null,
+                0,
+                false,
+                new Object[0],
+                new int[0],
+                parameterCount);
     }
 
     /**
@@ -109,7 +165,21 @@ public record LogicalQuery(
      * @return a LogicalQuery for the CRUD operation
      */
     public static LogicalQuery crud(OpCode opCode, ReturnKind returnKind, int parameterCount) {
-        return new LogicalQuery(opCode, returnKind, new Condition[0], new UpdateAssignment[0], null, new Join[0], null, null, null, 0, false, new Object[0], new int[0], parameterCount);
+        return new LogicalQuery(
+                opCode,
+                returnKind,
+                new Condition[0],
+                new UpdateAssignment[0],
+                null,
+                new Join[0],
+                null,
+                null,
+                null,
+                0,
+                false,
+                new Object[0],
+                new int[0],
+                parameterCount);
     }
 
     public LogicalQuery withHavingConditions(Condition[] havingConditions) {

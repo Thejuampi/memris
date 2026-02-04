@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ruleset name="Memris PMD Exclusions"
+         xmlns="http://pmd.sourceforge.net/ruleset/2.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://pmd.sourceforge.net/ruleset/2.0.0 https://pmd.sourceforge.io/ruleset_2_0_0.xsd">
+
+    <description>
+        PMD exclusions for Memris project - intentional design choices.
+
+        These violations are accepted as they reflect the project's focus on:
+        - Lock-free performance optimization
+        - Zero-reflection hot paths
+        - Build-time vs runtime separation
+        - Alternative implementation strategies (MethodHandle vs Bytecode)
+    </description>
+
+    <!-- God Classes: Build-time components justified -->
+    <exclude-pattern>.*MetadataExtractor\.java</exclude-pattern>
+    <exclude-pattern>.*BuiltInResolver\.java</exclude-pattern>
+    <exclude-pattern>.*JpqlQueryParser\.java</exclude-pattern>
+
+    <!-- CPD: Alternative strategy implementations (intentional duplication) -->
+    <exclude-pattern>.*MethodHandleImplementation\.java</exclude-pattern>
+    <exclude-pattern>.*BytecodeTableGenerator\.java</exclude-pattern>
+
+    <!-- Concrete types for lock-free performance (LooseCoupling) -->
+    <exclude-pattern>.*HashIndex\.java</exclude-pattern>
+    <exclude-pattern>.*RangeIndex\.java</exclude-pattern>
+    <exclude-pattern>.*StringPrefixIndex\.java</exclude-pattern>
+
+    <!-- Record component Javadoc (PMD false positive) -->
+    <exclude-pattern>.*CompiledQuery\.java</exclude-pattern>
+
+    <!-- Generated Interceptor classes -->
+    <exclude-pattern>.*ScanEqualsLongInterceptor\.java</exclude-pattern>
+    <exclude-pattern>.*ScanEqualsIntInterceptor\.java</exclude-pattern>
+    <exclude-pattern>.*ScanEqualsStringInterceptor\.java</exclude-pattern>
+    <exclude-pattern>.*ScanEqualsStringIgnoreCaseInterceptor\.java</exclude-pattern>
+    <exclude-pattern>.*ScanBetweenLongInterceptor\.java</exclude-pattern>
+    <exclude-pattern>.*ScanBetweenIntInterceptor\.java</exclude-pattern>
+    <exclude-pattern>.*ScanInLongInterceptor\.java</exclude-pattern>
+    <exclude-pattern>.*ScanInIntInterceptor\.java</exclude-pattern>
+    <exclude-pattern>.*ScanInStringInterceptor\.java</exclude-pattern>
+    <exclude-pattern>.*ScanAllInterceptor\.java</exclude-pattern>
+    <exclude-pattern>.*InsertInterceptor\.java</exclude-pattern>
+    <exclude-pattern>.*IsLiveInterceptor\.java</exclude-pattern>
+    <exclude-pattern>.*LookupInterceptor\.java</exclude-pattern>
+    <exclude-pattern>.*TombstoneInterceptor\.java</exclude-pattern>
+    <exclude-pattern>.*PresentInterceptor\.java</exclude-pattern>
+    <exclude-pattern>.*ConstructorInterceptor\.java</exclude-pattern>
+
+    <!-- PageColumn classes with intentional violations -->
+    <exclude-pattern>.*PageColumnInt\.java</exclude-pattern>
+    <exclude-pattern>.*PageColumnLong\.java</exclude-pattern>
+    <exclude-pattern>.*PageColumnString\.java</exclude-pattern>
+
+    <!-- StringIdIndex with concrete type usage -->
+    <exclude-pattern>.*StringIdIndex\.java</exclude-pattern>
+</ruleset>

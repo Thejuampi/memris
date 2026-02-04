@@ -6,6 +6,7 @@ package io.memris.core;
  *
  * @param <T> ID type (numeric primitives or UUID)
  */
+@FunctionalInterface
 public interface IdGenerator<T> {
     /**
      * Generate the next unique ID.

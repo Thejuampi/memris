@@ -1,14 +1,9 @@
 package io.memris.index;
 
-import io.memris.kernel.MutableRowIdSet;
 import io.memris.kernel.RowId;
 import io.memris.kernel.RowIdSet;
 import io.memris.kernel.RowIdSetFactory;
 import io.memris.kernel.RowIdSets;
-
-import java.util.Locale;
-import java.util.Objects;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Reverse string index for efficient ENDING_WITH queries.

@@ -23,6 +23,7 @@ import java.util.List;
  * @see TableGenerator
  * @see io.memris.core.MemrisConfiguration
  */
+@FunctionalInterface
 public interface TableImplementationStrategy {
 
     /**
@@ -41,5 +42,5 @@ public interface TableImplementationStrategy {
     /**
      * Column field information needed for implementation.
      */
-    record ColumnFieldInfo(String fieldName, Class<?> columnType, byte typeCode, int index) {}
+    record ColumnFieldInfo(String fieldName, Class<?> columnType, byte typeCode, int index) { }
 }

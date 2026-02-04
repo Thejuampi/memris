@@ -23,6 +23,14 @@ mvn.cmd -q -e -pl memris-core test -Dtest=ClassName
 mvn.cmd -q -e -pl memris-core test -Dtest=ClassName#methodName
 ```
 
+### Release (Maven Central)
+
+1. Update versions to a release (remove `-SNAPSHOT`).
+2. Commit the version bump.
+3. Tag the release: `git tag vX.Y.Z` and push the tag.
+4. GitHub Actions runs `mvn -P release deploy` and publishes to Central via OSSRH.
+5. Bump to the next `-SNAPSHOT` after the release.
+
 ### Java Runtime Requirements
 
 - **Java Version**: 21 (required)
@@ -32,7 +40,7 @@ mvn.cmd -q -e -pl memris-core test -Dtest=ClassName#methodName
 
 ## Project Overview
 
-**Memris** is a blazingly fast, multi-threaded, in-memory storage engine for Java 21 with:
+**Memris** is a blazingly fast, concurrency-safe, in-memory storage engine for Java 21 with:
 - Heap-based columnar storage using primitive arrays (int[], long[], String[])
 - ByteBuddy dynamic bytecode generation for table classes
 - Zero-reflection hot paths with compile-time MethodHandle extraction

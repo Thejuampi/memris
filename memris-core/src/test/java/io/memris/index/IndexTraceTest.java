@@ -1,6 +1,5 @@
 package io.memris.index;
 
-import io.memris.core.Index;
 import io.memris.core.MemrisArena;
 import io.memris.core.MemrisConfiguration;
 import io.memris.repository.MemrisRepositoryFactory;
@@ -19,8 +18,6 @@ class IndexTraceTest {
 
     @Test
     void traceIndexQueryExecution() {
-        System.out.println("\n=== Tracing Index Query Execution ===\n");
-
         MemrisConfiguration config = MemrisConfiguration.builder()
                 .pageSize(4096)
                 .maxPages(4096)
@@ -32,29 +29,14 @@ class IndexTraceTest {
         MemrisArena arena = factory.createArena();
         TestEntityRepository repository = arena.createRepository(TestEntityRepository.class);
 
-        // Check if indexes were created
-        var indexes = arena.getIndexes(TestEntity.class);
-        System.out.println("Indexes for TestEntity: " + (indexes != null ? indexes.keySet() : "null"));
-        if (indexes != null) {
-            for (var entry : indexes.entrySet()) {
-                System.out.println("  " + entry.getKey() + " -> " + entry.getValue().getClass().getName());
-            }
-        }
-
         // Insert test data
-        System.out.println("\nInserting 10 test entities...");
         for (int i = 0; i < 10; i++) {
             String name = (i < 3) ? "TARGET" + i : "OTHER" + i;
             repository.save(new TestEntity(null, name, i));
         }
 
         // Query
-        System.out.println("\nQuerying findByNameStartingWith(\"TARGET\")...");
         List<TestEntity> results = repository.findByNameStartingWith("TARGET");
-        System.out.println("Results: " + results.size() + " entities");
-        for (TestEntity e : results) {
-            System.out.println("  - " + e.name);
-        }
 
         assertThat(results).hasSize(3);
 

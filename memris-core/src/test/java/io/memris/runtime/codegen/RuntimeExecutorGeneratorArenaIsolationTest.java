@@ -63,8 +63,8 @@ class RuntimeExecutorGeneratorArenaIsolationTest {
 
         Optional<Product> cross1 = repo1.findById(saved2.id);
         Optional<Product> cross2 = repo2.findById(saved1.id);
-        boolean arena1MissingArena2 = cross1.isEmpty() || !"Product in Arena 2".equals(cross1.get().name);
-        boolean arena2MissingArena1 = cross2.isEmpty() || !"Product in Arena 1".equals(cross2.get().name);
+        boolean arena1MissingArena2 = cross1.filter(product -> "Product in Arena 2".equals(product.name)).isEmpty();
+        boolean arena2MissingArena1 = cross2.filter(product -> "Product in Arena 1".equals(product.name)).isEmpty();
 
         ArenaIsolationResult actual = new ArenaIsolationResult(
                 found1.name,
@@ -160,8 +160,8 @@ class RuntimeExecutorGeneratorArenaIsolationTest {
 
         Optional<ProductWithCategory> cross1 = prodRepo1.findById(savedProd2.id);
         Optional<ProductWithCategory> cross2 = prodRepo2.findById(savedProd1.id);
-        boolean arena1MissingArena2 = cross1.isEmpty() || !"Arena2 Product".equals(cross1.get().name);
-        boolean arena2MissingArena1 = cross2.isEmpty() || !"Arena1 Product".equals(cross2.get().name);
+        boolean arena1MissingArena2 = cross1.filter(product -> "Arena2 Product".equals(product.name)).isEmpty();
+        boolean arena2MissingArena1 = cross2.filter(product -> "Arena1 Product".equals(product.name)).isEmpty();
 
         ForeignKeyIsolationResult actual = new ForeignKeyIsolationResult(
                 found1.name,

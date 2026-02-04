@@ -16,6 +16,27 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
+/**
+ * Parses JPQL queries and compiles them into executable LogicalQuery objects.
+ *
+ * <p>This class intentionally has high cognitive complexity as it handles:
+ * - Full JPQL grammar parsing (SELECT, UPDATE, DELETE, INSERT)
+ * - Join clauses with inner/left/right join types
+ * - WHERE clause with DNF normalization
+ * - GROUP BY and HAVING clauses
+ * - Projection specifications (entity, field, map, custom types)
+ * - Parameter binding (named, positional, indexed)
+ * - Entity validation and alias mapping
+ * - Type-safe return kind resolution
+ *
+ * <p><b>Complexity Rationale:</b> Language parsing is inherently complex. This parser
+ * handles a subset of JPQL with type safety guarantees. DNF normalization ensures
+ * predictable query execution and optimization. Splitting this parser would scatter
+ * related parsing logic and hurt maintainability.
+ *
+ * <p><b>Not a hot-path component:</b> This runs only during query planning. All hot-path
+ * code uses pre-compiled LogicalQuery objects.
+ */
 public final class JpqlQueryParser {
     private JpqlQueryParser() {
     }

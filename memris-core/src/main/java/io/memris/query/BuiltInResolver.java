@@ -10,29 +10,37 @@ import java.util.Set;
 
 import io.memris.repository.RepositoryMethodIntrospector.MethodKey;
 
-/**
- * Resolves built-in operation codes with deterministic tie-breaking.
- * <p>
- * This resolver eliminates ambiguity in built-in method matching by:
- * <ol>
- *   <li>Preferring exact signature matches (after boxing primitives)</li>
- *   <li>Falling back to most-specific match (minimal inheritance distance)</li>
- *   <li>Failing fast on ambiguous ties (same specificity score)</li>
- * </ol>
- * <p>
- * This makes wildcard matching (e.g., using Object.class for ID parameters) safe
- * while preventing silent misclassification.
- * <p>
- * Performance optimizations:
- * <ul>
- *   <li>Method resolution cached per Method instance (zero-allocation after warm-up)</li>
- *   <li>Built-ins indexed by method shape (name + arity) to reduce search space</li>
- *   <li>Zero stream allocations in hot paths</li>
- * </ul>
- *
- * @see MethodKey
- * @see OpCode
- */
+ /**
+  * Resolves built-in operation codes with deterministic tie-breaking.
+  * <p>
+  * This resolver eliminates ambiguity in built-in method matching by:
+  * <ol>
+  *   <li>Preferring exact signature matches (after boxing primitives)</li>
+  *   <li>Falling back to most-specific match (minimal inheritance distance)</li>
+  *   <li>Failing fast on ambiguous ties (same specificity score)</li>
+  * </ol>
+  * <p>
+  * This makes wildcard matching (e.g., using Object.class for ID parameters) safe
+  * while preventing silent misclassification.
+  * <p>
+  * Performance optimizations:
+  * <ul>
+  *   <li>Method resolution cached per Method instance (zero-allocation after warm-up)</li>
+  *   <li>Built-ins indexed by method shape (name + arity) to reduce search space</li>
+  *   <li>Zero stream allocations in hot paths</li>
+  * </ul>
+  *
+  * <p><b>Complexity Rationale:</b> Deterministic method resolution with specificity scoring,
+  * BFS for inheritance distance, and tie-breaking logic require complex algorithms. This
+  * complexity is necessary for correct built-in method resolution. Caching per Method instance
+  * ensures zero-allocation in hot paths.
+  *
+  * <p><b>Not a hot-path component:</b> This runs only during query planning. All hot-path
+  * code uses pre-resolved operation codes.
+  *
+  * @see MethodKey
+  * @see OpCode
+  */
 public final class BuiltInResolver {
 
     /**

@@ -1,6 +1,5 @@
 package io.memris.index;
 
-import io.memris.core.Index;
 import io.memris.core.MemrisArena;
 import io.memris.core.MemrisConfiguration;
 import io.memris.repository.MemrisRepositoryFactory;
@@ -38,11 +37,6 @@ class IndexDebugTest {
         // Query
         List<TestEntity> results = repository.findByNameStartingWith("TARGET");
         
-        System.out.println("Results: " + results.size());
-        for (TestEntity e : results) {
-            System.out.println("  - " + e.name);
-        }
-        
         assertThat(results).hasSize(2);
         
         arena.close();
@@ -72,7 +66,6 @@ class IndexDebugTest {
         assertThat(entityIndexes).isNotNull();
         
         Object nameIndex = entityIndexes.get("name");
-        System.out.println("Index type for 'name' field: " + nameIndex.getClass().getName());
         
         assertThat(nameIndex).isInstanceOf(io.memris.index.StringPrefixIndex.class);
         

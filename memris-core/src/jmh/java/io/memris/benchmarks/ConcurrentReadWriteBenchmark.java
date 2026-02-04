@@ -194,7 +194,7 @@ public class ConcurrentReadWriteBenchmark {
 
     // Reader workload: 60% lookup by ID, 30% count, 10% scan all
     private void doRead(Blackhole blackhole) {
-        long threadId = Thread.currentThread().getId();
+        var threadId = Thread.currentThread().threadId();
         int operation = (int) (threadId % 100);
 
         if (operation < 60) {

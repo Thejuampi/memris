@@ -1282,7 +1282,8 @@ public final class RepositoryRuntime<T> {
                 // Array intersection (both small)
                 java.util.Arrays.sort(other);
                 int newSize = 0;
-                int i = 0, j = 0;
+                int i = 0;
+                int j = 0;
                 while (i < size && j < other.length) {
                     if (rows[i] == other[j]) {
                         rows[newSize++] = rows[i];

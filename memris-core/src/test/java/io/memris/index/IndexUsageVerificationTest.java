@@ -33,20 +33,10 @@ class IndexUsageVerificationTest {
         }
 
         // Query and measure time
-        long start1 = System.nanoTime();
         List<TestEntity> results1 = repository.findByNameStartingWith("TARGET");
-        long time1 = System.nanoTime() - start1;
-
-        // Query again (should be faster if index is used)
-        long start2 = System.nanoTime();
         List<TestEntity> results2 = repository.findByNameStartingWith("TARGET");
-        long time2 = System.nanoTime() - start2;
 
-        System.out.println("First query: " + (time1 / 1000) + " μs");
-        System.out.println("Second query: " + (time2 / 1000) + " μs");
-        System.out.println("Results: " + results1.size() + " entities");
-
-        assertThat(results1).hasSize(10);
+        assertThat(List.of(results1.size(), results2.size())).containsExactly(10, 10);
 
         arena.close();
         factory.close();
@@ -54,8 +44,6 @@ class IndexUsageVerificationTest {
 
     @Test
     void compareScans() {
-        System.out.println("\n=== Direct Table Scan vs Index Query ===\n");
-
         // Test 1: With index
         MemrisConfiguration configWithIndex = MemrisConfiguration.builder()
                 .enablePrefixIndex(true)
@@ -69,11 +57,7 @@ class IndexUsageVerificationTest {
             repo1.save(new TestEntity(null, "Name" + i, i));
         }
 
-        long t1 = System.nanoTime();
         var results1 = repo1.findByNameStartingWith("Name499");
-        long timeWithIndex = System.nanoTime() - t1;
-
-        System.out.println("With Index: " + (timeWithIndex / 1000) + " μs, results: " + results1.size());
 
         arena1.close();
         factory1.close();
@@ -91,16 +75,11 @@ class IndexUsageVerificationTest {
             repo2.save(new TestEntity(null, "Name" + i, i));
         }
 
-        long t2 = System.nanoTime();
         var results2 = repo2.findByNameStartingWith("Name499");
-        long timeWithoutIndex = System.nanoTime() - t2;
-
-        System.out.println("Without Index: " + (timeWithoutIndex / 1000) + " μs, results: " + results2.size());
 
         arena2.close();
         factory2.close();
 
-        double speedup = (double) timeWithoutIndex / timeWithIndex;
-        System.out.println("\nSpeedup: " + String.format("%.2f", speedup) + "x");
+        assertThat(List.of(results1.size(), results2.size())).containsExactly(111, 111);
     }
 }

@@ -313,6 +313,8 @@ public final class QueryPlanner {
                         case ASC, DESC, FIND_BY, COUNT_BY, EXISTS_BY, DELETE_BY, DELETE, DELETE_ALL, OPERATION -> {
                             // skip
                         }
+                        default -> {
+                        }
                     }
                 }
                 validateHasPropertyAfterBy(state.hasPropertyAfterBy, state.inOrderBy, true, methodName);
@@ -359,6 +361,8 @@ public final class QueryPlanner {
                     // "no nice" Built-in operations - should not reach here since we handle them
                     // earlier
                     // But if we do, skip the token
+                }
+                default -> {
                 }
             }
         }

@@ -99,7 +99,8 @@ public final class RowIdBitSet implements MutableRowIdSet {
             var word = words[wordIndex];
             while (word != 0L) {
                 var bit = Long.numberOfTrailingZeros(word);
-                values[index++] = ((long) wordIndex * BITS_PER_WORD) + bit;
+                values[index] = ((long) wordIndex * BITS_PER_WORD) + bit;
+                index++;
                 word &= word - 1L;
             }
         }

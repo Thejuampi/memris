@@ -27,6 +27,11 @@ jobs:
           java-version: '21'
           cache: maven
 
+      - name: Configure git author
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
       - name: Import GPG private key
         env:
           GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
@@ -62,11 +67,11 @@ jobs:
           printf '%s\n' "  </servers>" >> ~/.m2/settings.xml
           printf '%s\n' "</settings>" >> ~/.m2/settings.xml
 
-      - name: Deploy to Maven Central
+      - name: Release with Maven
         env:
           GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
         run: |
-          mvn -B deploy \
+          mvn -B release:prepare release:perform \
             -DskipTests \
             -Dcheckstyle.skip=true \
             -Dmodernizer.skip=true \
@@ -76,4 +81,4 @@ jobs:
             -Dgpg.passphrase="$GPG_PASSPHRASE" \
             -Dgpg.executable=gpg \
             -Dgpg.useagent=false \
-            -P release
+            -Darguments="-DskipTests -Dcheckstyle.skip=true -Dmodernizer.skip=true -Dpmd.skip=true -Dspotbugs.skip=true -Denforcer.skip=true -Dgpg.passphrase=$GPG_PASSPHRASE -Dgpg.executable=gpg -Dgpg.useagent=false"

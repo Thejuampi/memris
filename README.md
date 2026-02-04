@@ -1,12 +1,16 @@
 # Memris
 
+[![CI](https://github.com/Thejuampi/memris/actions/workflows/ci.yml/badge.svg)](https://github.com/Thejuampi/memris/actions/workflows/ci.yml)
+[![Maven Central](https://img.shields.io/maven-central/v/io.github.thejuampi/memris.svg)](https://central.sonatype.com/artifact/io.github.thejuampi/memris)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 **Memris** = "Memory" + "Iris" — a heap-based, zero-reflection in-memory storage engine for Java 21. Like iris (the eye), it provides vision/insight into your data. Like iris (a flower), it blooms fast.
 
 > "Iris suggests looking through data/vision. It sounds like an engine that can 'see' through the heap instantly."
 
 ## What is Memris?
 
-**Memris** is a blazingly fast, multi-threaded, in-memory storage engine for Java 21 with Spring Data-compatible query method patterns.
+**Memris** is a blazingly fast, concurrency-safe, in-memory storage engine for Java 21 with Spring Data-compatible query method patterns.
 
 Built on 100% Java heap storage with ByteBuddy bytecode generation, Memris delivers columnar storage performance with familiar query patterns. Zero reflection in hot paths, O(1) design principles, and primitive-only APIs ensure maximum throughput.
 
@@ -346,9 +350,9 @@ Memris is currently in SNAPSHOT version (1.0.0-SNAPSHOT). Build locally to use:
 
 ```xml
 <dependency>
-    <groupId>io.memris</groupId>
-    <artifactId>memris-core</artifactId>
-    <version>1.0.0-SNAPSHOT</version>
+    <groupId>io.github.thejuampi</groupId>
+    <artifactId>memris</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
 </dependency>
 ```
 
