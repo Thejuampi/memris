@@ -1,13 +1,12 @@
 package io.memris.core.plan.entities;
 
-import jakarta.persistence.*;
+import io.memris.core.Entity;
 
 /**
  * Account entity for nested property tests.
  */
 @Entity
 public final class Account {
-    @Id
     private Long id;
     private String email;
     private String phone;

@@ -64,6 +64,10 @@
 
     <modules>
         <module>memris-core</module>
+        <module>memris-spring-data-boot2</module>
+        <module>memris-spring-data-boot3</module>
+        <module>memris-spring-boot-starter-2</module>
+        <module>memris-spring-boot-starter-3</module>
     </modules>
 
     <dependencyManagement>

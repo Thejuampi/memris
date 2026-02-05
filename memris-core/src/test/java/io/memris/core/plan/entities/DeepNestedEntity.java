@@ -1,13 +1,13 @@
 package io.memris.core.plan.entities;
 
-import jakarta.persistence.*;
+import io.memris.core.Entity;
+import io.memris.core.ManyToOne;
 
 /**
  * Deeply nested entity for multi-level property resolution tests.
  */
 @Entity
 public final class DeepNestedEntity {
-    @Id
     private Long id;
     private String name;
 

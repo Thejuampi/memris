@@ -200,7 +200,12 @@ public final class EntitySaverGenerator {
                 if (!Modifier.isPublic(field.getModifiers())) {
                     continue;
                 }
-                var converter = metadata.converters().get(mapping.name());
+                io.memris.core.converter.TypeConverter<?, ?> converter = io.memris.core.converter.TypeConverterRegistry
+                        .getInstance()
+                        .getFieldConverter(entityClass, mapping.name());
+                if (converter == null) {
+                    converter = metadata.converters().get(mapping.name());
+                }
 
                 // For relationship fields, resolve the target entity class
                 Class<?> targetEntityClass = null;
@@ -302,7 +307,6 @@ public final class EntitySaverGenerator {
     private static Field findIdField(Class<?> entityClass) {
         for (var field : entityClass.getDeclaredFields()) {
             if (field.getName().equals("id") ||
-                    field.isAnnotationPresent(jakarta.persistence.Id.class) ||
                     field.isAnnotationPresent(io.memris.core.GeneratedValue.class)) {
                 if (Modifier.isPublic(field.getModifiers())) {
                     return field;

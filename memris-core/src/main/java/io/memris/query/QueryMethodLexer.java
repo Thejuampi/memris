@@ -1,10 +1,5 @@
 package io.memris.query;
 
-import jakarta.persistence.Embeddable;
-import jakarta.persistence.Embedded;
-import jakarta.persistence.Entity;
-import jakarta.persistence.ManyToOne;
-import jakarta.persistence.OneToOne;
 
 import java.lang.reflect.Field;
 import java.util.ArrayList;
@@ -186,22 +181,16 @@ public final class QueryMethodLexer {
                 Class<?> fieldType = field.getType();
 
                 // Relationship / traversal support: check annotations on FIELD (not on type)
-                boolean isRelationship = field.isAnnotationPresent(ManyToOne.class) ||
-                        field.isAnnotationPresent(OneToOne.class) ||
-                        field.isAnnotationPresent(jakarta.persistence.OneToMany.class) ||
-                        field.isAnnotationPresent(jakarta.persistence.ManyToMany.class) ||
-                        field.isAnnotationPresent(io.memris.core.ManyToOne.class) ||
+                boolean isRelationship = field.isAnnotationPresent(io.memris.core.ManyToOne.class) ||
                         field.isAnnotationPresent(io.memris.core.OneToOne.class) ||
                         field.isAnnotationPresent(io.memris.core.OneToMany.class) ||
                         field.isAnnotationPresent(io.memris.core.ManyToMany.class);
 
                 // Embedded/value-object traversal support
-                boolean isEmbedded = field.isAnnotationPresent(Embedded.class) ||
-                        fieldType.isAnnotationPresent(Embeddable.class);
+                boolean isEmbedded = false;
 
                 // Entity traversal support (type-level annotation)
-                boolean isEntityType = fieldType.isAnnotationPresent(Entity.class)
-                        || fieldType.isAnnotationPresent(io.memris.core.Entity.class);
+                boolean isEntityType = fieldType.isAnnotationPresent(io.memris.core.Entity.class);
 
                 if (isRelationship || isEmbedded || isEntityType) {
                     Class<?> relatedType = resolveRelatedType(field, fieldType);

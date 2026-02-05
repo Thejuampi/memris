@@ -20,6 +20,7 @@ public final class TypeConverterRegistry {
 
     @SuppressWarnings("rawtypes")
     private final java.util.Map<Class, TypeConverter> converters = new java.util.HashMap<>();
+    private final java.util.Map<String, TypeConverter> fieldConverters = new java.util.HashMap<>();
 
     private TypeConverterRegistry() {
         registerDefaults();
@@ -78,6 +79,15 @@ public final class TypeConverterRegistry {
         converters.put(converter.javaType(), converter);
     }
 
+    public void registerFieldConverter(Class<?> entityClass, String fieldName, TypeConverter<?, ?> converter) {
+        fieldConverters.put(fieldKey(entityClass, fieldName), converter);
+    }
+
+    @SuppressWarnings("unchecked")
+    public <J> TypeConverter<J, ?> getFieldConverter(Class<?> entityClass, String fieldName) {
+        return (TypeConverter<J, ?>) fieldConverters.get(fieldKey(entityClass, fieldName));
+    }
+
     @SuppressWarnings("unchecked")
     public <J> TypeConverter<J, ?> getConverter(Class<J> javaType) {
         // Try exact match first
@@ -115,8 +125,33 @@ public final class TypeConverterRegistry {
         return null;
     }
 
+    @SuppressWarnings("unchecked")
+    public TypeConverter<?, ?> getConverterByClass(Class<?> converterClass) {
+        for (TypeConverter<?, ?> converter : converters.values()) {
+            if (converter.getClass().equals(converterClass)) {
+                return converter;
+            }
+        }
+        return null;
+    }
+
+    public void registerByClass(Class<?> converterClass) {
+        try {
+            var instance = converterClass.getDeclaredConstructor().newInstance();
+            if (instance instanceof TypeConverter<?, ?> converter) {
+                register(converter);
+            }
+        } catch (ReflectiveOperationException e) {
+            throw new IllegalArgumentException("Failed to instantiate converter: " + converterClass.getName(), e);
+        }
+    }
+
     public boolean hasConverter(Class<?> javaType) {
         return getConverter(javaType) != null;
+    }
+
+    private static String fieldKey(Class<?> entityClass, String fieldName) {
+        return entityClass.getName() + "#" + fieldName;
     }
 
     // Default converters

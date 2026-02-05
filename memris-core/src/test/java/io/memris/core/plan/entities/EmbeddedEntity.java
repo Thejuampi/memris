@@ -1,17 +1,15 @@
 package io.memris.core.plan.entities;
 
-import jakarta.persistence.*;
+import io.memris.core.Entity;
 
 /**
  * Entity with embedded value object.
  */
 @Entity
 public final class EmbeddedEntity {
-    @Id
     private Long id;
     private String username;
 
-    @Embedded
     private EmbeddedValueObject profile;
 
     public EmbeddedEntity() {}
