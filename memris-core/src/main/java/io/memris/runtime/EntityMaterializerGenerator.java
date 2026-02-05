@@ -108,7 +108,11 @@ public final class EntityMaterializerGenerator {
                 if (!Modifier.isPublic(field.getModifiers())) {
                     continue;
                 }
-                TypeConverter<?, ?> converter = metadata.converters().get(mapping.name());
+                TypeConverter<?, ?> converter = io.memris.core.converter.TypeConverterRegistry.getInstance()
+                        .getFieldConverter(metadata.entityClass(), mapping.name());
+                if (converter == null) {
+                    converter = metadata.converters().get(mapping.name());
+                }
                 result.add(new FieldInfo(mapping, field, converter));
             } catch (NoSuchFieldException ignored) {
                 // Skip fields not present

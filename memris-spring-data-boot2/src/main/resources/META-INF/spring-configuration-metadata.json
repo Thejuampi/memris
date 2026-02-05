@@ -1,0 +1,14 @@
+{
+  "properties": [
+    {
+      "name": "memris.default-arena",
+      "type": "java.lang.String",
+      "description": "Default Memris arena name."
+    },
+    {
+      "name": "memris.arenas",
+      "type": "java.util.Map",
+      "description": "Named Memris arena configurations."
+    }
+  ]
+}

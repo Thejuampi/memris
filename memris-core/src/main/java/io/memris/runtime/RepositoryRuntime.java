@@ -7,6 +7,7 @@ import io.memris.repository.MemrisRepositoryFactory;
 import io.memris.core.TypeCodes;
 import io.memris.kernel.Predicate;
 import io.memris.core.converter.TypeConverter;
+import io.memris.core.converter.TypeConverterRegistry;
 import io.memris.query.CompiledQuery;
 import io.memris.query.LogicalQuery;
 import io.memris.storage.GeneratedTable;
@@ -82,7 +83,7 @@ public final class RepositoryRuntime<T> {
         } else {
             this.materializer = metadata != null ? new EntityMaterializerImpl<>(metadata) : null;
         }
-        this.relatedMetadata = buildRelatedMetadata(metadata);
+        this.relatedMetadata = buildRelatedMetadata(metadata, factory.getConfiguration().entityMetadataProvider());
         this.projectionMetadata = new java.util.concurrent.ConcurrentHashMap<>();
         if (metadata != null) {
             this.projectionMetadata.put(metadata.entityClass(), metadata);
@@ -121,9 +122,14 @@ public final class RepositoryRuntime<T> {
     }
 
     public static ProjectionExecutor[] buildProjectionExecutors(CompiledQuery[] queries) {
+        return buildProjectionExecutors(queries, io.memris.core.MetadataExtractor::extractEntityMetadata);
+    }
+
+    public static ProjectionExecutor[] buildProjectionExecutors(CompiledQuery[] queries,
+            io.memris.core.EntityMetadataProvider metadataProvider) {
         ProjectionExecutor[] executors = new ProjectionExecutor[queries.length];
         for (int i = 0; i < queries.length; i++) {
-            executors[i] = buildProjectionExecutor(queries[i]);
+            executors[i] = buildProjectionExecutor(queries[i], metadataProvider);
         }
         return executors;
     }
@@ -292,7 +298,8 @@ public final class RepositoryRuntime<T> {
         return (runtime, rows) -> runtime.sortByMultipleColumns(rows, builders);
     }
 
-    private static ProjectionExecutor buildProjectionExecutor(CompiledQuery query) {
+    private static ProjectionExecutor buildProjectionExecutor(CompiledQuery query,
+            io.memris.core.EntityMetadataProvider metadataProvider) {
         var projection = query.projection();
         if (projection == null) {
             return null;
@@ -300,19 +307,23 @@ public final class RepositoryRuntime<T> {
         var items = projection.items();
         var itemExecutors = new ProjectionItemExecutor[items.length];
         for (var i = 0; i < items.length; i++) {
-            itemExecutors[i] = buildProjectionItemExecutor(items[i]);
+            itemExecutors[i] = buildProjectionItemExecutor(items[i], metadataProvider);
         }
         return new ProjectionExecutorImpl(projection, itemExecutors);
     }
 
-    private static ProjectionItemExecutor buildProjectionItemExecutor(CompiledQuery.CompiledProjectionItem item) {
+    private static ProjectionItemExecutor buildProjectionItemExecutor(CompiledQuery.CompiledProjectionItem item,
+            io.memris.core.EntityMetadataProvider metadataProvider) {
         var steps = new ProjectionStepExecutor[item.steps().length];
         for (var i = 0; i < item.steps().length; i++) {
             steps[i] = buildProjectionStepExecutor(item.steps()[i]);
         }
-        EntityMetadata<?> fieldMetadata = io.memris.core.MetadataExtractor
-                .extractEntityMetadata(item.fieldEntity());
-        var converter = fieldMetadata.converters().get(item.fieldName());
+        EntityMetadata<?> fieldMetadata = metadataProvider.getMetadata(item.fieldEntity());
+        TypeConverter<?, ?> converter = TypeConverterRegistry.getInstance()
+                .getFieldConverter(item.fieldEntity(), item.fieldName());
+        if (converter == null) {
+            converter = fieldMetadata.converters().get(item.fieldName());
+        }
         var reader = buildFieldValueReader(item.columnIndex(), item.typeCode(), converter);
         return new ProjectionItemExecutor(item.fieldEntity(), steps, reader);
     }
@@ -539,15 +550,15 @@ public final class RepositoryRuntime<T> {
         return executeDeleteAllById(new Object[] { ids });
     }
 
-    private static java.util.Map<Class<?>, EntityMetadata<?>> buildRelatedMetadata(EntityMetadata<?> metadata) {
+    private static java.util.Map<Class<?>, EntityMetadata<?>> buildRelatedMetadata(EntityMetadata<?> metadata,
+            io.memris.core.EntityMetadataProvider metadataProvider) {
         if (metadata == null) {
             return java.util.Map.of();
         }
         java.util.Map<Class<?>, EntityMetadata<?>> related = new java.util.HashMap<>();
         for (io.memris.core.EntityMetadata.FieldMapping field : metadata.fields()) {
             if (field.isRelationship() && field.targetEntity() != null) {
-                related.putIfAbsent(field.targetEntity(),
-                        io.memris.core.MetadataExtractor.extractEntityMetadata(field.targetEntity()));
+                related.putIfAbsent(field.targetEntity(), metadataProvider.getMetadata(field.targetEntity()));
             }
         }
         return java.util.Map.copyOf(related);
@@ -692,6 +703,14 @@ public final class RepositoryRuntime<T> {
 
     MemrisRepositoryFactory indexFactory() {
         return factory;
+    }
+
+    private io.memris.core.EntityMetadataProvider metadataProvider() {
+        var config = factory != null ? factory.getConfiguration() : null;
+        if (config == null || config.entityMetadataProvider() == null) {
+            return io.memris.core.MetadataExtractor::extractEntityMetadata;
+        }
+        return config.entityMetadataProvider();
     }
 
     private boolean hasValue(Object entity, String fieldName) {
@@ -1555,7 +1574,7 @@ public final class RepositoryRuntime<T> {
             io.memris.core.EntityMetadata.FieldMapping field = findFieldByColumnIndex(columnIndex);
             Object value = update.argumentIndex() < args.length ? args[update.argumentIndex()] : null;
             if (field != null) {
-                TypeConverter<?, ?> converter = metadata.converters().get(field.name());
+                TypeConverter<?, ?> converter = resolveConverter(metadata, field.name());
                 if (converter != null) {
                     @SuppressWarnings("unchecked")
                     TypeConverter<Object, Object> typed = (TypeConverter<Object, Object>) converter;
@@ -1689,7 +1708,7 @@ public final class RepositoryRuntime<T> {
             EntityMetadata<?> entityMetadata) {
         int columnIndex = field.columnPosition();
         byte typeCode = field.typeCode();
-        TypeConverter<?, ?> converter = entityMetadata.converters().get(field.name());
+        TypeConverter<?, ?> converter = resolveConverter(entityMetadata, field.name());
         @SuppressWarnings("unchecked")
         TypeConverter<Object, Object> typedConverter = (TypeConverter<Object, Object>) converter;
         return new IndexValueReader() {
@@ -1729,6 +1748,15 @@ public final class RepositoryRuntime<T> {
                 };
             }
         };
+    }
+
+    private TypeConverter<?, ?> resolveConverter(EntityMetadata<?> entityMetadata, String fieldName) {
+        var fieldConverter = TypeConverterRegistry.getInstance()
+                .getFieldConverter(entityMetadata.entityClass(), fieldName);
+        if (fieldConverter != null) {
+            return fieldConverter;
+        }
+        return entityMetadata.converters().get(fieldName);
     }
 
     private static final class IndexFieldReader {
@@ -3162,7 +3190,7 @@ public final class RepositoryRuntime<T> {
             default -> table.readInt(columnIndex, rowIndex);
         };
 
-        TypeConverter<?, ?> converter = entityMetadata.converters().get(fieldName);
+        TypeConverter<?, ?> converter = resolveConverter(entityMetadata, fieldName);
         if (converter != null && storage != null) {
             @SuppressWarnings("unchecked")
             TypeConverter<Object, Object> typedConverter = (TypeConverter<Object, Object>) converter;
@@ -3191,7 +3219,7 @@ public final class RepositoryRuntime<T> {
     }
 
     private EntityMetadata<?> projectionMetadata(Class<?> entityClass) {
-        return projectionMetadata.computeIfAbsent(entityClass, io.memris.core.MetadataExtractor::extractEntityMetadata);
+        return projectionMetadata.computeIfAbsent(entityClass, metadataProvider()::getMetadata);
     }
 
     private MethodHandle projectionConstructor(Class<?> projectionType) {
@@ -3276,8 +3304,7 @@ public final class RepositoryRuntime<T> {
             return;
         }
 
-        io.memris.core.EntityMetadata<?> targetMetadata = io.memris.core.MetadataExtractor
-                .extractEntityMetadata(field.targetEntity());
+        io.memris.core.EntityMetadata<?> targetMetadata = metadataProvider().getMetadata(field.targetEntity());
         int fkColumnIndex = targetMetadata.resolveColumnPosition(field.columnName());
 
         int idColumnIndex = metadata.resolveColumnPosition(metadata.idColumnName());
@@ -3334,8 +3361,7 @@ public final class RepositoryRuntime<T> {
             return;
         }
 
-        io.memris.core.EntityMetadata<?> targetMetadata = io.memris.core.MetadataExtractor
-                .extractEntityMetadata(field.targetEntity());
+        io.memris.core.EntityMetadata<?> targetMetadata = metadataProvider().getMetadata(field.targetEntity());
         io.memris.runtime.HeapRuntimeKernel targetKernel = plan.kernelsByEntity().get(field.targetEntity());
         io.memris.runtime.EntityMaterializer<?> targetMaterializer = plan.materializersByEntity()
                 .get(field.targetEntity());
@@ -3441,8 +3467,7 @@ public final class RepositoryRuntime<T> {
                 continue;
             }
 
-            io.memris.core.EntityMetadata<?> targetMetadata = io.memris.core.MetadataExtractor
-                    .extractEntityMetadata(field.targetEntity());
+            io.memris.core.EntityMetadata<?> targetMetadata = metadataProvider().getMetadata(field.targetEntity());
             io.memris.core.EntityMetadata.FieldMapping targetId = findIdField(targetMetadata);
             if (targetId == null) {
                 continue;
@@ -3527,11 +3552,10 @@ public final class RepositoryRuntime<T> {
     private JoinTableInfo resolveJoinTable(io.memris.core.EntityMetadata.FieldMapping field) {
         if (field.joinTable() != null && !field.joinTable().isBlank()) {
             return buildJoinTableInfo(field, metadata,
-                    io.memris.core.MetadataExtractor.extractEntityMetadata(field.targetEntity()), false);
+                    metadataProvider().getMetadata(field.targetEntity()), false);
         }
         if (field.mappedBy() != null && !field.mappedBy().isBlank()) {
-            io.memris.core.EntityMetadata<?> targetMetadata = io.memris.core.MetadataExtractor
-                    .extractEntityMetadata(field.targetEntity());
+            io.memris.core.EntityMetadata<?> targetMetadata = metadataProvider().getMetadata(field.targetEntity());
             io.memris.core.EntityMetadata.FieldMapping ownerField = findFieldByName(targetMetadata, field.mappedBy());
             if (ownerField == null || ownerField.joinTable() == null || ownerField.joinTable().isBlank()) {
                 return null;

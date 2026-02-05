@@ -1,11 +1,9 @@
 package io.memris.runtime;
 
-import jakarta.persistence.Entity;
-import jakarta.persistence.Id;
+import io.memris.core.Entity;
 
 @Entity
 public class ByteTestEntity {
-    @Id
     public Long id;
     public byte value;
 

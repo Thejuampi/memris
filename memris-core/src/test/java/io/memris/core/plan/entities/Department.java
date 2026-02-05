@@ -1,13 +1,13 @@
 package io.memris.core.plan.entities;
 
-import jakarta.persistence.*;
+import io.memris.core.Entity;
+import io.memris.core.ManyToOne;
 
 /**
  * Department entity for nested property tests.
  */
 @Entity
 public final class Department {
-    @Id
     private Long id;
     private String name;
 

@@ -1,13 +1,12 @@
 package io.memris.core.plan.entities;
 
-import jakarta.persistence.*;
+import io.memris.core.Entity;
 
 /**
  * Address entity for nested property tests.
  */
 @Entity
 public final class Address {
-    @Id
     private Long id;
     private String city;
     private String state;

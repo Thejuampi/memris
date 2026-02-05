@@ -27,6 +27,12 @@ public class EntityMetadata<T> {
     // Pre-compiled TypeConverters per field
     private final Map<String, TypeConverter<?, ?>> converters;
 
+    // Per-field converter overrides (from @Convert)
+    private final Map<String, TypeConverter<?, ?>> fieldConverters;
+
+    // Index definitions extracted from annotations
+    private final List<IndexDefinition> indexDefinitions;
+
     // Pre-compiled lifecycle callback MethodHandles
     private final MethodHandle prePersistHandle;
     private final MethodHandle postLoadHandle;
@@ -54,6 +60,8 @@ public class EntityMetadata<T> {
         List<FieldMapping> fields,
         Set<String> foreignKeyColumns,
         Map<String, TypeConverter<?, ?>> converters,
+        Map<String, TypeConverter<?, ?>> fieldConverters,
+        List<IndexDefinition> indexDefinitions,
         MethodHandle prePersistHandle,
         MethodHandle postLoadHandle,
         MethodHandle preUpdateHandle,
@@ -68,6 +76,8 @@ public class EntityMetadata<T> {
         this.fields = fields;
         this.foreignKeyColumns = foreignKeyColumns;
         this.converters = converters;
+        this.fieldConverters = fieldConverters != null ? fieldConverters : Map.of();
+        this.indexDefinitions = indexDefinitions != null ? indexDefinitions : List.of();
         this.prePersistHandle = prePersistHandle;
         this.postLoadHandle = postLoadHandle;
         this.preUpdateHandle = preUpdateHandle;
@@ -98,6 +108,8 @@ public class EntityMetadata<T> {
     public List<FieldMapping> fields() { return fields; }
     public Set<String> foreignKeyColumns() { return foreignKeyColumns; }
     public Map<String, TypeConverter<?, ?>> converters() { return converters; }
+    public Map<String, TypeConverter<?, ?>> fieldConverters() { return fieldConverters; }
+    public List<IndexDefinition> indexDefinitions() { return indexDefinitions; }
     public MethodHandle prePersistHandle() { return prePersistHandle; }
     public MethodHandle postLoadHandle() { return postLoadHandle; }
     public MethodHandle preUpdateHandle() { return preUpdateHandle; }
@@ -114,6 +126,9 @@ public class EntityMetadata<T> {
     public int resolvePropertyPosition(String propertyPath) {
         Integer pos = propertyToColumnPosition.get(propertyPath);
         if (pos == null) {
+            pos = columnNameToColumnPosition.get(propertyPath);
+        }
+        if (pos == null) {
             throw new IllegalArgumentException("Property not found: " + propertyPath);
         }
         return pos;
@@ -127,9 +142,15 @@ public class EntityMetadata<T> {
     public int resolveColumnPosition(String columnName) {
         Integer pos = columnNameToColumnPosition.get(columnName);
         if (pos == null) {
+            pos = propertyToColumnPosition.get(columnName);
+        }
+        if (pos == null) {
             throw new IllegalArgumentException("Column not found: " + columnName);
         }
         return pos;
+    }
+
+    public record IndexDefinition(String fieldName, io.memris.core.Index.IndexType indexType, String source) {
     }
 
     /**

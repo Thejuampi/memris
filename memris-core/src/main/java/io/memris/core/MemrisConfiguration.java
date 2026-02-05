@@ -39,6 +39,9 @@ public final class MemrisConfiguration {
     private final boolean enablePrefixIndex;
     private final boolean enableSuffixIndex;
 
+    // Metadata provider
+    private final EntityMetadataProvider entityMetadataProvider;
+
     private MemrisConfiguration(Builder builder) {
         this.tableImplementation = builder.tableImplementation;
         this.pageSize = builder.pageSize;
@@ -50,6 +53,9 @@ public final class MemrisConfiguration {
         this.codegenEnabled = builder.codegenEnabled;
         this.enablePrefixIndex = builder.enablePrefixIndex;
         this.enableSuffixIndex = builder.enableSuffixIndex;
+        this.entityMetadataProvider = builder.entityMetadataProvider != null
+                ? builder.entityMetadataProvider
+                : MetadataExtractor::extractEntityMetadata;
     }
 
     /**
@@ -150,6 +156,10 @@ public final class MemrisConfiguration {
         return enableSuffixIndex;
     }
 
+    public EntityMetadataProvider entityMetadataProvider() {
+        return entityMetadataProvider;
+    }
+
     /**
      * Table implementation strategy enum.
      */
@@ -183,6 +193,7 @@ public final class MemrisConfiguration {
         private boolean codegenEnabled = true;
         private boolean enablePrefixIndex = true;
         private boolean enableSuffixIndex = true;
+        private EntityMetadataProvider entityMetadataProvider;
 
         private Builder() {
         }
@@ -296,6 +307,11 @@ public final class MemrisConfiguration {
          */
         public Builder enableSuffixIndex(boolean enableSuffixIndex) {
             this.enableSuffixIndex = enableSuffixIndex;
+            return this;
+        }
+
+        public Builder entityMetadataProvider(EntityMetadataProvider entityMetadataProvider) {
+            this.entityMetadataProvider = entityMetadataProvider;
             return this;
         }
 

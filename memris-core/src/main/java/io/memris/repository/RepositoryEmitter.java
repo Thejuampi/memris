@@ -3,7 +3,7 @@ package io.memris.repository;
 import io.memris.core.EntityMetadata;
 import io.memris.core.EntityMetadata.FieldMapping;
 import io.memris.core.MemrisArena;
-import io.memris.core.MetadataExtractor;
+import io.memris.core.EntityMetadataProvider;
 import io.memris.core.TypeCodes;
 import io.memris.core.converter.TypeConverter;
 import io.memris.query.CompiledQuery;
@@ -80,17 +80,19 @@ public final class RepositoryEmitter {
         Class<T> entityClass = extractEntityClass(repositoryInterface);
         var table = arena.getOrCreateTable(entityClass);
 
+        var provider = arena.getFactory().getConfiguration().entityMetadataProvider();
+
         // Build indexes for the entity class (respects arena configuration)
-        buildIndexesForEntity(entityClass, arena);
+        buildIndexesForEntity(entityClass, arena, provider);
 
         // Extract entity metadata
-        var metadata = MetadataExtractor.extractEntityMetadata(entityClass);
+        var metadata = provider.getMetadata(entityClass);
 
         // Extract and compile query methods
         var methods = RepositoryMethodIntrospector.extractQueryMethods(repositoryInterface);
         var compiledQueries = new CompiledQuery[methods.length];
 
-        var compiler = new QueryCompiler(metadata);
+        var compiler = new QueryCompiler(metadata, provider);
 
         for (int i = 0; i < methods.length; i++) {
             var method = methods[i];
@@ -99,13 +101,13 @@ public final class RepositoryEmitter {
             compiledQueries[i] = compiler.compile(logicalQuery);
         }
 
-        var tablesByEntity = buildJoinTables(metadata, arena);
+        var tablesByEntity = buildJoinTables(metadata, arena, provider);
         var kernelsByEntity = buildJoinKernels(tablesByEntity);
         var materializersByEntity = buildJoinMaterializers(
-                tablesByEntity);
-        var joinTables = buildManyToManyJoinTables(metadata);
+                tablesByEntity, provider);
+        var joinTables = buildManyToManyJoinTables(metadata, provider);
         compiledQueries = wireJoinRuntime(compiledQueries, metadata, tablesByEntity, kernelsByEntity,
-                materializersByEntity, joinTables);
+                materializersByEntity, joinTables, provider);
 
         var bindings = RepositoryMethodBinding.fromQueries(compiledQueries);
         var executors = buildExecutors(compiledQueries, bindings);
@@ -122,7 +124,7 @@ public final class RepositoryEmitter {
                 metadata.entityClass(),
                 false);
         var orderExecutors = RepositoryRuntime.buildOrderExecutors(compiledQueries, table);
-        var projectionExecutors = RepositoryRuntime.buildProjectionExecutors(compiledQueries);
+        var projectionExecutors = RepositoryRuntime.buildProjectionExecutors(compiledQueries, provider);
 
         // Create entity constructor handle
         MethodHandle entityConstructor;
@@ -165,7 +167,8 @@ public final class RepositoryEmitter {
 
     private static <T> Map<Class<?>, GeneratedTable> buildJoinTables(
             EntityMetadata<T> metadata,
-            MemrisArena arena) {
+            MemrisArena arena,
+            EntityMetadataProvider provider) {
         Map<Class<?>, GeneratedTable> tablesByEntity = new HashMap<>();
         ArrayDeque<Class<?>> queue = new ArrayDeque<>();
 
@@ -174,7 +177,7 @@ public final class RepositoryEmitter {
 
         while (!queue.isEmpty()) {
             Class<?> current = queue.poll();
-            var currentMetadata = MetadataExtractor.extractEntityMetadata(current);
+            var currentMetadata = provider.getMetadata(current);
             for (FieldMapping field : currentMetadata.fields()) {
                 if (!field.isRelationship() || field.targetEntity() == null) {
                     continue;
@@ -201,18 +204,20 @@ public final class RepositoryEmitter {
     }
 
     private static Map<Class<?>, EntityMaterializer<?>> buildJoinMaterializers(
-            Map<Class<?>, GeneratedTable> tablesByEntity) {
+            Map<Class<?>, GeneratedTable> tablesByEntity,
+            EntityMetadataProvider provider) {
         Map<Class<?>, EntityMaterializer<?>> materializers = new HashMap<>();
         var generator = new EntityMaterializerGenerator();
         for (var entityClass : tablesByEntity.keySet()) {
-            var entityMetadata = MetadataExtractor.extractEntityMetadata(entityClass);
+            var entityMetadata = provider.getMetadata(entityClass);
             materializers.put(entityClass, generator.generate(entityMetadata));
         }
         return Map.copyOf(materializers);
     }
 
     private static <T> Map<String, SimpleTable> buildManyToManyJoinTables(
-            EntityMetadata<T> metadata) {
+            EntityMetadata<T> metadata,
+            EntityMetadataProvider provider) {
         var joinTables = new HashMap<String, SimpleTable>();
         for (FieldMapping field : metadata.fields()) {
             if (!field.isRelationship() || field.relationshipType() != FieldMapping.RelationshipType.MANY_TO_MANY) {
@@ -222,7 +227,7 @@ public final class RepositoryEmitter {
                 continue;
             }
 
-            var targetMetadata = MetadataExtractor.extractEntityMetadata(field.targetEntity());
+            var targetMetadata = provider.getMetadata(field.targetEntity());
             var sourceId = findIdField(metadata);
             var targetId = findIdField(targetMetadata);
 
@@ -266,7 +271,8 @@ public final class RepositoryEmitter {
             Map<Class<?>, GeneratedTable> tablesByEntity,
             Map<Class<?>, HeapRuntimeKernel> kernelsByEntity,
             Map<Class<?>, EntityMaterializer<?>> materializersByEntity,
-            Map<String, SimpleTable> joinTables) {
+            Map<String, SimpleTable> joinTables,
+            EntityMetadataProvider provider) {
         var wired = new CompiledQuery[compiledQueries.length];
         for (int i = 0; i < compiledQueries.length; i++) {
             var query = compiledQueries[i];
@@ -281,10 +287,10 @@ public final class RepositoryEmitter {
                 var targetTable = tablesByEntity.get(join.targetEntity());
                 var targetKernel = kernelsByEntity.get(join.targetEntity());
                 var targetMaterializer = materializersByEntity.get(join.targetEntity());
-                var targetMetadata = MetadataExtractor.extractEntityMetadata(join.targetEntity());
+                var targetMetadata = provider.getMetadata(join.targetEntity());
                 var postLoadHandle = targetMetadata.postLoadHandle();
                 var fieldMapping = findFieldMapping(metadata, join.relationshipFieldName());
-                var executor = buildJoinExecutor(metadata, targetMetadata, join, fieldMapping, joinTables);
+                var executor = buildJoinExecutor(metadata, targetMetadata, join, fieldMapping, joinTables, provider);
                 var setter = metadata.fieldSetters().get(join.relationshipFieldName());
                 var materializer = buildJoinMaterializer(fieldMapping, join, setter, postLoadHandle);
                 updated[j] = join.withRuntime(targetTable, targetKernel, targetMaterializer, executor, materializer);
@@ -298,9 +304,10 @@ public final class RepositoryEmitter {
             EntityMetadata<?> targetMetadata,
             CompiledQuery.CompiledJoin join,
             FieldMapping fieldMapping,
-            Map<String, SimpleTable> joinTables) {
+            Map<String, SimpleTable> joinTables,
+            EntityMetadataProvider provider) {
         if (fieldMapping != null && fieldMapping.relationshipType() == FieldMapping.RelationshipType.MANY_TO_MANY) {
-            var joinInfo = resolveJoinTableInfo(metadata, fieldMapping, joinTables);
+            var joinInfo = resolveJoinTableInfo(metadata, fieldMapping, joinTables, provider);
             if (joinInfo == null) {
                 return new JoinExecutorManyToMany(null, null, null,
                         join.sourceColumnIndex(), join.fkTypeCode(), join.targetColumnIndex(), join.fkTypeCode(),
@@ -359,13 +366,14 @@ public final class RepositoryEmitter {
 
     private static JoinTableInfo resolveJoinTableInfo(EntityMetadata<?> sourceMetadata,
             FieldMapping field,
-            Map<String, SimpleTable> joinTables) {
+            Map<String, SimpleTable> joinTables,
+            EntityMetadataProvider provider) {
         if (field.joinTable() != null && !field.joinTable().isBlank()) {
             return buildJoinTableInfo(field, sourceMetadata,
-                    MetadataExtractor.extractEntityMetadata(field.targetEntity()), false, joinTables);
+                    provider.getMetadata(field.targetEntity()), false, joinTables);
         }
         if (field.mappedBy() != null && !field.mappedBy().isBlank()) {
-            var targetMetadata = MetadataExtractor.extractEntityMetadata(field.targetEntity());
+            var targetMetadata = provider.getMetadata(field.targetEntity());
             var ownerField = findFieldMapping(targetMetadata, field.mappedBy());
             if (ownerField == null || ownerField.joinTable() == null || ownerField.joinTable().isBlank()) {
                 return null;
@@ -820,48 +828,49 @@ public final class RepositoryEmitter {
      * Build indexes for the given entity class within an arena.
      * This respects the arena's factory configuration for prefix/suffix indexes.
      */
-    private static <T> void buildIndexesForEntity(Class<T> entityClass, MemrisArena arena) {
+    private static <T> void buildIndexesForEntity(Class<T> entityClass, MemrisArena arena,
+            EntityMetadataProvider provider) {
         var indexes = arena.getOrCreateIndexes(entityClass);
         var factory = arena.getFactory();
         var config = factory.getConfiguration();
+        var metadata = provider.getMetadata(entityClass);
 
         // Always create a HashIndex on the ID field for O(1) lookups
-        for (var field : entityClass.getDeclaredFields()) {
-            if (field.isAnnotationPresent(io.memris.core.GeneratedValue.class) ||
-                    field.isAnnotationPresent(jakarta.persistence.Id.class) ||
-                    field.getName().equals("id")) {
-                indexes.put(field.getName(), new io.memris.index.HashIndex<>());
-                break;
-            }
-        }
+        var idFieldName = metadata.idColumnName();
+        indexes.put(idFieldName, new io.memris.index.HashIndex<>());
 
-        // Build indexes for @Index annotated fields
-        for (var field : entityClass.getDeclaredFields()) {
-            if (field.isAnnotationPresent(io.memris.core.Index.class)) {
-                var fieldName = field.getName();
-                var indexAnnotation = field.getAnnotation(io.memris.core.Index.class);
-                var fieldType = field.getType();
+        for (var indexDefinition : metadata.indexDefinitions()) {
+            var fieldName = indexDefinition.fieldName();
+            var field = findField(entityClass, fieldName);
+            var fieldType = field != null ? field.getType() : Object.class;
 
-                Object index;
-                if (indexAnnotation.type() == io.memris.core.Index.IndexType.BTREE) {
-                    index = new io.memris.index.RangeIndex<>();
-                } else if (indexAnnotation.type() == io.memris.core.Index.IndexType.PREFIX) {
-                    if (fieldType == String.class && config.enablePrefixIndex()) {
-                        index = new io.memris.index.StringPrefixIndex();
-                    } else {
-                        index = new io.memris.index.HashIndex<>();
-                    }
-                } else if (indexAnnotation.type() == io.memris.core.Index.IndexType.SUFFIX) {
-                    if (fieldType == String.class && config.enableSuffixIndex()) {
-                        index = new io.memris.index.StringSuffixIndex();
-                    } else {
-                        index = new io.memris.index.HashIndex<>();
-                    }
+            Object index;
+            if (indexDefinition.indexType() == io.memris.core.Index.IndexType.BTREE) {
+                index = new io.memris.index.RangeIndex<>();
+            } else if (indexDefinition.indexType() == io.memris.core.Index.IndexType.PREFIX) {
+                if (fieldType == String.class && config.enablePrefixIndex()) {
+                    index = new io.memris.index.StringPrefixIndex();
                 } else {
                     index = new io.memris.index.HashIndex<>();
                 }
-                indexes.put(fieldName, index);
+            } else if (indexDefinition.indexType() == io.memris.core.Index.IndexType.SUFFIX) {
+                if (fieldType == String.class && config.enableSuffixIndex()) {
+                    index = new io.memris.index.StringSuffixIndex();
+                } else {
+                    index = new io.memris.index.HashIndex<>();
+                }
+            } else {
+                index = new io.memris.index.HashIndex<>();
             }
+            indexes.put(fieldName, index);
+        }
+    }
+
+    private static java.lang.reflect.Field findField(Class<?> entityClass, String fieldName) {
+        try {
+            return entityClass.getDeclaredField(fieldName);
+        } catch (NoSuchFieldException e) {
+            return null;
         }
     }
 }

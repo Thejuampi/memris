@@ -1,11 +1,11 @@
 package io.memris.core.plan.entities;
 
-import jakarta.persistence.*;
+import io.memris.core.Entity;
 
 /**
  * Embeddable value object for embedded property tests.
  */
-@Embeddable
+@Entity
 public final class EmbeddedValueObject {
     private String firstName;
     private String lastName;

@@ -9,9 +9,15 @@ public class QueryCompiler {
     
     private final EntityMetadata<?> metadata;
     private final java.util.Map<Class<?>, EntityMetadata<?>> metadataCache;
+    private final io.memris.core.EntityMetadataProvider metadataProvider;
     
     public QueryCompiler(EntityMetadata<?> metadata) {
+        this(metadata, io.memris.core.MetadataExtractor::extractEntityMetadata);
+    }
+
+    public QueryCompiler(EntityMetadata<?> metadata, io.memris.core.EntityMetadataProvider metadataProvider) {
         this.metadata = metadata;
+        this.metadataProvider = metadataProvider;
         this.metadataCache = new java.util.HashMap<>();
         this.metadataCache.put(metadata.entityClass(), metadata);
     }
@@ -530,6 +536,6 @@ public class QueryCompiler {
     }
 
     private EntityMetadata<?> resolveMetadata(Class<?> entityClass) {
-        return metadataCache.computeIfAbsent(entityClass, io.memris.core.MetadataExtractor::extractEntityMetadata);
+        return metadataCache.computeIfAbsent(entityClass, metadataProvider::getMetadata);
     }
 }

@@ -1,13 +1,13 @@
 package io.memris.core.plan.entities;
 
-import jakarta.persistence.*;
+import io.memris.core.Entity;
+import io.memris.core.ManyToOne;
 
 /**
  * Self-referential entity for recursive relationship tests.
  */
 @Entity
 public final class SelfReferentialEntity {
-    @Id
     private Long id;
     private String name;
 

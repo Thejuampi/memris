@@ -2,9 +2,9 @@ package io.memris.core;
 
 import io.memris.core.EntityMetadata.FieldMapping;
 import io.memris.core.EntityMetadata.FieldMapping.RelationshipType;
+import io.memris.core.EntityMetadata.IndexDefinition;
 import io.memris.core.converter.TypeConverter;
 import io.memris.core.converter.TypeConverterRegistry;
-import jakarta.persistence.Id;
 
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
@@ -28,7 +28,7 @@ import java.util.Set;
   *
   * <p>This class intentionally has high cognitive complexity as it handles:
   * - Multiple relationship types (ManyToOne, OneToOne, OneToMany, ManyToMany)
-  * - Both Memris and JPA annotations
+ * - Memris annotations
   * - Bidirectional relationship discovery
   * - Field-level and class-level metadata extraction
   *
@@ -41,7 +41,6 @@ import java.util.Set;
   * access.
   */
 public final class MetadataExtractor {
-
     /**
      * Extract metadata from an entity class.
      * 
@@ -51,24 +50,24 @@ public final class MetadataExtractor {
     public static <T> EntityMetadata<T> extractEntityMetadata(Class<T> entityClass) {
         try {
             Constructor<T> constructor = entityClass.getDeclaredConstructor();
-            
+
             // Find ID field
             String idColumnName = "id";
             for (var field : entityClass.getDeclaredFields()) {
-                if (field.getName().equals("id") || 
-                    field.isAnnotationPresent(Id.class) ||
-                    field.isAnnotationPresent(GeneratedValue.class)) {
+                if (field.getName().equals("id")
+                        || field.isAnnotationPresent(GeneratedValue.class)) {
                     idColumnName = field.getName();
                     break;
                 }
             }
             
             // Build field mappings with relationship support
-        var fields = new ArrayList<FieldMapping>();
-        var converters = new HashMap<String, TypeConverter<?, ?>>();
-        var foreignKeyColumns = new HashSet<String>();
-        var auditFields = new ArrayList<EntityMetadata.AuditField>();
-        var colPos = 0;
+            var fields = new ArrayList<FieldMapping>();
+            var converters = new HashMap<String, TypeConverter<?, ?>>();
+            var indexDefinitions = new ArrayList<IndexDefinition>();
+            var foreignKeyColumns = new HashSet<String>();
+            var auditFields = new ArrayList<EntityMetadata.AuditField>();
+            var colPos = 0;
             
             for (var field : entityClass.getDeclaredFields()) {
                 if (java.lang.reflect.Modifier.isStatic(field.getModifiers())) {
@@ -87,55 +86,41 @@ public final class MetadataExtractor {
                 ManyToMany manyToMany = field.getAnnotation(ManyToMany.class);
                 JoinColumn joinColumn = field.getAnnotation(JoinColumn.class);
                 JoinTable joinTable = field.getAnnotation(JoinTable.class);
-                jakarta.persistence.ManyToOne jpaManyToOne = field.getAnnotation(jakarta.persistence.ManyToOne.class);
-                jakarta.persistence.OneToOne jpaOneToOne = field.getAnnotation(jakarta.persistence.OneToOne.class);
-                jakarta.persistence.OneToMany jpaOneToMany = field.getAnnotation(jakarta.persistence.OneToMany.class);
-                jakarta.persistence.ManyToMany jpaManyToMany = field.getAnnotation(jakarta.persistence.ManyToMany.class);
-                jakarta.persistence.JoinColumn jpaJoinColumn = field.getAnnotation(jakarta.persistence.JoinColumn.class);
-                jakarta.persistence.JoinTable jpaJoinTable = field.getAnnotation(jakarta.persistence.JoinTable.class);
-
-                if (manyToOne != null || jpaManyToOne != null) {
+                if (manyToOne != null) {
                     FieldMapping relationshipMapping = createRelationshipMapping(
                         field,
                         manyToOne,
                         joinColumn,
-                        jpaManyToOne,
-                        jpaJoinColumn,
                         colPos,
                         foreignKeyColumns,
                         RelationshipType.MANY_TO_ONE
                     );
                     fields.add(relationshipMapping);
                     colPos++;
-                } else if (oneToOne != null || jpaOneToOne != null) {
+                } else if (oneToOne != null) {
                     FieldMapping relationshipMapping = createRelationshipMapping(
                         field,
                         null,
                         joinColumn,
-                        null,
-                        jpaJoinColumn,
                         colPos,
                         foreignKeyColumns,
                         RelationshipType.ONE_TO_ONE
                     );
                     fields.add(relationshipMapping);
                     colPos++;
-                } else if (oneToMany != null || jpaOneToMany != null) {
+                } else if (oneToMany != null) {
                     FieldMapping relationshipMapping = createOneToManyMapping(
                         entityClass,
                         field,
-                        oneToMany,
-                        jpaOneToMany
+                        oneToMany
                     );
                     fields.add(relationshipMapping);
-                } else if (manyToMany != null || jpaManyToMany != null) {
+                } else if (manyToMany != null) {
                     FieldMapping relationshipMapping = createManyToManyMapping(
                         entityClass,
                         field,
                         manyToMany,
-                        joinTable,
-                        jpaManyToMany,
-                        jpaJoinTable
+                        joinTable
                     );
                     fields.add(relationshipMapping);
                 } else {
@@ -146,9 +131,11 @@ public final class MetadataExtractor {
                     if (converter != null) {
                         converters.put(field.getName(), converter);
                     }
+                    String columnName = field.getName();
+                    handleIndexAnnotations(field, indexDefinitions);
                     fields.add(new FieldMapping(
                         field.getName(),
-                        field.getName(),
+                        columnName,
                         field.getType(),
                         storageType,
                         colPos++,
@@ -156,6 +143,8 @@ public final class MetadataExtractor {
                     ));
                 }
             }
+
+            // No class-level index annotations in core
             
             // Build MethodHandles for field access (for public fields)
         var fieldGetters = new HashMap<String, MethodHandle>();
@@ -184,19 +173,13 @@ public final class MetadataExtractor {
             }
 
             MethodHandle prePersistHandle = findLifecycleHandle(entityClass,
-                "io.memris.core.PrePersist",
-                "jakarta.persistence.PrePersist",
-                "javax.persistence.PrePersist"
+                "io.memris.core.PrePersist"
             );
             MethodHandle postLoadHandle = findLifecycleHandle(entityClass,
-                "io.memris.core.PostLoad",
-                "jakarta.persistence.PostLoad",
-                "javax.persistence.PostLoad"
+                "io.memris.core.PostLoad"
             );
             MethodHandle preUpdateHandle = findLifecycleHandle(entityClass,
-                "io.memris.core.PreUpdate",
-                "jakarta.persistence.PreUpdate",
-                "javax.persistence.PreUpdate"
+                "io.memris.core.PreUpdate"
             );
             
             return new EntityMetadata<>(
@@ -206,6 +189,8 @@ public final class MetadataExtractor {
                 fields,
                 foreignKeyColumns,
                 Map.copyOf(converters),
+                Map.of(),
+                List.copyOf(indexDefinitions),
                 prePersistHandle, postLoadHandle, preUpdateHandle,
                 List.copyOf(auditFields),
                 fieldGetters, fieldSetters,
@@ -223,8 +208,6 @@ public final class MetadataExtractor {
         Field field,
         ManyToOne manyToOne,
         JoinColumn joinColumn,
-        jakarta.persistence.ManyToOne jpaManyToOne,
-        jakarta.persistence.JoinColumn jpaJoinColumn,
         int colPos,
         Set<String> foreignKeyColumns,
         EntityMetadata.FieldMapping.RelationshipType relationshipType
@@ -233,8 +216,6 @@ public final class MetadataExtractor {
         Class<?> targetEntity = null;
         if (manyToOne != null && manyToOne.targetEntity() != void.class) {
             targetEntity = manyToOne.targetEntity();
-        } else if (jpaManyToOne != null && jpaManyToOne.targetEntity() != void.class) {
-            targetEntity = jpaManyToOne.targetEntity();
         }
         if (targetEntity == null || targetEntity == void.class) {
             // Use field type as target entity
@@ -245,15 +226,13 @@ public final class MetadataExtractor {
         String fkColumnName;
         if (joinColumn != null && !joinColumn.name().isEmpty()) {
             fkColumnName = joinColumn.name();
-        } else if (jpaJoinColumn != null && !jpaJoinColumn.name().isEmpty()) {
-            fkColumnName = jpaJoinColumn.name();
         } else {
             // Default: {fieldName}_{referencedColumnName}
-            String refColumn = referencedColumnName(joinColumn, jpaJoinColumn);
+            String refColumn = referencedColumnName(joinColumn);
             fkColumnName = field.getName() + "_" + refColumn;
         }
 
-        String referencedColumnName = referencedColumnName(joinColumn, jpaJoinColumn);
+        String referencedColumnName = referencedColumnName(joinColumn);
         
         // Add to foreign key columns set
         foreignKeyColumns.add(fkColumnName);
@@ -284,15 +263,13 @@ public final class MetadataExtractor {
     private static FieldMapping createOneToManyMapping(
         Class<?> sourceEntity,
         Field field,
-        OneToMany oneToMany,
-        jakarta.persistence.OneToMany jpaOneToMany
+        OneToMany oneToMany
     ) {
         Class<?> targetEntity = resolveTargetEntity(field,
-            oneToMany != null ? oneToMany.targetEntity() : void.class,
-            jpaOneToMany != null ? jpaOneToMany.targetEntity() : void.class
+            oneToMany != null ? oneToMany.targetEntity() : void.class
         );
 
-        var mappedBy = oneToMany != null ? oneToMany.mappedBy() : jpaOneToMany.mappedBy();
+        var mappedBy = oneToMany != null ? oneToMany.mappedBy() : null;
         if (mappedBy == null || mappedBy.isBlank()) {
             throw new IllegalArgumentException("@OneToMany requires mappedBy: " + field.getDeclaringClass().getName() + "#" + field.getName());
         }
@@ -305,18 +282,15 @@ public final class MetadataExtractor {
         }
 
         JoinColumn joinColumn = mappedField.getAnnotation(JoinColumn.class);
-        jakarta.persistence.JoinColumn jpaJoinColumn = mappedField.getAnnotation(jakarta.persistence.JoinColumn.class);
         String fkColumnName;
         if (joinColumn != null && !joinColumn.name().isEmpty()) {
             fkColumnName = joinColumn.name();
-        } else if (jpaJoinColumn != null && !jpaJoinColumn.name().isEmpty()) {
-            fkColumnName = jpaJoinColumn.name();
         } else {
-            String refColumn = referencedColumnName(joinColumn, jpaJoinColumn);
+            String refColumn = referencedColumnName(joinColumn);
             fkColumnName = mappedField.getName() + "_" + refColumn;
         }
 
-        String referencedColumnName = referencedColumnName(joinColumn, jpaJoinColumn);
+        String referencedColumnName = referencedColumnName(joinColumn);
 
         Class<?> idFieldType = resolveIdFieldType(sourceEntity);
         Class<?> storageType = resolveStorageType(idFieldType);
@@ -344,16 +318,13 @@ public final class MetadataExtractor {
         Class<?> sourceEntity,
         Field field,
         ManyToMany manyToMany,
-        JoinTable joinTable,
-        jakarta.persistence.ManyToMany jpaManyToMany,
-        jakarta.persistence.JoinTable jpaJoinTable
+        JoinTable joinTable
     ) {
         Class<?> targetEntity = resolveTargetEntity(field,
-            manyToMany != null ? manyToMany.targetEntity() : void.class,
-            jpaManyToMany != null ? jpaManyToMany.targetEntity() : void.class
+            manyToMany != null ? manyToMany.targetEntity() : void.class
         );
 
-        String mappedBy = manyToMany != null ? manyToMany.mappedBy() : jpaManyToMany.mappedBy();
+        String mappedBy = manyToMany != null ? manyToMany.mappedBy() : null;
         boolean owningSide = mappedBy == null || mappedBy.isBlank();
 
         String joinTableName = null;
@@ -365,14 +336,6 @@ public final class MetadataExtractor {
                 joinTableName = joinTable.name();
                 joinColumnName = joinTable.joinColumn();
                 inverseJoinColumnName = joinTable.inverseJoinColumn();
-            } else if (jpaJoinTable != null && !jpaJoinTable.name().isEmpty()) {
-                joinTableName = jpaJoinTable.name();
-                if (jpaJoinTable.joinColumns().length > 0) {
-                    joinColumnName = jpaJoinTable.joinColumns()[0].name();
-                }
-                if (jpaJoinTable.inverseJoinColumns().length > 0) {
-                    inverseJoinColumnName = jpaJoinTable.inverseJoinColumns()[0].name();
-                }
             }
             if (joinTableName == null || joinTableName.isBlank()) {
                 joinTableName = sourceEntity.getSimpleName() + "_" + targetEntity.getSimpleName();
@@ -408,12 +371,9 @@ public final class MetadataExtractor {
         );
     }
 
-    private static Class<?> resolveTargetEntity(Field field, Class<?> targetHint, Class<?> jpaHint) {
+    private static Class<?> resolveTargetEntity(Field field, Class<?> targetHint) {
         if (targetHint != null && targetHint != void.class) {
             return targetHint;
-        }
-        if (jpaHint != null && jpaHint != void.class) {
-            return jpaHint;
         }
         Class<?> elementType = resolveCollectionElementType(field);
         if (elementType != null) {
@@ -438,16 +398,16 @@ public final class MetadataExtractor {
     }
 
     private static EntityMetadata.AuditFieldType auditTypeForField(Field field) {
-        if (hasAnnotationByName(field, "io.memris.core.CreatedDate", "org.springframework.data.annotation.CreatedDate")) {
+        if (hasAnnotationByName(field, "io.memris.core.CreatedDate")) {
             return EntityMetadata.AuditFieldType.CREATED_DATE;
         }
-        if (hasAnnotationByName(field, "io.memris.core.LastModifiedDate", "org.springframework.data.annotation.LastModifiedDate")) {
+        if (hasAnnotationByName(field, "io.memris.core.LastModifiedDate")) {
             return EntityMetadata.AuditFieldType.LAST_MODIFIED_DATE;
         }
-        if (hasAnnotationByName(field, "io.memris.core.CreatedBy", "org.springframework.data.annotation.CreatedBy")) {
+        if (hasAnnotationByName(field, "io.memris.core.CreatedBy")) {
             return EntityMetadata.AuditFieldType.CREATED_BY;
         }
-        if (hasAnnotationByName(field, "io.memris.core.LastModifiedBy", "org.springframework.data.annotation.LastModifiedBy")) {
+        if (hasAnnotationByName(field, "io.memris.core.LastModifiedBy")) {
             return EntityMetadata.AuditFieldType.LAST_MODIFIED_BY;
         }
         return null;
@@ -484,19 +444,25 @@ public final class MetadataExtractor {
         return false;
     }
 
-    private static String referencedColumnName(JoinColumn joinColumn, jakarta.persistence.JoinColumn jpaJoinColumn) {
+    private static String referencedColumnName(JoinColumn joinColumn) {
         if (joinColumn != null && !joinColumn.referencedColumnName().isEmpty()) {
             return joinColumn.referencedColumnName();
-        }
-        if (jpaJoinColumn != null && !jpaJoinColumn.referencedColumnName().isEmpty()) {
-            return jpaJoinColumn.referencedColumnName();
         }
         return "id";
     }
 
+    private static void handleIndexAnnotations(Field field, List<IndexDefinition> indexDefinitions) {
+        var index = field.getAnnotation(io.memris.core.Index.class);
+        if (index != null) {
+            indexDefinitions.add(new IndexDefinition(field.getName(), index.type(), "memris"));
+        }
+    }
+
+
     private static Class<?> resolveIdFieldType(Class<?> entityClass) {
         for (Field field : entityClass.getDeclaredFields()) {
-            if (field.getName().equals("id") || field.isAnnotationPresent(Id.class) || field.isAnnotationPresent(GeneratedValue.class)) {
+            if (field.getName().equals("id")
+                    || field.isAnnotationPresent(GeneratedValue.class)) {
                 return field.getType();
             }
         }

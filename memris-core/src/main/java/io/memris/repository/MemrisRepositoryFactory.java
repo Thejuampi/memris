@@ -4,7 +4,6 @@ import io.memris.core.EntityMetadata;
 import io.memris.core.EntityMetadata.FieldMapping;
 import io.memris.core.MemrisArena;
 import io.memris.core.MemrisConfiguration;
-import io.memris.core.MetadataExtractor;
 import io.memris.core.TypeCodes;
 import io.memris.index.HashIndex;
 import io.memris.index.RangeIndex;
@@ -298,7 +297,7 @@ public final class MemrisRepositoryFactory implements AutoCloseable {
      */
     public <T> GeneratedTable buildTableForEntity(Class<T> entityClass, MemrisArena arena) {
         // Extract metadata to get field information
-        EntityMetadata<T> metadata = MetadataExtractor.extractEntityMetadata(entityClass);
+        EntityMetadata<T> metadata = configuration.entityMetadataProvider().getMetadata(entityClass);
 
         // Build TableMetadata for TableGenerator
         List<FieldMetadata> fields = new ArrayList<>();
