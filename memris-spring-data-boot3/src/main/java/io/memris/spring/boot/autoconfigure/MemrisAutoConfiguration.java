@@ -37,7 +37,7 @@ public class MemrisAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
-    public MemrisConverterRegistrar memrisConverterRegistrar() {
+    public static MemrisConverterRegistrar memrisConverterRegistrar() {
         return new MemrisConverterRegistrar();
     }
 

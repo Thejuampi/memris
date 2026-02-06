@@ -19,6 +19,7 @@
         <spring.framework.version>5.3.33</spring.framework.version>
         <spring.data.version>2.7.18</spring.data.version>
         <javax.persistence.version>2.2</javax.persistence.version>
+        <slf4j.version>1.7.36</slf4j.version>
     </properties>
 
     <dependencies>
@@ -91,6 +92,12 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-test-autoconfigure</artifactId>
             <version>${spring.boot.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-simple</artifactId>
+            <version>${slf4j.version}</version>
             <scope>test</scope>
         </dependency>
     </dependencies>

@@ -6,6 +6,9 @@ import io.memris.core.MemrisArena;
 import io.memris.core.MemrisConfiguration;
 import io.memris.core.TypeCodes;
 import io.memris.index.HashIndex;
+import io.memris.index.CompositeHashIndex;
+import io.memris.index.CompositeKey;
+import io.memris.index.CompositeRangeIndex;
 import io.memris.index.RangeIndex;
 import io.memris.index.StringPrefixIndex;
 import io.memris.index.StringSuffixIndex;
@@ -146,7 +149,8 @@ public final class MemrisRepositoryFactory implements AutoCloseable {
 
         // Java 21+ pattern matching with switch on sealed types
         return switch (index) {
-            case HashIndex hashIndex when value != null -> rowIdSetToIntArray(hashIndex.lookup(value, validator));
+            case HashIndex hashIndex when operator == Predicate.Operator.EQ && value != null ->
+                rowIdSetToIntArray(hashIndex.lookup(value, validator));
             case RangeIndex rangeIndex when value instanceof Comparable comp -> switch (operator) {
                 case EQ -> rowIdSetToIntArray(rangeIndex.lookup(comp, validator));
                 case GT -> rowIdSetToIntArray(rangeIndex.greaterThan(comp, validator));
@@ -182,6 +186,22 @@ public final class MemrisRepositoryFactory implements AutoCloseable {
                 }
                 yield null;
             }
+            case CompositeHashIndex hashIndex when operator == Predicate.Operator.EQ && value instanceof CompositeKey key ->
+                rowIdSetToIntArray(hashIndex.lookup(key, validator));
+            case CompositeRangeIndex rangeIndex when value instanceof CompositeKey key -> switch (operator) {
+                case EQ -> rowIdSetToIntArray(rangeIndex.lookup(key, validator));
+                case GT -> rowIdSetToIntArray(rangeIndex.greaterThan(key, validator));
+                case GTE -> rowIdSetToIntArray(rangeIndex.greaterThanOrEqual(key, validator));
+                case LT -> rowIdSetToIntArray(rangeIndex.lessThan(key, validator));
+                case LTE -> rowIdSetToIntArray(rangeIndex.lessThanOrEqual(key, validator));
+                default -> null;
+            };
+            case CompositeRangeIndex rangeIndex when operator == Predicate.Operator.BETWEEN
+                    && value instanceof Object[] range
+                    && range.length >= 2
+                    && range[0] instanceof CompositeKey lower
+                    && range[1] instanceof CompositeKey upper ->
+                rowIdSetToIntArray(rangeIndex.between(lower, upper, validator));
             default -> null;
         };
     }
@@ -207,6 +227,16 @@ public final class MemrisRepositoryFactory implements AutoCloseable {
             case StringSuffixIndex suffixIndex -> {
                 if (value instanceof String s) {
                     suffixIndex.add(s, rowId);
+                }
+            }
+            case CompositeHashIndex hashIndex -> {
+                if (value instanceof CompositeKey key) {
+                    hashIndex.add(key, rowId);
+                }
+            }
+            case CompositeRangeIndex rangeIndex -> {
+                if (value instanceof CompositeKey key) {
+                    rangeIndex.add(key, rowId);
                 }
             }
             default -> {
@@ -237,6 +267,16 @@ public final class MemrisRepositoryFactory implements AutoCloseable {
                     suffixIndex.remove(s, rowId);
                 }
             }
+            case CompositeHashIndex hashIndex -> {
+                if (value instanceof CompositeKey key) {
+                    hashIndex.remove(key, rowId);
+                }
+            }
+            case CompositeRangeIndex rangeIndex -> {
+                if (value instanceof CompositeKey key) {
+                    rangeIndex.remove(key, rowId);
+                }
+            }
             default -> {
             }
         }
@@ -253,6 +293,8 @@ public final class MemrisRepositoryFactory implements AutoCloseable {
                 case RangeIndex rangeIndex -> rangeIndex.clear();
                 case StringPrefixIndex prefixIndex -> prefixIndex.clear();
                 case StringSuffixIndex suffixIndex -> suffixIndex.clear();
+                case CompositeHashIndex hashIndex -> hashIndex.clear();
+                case CompositeRangeIndex rangeIndex -> rangeIndex.clear();
                 default -> {
                 }
             }

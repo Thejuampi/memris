@@ -2,10 +2,17 @@ package io.memris.repository;
 
 import io.memris.core.EntityMetadata;
 import io.memris.core.EntityMetadata.FieldMapping;
+import io.memris.core.Index.IndexType;
 import io.memris.core.MemrisArena;
 import io.memris.core.EntityMetadataProvider;
 import io.memris.core.TypeCodes;
 import io.memris.core.converter.TypeConverter;
+import io.memris.index.HashIndex;
+import io.memris.index.CompositeHashIndex;
+import io.memris.index.CompositeRangeIndex;
+import io.memris.index.RangeIndex;
+import io.memris.index.StringPrefixIndex;
+import io.memris.index.StringSuffixIndex;
 import io.memris.query.CompiledQuery;
 import io.memris.query.QueryCompiler;
 import io.memris.query.QueryPlanner;
@@ -122,7 +129,7 @@ public final class RepositoryEmitter {
                 compiledQueries,
                 columnNames,
                 metadata.entityClass(),
-                false);
+                true);
         var orderExecutors = RepositoryRuntime.buildOrderExecutors(compiledQueries, table);
         var projectionExecutors = RepositoryRuntime.buildProjectionExecutors(compiledQueries, provider);
 
@@ -837,32 +844,38 @@ public final class RepositoryEmitter {
 
         // Always create a HashIndex on the ID field for O(1) lookups
         var idFieldName = metadata.idColumnName();
-        indexes.put(idFieldName, new io.memris.index.HashIndex<>());
+        indexes.put(idFieldName, new HashIndex<>());
 
         for (var indexDefinition : metadata.indexDefinitions()) {
-            var fieldName = indexDefinition.fieldName();
+            var fieldNames = indexDefinition.fieldNames();
+            var fieldName = indexDefinition.firstFieldName();
+            var key = indexDefinition.name();
+            var composite = indexDefinition.composite();
             var field = findField(entityClass, fieldName);
             var fieldType = field != null ? field.getType() : Object.class;
 
             Object index;
-            if (indexDefinition.indexType() == io.memris.core.Index.IndexType.BTREE) {
-                index = new io.memris.index.RangeIndex<>();
-            } else if (indexDefinition.indexType() == io.memris.core.Index.IndexType.PREFIX) {
+            if (indexDefinition.indexType() == IndexType.BTREE) {
+                index = composite ? new CompositeRangeIndex() : new RangeIndex<>();
+            } else if (indexDefinition.indexType() == IndexType.PREFIX) {
                 if (fieldType == String.class && config.enablePrefixIndex()) {
-                    index = new io.memris.index.StringPrefixIndex();
+                    index = new StringPrefixIndex();
                 } else {
-                    index = new io.memris.index.HashIndex<>();
+                    index = new HashIndex<>();
                 }
-            } else if (indexDefinition.indexType() == io.memris.core.Index.IndexType.SUFFIX) {
+            } else if (indexDefinition.indexType() == IndexType.SUFFIX) {
                 if (fieldType == String.class && config.enableSuffixIndex()) {
-                    index = new io.memris.index.StringSuffixIndex();
+                    index = new StringSuffixIndex();
                 } else {
-                    index = new io.memris.index.HashIndex<>();
+                    index = new HashIndex<>();
                 }
             } else {
-                index = new io.memris.index.HashIndex<>();
+                index = composite ? new CompositeHashIndex() : new HashIndex<>();
             }
-            indexes.put(fieldName, index);
+            indexes.put(key, index);
+            if (!composite && fieldNames.length == 1 && !key.equals(fieldName)) {
+                indexes.putIfAbsent(fieldName, index);
+            }
         }
     }
 

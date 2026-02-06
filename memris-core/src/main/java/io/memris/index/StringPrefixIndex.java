@@ -48,12 +48,13 @@ public final class StringPrefixIndex {
         
         // Add rowId for every prefix of the key
         for (int i = 1; i <= normalizedKey.length(); i++) {
-            String prefix = normalizedKey.substring(0, i);
-            prefixMap.compute(prefix, (k, existing) -> {
-                MutableRowIdSet set = existing == null ? setFactory.create(4) : existing;
-                set.add(rowId);
-                return set;
-            });
+            var prefix = normalizedKey.substring(0, i);
+            var set = prefixMap.computeIfAbsent(prefix, ignored -> setFactory.create(4));
+            set.add(rowId);
+            var upgraded = setFactory.maybeUpgrade(set);
+            if (upgraded != set) {
+                prefixMap.replace(prefix, set, upgraded);
+            }
         }
     }
     
@@ -66,11 +67,15 @@ public final class StringPrefixIndex {
         
         // Remove rowId from every prefix of the key
         for (int i = 1; i <= normalizedKey.length(); i++) {
-            String prefix = normalizedKey.substring(0, i);
-            prefixMap.computeIfPresent(prefix, (k, set) -> {
-                set.remove(rowId);
-                return set.size() == 0 ? null : set;
-            });
+            var prefix = normalizedKey.substring(0, i);
+            var set = prefixMap.get(prefix);
+            if (set == null) {
+                continue;
+            }
+            set.remove(rowId);
+            if (set.size() == 0) {
+                prefixMap.remove(prefix, set);
+            }
         }
     }
     

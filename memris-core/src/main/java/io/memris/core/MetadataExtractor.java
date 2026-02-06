@@ -132,7 +132,7 @@ public final class MetadataExtractor {
                         converters.put(field.getName(), converter);
                     }
                     String columnName = field.getName();
-                    handleIndexAnnotations(field, indexDefinitions);
+                    handleFieldIndexAnnotations(field, colPos, typeCode, indexDefinitions);
                     fields.add(new FieldMapping(
                         field.getName(),
                         columnName,
@@ -144,7 +144,7 @@ public final class MetadataExtractor {
                 }
             }
 
-            // No class-level index annotations in core
+            handleClassLevelIndexAnnotations(entityClass, fields, indexDefinitions);
             
             // Build MethodHandles for field access (for public fields)
         var fieldGetters = new HashMap<String, MethodHandle>();
@@ -451,10 +451,78 @@ public final class MetadataExtractor {
         return "id";
     }
 
-    private static void handleIndexAnnotations(Field field, List<IndexDefinition> indexDefinitions) {
-        var index = field.getAnnotation(io.memris.core.Index.class);
-        if (index != null) {
-            indexDefinitions.add(new IndexDefinition(field.getName(), index.type(), "memris"));
+    private static void handleFieldIndexAnnotations(Field field, int columnPosition, byte typeCode,
+            List<IndexDefinition> indexDefinitions) {
+        var index = field.getAnnotation(Index.class);
+        if (index == null) {
+            return;
+        }
+        var name = index.name() != null && !index.name().isBlank() ? index.name() : field.getName();
+        indexDefinitions.add(new IndexDefinition(
+                name,
+                new String[] { field.getName() },
+                new int[] { columnPosition },
+                new byte[] { typeCode },
+                index.type(),
+                "memris"));
+    }
+
+    private static void handleClassLevelIndexAnnotations(Class<?> entityClass,
+            List<FieldMapping> fields,
+            List<IndexDefinition> indexDefinitions) {
+        var declared = entityClass.getAnnotationsByType(Index.class);
+        if (declared == null || declared.length == 0) {
+            return;
+        }
+        var fieldByName = new HashMap<String, FieldMapping>(fields.size());
+        for (var field : fields) {
+            fieldByName.put(field.name(), field);
+        }
+
+        for (var index : declared) {
+            var declaredFields = index.fields();
+            if (declaredFields == null || declaredFields.length == 0) {
+                continue;
+            }
+            if (declaredFields.length > 1
+                    && (index.type() == Index.IndexType.PREFIX || index.type() == Index.IndexType.SUFFIX)) {
+                throw new IllegalArgumentException("Composite indexes support HASH/BTREE only: " + entityClass.getName());
+            }
+
+            var unique = new HashSet<String>();
+            var resolved = new ArrayList<FieldMapping>(declaredFields.length);
+            for (var fieldName : declaredFields) {
+                if (!unique.add(fieldName)) {
+                    throw new IllegalArgumentException("Duplicate field in composite index: " + fieldName);
+                }
+                var mapping = fieldByName.get(fieldName);
+                if (mapping == null) {
+                    throw new IllegalArgumentException("Unknown index field '" + fieldName + "' in "
+                            + entityClass.getName());
+                }
+                if (mapping.columnPosition() < 0) {
+                    throw new IllegalArgumentException("Index field is not persisted: " + fieldName);
+                }
+                resolved.add(mapping);
+            }
+
+            var columnPositions = new int[resolved.size()];
+            var typeCodes = new byte[resolved.size()];
+            for (var i = 0; i < resolved.size(); i++) {
+                var mapping = resolved.get(i);
+                columnPositions[i] = mapping.columnPosition();
+                typeCodes[i] = mapping.typeCode();
+            }
+            var name = index.name() != null && !index.name().isBlank()
+                    ? index.name()
+                    : String.join("_", declaredFields);
+            indexDefinitions.add(new IndexDefinition(
+                    name,
+                    declaredFields,
+                    columnPositions,
+                    typeCodes,
+                    index.type(),
+                    "memris"));
         }
     }
 

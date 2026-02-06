@@ -1,6 +1,7 @@
 package io.memris.runtime;
 
 import io.memris.core.MemrisArena;
+import io.memris.core.MemrisConfiguration;
 import io.memris.repository.MemrisRepositoryFactory;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
@@ -41,7 +42,11 @@ class RepositoryStressTest {
     @Timeout(value = 5, unit = TimeUnit.MINUTES)
     @DisplayName("Stress: concurrent insert/update/delete on one million rows")
     void shouldHandleConcurrentInsertUpdateDeleteOnOneMillionRows() throws InterruptedException {
-        factory = new MemrisRepositoryFactory();
+        var config = MemrisConfiguration.builder()
+                .enablePrefixIndex(false)
+                .enableSuffixIndex(false)
+                .build();
+        factory = new MemrisRepositoryFactory(config);
         arena = factory.createArena();
         TestEntityRepository repo = arena.createRepository(TestEntityRepository.class);
 

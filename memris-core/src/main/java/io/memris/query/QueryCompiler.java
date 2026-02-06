@@ -1,6 +1,20 @@
 package io.memris.query;
 
 import io.memris.core.EntityMetadata;
+import io.memris.core.EntityMetadataProvider;
+import io.memris.core.MetadataExtractor;
+import io.memris.core.TypeCodes;
+
+import java.lang.invoke.MethodHandle;
+import java.lang.invoke.MethodHandles;
+import java.lang.invoke.MethodType;
+import java.lang.reflect.RecordComponent;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 
 /**
  * Compiles logical queries into executable form.
@@ -8,17 +22,17 @@ import io.memris.core.EntityMetadata;
 public class QueryCompiler {
     
     private final EntityMetadata<?> metadata;
-    private final java.util.Map<Class<?>, EntityMetadata<?>> metadataCache;
-    private final io.memris.core.EntityMetadataProvider metadataProvider;
+    private final Map<Class<?>, EntityMetadata<?>> metadataCache;
+    private final EntityMetadataProvider metadataProvider;
     
     public QueryCompiler(EntityMetadata<?> metadata) {
-        this(metadata, io.memris.core.MetadataExtractor::extractEntityMetadata);
+        this(metadata, MetadataExtractor::extractEntityMetadata);
     }
 
-    public QueryCompiler(EntityMetadata<?> metadata, io.memris.core.EntityMetadataProvider metadataProvider) {
+    public QueryCompiler(EntityMetadata<?> metadata, EntityMetadataProvider metadataProvider) {
         this.metadata = metadata;
         this.metadataProvider = metadataProvider;
-        this.metadataCache = new java.util.HashMap<>();
+        this.metadataCache = new HashMap<>();
         this.metadataCache.put(metadata.entityClass(), metadata);
     }
     
@@ -30,10 +44,10 @@ public class QueryCompiler {
      */
     public CompiledQuery compile(LogicalQuery logicalQuery) {
         LogicalQuery.Condition[] conditions = logicalQuery.conditions();
-        java.util.List<CompiledQuery.CompiledCondition> baseConditions = new java.util.ArrayList<>();
-        java.util.List<CompiledQuery.CompiledJoinPredicate> joinPredicates = new java.util.ArrayList<>();
-        java.util.Map<String, CompiledQuery.CompiledJoin> joinsByPath = new java.util.LinkedHashMap<>();
-        java.util.Map<String, LogicalQuery.Join.JoinType> joinTypes = new java.util.HashMap<>();
+        List<CompiledQuery.CompiledCondition> baseConditions = new ArrayList<>();
+        List<CompiledQuery.CompiledJoinPredicate> joinPredicates = new ArrayList<>();
+        Map<String, CompiledQuery.CompiledJoin> joinsByPath = new LinkedHashMap<>();
+        Map<String, LogicalQuery.Join.JoinType> joinTypes = new HashMap<>();
         CompiledQuery.CompiledOrderBy[] compiledOrderBy = null;
         CompiledQuery.CompiledUpdateAssignment[] compiledUpdates = new CompiledQuery.CompiledUpdateAssignment[0];
         CompiledQuery.CompiledProjection compiledProjection = null;
@@ -127,7 +141,7 @@ public class QueryCompiler {
                 typeCodes[i] = field.typeCode();
             }
             Class<?> keyType = grouping.keyType();
-            java.lang.invoke.MethodHandle keyConstructor = null;
+            MethodHandle keyConstructor = null;
             if (keyType != null && keyType.isRecord()) {
                 keyConstructor = resolveRecordConstructor(keyType, keyProperties, typeCodes, metadata);
             } else if (keyProperties.length > 1) {
@@ -193,12 +207,12 @@ public class QueryCompiler {
         return entityMetadata.resolvePropertyPosition(propertyPath);
     }
 
-    private java.lang.invoke.MethodHandle resolveRecordConstructor(Class<?> recordType, String[] keyProperties,
+    private MethodHandle resolveRecordConstructor(Class<?> recordType, String[] keyProperties,
             byte[] typeCodes, EntityMetadata<?> entityMetadata) {
         if (!recordType.isRecord()) {
             throw new IllegalArgumentException("Grouping key type must be a record: " + recordType.getName());
         }
-        java.lang.reflect.RecordComponent[] components = recordType.getRecordComponents();
+        RecordComponent[] components = recordType.getRecordComponents();
         if (components.length != keyProperties.length) {
             throw new IllegalArgumentException("Grouping key record component count must match grouping properties");
         }
@@ -217,8 +231,8 @@ public class QueryCompiler {
             paramTypes[i] = actualType;
         }
         try {
-            return java.lang.invoke.MethodHandles.lookup().findConstructor(recordType,
-                    java.lang.invoke.MethodType.methodType(void.class, paramTypes));
+            return MethodHandles.lookup().findConstructor(recordType,
+                    MethodType.methodType(void.class, paramTypes));
         } catch (NoSuchMethodException | IllegalAccessException e) {
             throw new RuntimeException("Failed to resolve grouping key record constructor", e);
         }
@@ -245,9 +259,9 @@ public class QueryCompiler {
     private boolean compileJoinPath(
         LogicalQuery.Condition condition,
         String propertyPath,
-        java.util.Map<String, CompiledQuery.CompiledJoin> joinsByPath,
-        java.util.List<CompiledQuery.CompiledJoinPredicate> joinPredicates,
-        java.util.Map<String, LogicalQuery.Join.JoinType> joinTypes
+        Map<String, CompiledQuery.CompiledJoin> joinsByPath,
+        List<CompiledQuery.CompiledJoinPredicate> joinPredicates,
+        Map<String, LogicalQuery.Join.JoinType> joinTypes
     ) {
         String[] segments = propertyPath.split("\\.");
         EntityMetadata<?> currentMetadata = metadata;
@@ -294,12 +308,12 @@ public class QueryCompiler {
             }
 
             byte fkTypeCode = relationship.typeCode();
-            if (fkTypeCode != io.memris.core.TypeCodes.TYPE_LONG
-                && fkTypeCode != io.memris.core.TypeCodes.TYPE_INT
-                && fkTypeCode != io.memris.core.TypeCodes.TYPE_SHORT
-                && fkTypeCode != io.memris.core.TypeCodes.TYPE_BYTE
+            if (fkTypeCode != TypeCodes.TYPE_LONG
+                && fkTypeCode != TypeCodes.TYPE_INT
+                && fkTypeCode != TypeCodes.TYPE_SHORT
+                && fkTypeCode != TypeCodes.TYPE_BYTE
                 && (relationship.relationshipType() != EntityMetadata.FieldMapping.RelationshipType.MANY_TO_MANY
-                    || fkTypeCode != io.memris.core.TypeCodes.TYPE_STRING)) {
+                    || fkTypeCode != TypeCodes.TYPE_STRING)) {
                 throw new IllegalArgumentException("Unsupported FK type for join: " + fkTypeCode);
             }
             if (!joinsByPath.containsKey(joinPath)) {
@@ -333,7 +347,7 @@ public class QueryCompiler {
         }
 
         String joinPath = joinPathBuilder.toString();
-        String remaining = String.join(".", java.util.Arrays.copyOfRange(segments, idx, segments.length));
+        String remaining = String.join(".", Arrays.copyOfRange(segments, idx, segments.length));
         if (remaining.isEmpty()) {
             throw new IllegalArgumentException("Join property requires target field: " + propertyPath);
         }
@@ -354,19 +368,19 @@ public class QueryCompiler {
     }
 
     private CompiledQuery.CompiledJoin[] attachJoinPredicates(
-        java.util.Map<String, CompiledQuery.CompiledJoin> joinsByPath,
-        java.util.List<CompiledQuery.CompiledJoinPredicate> joinPredicates
+        Map<String, CompiledQuery.CompiledJoin> joinsByPath,
+        List<CompiledQuery.CompiledJoinPredicate> joinPredicates
     ) {
         if (joinsByPath.isEmpty()) {
             return new CompiledQuery.CompiledJoin[0];
         }
 
-        java.util.Map<String, java.util.List<CompiledQuery.CompiledJoinPredicate>> byPath = new java.util.HashMap<>();
+        Map<String, List<CompiledQuery.CompiledJoinPredicate>> byPath = new HashMap<>();
         for (CompiledQuery.CompiledJoinPredicate predicate : joinPredicates) {
-            byPath.computeIfAbsent(predicate.joinPath(), key -> new java.util.ArrayList<>()).add(predicate);
+            byPath.computeIfAbsent(predicate.joinPath(), key -> new ArrayList<>()).add(predicate);
         }
 
-        java.util.List<CompiledQuery.CompiledJoin> joins = new java.util.ArrayList<>(joinsByPath.size());
+        List<CompiledQuery.CompiledJoin> joins = new ArrayList<>(joinsByPath.size());
         for (var entry : joinsByPath.entrySet()) {
             var join = entry.getValue();
             var preds = byPath.get(entry.getKey());
@@ -413,8 +427,8 @@ public class QueryCompiler {
     }
 
     private CompiledQuery.CompiledProjection compileProjection(LogicalQuery.Projection projection,
-                                                               java.util.Map<String, CompiledQuery.CompiledJoin> joinsByPath,
-                                                               java.util.Map<String, LogicalQuery.Join.JoinType> joinTypes) {
+                                                               Map<String, CompiledQuery.CompiledJoin> joinsByPath,
+                                                               Map<String, LogicalQuery.Join.JoinType> joinTypes) {
         LogicalQuery.ProjectionItem[] items = projection.items();
         CompiledQuery.CompiledProjectionItem[] compiled = new CompiledQuery.CompiledProjectionItem[items.length];
         for (int i = 0; i < items.length; i++) {
@@ -434,8 +448,8 @@ public class QueryCompiler {
     }
 
     private ProjectionPath compileProjectionPath(String propertyPath,
-                                                 java.util.Map<String, CompiledQuery.CompiledJoin> joinsByPath,
-                                                 java.util.Map<String, LogicalQuery.Join.JoinType> joinTypes) {
+                                                 Map<String, CompiledQuery.CompiledJoin> joinsByPath,
+                                                 Map<String, LogicalQuery.Join.JoinType> joinTypes) {
         String[] segments = propertyPath.split("\\.");
         if (segments.length == 0) {
             throw new IllegalArgumentException("Invalid projection path: " + propertyPath);
@@ -443,7 +457,7 @@ public class QueryCompiler {
 
         EntityMetadata<?> currentMetadata = metadata;
         Class<?> currentEntity = metadata.entityClass();
-        java.util.List<CompiledQuery.CompiledProjectionStep> steps = new java.util.ArrayList<>();
+        List<CompiledQuery.CompiledProjectionStep> steps = new ArrayList<>();
         StringBuilder joinPathBuilder = new StringBuilder();
 
         for (int idx = 0; idx < segments.length - 1; idx++) {
@@ -471,10 +485,10 @@ public class QueryCompiler {
             boolean targetColumnIsId = referencedColumn.equals(targetMetadata.idColumnName());
 
             byte fkTypeCode = relationship.typeCode();
-            if (fkTypeCode != io.memris.core.TypeCodes.TYPE_LONG
-                && fkTypeCode != io.memris.core.TypeCodes.TYPE_INT
-                && fkTypeCode != io.memris.core.TypeCodes.TYPE_SHORT
-                && fkTypeCode != io.memris.core.TypeCodes.TYPE_BYTE) {
+            if (fkTypeCode != TypeCodes.TYPE_LONG
+                && fkTypeCode != TypeCodes.TYPE_INT
+                && fkTypeCode != TypeCodes.TYPE_SHORT
+                && fkTypeCode != TypeCodes.TYPE_BYTE) {
                 throw new IllegalArgumentException("Unsupported FK type for projection: " + fkTypeCode);
             }
 

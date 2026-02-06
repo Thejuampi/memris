@@ -3,6 +3,7 @@ package io.memris.repository;
 import io.memris.core.EntityMetadata;
 import io.memris.core.EntityMetadata.FieldMapping;
 import io.memris.core.converter.TypeConverter;
+import io.memris.core.converter.TypeConverterRegistry;
 import io.memris.runtime.EntitySaver;
 import io.memris.storage.GeneratedTable;
 import net.bytebuddy.ByteBuddy;
@@ -200,8 +201,7 @@ public final class EntitySaverGenerator {
                 if (!Modifier.isPublic(field.getModifiers())) {
                     continue;
                 }
-                io.memris.core.converter.TypeConverter<?, ?> converter = io.memris.core.converter.TypeConverterRegistry
-                        .getInstance()
+                TypeConverter<?, ?> converter = TypeConverterRegistry.getInstance()
                         .getFieldConverter(entityClass, mapping.name());
                 if (converter == null) {
                     converter = metadata.converters().get(mapping.name());
