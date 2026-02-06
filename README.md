@@ -174,15 +174,36 @@ public class Main {
 | Annotation | Purpose |
 |------------|---------|
 | `@Entity` | Marks class as persistable |
-| `@Index` | Creates HASH or BTREE index |
+| `@Id` | Marks field as primary key |
+| `@Index` | Creates index (see types below) |
 | `@GeneratedValue` | Auto ID generation |
 | `@OneToOne` | One-to-one relationship |
 | `@ManyToOne` | Many-to-one relationship |
 | `@OneToMany` | One-to-many relationship |
 | `@ManyToMany` | Many-to-many relationship |
 | `@JoinColumn` | Specifies foreign key column |
+| `@JoinTable` | Specifies join table for @ManyToMany |
 | `@Query` | JPQL-like query string |
 | `@Param` | Named parameter binding |
+| `@Modifying` | Marks @Query as UPDATE/DELETE operation |
+| `@PrePersist` | Lifecycle callback before save |
+| `@PostLoad` | Lifecycle callback after load |
+| `@PreUpdate` | Lifecycle callback before update |
+| `@CreatedDate` | Auto-populated creation timestamp |
+| `@LastModifiedDate` | Auto-updated modification timestamp |
+| `@CreatedBy` | Auto-populated creation user |
+| `@LastModifiedBy` | Auto-updated modification user |
+
+**Index Types** (`@Index(type = ...)`):
+| Type | Complexity | Use For |
+|------|------------|---------|
+| `HASH` | O(1) | Equality lookups (EQ, NE, IN, NOT_IN) |
+| `BTREE` | O(log n) | Range queries (GT, LT, BETWEEN) |
+| `PREFIX` | O(k) | Prefix/STARTING_WITH queries |
+| `SUFFIX` | O(k) | Suffix/ENDING_WITH queries |
+
+**Composite Indexes:**
+Class-level `@Index(fields = {"field1", "field2"})` for multi-field indexes.
 
 ### Supported Field Types
 
@@ -201,47 +222,228 @@ public class Main {
 | `LocalDate` | `long[]` (epoch day) | TYPE_LOCAL_DATE |
 | `LocalDateTime` | `long[]` (epoch millis) | TYPE_LOCAL_DATE_TIME |
 | `java.util.Date` | `long[]` (epoch millis) | TYPE_DATE |
+| `java.time.LocalTime` | `String[]` | TYPE_LOCAL_TIME |
+| `java.sql.Date` | `long[]` (epoch millis) | TYPE_SQL_DATE |
+| `java.sql.Timestamp` | `long[]` (epoch millis) | TYPE_SQL_TIMESTAMP |
+| `java.util.UUID` | `String[]` | EQ/NE/IN/NOT_IN |
 | `BigDecimal` | `String[]` | TYPE_BIG_DECIMAL (EQ/NE/IN/NOT_IN) |
 | `BigInteger` | `String[]` | TYPE_BIG_INTEGER (EQ/NE/IN/NOT_IN) |
 
 ### Query Method Patterns
 
-**Comparison Operators**
-- `findByAgeEquals(int)` / `findByAge(int)` — Equality
-- `findByAgeNotEqual(int)` / `findByAgeNot(int)` — Inequality
-- `findByAgeGreaterThan(int)` / `findByAgeAfter(int)` — Greater than
-- `findByAgeLessThan(int)` / `findByAgeBefore(int)` — Less than
-- `findByAgeBetween(int, int)` — Range query
+#### Query Method Prefixes
 
-**String Operators**
-- `findByNameContaining(String)` — Substring match
-- `findByNameStartingWith(String)` — Prefix match
-- `findByNameEndingWith(String)` — Suffix match
-- `findByNameLike(String)` — Pattern match
-- `findByNameContainingIgnoreCase(String)` — Case-insensitive
+| Prefix | Purpose | Example |
+|--------|---------|---------|
+| `find`, `read`, `query`, `get` | Retrieve entities | `findByEmail` |
+| `count` | Count matching entities | `countByActiveTrue` |
+| `exists` | Check existence | `existsByEmail` |
+| `delete`, `remove` | Delete matching entities | `deleteByExpiredTrue` |
 
-**Null & Boolean**
-- `findByDepartmentIsNull()` / `findByDepartmentIsNotNull()`
-- `findByActiveTrue()` / `findByActiveFalse()`
+#### Built-in CRUD Methods
 
-**Collection**
-- `findBySkuIn(List<String>)` — IN query
-- `findByStatusNotIn(List<String>)` — NOT IN query
+```java
+T save(T entity);
+Iterable<T> saveAll(Iterable<T> entities);
+Optional<T> findById(ID id);
+Iterable<T> findAllById(Iterable<ID> ids);
+List<T> findAll();
+long count();
+boolean existsById(ID id);
+void delete(T entity);
+void deleteById(ID id);
+void deleteAll();
+void deleteAllById(Iterable<ID> ids);
+```
 
-**Logical Operators**
-- `findByCustomerIdAndStatus(Long, String)` — AND
-- `findByPriceLessThanOrStockEqual(int, long)` — OR
+#### Comparison Operators
 
-**Ordering & Limiting**
-- `findByPriceOrderByPriceDesc(long)` — ORDER BY
-- `findTopByOrderByPriceDesc()` — Top/First
+```java
+findByAgeEquals(int) / findByAge(int)                    // Equality
+findByAgeNotEqual(int) / findByAgeNot(int)               // Inequality
+findByAgeGreaterThan(int) / findByAgeAfter(int)          // Greater than
+findByAgeGreaterThanEqual(int) / findByAgeAfterEqual(int) // Greater than or equal
+findByAgeLessThan(int) / findByAgeBefore(int)            // Less than
+findByAgeLessThanEqual(int) / findByAgeBeforeEqual(int)  // Less than or equal
+findByAgeBetween(int, int)                               // Range query
+```
 
-**Return Types**
-- `List<T>`, `Optional<T>`, `T` — Find methods
-- `Set<T>` — Find methods (unique results)
-- `long` — Count methods
-- `boolean` — Exists methods
-- `Map<K, V>` — Grouped results
+#### String Operators
+
+```java
+findByNameLike(String) / findByNameIsLike(String)              // Pattern match
+findByNameNotLike(String)                                       // Negative pattern match
+findByNameStartingWith(String) / findByNameStartsWith(String)   // Prefix match
+findByNameNotStartingWith(String)                               // Negative prefix match
+findByNameEndingWith(String) / findByNameEndsWith(String)       // Suffix match
+findByNameNotEndingWith(String)                                 // Negative suffix match
+findByNameContaining(String) / findByNameContains(String)       // Substring match
+findByNameNotContaining(String)                                 // Negative substring match
+findByNameIgnoreCase(String)                                    // Case-insensitive equality
+findByNameStartingWithIgnoreCase(String)                        // Case-insensitive prefix
+findByNameContainingIgnoreCase(String)                          // Case-insensitive substring
+```
+
+#### Boolean Operators
+
+```java
+findByActiveTrue() / findByActiveIsTrue()
+findByActiveFalse() / findByActiveIsFalse()
+```
+
+#### Null Operators
+
+```java
+findByDepartmentIsNull() / findByDepartmentNull() / findByDepartmentIs()
+findByDepartmentIsNotNull() / findByDepartmentNotNull()
+```
+
+#### Collection Operators
+
+```java
+findBySkuIn(List<String>)
+findBySkuNotIn(List<String>)
+```
+
+#### Date/Time Operators
+
+```java
+findByCreatedAfter(Instant) / findByCreatedGreaterThan(Instant)
+findByCreatedBefore(Instant) / findByCreatedLessThan(Instant)
+findByCreatedBetween(Instant, Instant)
+```
+
+#### Logical Operators
+
+```java
+findByCustomerIdAndStatus(Long, String)                // AND
+findByPriceLessThanOrStockEqual(int, long)             // OR
+```
+
+#### Ordering & Limiting
+
+```java
+findByPriceOrderByPriceDesc(long)                      // ORDER BY
+findTopByOrderByPriceDesc()                             // First result
+findFirstByCustomerId(Long)                             // Alias for findTop...By
+findTop3ByOrderByPriceDesc()                            // First N results
+findDistinctByStatus(String)                            // Unique results (partial support)
+```
+
+#### Return Types
+
+| Return Type | Use Case |
+|-------------|----------|
+| `T` | Single entity (throws if not found) |
+| `Optional<T>` | Optional single entity |
+| `List<T>` | List of entities |
+| `Set<T>` | Set of unique entities |
+| `long` | Count of matching entities |
+| `boolean` | Existence check |
+| `Map<K, List<T>>` | Grouped results |
+| `Map<K, Long>` | Count per group |
+| `void` | Delete by methods |
+
+#### GroupBy and Having
+
+```java
+@Query("select status, count(p) from Product p group by status")
+Map<String, Long> countByStatus();
+
+@Query("select category, count(p) from Product p group by category having count(p) > :min")
+Map<String, Long> countByCategoryWithMinimum(@Param("min") long min);
+```
+
+#### @Query Annotation (JPQL-like)
+
+```java
+@Query("select u from User u where u.email = :email and u.age > :minAge")
+List<User> findByEmailAndMinAge(@Param("email") String email, @Param("minAge") int age);
+
+@Query("select p from Product p where p.name ilike :pattern")
+List<Product> findByNamePattern(@Param("pattern") String pattern);
+```
+
+**Supported:** SELECT, FROM, WHERE, GROUP BY, HAVING, ORDER BY, JOIN, LEFT JOIN
+**Predicates:** `=`, `!=`, `<>`, `>`, `>=`, `<`, `<=`, LIKE, ILIKE, IN, NOT IN, BETWEEN, IS NULL, IS NOT NULL
+**Parameters:** Named (`:name` with `@Param`) or positional (`?1`, `?2`)
+
+#### Nested Property Resolution
+
+```java
+// Resolves account.email (nested property)
+List<Account> findByAccountEmail(String email);
+```
+
+---
+
+## 🚀 Advanced Features
+
+### Type Converters
+
+Custom type converters allow you to map domain types to storage types:
+
+```java
+public class MoneyConverter implements TypeConverter<Money, Long> {
+    public Class<Money> javaType() { return Money.class; }
+    public Class<Long> storageType() { return Long.class; }
+
+    public Long toStorage(Money value) {
+        return value == null ? null : value.toCents();
+    }
+
+    public Money fromStorage(Long value) {
+        return value == null ? null : Money.fromCents(value);
+    }
+}
+
+// Register the converter
+TypeConverterRegistry.getInstance().register(new MoneyConverter());
+```
+
+### Custom ID Generation
+
+Provide custom ID generation strategies:
+
+```java
+public class CustomIdGenerator implements IdGenerator<String> {
+    private final AtomicLong counter = new AtomicLong();
+
+    public String generate() {
+        return "CUSTOM-" + counter.incrementAndGet();
+    }
+}
+
+// Configure with custom generator
+MemrisConfiguration.builder()
+    .idGenerator(String.class, new CustomIdGenerator())
+    .build();
+```
+
+### Audit Provider
+
+Configure audit information for `@CreatedBy` and `@LastModifiedBy` annotations:
+
+```java
+AuditProvider auditProvider = () -> SecurityContextHolder.getCurrentUser();
+
+MemrisConfiguration.builder()
+    .auditProvider(auditProvider)
+    .build();
+```
+
+> **Note:** Audit annotations are available in Spring Data modules (memris-spring-data-boot2, memris-spring-data-boot3).
+
+### Entity Relationships
+
+| Relationship | Annotation | Loading |
+|--------------|------------|---------|
+| One-to-one | `@OneToOne` | Eager |
+| Many-to-one | `@ManyToOne` | Eager |
+| One-to-many | `@OneToMany` | Eager |
+| Many-to-many | `@ManyToMany` + `@JoinTable` | Eager |
+
+> **Note:** Lazy loading is not supported. All relationships are eagerly fetched.
 
 ---
 
