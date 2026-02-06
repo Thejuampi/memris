@@ -2369,6 +2369,8 @@ public final class RepositoryRuntime<T> {
      * Query a specific index object based on its type.
      */
     private int[] queryIndexFromObject(Object index, Predicate.Operator operator, Object value) {
+        // Hash indexes are equality-only; non-EQ operators must not probe hash
+        // because they produce incorrect matches and bypass operator semantics.
         if (index instanceof HashIndex hashIndex
                 && operator == Predicate.Operator.EQ
                 && value != null) {

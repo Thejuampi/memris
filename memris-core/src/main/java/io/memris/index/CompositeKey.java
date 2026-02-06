@@ -16,10 +16,16 @@ public final class CompositeKey implements Comparable<CompositeKey> {
         return new CompositeKey(values.clone());
     }
 
+    /**
+     * Lower-bound marker used only for composite range query expansion.
+     */
     public static Object minSentinel() {
         return MIN;
     }
 
+    /**
+     * Upper-bound marker used only for composite range query expansion.
+     */
     public static Object maxSentinel() {
         return MAX;
     }
