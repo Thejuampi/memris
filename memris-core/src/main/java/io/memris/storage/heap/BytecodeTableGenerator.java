@@ -147,6 +147,7 @@ public final class BytecodeTableGenerator {
         }
     }
 
+    @SuppressWarnings("PMD.AvoidReassigningParameters")
     private static DynamicType.Builder<AbstractTable> implementGeneratedTableMethods(
             DynamicType.Builder<AbstractTable> builder,
             List<ColumnFieldInfo> columnFields) {

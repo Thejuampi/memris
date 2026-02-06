@@ -263,6 +263,7 @@ public class StringTypeHandler extends AbstractTypeHandler<String> {
         return subtractSelections(table, all, endingWith);
     }
 
+    @SuppressWarnings("PMD.AvoidBranchingStatementAsLastInLoop")
     private static boolean matchesLike(String value, String pattern) {
         int v = 0;
         int p = 0;
