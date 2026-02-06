@@ -1,8 +1,19 @@
 package io.memris.query;
 
 
+import io.memris.core.Entity;
+import io.memris.core.ManyToMany;
+import io.memris.core.ManyToOne;
+import io.memris.core.OneToMany;
+import io.memris.core.OneToOne;
+import io.memris.repository.RepositoryMethodIntrospector.MethodKey;
+
 import java.lang.reflect.Field;
+import java.lang.reflect.ParameterizedType;
+import java.lang.reflect.Type;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -40,64 +51,55 @@ public final class QueryMethodLexer {
      * capturing them later.
      * These will throw "not yet implemented" at runtime until implemented.
      */
-    static final java.util.Map<io.memris.repository.RepositoryMethodIntrospector.MethodKey, OpCode> BUILT_INS;
-    static final java.util.Map<io.memris.repository.RepositoryMethodIntrospector.MethodKey, OpCode> RESERVED_BUILT_INS;
+    static final Map<MethodKey, OpCode> BUILT_INS;
+    static final Map<MethodKey, OpCode> RESERVED_BUILT_INS;
 
     static {
         // Active built-ins (implemented)
-        BUILT_INS = java.util.Map.ofEntries(
+        BUILT_INS = Map.ofEntries(
                 // save(T entity) - any entity type
-                java.util.Map.entry(
-                        new io.memris.repository.RepositoryMethodIntrospector.MethodKey("save",
-                                java.util.List.of(Object.class)),
+                Map.entry(
+                        new MethodKey("save", List.of(Object.class)),
                         OpCode.SAVE_ONE),
                 // saveAll(Iterable<T> entities) - exact, must be Iterable
-                java.util.Map.entry(
-                        new io.memris.repository.RepositoryMethodIntrospector.MethodKey("saveAll",
-                                java.util.List.of(Iterable.class)),
+                Map.entry(
+                        new MethodKey("saveAll", List.of(Iterable.class)),
                         OpCode.SAVE_ALL),
                 // delete(T entity) - any entity type
-                java.util.Map.entry(
-                        new io.memris.repository.RepositoryMethodIntrospector.MethodKey("delete",
-                                java.util.List.of(Object.class)),
+                Map.entry(
+                        new MethodKey("delete", List.of(Object.class)),
                         OpCode.DELETE_ONE),
                 // deleteAll()
-                java.util.Map.entry(
-                        new io.memris.repository.RepositoryMethodIntrospector.MethodKey("deleteAll",
-                                java.util.List.of()),
+                Map.entry(
+                        new MethodKey("deleteAll", List.of()),
                         OpCode.DELETE_ALL),
                 // deleteById(ID id) - any ID type (using IdParam marker)
-                java.util.Map.entry(
-                        new io.memris.repository.RepositoryMethodIntrospector.MethodKey("deleteById",
-                                java.util.List.of(IdParam.class)),
+                Map.entry(
+                        new MethodKey("deleteById", List.of(IdParam.class)),
                         OpCode.DELETE_BY_ID),
                 // deleteAllById(Iterable<ID>) - Spring Data JPA compatible
-                java.util.Map.entry(
-                        new io.memris.repository.RepositoryMethodIntrospector.MethodKey("deleteAllById",
-                                java.util.List.of(Iterable.class)),
+                Map.entry(
+                        new MethodKey("deleteAllById", List.of(Iterable.class)),
                         OpCode.DELETE_ALL_BY_ID),
                 // findById(ID id) - any ID type (using IdParam marker)
-                java.util.Map.entry(
-                        new io.memris.repository.RepositoryMethodIntrospector.MethodKey("findById",
-                                java.util.List.of(IdParam.class)),
+                Map.entry(
+                        new MethodKey("findById", List.of(IdParam.class)),
                         OpCode.FIND_BY_ID),
                 // findAllById(Iterable<ID>) - Spring Data JPA compatible
-                java.util.Map.entry(
-                        new io.memris.repository.RepositoryMethodIntrospector.MethodKey("findAllById",
-                                java.util.List.of(Iterable.class)),
+                Map.entry(
+                        new MethodKey("findAllById", List.of(Iterable.class)),
                         OpCode.FIND_ALL_BY_ID),
                 // existsById(ID id) - any ID type (using IdParam marker)
-                java.util.Map.entry(
-                        new io.memris.repository.RepositoryMethodIntrospector.MethodKey("existsById",
-                                java.util.List.of(IdParam.class)),
+                Map.entry(
+                        new MethodKey("existsById", List.of(IdParam.class)),
                         OpCode.EXISTS_BY_ID),
                 // findAll()
-                java.util.Map.entry(
-                        new io.memris.repository.RepositoryMethodIntrospector.MethodKey("findAll", java.util.List.of()),
+                Map.entry(
+                        new MethodKey("findAll", List.of()),
                         OpCode.FIND_ALL),
                 // count()
-                java.util.Map.entry(
-                        new io.memris.repository.RepositoryMethodIntrospector.MethodKey("count", java.util.List.of()),
+                Map.entry(
+                        new MethodKey("count", List.of()),
                         OpCode.COUNT_ALL));
 
         // Reserved built-ins (future Spring Data compatibility)
@@ -105,7 +107,7 @@ public final class QueryMethodLexer {
         // capturing them later.
         // They will throw "not yet implemented" at runtime until implemented.
         // Examples: findAll(Sort), queryByDsl(...)
-        RESERVED_BUILT_INS = java.util.Map.ofEntries();
+        RESERVED_BUILT_INS = Map.ofEntries();
     }
 
     private QueryMethodLexer() {
@@ -181,16 +183,16 @@ public final class QueryMethodLexer {
                 Class<?> fieldType = field.getType();
 
                 // Relationship / traversal support: check annotations on FIELD (not on type)
-                boolean isRelationship = field.isAnnotationPresent(io.memris.core.ManyToOne.class) ||
-                        field.isAnnotationPresent(io.memris.core.OneToOne.class) ||
-                        field.isAnnotationPresent(io.memris.core.OneToMany.class) ||
-                        field.isAnnotationPresent(io.memris.core.ManyToMany.class);
+                boolean isRelationship = field.isAnnotationPresent(ManyToOne.class) ||
+                        field.isAnnotationPresent(OneToOne.class) ||
+                        field.isAnnotationPresent(OneToMany.class) ||
+                        field.isAnnotationPresent(ManyToMany.class);
 
                 // Embedded/value-object traversal support
                 boolean isEmbedded = false;
 
                 // Entity traversal support (type-level annotation)
-                boolean isEntityType = fieldType.isAnnotationPresent(io.memris.core.Entity.class);
+                boolean isEntityType = fieldType.isAnnotationPresent(Entity.class);
 
                 if (isRelationship || isEmbedded || isEntityType) {
                     Class<?> relatedType = resolveRelatedType(field, fieldType);
@@ -218,10 +220,10 @@ public final class QueryMethodLexer {
     }
 
     private static Class<?> resolveRelatedType(Field field, Class<?> fieldType) {
-        if (java.util.Collection.class.isAssignableFrom(fieldType)) {
-            java.lang.reflect.Type genericType = field.getGenericType();
-            if (genericType instanceof java.lang.reflect.ParameterizedType pt) {
-                java.lang.reflect.Type[] args = pt.getActualTypeArguments();
+        if (Collection.class.isAssignableFrom(fieldType)) {
+            Type genericType = field.getGenericType();
+            if (genericType instanceof ParameterizedType pt) {
+                Type[] args = pt.getActualTypeArguments();
                 if (args.length > 0 && args[0] instanceof Class<?>) {
                     return (Class<?>) args[0];
                 }

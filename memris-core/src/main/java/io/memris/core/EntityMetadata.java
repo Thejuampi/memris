@@ -150,7 +150,26 @@ public class EntityMetadata<T> {
         return pos;
     }
 
-    public record IndexDefinition(String fieldName, io.memris.core.Index.IndexType indexType, String source) {
+    public record IndexDefinition(
+            String name,
+            String[] fieldNames,
+            int[] columnPositions,
+            byte[] typeCodes,
+            Index.IndexType indexType,
+            String source) {
+        public IndexDefinition {
+            fieldNames = fieldNames != null ? fieldNames.clone() : new String[0];
+            columnPositions = columnPositions != null ? columnPositions.clone() : new int[0];
+            typeCodes = typeCodes != null ? typeCodes.clone() : new byte[0];
+        }
+
+        public boolean composite() {
+            return fieldNames.length > 1;
+        }
+
+        public String firstFieldName() {
+            return fieldNames.length == 0 ? null : fieldNames[0];
+        }
     }
 
     /**

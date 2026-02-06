@@ -3,13 +3,31 @@ package io.memris.runtime;
 import io.memris.core.FloatEncoding;
 
 import io.memris.core.EntityMetadata;
+import io.memris.core.EntityMetadata.AuditField;
+import io.memris.core.EntityMetadata.FieldMapping;
+import io.memris.core.EntityMetadataProvider;
+import io.memris.core.MemrisArena;
+import io.memris.core.MemrisConfiguration;
+import io.memris.core.MetadataExtractor;
 import io.memris.repository.MemrisRepositoryFactory;
 import io.memris.core.TypeCodes;
+import io.memris.core.converter.EnumStringConverter;
 import io.memris.kernel.Predicate;
+import io.memris.kernel.RowId;
+import io.memris.kernel.RowIdSet;
 import io.memris.core.converter.TypeConverter;
 import io.memris.core.converter.TypeConverterRegistry;
+import io.memris.index.CompositeHashIndex;
+import io.memris.index.CompositeKey;
+import io.memris.index.CompositeRangeIndex;
+import io.memris.index.HashIndex;
+import io.memris.index.RangeIndex;
+import io.memris.index.StringPrefixIndex;
+import io.memris.index.StringSuffixIndex;
 import io.memris.query.CompiledQuery;
 import io.memris.query.LogicalQuery;
+import io.memris.storage.SimpleTable;
+import io.memris.kernel.Column;
 import io.memris.storage.GeneratedTable;
 import io.memris.storage.Selection;
 import io.memris.storage.SelectionImpl;
@@ -20,9 +38,13 @@ import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
 import java.lang.reflect.RecordComponent;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
@@ -37,14 +59,23 @@ public final class RepositoryRuntime<T> {
 
     private final RepositoryPlan<T> plan;
     private final MemrisRepositoryFactory factory;
-    private final io.memris.core.MemrisArena arena;
+    private final MemrisArena arena;
     private final EntityMaterializer<T> materializer;
     private final EntityMetadata<T> metadata;
-    private final java.util.Map<Class<?>, EntityMetadata<?>> relatedMetadata;
+    private final EntityMetadataProvider metadataProvider;
+    private final Map<Class<?>, EntityMetadata<?>> relatedMetadata;
     private final EntitySaver<T, ?> entitySaver;
     private final java.util.concurrent.ConcurrentHashMap<Class<?>, EntityMetadata<?>> projectionMetadata;
     private final java.util.concurrent.ConcurrentHashMap<Class<?>, MethodHandle> projectionConstructors;
+    private final Map<Class<?>, EntityRuntimeLayout> runtimeLayoutsByEntity;
+    private final FieldMapping[] fieldByColumn;
+    private final TypeConverter<?, ?>[] converterByColumn;
+    private final int idColumnIndex;
+    private final OneToManyPlan[] oneToManyPlans;
+    private final ManyToManyPlan[] manyToManyPlans;
     private final IndexFieldReader[] indexFieldReaders;
+    private final IndexPlan[] indexPlans;
+    private final Map<String, IndexPlan> indexPlansByField;
     private final AtomicLong idCounter;
     private static final ThreadLocal<SortBuffers> SORT_BUFFERS = ThreadLocal.withInitial(SortBuffers::new);
 
@@ -67,7 +98,7 @@ public final class RepositoryRuntime<T> {
      * @param arena    the arena (for arena-scoped index queries)
      * @param metadata entity metadata for ID generation and field access
      */
-    public RepositoryRuntime(RepositoryPlan<T> plan, MemrisRepositoryFactory factory, io.memris.core.MemrisArena arena, EntityMetadata<T> metadata) {
+    public RepositoryRuntime(RepositoryPlan<T> plan, MemrisRepositoryFactory factory, MemrisArena arena, EntityMetadata<T> metadata) {
         if (plan == null) {
             throw new IllegalArgumentException("plan required");
         }
@@ -83,7 +114,11 @@ public final class RepositoryRuntime<T> {
         } else {
             this.materializer = metadata != null ? new EntityMaterializerImpl<>(metadata) : null;
         }
-        this.relatedMetadata = buildRelatedMetadata(metadata, factory.getConfiguration().entityMetadataProvider());
+        var config = factory != null ? factory.getConfiguration() : null;
+        this.metadataProvider = config != null && config.entityMetadataProvider() != null
+                ? config.entityMetadataProvider()
+                : MetadataExtractor::extractEntityMetadata;
+        this.relatedMetadata = buildRelatedMetadata(metadata, this.metadataProvider);
         this.projectionMetadata = new java.util.concurrent.ConcurrentHashMap<>();
         if (metadata != null) {
             this.projectionMetadata.put(metadata.entityClass(), metadata);
@@ -92,7 +127,16 @@ public final class RepositoryRuntime<T> {
         this.projectionConstructors = new java.util.concurrent.ConcurrentHashMap<>();
         this.entitySaver = plan.entitySaver();
         this.idCounter = new AtomicLong(1L);
-        this.indexFieldReaders = buildIndexFieldReaders(metadata);
+        this.runtimeLayoutsByEntity = buildRuntimeLayouts(metadata, this.relatedMetadata);
+        var rootLayout = metadata != null ? runtimeLayoutsByEntity.get(metadata.entityClass()) : null;
+        this.fieldByColumn = rootLayout != null ? rootLayout.fieldsByColumn() : new FieldMapping[0];
+        this.converterByColumn = rootLayout != null ? rootLayout.convertersByColumn() : new TypeConverter<?, ?>[0];
+        this.idColumnIndex = rootLayout != null ? rootLayout.idColumnIndex() : -1;
+        this.oneToManyPlans = buildOneToManyPlans();
+        this.manyToManyPlans = buildManyToManyPlans();
+        this.indexPlans = buildIndexPlans(metadata);
+        this.indexFieldReaders = buildIndexFieldReaders(metadata, indexPlans);
+        this.indexPlansByField = buildIndexPlansByField(indexPlans);
     }
 
     public static ConditionExecutor[][] buildConditionExecutors(CompiledQuery[] queries, String[] columnNames,
@@ -550,18 +594,173 @@ public final class RepositoryRuntime<T> {
         return executeDeleteAllById(new Object[] { ids });
     }
 
-    private static java.util.Map<Class<?>, EntityMetadata<?>> buildRelatedMetadata(EntityMetadata<?> metadata,
-            io.memris.core.EntityMetadataProvider metadataProvider) {
+    private static Map<Class<?>, EntityMetadata<?>> buildRelatedMetadata(EntityMetadata<?> metadata,
+            EntityMetadataProvider metadataProvider) {
         if (metadata == null) {
-            return java.util.Map.of();
+            return Map.of();
         }
-        java.util.Map<Class<?>, EntityMetadata<?>> related = new java.util.HashMap<>();
-        for (io.memris.core.EntityMetadata.FieldMapping field : metadata.fields()) {
+        var related = new HashMap<Class<?>, EntityMetadata<?>>();
+        for (var field : metadata.fields()) {
             if (field.isRelationship() && field.targetEntity() != null) {
                 related.putIfAbsent(field.targetEntity(), metadataProvider.getMetadata(field.targetEntity()));
             }
         }
-        return java.util.Map.copyOf(related);
+        return Map.copyOf(related);
+    }
+
+    private Map<Class<?>, EntityRuntimeLayout> buildRuntimeLayouts(EntityMetadata<T> rootMetadata,
+            Map<Class<?>, EntityMetadata<?>> related) {
+        var layouts = new HashMap<Class<?>, EntityRuntimeLayout>();
+        if (rootMetadata != null) {
+            layouts.put(rootMetadata.entityClass(), buildRuntimeLayout(rootMetadata));
+        }
+        for (var relatedMetadata : related.values()) {
+            layouts.putIfAbsent(relatedMetadata.entityClass(), buildRuntimeLayout(relatedMetadata));
+        }
+        for (var entityClass : plan.tablesByEntity().keySet()) {
+            if (!layouts.containsKey(entityClass)) {
+                var entityMetadata = resolveEntityMetadata(entityClass);
+                if (entityMetadata != null) {
+                    layouts.put(entityClass, buildRuntimeLayout(entityMetadata));
+                }
+            }
+        }
+        return Map.copyOf(layouts);
+    }
+
+    private EntityRuntimeLayout buildRuntimeLayout(EntityMetadata<?> entityMetadata) {
+        var maxColumnPos = entityMetadata.fields().stream()
+                .filter(field -> field.columnPosition() >= 0)
+                .mapToInt(FieldMapping::columnPosition)
+                .max()
+                .orElse(-1);
+        if (maxColumnPos < 0) {
+            return new EntityRuntimeLayout(new FieldMapping[0], new TypeConverter<?, ?>[0], -1);
+        }
+        var fieldsByColumn = new FieldMapping[maxColumnPos + 1];
+        var convertersByColumn = new TypeConverter<?, ?>[maxColumnPos + 1];
+        for (var field : entityMetadata.fields()) {
+            if (field.columnPosition() < 0) {
+                continue;
+            }
+            fieldsByColumn[field.columnPosition()] = field;
+            convertersByColumn[field.columnPosition()] = resolveConverterAtSetup(entityMetadata, field.name());
+        }
+        var resolvedIdColumnIndex = entityMetadata.resolveColumnPosition(entityMetadata.idColumnName());
+        return new EntityRuntimeLayout(fieldsByColumn, convertersByColumn, resolvedIdColumnIndex);
+    }
+
+    private TypeConverter<?, ?> resolveConverterAtSetup(EntityMetadata<?> entityMetadata, String fieldName) {
+        var fieldConverter = TypeConverterRegistry.getInstance()
+                .getFieldConverter(entityMetadata.entityClass(), fieldName);
+        if (fieldConverter != null) {
+            return fieldConverter;
+        }
+        return entityMetadata.converters().get(fieldName);
+    }
+
+    private EntityMetadata<?> resolveEntityMetadata(Class<?> entityClass) {
+        if (metadata != null && metadata.entityClass().equals(entityClass)) {
+            return metadata;
+        }
+        var related = relatedMetadata.get(entityClass);
+        if (related != null) {
+            return related;
+        }
+        var existingProjectionMetadata = projectionMetadata.get(entityClass);
+        if (existingProjectionMetadata != null) {
+            return existingProjectionMetadata;
+        }
+        var loaded = metadataProvider.getMetadata(entityClass);
+        if (loaded != null) {
+            projectionMetadata.put(entityClass, loaded);
+        }
+        return loaded;
+    }
+
+    private OneToManyPlan[] buildOneToManyPlans() {
+        if (metadata == null) {
+            return new OneToManyPlan[0];
+        }
+        var plans = new ArrayList<OneToManyPlan>();
+        for (var field : metadata.fields()) {
+            if (!field.isRelationship()
+                    || !field.isCollection()
+                    || field.relationshipType() != FieldMapping.RelationshipType.ONE_TO_MANY
+                    || field.targetEntity() == null) {
+                continue;
+            }
+            var targetMetadata = resolveEntityMetadata(field.targetEntity());
+            if (targetMetadata == null) {
+                continue;
+            }
+            var targetTable = plan.tablesByEntity().get(field.targetEntity());
+            var targetKernel = plan.kernelsByEntity().get(field.targetEntity());
+            var targetMaterializer = plan.materializersByEntity().get(field.targetEntity());
+            var setter = metadata.fieldSetters().get(field.name());
+            if (targetTable == null || targetKernel == null || targetMaterializer == null || setter == null) {
+                continue;
+            }
+            var fkColumnIndex = targetMetadata.resolveColumnPosition(field.columnName());
+            plans.add(new OneToManyPlan(
+                    field.name(),
+                    field.javaType(),
+                    field.typeCode(),
+                    fkColumnIndex,
+                    targetTable,
+                    targetKernel,
+                    targetMaterializer,
+                    targetMetadata.postLoadHandle(),
+                    setter));
+        }
+        return plans.toArray(new OneToManyPlan[0]);
+    }
+
+    private ManyToManyPlan[] buildManyToManyPlans() {
+        if (metadata == null) {
+            return new ManyToManyPlan[0];
+        }
+        var plans = new ArrayList<ManyToManyPlan>();
+        for (var field : metadata.fields()) {
+            if (!field.isRelationship()
+                    || !field.isCollection()
+                    || field.relationshipType() != FieldMapping.RelationshipType.MANY_TO_MANY
+                    || field.targetEntity() == null) {
+                continue;
+            }
+            var targetMetadata = resolveEntityMetadata(field.targetEntity());
+            if (targetMetadata == null) {
+                continue;
+            }
+            var targetIdField = findIdField(targetMetadata);
+            var targetKernel = plan.kernelsByEntity().get(field.targetEntity());
+            var targetMaterializer = plan.materializersByEntity().get(field.targetEntity());
+            var setter = metadata.fieldSetters().get(field.name());
+            var joinInfo = resolveJoinTable(field, metadata, targetMetadata);
+            if (targetIdField == null
+                    || targetKernel == null
+                    || targetMaterializer == null
+                    || setter == null
+                    || joinInfo == null
+                    || joinInfo.table() == null
+                    || joinInfo.targetTable() == null) {
+                continue;
+            }
+            var persistEnabled = field.joinTable() != null && !field.joinTable().isBlank();
+            plans.add(new ManyToManyPlan(
+                    field.name(),
+                    field.javaType(),
+                    field.typeCode(),
+                    joinInfo,
+                    targetMetadata,
+                    targetIdField,
+                    targetKernel,
+                    targetMaterializer,
+                    targetMetadata.postLoadHandle(),
+                    setter,
+                    persistEnabled));
+        }
+        return plans.toArray(new ManyToManyPlan[0]);
     }
 
     public Object executeMethodIndex(int methodIndex, Object[] args) {
@@ -653,7 +852,7 @@ public final class RepositoryRuntime<T> {
             return;
         }
         Object currentUser = currentAuditUser();
-        for (io.memris.core.EntityMetadata.AuditField auditField : auditFields) {
+        for (AuditField auditField : auditFields) {
             Object value = null;
             switch (auditField.type()) {
                 case CREATED_DATE -> {
@@ -694,7 +893,7 @@ public final class RepositoryRuntime<T> {
         if (factory == null) {
             return null;
         }
-        io.memris.core.MemrisConfiguration config = factory.getConfiguration();
+        MemrisConfiguration config = factory.getConfiguration();
         if (config == null || config.auditProvider() == null) {
             return null;
         }
@@ -703,14 +902,6 @@ public final class RepositoryRuntime<T> {
 
     MemrisRepositoryFactory indexFactory() {
         return factory;
-    }
-
-    private io.memris.core.EntityMetadataProvider metadataProvider() {
-        var config = factory != null ? factory.getConfiguration() : null;
-        if (config == null || config.entityMetadataProvider() == null) {
-            return io.memris.core.MetadataExtractor::extractEntityMetadata;
-        }
-        return config.entityMetadataProvider();
     }
 
     private boolean hasValue(Object entity, String fieldName) {
@@ -1529,7 +1720,7 @@ public final class RepositoryRuntime<T> {
             Object[] values = buildRowValues(table, rowIndex);
             applyUpdateAssignments(values, updates, args);
 
-            Object idValue = values[metadata.resolveColumnPosition(metadata.idColumnName())];
+            Object idValue = idColumnIndex >= 0 && idColumnIndex < values.length ? values[idColumnIndex] : null;
             updateIndexesOnDelete(rowIndex);
             table.tombstone(packedRef);
 
@@ -1569,15 +1760,14 @@ public final class RepositoryRuntime<T> {
 
     private void applyUpdateAssignments(Object[] values, CompiledQuery.CompiledUpdateAssignment[] updates,
             Object[] args) {
-        for (CompiledQuery.CompiledUpdateAssignment update : updates) {
-            int columnIndex = update.columnIndex();
-            io.memris.core.EntityMetadata.FieldMapping field = findFieldByColumnIndex(columnIndex);
+        for (var update : updates) {
+            var columnIndex = update.columnIndex();
             Object value = update.argumentIndex() < args.length ? args[update.argumentIndex()] : null;
-            if (field != null) {
-                TypeConverter<?, ?> converter = resolveConverter(metadata, field.name());
+            if (columnIndex >= 0 && columnIndex < converterByColumn.length) {
+                var converter = converterByColumn[columnIndex];
                 if (converter != null) {
                     @SuppressWarnings("unchecked")
-                    TypeConverter<Object, Object> typed = (TypeConverter<Object, Object>) converter;
+                    var typed = (TypeConverter<Object, Object>) converter;
                     value = typed.toStorage(value);
                 }
             }
@@ -1627,88 +1817,94 @@ public final class RepositoryRuntime<T> {
         if (indexFieldReaders == null || indexFieldReaders.length == 0) {
             return new Object[0];
         }
-        Object[] indexValues = new Object[indexFieldReaders.length];
+        Object[] indexValues = new Object[fieldByColumn.length];
         GeneratedTable table = plan.table();
-        for (int i = 0; i < indexFieldReaders.length; i++) {
-            IndexFieldReader reader = indexFieldReaders[i];
-            if (reader == null) {
-                continue;
-            }
+        for (var reader : indexFieldReaders) {
             indexValues[reader.columnIndex] = reader.reader.read(table, rowIndex);
         }
         return indexValues;
     }
 
-    private io.memris.core.EntityMetadata.FieldMapping findFieldByColumnIndex(int columnIndex) {
-        for (io.memris.core.EntityMetadata.FieldMapping field : metadata.fields()) {
-            if (field.columnPosition() == columnIndex) {
-                return field;
-            }
-        }
-        return null;
-    }
-
     private void updateIndexesOnInsert(Object[] indexValues, int rowIndex) {
-        if (metadata == null || factory == null) {
+        if (metadata == null) {
             return;
         }
-        if (indexFieldReaders == null) {
+        var entityIndexes = entityIndexes();
+        if (entityIndexes == null || indexPlans.length == 0) {
             return;
         }
-        for (IndexFieldReader reader : indexFieldReaders) {
-            if (reader == null) {
+        var rowId = RowId.fromLong(rowIndex);
+        for (var plan : indexPlans) {
+            var index = entityIndexes.get(plan.indexName());
+            if (index == null) {
                 continue;
             }
-            Object value = indexValues[reader.columnIndex];
-            factory.addIndexEntry(metadata.entityClass(), reader.fieldName, value, rowIndex);
+            var key = buildKeyFromValues(plan.columnPositions(), indexValues);
+            if (key == null) {
+                continue;
+            }
+            addIndexEntry(index, key, rowId);
         }
     }
 
     private void updateIndexesOnDelete(int rowIndex) {
-        if (metadata == null || factory == null) {
+        if (metadata == null) {
             return;
         }
-        if (indexFieldReaders == null) {
+        var entityIndexes = entityIndexes();
+        if (entityIndexes == null || indexPlans.length == 0) {
             return;
         }
-        GeneratedTable table = plan.table();
-        for (IndexFieldReader reader : indexFieldReaders) {
-            if (reader == null) {
+        var values = readIndexValues(rowIndex);
+        var rowId = RowId.fromLong(rowIndex);
+        for (var plan : indexPlans) {
+            var index = entityIndexes.get(plan.indexName());
+            if (index == null) {
                 continue;
             }
-            Object value = reader.reader.read(table, rowIndex);
-            factory.removeIndexEntry(metadata.entityClass(), reader.fieldName, value, rowIndex);
+            var key = buildKeyFromValues(plan.columnPositions(), values);
+            if (key == null) {
+                continue;
+            }
+            removeIndexEntry(index, key, rowId);
         }
     }
 
-    private IndexFieldReader[] buildIndexFieldReaders(EntityMetadata<?> entityMetadata) {
+    private IndexFieldReader[] buildIndexFieldReaders(EntityMetadata<?> entityMetadata, IndexPlan[] plans) {
         if (entityMetadata == null) {
             return new IndexFieldReader[0];
         }
-        int maxColumnPos = entityMetadata.fields().stream()
-                .filter(f -> f.columnPosition() >= 0)
-                .mapToInt(io.memris.core.EntityMetadata.FieldMapping::columnPosition)
-                .max()
-                .orElse(-1);
-        if (maxColumnPos < 0) {
+        if (plans == null || plans.length == 0) {
             return new IndexFieldReader[0];
         }
-        IndexFieldReader[] readers = new IndexFieldReader[maxColumnPos + 1];
-        for (io.memris.core.EntityMetadata.FieldMapping field : entityMetadata.fields()) {
-            if (field.columnPosition() < 0) {
+        var indexedColumns = new HashSet<Integer>();
+        for (var indexPlan : plans) {
+            for (var columnPosition : indexPlan.columnPositions()) {
+                indexedColumns.add(columnPosition);
+            }
+        }
+        if (indexedColumns.isEmpty()) {
+            return new IndexFieldReader[0];
+        }
+        var layout = runtimeLayoutsByEntity.get(entityMetadata.entityClass());
+        var converters = layout != null ? layout.convertersByColumn() : new TypeConverter<?, ?>[0];
+        var readers = new ArrayList<IndexFieldReader>(indexedColumns.size());
+        for (var field : entityMetadata.fields()) {
+            if (field.columnPosition() < 0 || !indexedColumns.contains(field.columnPosition())) {
                 continue;
             }
-            IndexValueReader reader = buildIndexValueReader(field, entityMetadata);
-            readers[field.columnPosition()] = new IndexFieldReader(field.columnPosition(), field.name(), reader);
+            TypeConverter<?, ?> converter = field.columnPosition() < converters.length
+                    ? converters[field.columnPosition()]
+                    : null;
+            IndexValueReader reader = buildIndexValueReader(field, converter);
+            readers.add(new IndexFieldReader(field.columnPosition(), field.name(), reader));
         }
-        return readers;
+        return readers.toArray(new IndexFieldReader[0]);
     }
 
-    private IndexValueReader buildIndexValueReader(io.memris.core.EntityMetadata.FieldMapping field,
-            EntityMetadata<?> entityMetadata) {
+    private IndexValueReader buildIndexValueReader(FieldMapping field, TypeConverter<?, ?> converter) {
         int columnIndex = field.columnPosition();
         byte typeCode = field.typeCode();
-        TypeConverter<?, ?> converter = resolveConverter(entityMetadata, field.name());
         @SuppressWarnings("unchecked")
         TypeConverter<Object, Object> typedConverter = (TypeConverter<Object, Object>) converter;
         return new IndexValueReader() {
@@ -1750,15 +1946,6 @@ public final class RepositoryRuntime<T> {
         };
     }
 
-    private TypeConverter<?, ?> resolveConverter(EntityMetadata<?> entityMetadata, String fieldName) {
-        var fieldConverter = TypeConverterRegistry.getInstance()
-                .getFieldConverter(entityMetadata.entityClass(), fieldName);
-        if (fieldConverter != null) {
-            return fieldConverter;
-        }
-        return entityMetadata.converters().get(fieldName);
-    }
-
     private static final class IndexFieldReader {
         private final int columnIndex;
         private final String fieldName;
@@ -1775,6 +1962,98 @@ public final class RepositoryRuntime<T> {
         Object read(GeneratedTable table, int rowIndex);
     }
 
+    private IndexPlan[] buildIndexPlans(EntityMetadata<?> entityMetadata) {
+        if (entityMetadata == null) {
+            return new IndexPlan[0];
+        }
+        var definitions = entityMetadata.indexDefinitions();
+        var plans = new ArrayList<IndexPlan>(definitions != null ? definitions.size() + 1 : 1);
+        if (definitions != null) {
+            for (var def : definitions) {
+                if (def.columnPositions().length == 0) {
+                    continue;
+                }
+                plans.add(new IndexPlan(def.name(), def.fieldNames(), def.columnPositions(), def.indexType()));
+            }
+        }
+
+        var idFieldName = entityMetadata.idColumnName();
+        var hasIdPlan = plans.stream().anyMatch(plan -> plan.fieldNames().length == 1
+                && idFieldName.equals(plan.fieldNames()[0]));
+        if (!hasIdPlan) {
+            var idPosition = entityMetadata.resolveColumnPosition(idFieldName);
+            plans.add(new IndexPlan(
+                    idFieldName,
+                    new String[] { idFieldName },
+                    new int[] { idPosition },
+                    io.memris.core.Index.IndexType.HASH));
+        }
+
+        return plans.toArray(new IndexPlan[0]);
+    }
+
+    private Map<String, IndexPlan> buildIndexPlansByField(IndexPlan[] plans) {
+        if (plans.length == 0) {
+            return Map.of();
+        }
+        var byField = new HashMap<String, IndexPlan>(plans.length * 2);
+        for (var plan : plans) {
+            if (plan.fieldNames().length == 1) {
+                byField.putIfAbsent(plan.fieldNames()[0], plan);
+            }
+        }
+        return Map.copyOf(byField);
+    }
+
+    private Map<String, Object> entityIndexes() {
+        if (arena == null || metadata == null) {
+            return null;
+        }
+        return arena.getIndexes(metadata.entityClass());
+    }
+
+    private Object buildKeyFromValues(int[] columnPositions, Object[] values) {
+        if (columnPositions.length == 1) {
+            var value = values[columnPositions[0]];
+            return value;
+        }
+        var parts = new Object[columnPositions.length];
+        for (var i = 0; i < columnPositions.length; i++) {
+            var value = values[columnPositions[i]];
+            if (value == null) {
+                return null;
+            }
+            parts[i] = value;
+        }
+        return CompositeKey.of(parts);
+    }
+
+    private void addIndexEntry(Object index, Object key, RowId rowId) {
+        switch (index) {
+            case HashIndex hashIndex when key != null -> hashIndex.add(key, rowId);
+            case RangeIndex rangeIndex when key instanceof Comparable comp -> rangeIndex.add(comp, rowId);
+            case StringPrefixIndex prefixIndex when key instanceof String value -> prefixIndex.add(value, rowId);
+            case StringSuffixIndex suffixIndex when key instanceof String value -> suffixIndex.add(value, rowId);
+            case CompositeHashIndex hashIndex when key instanceof CompositeKey value -> hashIndex.add(value, rowId);
+            case CompositeRangeIndex rangeIndex when key instanceof CompositeKey value -> rangeIndex.add(value, rowId);
+            default -> {
+            }
+        }
+    }
+
+    private void removeIndexEntry(Object index, Object key, RowId rowId) {
+        switch (index) {
+            case HashIndex hashIndex when key != null -> hashIndex.remove(key, rowId);
+            case RangeIndex rangeIndex when key instanceof Comparable comp -> rangeIndex.remove(comp, rowId);
+            case StringPrefixIndex prefixIndex when key instanceof String value -> prefixIndex.remove(value, rowId);
+            case StringSuffixIndex suffixIndex when key instanceof String value -> suffixIndex.remove(value, rowId);
+            case CompositeHashIndex hashIndex when key instanceof CompositeKey value -> hashIndex.remove(value, rowId);
+            case CompositeRangeIndex rangeIndex when key instanceof CompositeKey value -> rangeIndex.remove(value, rowId);
+            default -> {
+            }
+        }
+    }
+
     private Selection executeConditions(CompiledQuery query, Object[] args) {
         CompiledQuery.CompiledCondition[] conditions = query.conditions();
         ConditionExecutor[] executors = plan.conditionExecutorsFor(query);
@@ -1784,15 +2063,16 @@ public final class RepositoryRuntime<T> {
             return applyJoins(query, args, selectionFromRows(allRows));
         }
 
-        if (executors == null || executors.length == 0) {
+        if (executors != null && executors.length > 0) {
             Selection combined = null;
             Selection currentGroup = null;
 
-            for (int i = 0; i < conditions.length; i++) {
-                Selection next = selectWithIndex(conditions[i], args);
+            for (int i = 0; i < executors.length; i++) {
+                ConditionExecutor executor = executors[i];
+                Selection next = executor.execute(this, args);
                 currentGroup = (currentGroup == null) ? next : currentGroup.intersect(next);
 
-                LogicalQuery.Combinator combinator = conditions[i].nextCombinator();
+                LogicalQuery.Combinator combinator = executor.nextCombinator();
                 if (combinator == LogicalQuery.Combinator.OR) {
                     combined = (combined == null) ? currentGroup : combined.union(currentGroup);
                     currentGroup = null;
@@ -1802,30 +2082,214 @@ public final class RepositoryRuntime<T> {
             if (currentGroup != null) {
                 combined = (combined == null) ? currentGroup : combined.union(currentGroup);
             }
-
             return applyJoins(query, args, combined);
         }
 
         Selection combined = null;
-        Selection currentGroup = null;
+        for (var groupStart = 0; groupStart < conditions.length;) {
+            var groupEnd = groupStart;
+            while (groupEnd < conditions.length - 1
+                    && conditions[groupEnd].nextCombinator() != LogicalQuery.Combinator.OR) {
+                groupEnd++;
+            }
+            var groupSelection = executeConditionGroup(conditions, groupStart, groupEnd, args);
+            combined = (combined == null) ? groupSelection : combined.union(groupSelection);
+            groupStart = groupEnd + 1;
+        }
+        return applyJoins(query, args, combined);
+    }
 
-        for (int i = 0; i < executors.length; i++) {
-            ConditionExecutor executor = executors[i];
-            Selection next = executor.execute(this, args);
-            currentGroup = (currentGroup == null) ? next : currentGroup.intersect(next);
+    private Selection executeConditionGroup(CompiledQuery.CompiledCondition[] conditions, int start, int end, Object[] args) {
+        var consumed = new boolean[end - start + 1];
+        Selection current = selectWithCompositeIndex(conditions, start, end, args, consumed);
+        for (var i = start; i <= end; i++) {
+            if (consumed[i - start]) {
+                continue;
+            }
+            var next = selectWithIndex(conditions[i], args);
+            current = current == null ? next : current.intersect(next);
+        }
+        if (current == null) {
+            return selectionFromRows(plan.table().scanAll());
+        }
+        return current;
+    }
 
-            LogicalQuery.Combinator combinator = executor.nextCombinator();
-            if (combinator == LogicalQuery.Combinator.OR) {
-                combined = (combined == null) ? currentGroup : combined.union(currentGroup);
-                currentGroup = null;
+    private Selection selectWithCompositeIndex(CompiledQuery.CompiledCondition[] conditions, int start, int end,
+            Object[] args,
+            boolean[] consumed) {
+        if (indexPlans.length == 0 || arena == null) {
+            return null;
+        }
+        var indexes = entityIndexes();
+        if (indexes == null) {
+            return null;
+        }
+        for (var plan : indexPlans) {
+            if (plan.columnPositions().length < 2) {
+                continue;
+            }
+            var index = indexes.get(plan.indexName());
+            if (index == null) {
+                continue;
+            }
+
+            if (index instanceof CompositeHashIndex) {
+                var keyParts = new Object[plan.columnPositions().length];
+                var localConsumed = new boolean[consumed.length];
+                var match = true;
+                for (var i = 0; i < plan.columnPositions().length; i++) {
+                    var conditionIndex = findConditionIndex(conditions, start, end, plan.columnPositions()[i], LogicalQuery.Operator.EQ);
+                    if (conditionIndex < 0) {
+                        match = false;
+                        break;
+                    }
+                    var condition = conditions[conditionIndex];
+                    keyParts[i] = args[condition.argumentIndex()];
+                    localConsumed[conditionIndex - start] = true;
+                }
+                if (!match) {
+                    continue;
+                }
+                var key = CompositeKey.of(keyParts);
+                var rows = queryIndexFromObject(index, Predicate.Operator.EQ, key);
+                if (rows != null) {
+                    System.arraycopy(localConsumed, 0, consumed, 0, consumed.length);
+                    return selectionFromRows(rows);
+                }
+                continue;
+            }
+
+            if (index instanceof CompositeRangeIndex) {
+                var probe = buildRangeProbe(conditions, start, end, plan.columnPositions(), args);
+                if (probe == null) {
+                    continue;
+                }
+                var value = probe.upper() == null
+                        ? probe.lower()
+                        : new Object[] { probe.lower(), probe.upper() };
+                var rows = queryIndexFromObject(index, probe.operator(), value);
+                if (rows != null) {
+                    System.arraycopy(probe.consumed(), 0, consumed, 0, consumed.length);
+                    return selectionFromRows(rows);
+                }
+            }
+        }
+        return null;
+    }
+
+    private RangeProbe buildRangeProbe(CompiledQuery.CompiledCondition[] conditions,
+            int start,
+            int end,
+            int[] columnPositions,
+            Object[] args) {
+        var consumed = new boolean[end - start + 1];
+        var lower = new Object[columnPositions.length];
+        var upper = new Object[columnPositions.length];
+        var prefix = 0;
+        while (prefix < columnPositions.length) {
+            var conditionIndex = findConditionIndex(conditions, start, end, columnPositions[prefix], LogicalQuery.Operator.EQ);
+            if (conditionIndex < 0) {
+                break;
+            }
+            var condition = conditions[conditionIndex];
+            var value = args[condition.argumentIndex()];
+            lower[prefix] = value;
+            upper[prefix] = value;
+            consumed[conditionIndex - start] = true;
+            prefix++;
+        }
+        if (prefix == 0) {
+            return null;
+        }
+        if (prefix == columnPositions.length) {
+            return new RangeProbe(Predicate.Operator.EQ,
+                    CompositeKey.of(lower),
+                    null,
+                    consumed);
+        }
+
+        var rangeConditionIndex = findConditionIndexAny(conditions, start, end, columnPositions[prefix]);
+        if (rangeConditionIndex >= 0) {
+            var range = conditions[rangeConditionIndex];
+            var op = range.operator();
+            var value = args[range.argumentIndex()];
+            for (var i = prefix + 1; i < columnPositions.length; i++) {
+                lower[i] = CompositeKey.minSentinel();
+                upper[i] = CompositeKey.maxSentinel();
+            }
+            consumed[rangeConditionIndex - start] = true;
+            switch (op) {
+                case EQ -> {
+                    lower[prefix] = value;
+                    upper[prefix] = value;
+                    return new RangeProbe(Predicate.Operator.BETWEEN, CompositeKey.of(lower), CompositeKey.of(upper), consumed);
+                }
+                case GT -> {
+                    lower[prefix] = value;
+                    upper[prefix] = CompositeKey.maxSentinel();
+                    return new RangeProbe(Predicate.Operator.GT, CompositeKey.of(lower), null, consumed);
+                }
+                case GTE -> {
+                    lower[prefix] = value;
+                    return new RangeProbe(Predicate.Operator.GTE, CompositeKey.of(lower), null, consumed);
+                }
+                case LT -> {
+                    upper[prefix] = value;
+                    return new RangeProbe(Predicate.Operator.LT, CompositeKey.of(upper), null, consumed);
+                }
+                case LTE -> {
+                    upper[prefix] = value;
+                    return new RangeProbe(Predicate.Operator.LTE, CompositeKey.of(upper), null, consumed);
+                }
+                case BETWEEN -> {
+                    var second = args[range.argumentIndex() + 1];
+                    lower[prefix] = value;
+                    upper[prefix] = second;
+                    return new RangeProbe(Predicate.Operator.BETWEEN, CompositeKey.of(lower), CompositeKey.of(upper), consumed);
+                }
+                default -> {
+                    return null;
+                }
             }
         }
 
-        if (currentGroup != null) {
-            combined = (combined == null) ? currentGroup : combined.union(currentGroup);
+        for (var i = prefix; i < columnPositions.length; i++) {
+            lower[i] = CompositeKey.minSentinel();
+            upper[i] = CompositeKey.maxSentinel();
         }
+        return new RangeProbe(Predicate.Operator.BETWEEN, CompositeKey.of(lower), CompositeKey.of(upper), consumed);
+    }
 
-        return applyJoins(query, args, combined);
+    private int findConditionIndex(CompiledQuery.CompiledCondition[] conditions,
+            int start,
+            int end,
+            int columnIndex,
+            LogicalQuery.Operator operator) {
+        for (var i = start; i <= end; i++) {
+            var condition = conditions[i];
+            if (condition.columnIndex() == columnIndex && condition.operator() == operator && !condition.ignoreCase()) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    private int findConditionIndexAny(CompiledQuery.CompiledCondition[] conditions, int start, int end, int columnIndex) {
+        for (var i = start; i <= end; i++) {
+            var condition = conditions[i];
+            if (condition.columnIndex() != columnIndex || condition.ignoreCase()) {
+                continue;
+            }
+            switch (condition.operator()) {
+                case EQ, GT, GTE, LT, LTE, BETWEEN -> {
+                    return i;
+                }
+                default -> {
+                }
+            }
+        }
+        return -1;
     }
 
     private Selection selectWithIndex(CompiledQuery.CompiledCondition condition, Object[] args) {
@@ -1841,6 +2305,9 @@ public final class RepositoryRuntime<T> {
         LogicalQuery.Operator operator = condition.operator();
         Object value = null;
         if (operator != LogicalQuery.Operator.IS_NULL && operator != LogicalQuery.Operator.NOT_NULL) {
+            if (condition.argumentIndex() < 0 || condition.argumentIndex() >= args.length) {
+                return plan.kernel().executeCondition(condition, args);
+            }
             value = args[condition.argumentIndex()];
         }
 
@@ -1850,6 +2317,9 @@ public final class RepositoryRuntime<T> {
         }
 
         if (operator == LogicalQuery.Operator.BETWEEN) {
+            if (condition.argumentIndex() + 1 >= args.length) {
+                return plan.kernel().executeCondition(condition, args);
+            }
             Object[] range = new Object[] { args[condition.argumentIndex()], args[condition.argumentIndex() + 1] };
             int[] rows = queryIndex(metadata.entityClass(), fieldName, operator.toPredicateOperator(), range);
             return rows != null ? selectionFromRows(rows) : plan.kernel().executeCondition(condition, args);
@@ -1900,9 +2370,11 @@ public final class RepositoryRuntime<T> {
      * Query a specific index object based on its type.
      */
     private int[] queryIndexFromObject(Object index, Predicate.Operator operator, Object value) {
-        if (index instanceof io.memris.index.HashIndex hashIndex && value != null) {
+        if (index instanceof HashIndex hashIndex
+                && operator == Predicate.Operator.EQ
+                && value != null) {
             return rowIdSetToIntArray(hashIndex.lookup(value, createRowValidator()));
-        } else if (index instanceof io.memris.index.RangeIndex rangeIndex && value instanceof Comparable comp) {
+        } else if (index instanceof RangeIndex rangeIndex && value instanceof Comparable comp) {
             return switch (operator) {
                 case EQ -> rowIdSetToIntArray(rangeIndex.lookup(comp, createRowValidator()));
                 case GT -> rowIdSetToIntArray(rangeIndex.greaterThan(comp, createRowValidator()));
@@ -1911,29 +2383,56 @@ public final class RepositoryRuntime<T> {
                 case LTE -> rowIdSetToIntArray(rangeIndex.lessThanOrEqual(comp, createRowValidator()));
                 default -> null;
             };
-        } else if (index instanceof io.memris.index.StringPrefixIndex prefixIndex && value instanceof String s) {
+        } else if (index instanceof RangeIndex rangeIndex
+                && operator == Predicate.Operator.BETWEEN
+                && value instanceof Object[] range
+                && range.length >= 2
+                && range[0] instanceof Comparable lower
+                && range[1] instanceof Comparable upper) {
+            return rowIdSetToIntArray(rangeIndex.between(lower, upper, createRowValidator()));
+        } else if (index instanceof StringPrefixIndex prefixIndex && value instanceof String s) {
             if (operator == Predicate.Operator.STARTING_WITH) {
                 return rowIdSetToIntArray(prefixIndex.startsWith(s));
             }
-        } else if (index instanceof io.memris.index.StringSuffixIndex suffixIndex && value instanceof String s) {
+        } else if (index instanceof StringSuffixIndex suffixIndex && value instanceof String s) {
             if (operator == Predicate.Operator.ENDING_WITH) {
                 return rowIdSetToIntArray(suffixIndex.endsWith(s));
             }
+        } else if (index instanceof CompositeHashIndex hashIndex
+                && operator == Predicate.Operator.EQ
+                && value instanceof CompositeKey key) {
+            return rowIdSetToIntArray(hashIndex.lookup(key, createRowValidator()));
+        } else if (index instanceof CompositeRangeIndex rangeIndex && value instanceof CompositeKey key) {
+            return switch (operator) {
+                case EQ -> rowIdSetToIntArray(rangeIndex.lookup(key, createRowValidator()));
+                case GT -> rowIdSetToIntArray(rangeIndex.greaterThan(key, createRowValidator()));
+                case GTE -> rowIdSetToIntArray(rangeIndex.greaterThanOrEqual(key, createRowValidator()));
+                case LT -> rowIdSetToIntArray(rangeIndex.lessThan(key, createRowValidator()));
+                case LTE -> rowIdSetToIntArray(rangeIndex.lessThanOrEqual(key, createRowValidator()));
+                default -> null;
+            };
+        } else if (index instanceof CompositeRangeIndex rangeIndex
+                && operator == Predicate.Operator.BETWEEN
+                && value instanceof Object[] range
+                && range.length >= 2
+                && range[0] instanceof CompositeKey lower
+                && range[1] instanceof CompositeKey upper) {
+            return rowIdSetToIntArray(rangeIndex.between(lower, upper, createRowValidator()));
         }
         return null;
     }
 
-    private java.util.function.Predicate<io.memris.kernel.RowId> createRowValidator() {
+    private java.util.function.Predicate<RowId> createRowValidator() {
         GeneratedTable table = plan.table();
         return rowId -> {
             int rowIndex = (int) rowId.value();
             long generation = table.rowGeneration(rowIndex);
-            long ref = io.memris.storage.Selection.pack(rowIndex, generation);
+            long ref = Selection.pack(rowIndex, generation);
             return table.isLive(ref);
         };
     }
 
-    private static int[] rowIdSetToIntArray(io.memris.kernel.RowIdSet rowIdSet) {
+    private static int[] rowIdSetToIntArray(RowIdSet rowIdSet) {
         if (rowIdSet == null || rowIdSet.size() == 0) {
             return new int[0];
         }
@@ -3121,8 +3620,8 @@ public final class RepositoryRuntime<T> {
         if (fieldTable == null || currentRow < 0) {
             return null;
         }
-        EntityMetadata<?> fieldMetadata = projectionMetadata(item.fieldEntity());
-        return readProjectedValue(fieldTable, fieldMetadata, item.fieldName(), item.columnIndex(), item.typeCode(),
+        var layout = runtimeLayoutsByEntity.get(item.fieldEntity());
+        return readProjectedValue(fieldTable, layout, item.columnIndex(), item.typeCode(),
                 currentRow);
     }
 
@@ -3149,7 +3648,7 @@ public final class RepositoryRuntime<T> {
             } else {
                 return -1;
             }
-            return packedRef < 0 ? -1 : io.memris.storage.Selection.index(packedRef);
+            return packedRef < 0 ? -1 : Selection.index(packedRef);
         }
 
         int[] matches = switch (step.fkTypeCode()) {
@@ -3166,8 +3665,7 @@ public final class RepositoryRuntime<T> {
     }
 
     private Object readProjectedValue(GeneratedTable table,
-            EntityMetadata<?> entityMetadata,
-            String fieldName,
+            EntityRuntimeLayout layout,
             int columnIndex,
             byte typeCode,
             int rowIndex) {
@@ -3190,7 +3688,9 @@ public final class RepositoryRuntime<T> {
             default -> table.readInt(columnIndex, rowIndex);
         };
 
-        TypeConverter<?, ?> converter = resolveConverter(entityMetadata, fieldName);
+        TypeConverter<?, ?> converter = layout != null && columnIndex >= 0 && columnIndex < layout.convertersByColumn().length
+                ? layout.convertersByColumn()[columnIndex]
+                : null;
         if (converter != null && storage != null) {
             @SuppressWarnings("unchecked")
             TypeConverter<Object, Object> typedConverter = (TypeConverter<Object, Object>) converter;
@@ -3219,7 +3719,7 @@ public final class RepositoryRuntime<T> {
     }
 
     private EntityMetadata<?> projectionMetadata(Class<?> entityClass) {
-        return projectionMetadata.computeIfAbsent(entityClass, metadataProvider()::getMetadata);
+        return projectionMetadata.get(entityClass);
     }
 
     private MethodHandle projectionConstructor(Class<?> projectionType) {
@@ -3276,120 +3776,71 @@ public final class RepositoryRuntime<T> {
         if (metadata == null) {
             return;
         }
-        for (io.memris.core.EntityMetadata.FieldMapping field : metadata.fields()) {
-            if (!field.isRelationship() || !field.isCollection()) {
-                continue;
-            }
-            if (field.relationshipType() == io.memris.core.EntityMetadata.FieldMapping.RelationshipType.ONE_TO_MANY) {
-                hydrateOneToMany(entity, rowIndex, field);
-            } else if (field
-                    .relationshipType() == io.memris.core.EntityMetadata.FieldMapping.RelationshipType.MANY_TO_MANY) {
-                hydrateManyToMany(entity, rowIndex, field);
-            }
+        for (var plan : oneToManyPlans) {
+            hydrateOneToMany(entity, rowIndex, plan);
+        }
+        for (var plan : manyToManyPlans) {
+            hydrateManyToMany(entity, rowIndex, plan);
         }
     }
 
-    private void hydrateOneToMany(T entity, int rowIndex, io.memris.core.EntityMetadata.FieldMapping field) {
-        if (field.targetEntity() == null) {
-            return;
-        }
-        io.memris.storage.GeneratedTable targetTable = plan.tablesByEntity().get(field.targetEntity());
-        if (targetTable == null) {
-            return;
-        }
-        io.memris.runtime.HeapRuntimeKernel targetKernel = plan.kernelsByEntity().get(field.targetEntity());
-        io.memris.runtime.EntityMaterializer<?> targetMaterializer = plan.materializersByEntity()
-                .get(field.targetEntity());
-        if (targetKernel == null || targetMaterializer == null) {
-            return;
-        }
-
-        io.memris.core.EntityMetadata<?> targetMetadata = metadataProvider().getMetadata(field.targetEntity());
-        int fkColumnIndex = targetMetadata.resolveColumnPosition(field.columnName());
-
-        int idColumnIndex = metadata.resolveColumnPosition(metadata.idColumnName());
-        long sourceId = readSourceId(plan.table(), idColumnIndex, field.typeCode(), rowIndex);
-
-        int[] matches = switch (field.typeCode()) {
-            case io.memris.core.TypeCodes.TYPE_LONG -> targetTable.scanEqualsLong(fkColumnIndex, sourceId);
-            case io.memris.core.TypeCodes.TYPE_INT,
-                    io.memris.core.TypeCodes.TYPE_SHORT,
-                    io.memris.core.TypeCodes.TYPE_BYTE ->
-                targetTable.scanEqualsInt(fkColumnIndex, (int) sourceId);
-            default -> targetTable.scanEqualsLong(fkColumnIndex, sourceId);
+    private void hydrateOneToMany(T entity, int rowIndex, OneToManyPlan relationPlan) {
+        long sourceId = readSourceId(plan.table(), idColumnIndex, relationPlan.sourceFkTypeCode(), rowIndex);
+        int[] matches = switch (relationPlan.sourceFkTypeCode()) {
+            case TypeCodes.TYPE_LONG -> relationPlan.targetTable().scanEqualsLong(relationPlan.fkColumnIndex(), sourceId);
+            case TypeCodes.TYPE_INT, TypeCodes.TYPE_SHORT, TypeCodes.TYPE_BYTE ->
+                relationPlan.targetTable().scanEqualsInt(relationPlan.fkColumnIndex(), (int) sourceId);
+            default -> relationPlan.targetTable().scanEqualsLong(relationPlan.fkColumnIndex(), sourceId);
         };
 
-        java.util.Collection<Object> collection = createCollection(field.javaType(), matches.length);
-        for (int targetRow : matches) {
-            Object related = targetMaterializer.materialize(targetKernel, targetRow);
-            invokeLifecycle(targetMetadata.postLoadHandle(), related);
+        var collection = createCollection(relationPlan.collectionType(), matches.length);
+        for (var targetRow : matches) {
+            var related = relationPlan.targetMaterializer().materialize(relationPlan.targetKernel(), targetRow);
+            invokeLifecycle(relationPlan.targetPostLoadHandle(), related);
             collection.add(related);
         }
 
-        MethodHandle setter = metadata.fieldSetters().get(field.name());
-        if (setter == null) {
-            return;
-        }
         try {
-            setter.invoke(entity, collection);
+            relationPlan.setter().invoke(entity, collection);
         } catch (Throwable e) {
-            throw new RuntimeException("Failed to set collection field: " + field.name(), e);
+            throw new RuntimeException("Failed to set collection field: " + relationPlan.fieldName(), e);
         }
     }
 
-    private long readSourceId(io.memris.storage.GeneratedTable table, int idColumnIndex, byte typeCode, int rowIndex) {
+    private long readSourceId(GeneratedTable table, int idColumnIndex, byte typeCode, int rowIndex) {
         return switch (typeCode) {
-            case io.memris.core.TypeCodes.TYPE_LONG -> table.readLong(idColumnIndex, rowIndex);
-            case io.memris.core.TypeCodes.TYPE_INT,
-                    io.memris.core.TypeCodes.TYPE_SHORT,
-                    io.memris.core.TypeCodes.TYPE_BYTE ->
+            case TypeCodes.TYPE_LONG -> table.readLong(idColumnIndex, rowIndex);
+            case TypeCodes.TYPE_INT,
+                    TypeCodes.TYPE_SHORT,
+                    TypeCodes.TYPE_BYTE ->
                 table.readInt(idColumnIndex, rowIndex);
             default -> table.readLong(idColumnIndex, rowIndex);
         };
     }
 
     private java.util.Collection<Object> createCollection(Class<?> fieldType, int expectedSize) {
-        if (java.util.Set.class.isAssignableFrom(fieldType)) {
-            return new java.util.LinkedHashSet<>(Math.max(expectedSize, 16));
+        if (Set.class.isAssignableFrom(fieldType)) {
+            return new LinkedHashSet<>(Math.max(expectedSize, 16));
         }
-        return new java.util.ArrayList<>(Math.max(expectedSize, 10));
+        return new ArrayList<>(Math.max(expectedSize, 10));
     }
 
-    private void hydrateManyToMany(T entity, int rowIndex, io.memris.core.EntityMetadata.FieldMapping field) {
-        JoinTableInfo joinInfo = resolveJoinTable(field);
-        if (joinInfo == null || joinInfo.table == null) {
-            return;
-        }
-
-        io.memris.core.EntityMetadata<?> targetMetadata = metadataProvider().getMetadata(field.targetEntity());
-        io.memris.runtime.HeapRuntimeKernel targetKernel = plan.kernelsByEntity().get(field.targetEntity());
-        io.memris.runtime.EntityMaterializer<?> targetMaterializer = plan.materializersByEntity()
-                .get(field.targetEntity());
-        if (targetKernel == null || targetMaterializer == null) {
-            return;
-        }
-
-        io.memris.core.EntityMetadata.FieldMapping targetId = findIdField(targetMetadata);
-        if (targetId == null) {
-            return;
-        }
-
-        int sourceIdColumnIndex = metadata.resolveColumnPosition(metadata.idColumnName());
-        Object sourceIdValue = readSourceIdValue(plan.table(), sourceIdColumnIndex, field.typeCode(), rowIndex);
+    private void hydrateManyToMany(T entity, int rowIndex, ManyToManyPlan relationPlan) {
+        var sourceIdValue = readSourceIdValue(plan.table(), idColumnIndex, relationPlan.sourceFkTypeCode(), rowIndex);
         if (sourceIdValue == null) {
             return;
         }
 
-        io.memris.storage.SimpleTable joinTable = joinInfo.table;
-        io.memris.kernel.Column<?> joinColumn = joinTable.column(joinInfo.joinColumn);
-        io.memris.kernel.Column<?> inverseColumn = joinTable.column(joinInfo.inverseJoinColumn);
+        var joinTable = relationPlan.joinInfo().table();
+        var joinColumn = joinTable.column(relationPlan.joinInfo().joinColumn());
+        var inverseColumn = joinTable.column(relationPlan.joinInfo().inverseJoinColumn());
 
-        long rowCount = joinTable.rowCount();
-        java.util.Collection<Object> collection = createCollection(field.javaType(),
+        var rowCount = joinTable.rowCount();
+        var collection = createCollection(relationPlan.collectionType(),
                 (int) Math.min(rowCount, Integer.MAX_VALUE));
 
         for (int i = 0; i < rowCount; i++) {
-            io.memris.kernel.RowId rowId = new io.memris.kernel.RowId(i >>> 16, i & 0xFFFF);
+            RowId rowId = new RowId(i >>> 16, i & 0xFFFF);
             Object joinValue = joinColumn.get(rowId);
             if (joinValue == null || !joinValue.equals(sourceIdValue)) {
                 continue;
@@ -3399,49 +3850,45 @@ public final class RepositoryRuntime<T> {
                 continue;
             }
 
-            int[] matches = scanTargetById(joinInfo.targetTable, targetId, targetIdValue);
+            int[] matches = scanTargetById(relationPlan.joinInfo().targetTable(), relationPlan.targetIdField(), targetIdValue);
             for (int targetRow : matches) {
-                Object related = targetMaterializer.materialize(targetKernel, targetRow);
-                invokeLifecycle(targetMetadata.postLoadHandle(), related);
+                Object related = relationPlan.targetMaterializer().materialize(relationPlan.targetKernel(), targetRow);
+                invokeLifecycle(relationPlan.targetPostLoadHandle(), related);
                 collection.add(related);
             }
         }
 
-        MethodHandle setter = metadata.fieldSetters().get(field.name());
-        if (setter == null) {
-            return;
-        }
         try {
-            setter.invoke(entity, collection);
+            relationPlan.setter().invoke(entity, collection);
         } catch (Throwable e) {
-            throw new RuntimeException("Failed to set many-to-many collection: " + field.name(), e);
+            throw new RuntimeException("Failed to set many-to-many collection: " + relationPlan.fieldName(), e);
         }
     }
 
-    private int[] scanTargetById(io.memris.storage.GeneratedTable targetTable,
-            io.memris.core.EntityMetadata.FieldMapping targetId,
+    private int[] scanTargetById(GeneratedTable targetTable,
+            FieldMapping targetId,
             Object targetIdValue) {
         return switch (targetId.typeCode()) {
-            case io.memris.core.TypeCodes.TYPE_LONG -> targetTable.scanEqualsLong(
+            case TypeCodes.TYPE_LONG -> targetTable.scanEqualsLong(
                     targetId.columnPosition(), ((Number) targetIdValue).longValue());
-            case io.memris.core.TypeCodes.TYPE_INT,
-                    io.memris.core.TypeCodes.TYPE_SHORT,
-                    io.memris.core.TypeCodes.TYPE_BYTE ->
+            case TypeCodes.TYPE_INT,
+                    TypeCodes.TYPE_SHORT,
+                    TypeCodes.TYPE_BYTE ->
                 targetTable.scanEqualsInt(
                         targetId.columnPosition(), ((Number) targetIdValue).intValue());
-            case io.memris.core.TypeCodes.TYPE_STRING -> targetTable.scanEqualsString(
+            case TypeCodes.TYPE_STRING -> targetTable.scanEqualsString(
                     targetId.columnPosition(), targetIdValue.toString());
             default -> targetTable.scanEqualsLong(targetId.columnPosition(), ((Number) targetIdValue).longValue());
         };
     }
 
-    private Object readSourceIdValue(io.memris.storage.GeneratedTable table, int idColumnIndex, byte typeCode,
+    private Object readSourceIdValue(GeneratedTable table, int idColumnIndex, byte typeCode,
             int rowIndex) {
         return switch (typeCode) {
-            case io.memris.core.TypeCodes.TYPE_LONG -> Long.valueOf(table.readLong(idColumnIndex, rowIndex));
-            case io.memris.core.TypeCodes.TYPE_INT -> Integer.valueOf(table.readInt(idColumnIndex, rowIndex));
-            case io.memris.core.TypeCodes.TYPE_SHORT -> Short.valueOf((short) table.readInt(idColumnIndex, rowIndex));
-            case io.memris.core.TypeCodes.TYPE_BYTE -> Byte.valueOf((byte) table.readInt(idColumnIndex, rowIndex));
+            case TypeCodes.TYPE_LONG -> Long.valueOf(table.readLong(idColumnIndex, rowIndex));
+            case TypeCodes.TYPE_INT -> Integer.valueOf(table.readInt(idColumnIndex, rowIndex));
+            case TypeCodes.TYPE_SHORT -> Short.valueOf((short) table.readInt(idColumnIndex, rowIndex));
+            case TypeCodes.TYPE_BYTE -> Byte.valueOf((byte) table.readInt(idColumnIndex, rowIndex));
             default -> Long.valueOf(table.readLong(idColumnIndex, rowIndex));
         };
     }
@@ -3450,26 +3897,12 @@ public final class RepositoryRuntime<T> {
         if (metadata == null) {
             return;
         }
-        for (io.memris.core.EntityMetadata.FieldMapping field : metadata.fields()) {
-            if (!field.isRelationship() || field
-                    .relationshipType() != io.memris.core.EntityMetadata.FieldMapping.RelationshipType.MANY_TO_MANY) {
+        for (var relationPlan : manyToManyPlans) {
+            if (!relationPlan.persistEnabled()) {
                 continue;
             }
-            if (field.joinTable() == null || field.joinTable().isBlank()) {
-                continue;
-            }
-            JoinTableInfo joinInfo = resolveJoinTable(field);
-            if (joinInfo == null || joinInfo.table == null) {
-                continue;
-            }
-            Object collectionValue = readFieldValue(entity, metadata, field.name());
+            Object collectionValue = readFieldValue(entity, metadata, relationPlan.fieldName());
             if (!(collectionValue instanceof Iterable<?> iterable)) {
-                continue;
-            }
-
-            io.memris.core.EntityMetadata<?> targetMetadata = metadataProvider().getMetadata(field.targetEntity());
-            io.memris.core.EntityMetadata.FieldMapping targetId = findIdField(targetMetadata);
-            if (targetId == null) {
                 continue;
             }
 
@@ -3478,35 +3911,36 @@ public final class RepositoryRuntime<T> {
                 continue;
             }
 
-            java.util.Set<JoinKey> existing = loadJoinKeys(joinInfo);
+            Set<JoinKey> existing = loadJoinKeys(relationPlan.joinInfo());
 
             for (Object related : iterable) {
                 if (related == null) {
                     continue;
                 }
-                Object targetIdValue = readFieldValue(related, targetMetadata, targetMetadata.idColumnName());
+                Object targetIdValue = readFieldValue(related, relationPlan.targetMetadata(),
+                        relationPlan.targetMetadata().idColumnName());
                 if (targetIdValue == null) {
                     continue;
                 }
                 JoinKey key = new JoinKey(sourceIdValue, targetIdValue);
                 if (existing.add(key)) {
-                    joinInfo.table.insert(sourceIdValue, targetIdValue);
+                    relationPlan.joinInfo().table().insert(sourceIdValue, targetIdValue);
                 }
             }
         }
     }
 
-    private java.util.Set<JoinKey> loadJoinKeys(JoinTableInfo joinInfo) {
-        java.util.Set<JoinKey> keys = new java.util.HashSet<>();
-        io.memris.storage.SimpleTable table = joinInfo.table;
-        io.memris.kernel.Column<?> joinColumn = table.column(joinInfo.joinColumn);
-        io.memris.kernel.Column<?> inverseColumn = table.column(joinInfo.inverseJoinColumn);
+    private Set<JoinKey> loadJoinKeys(JoinTableInfo joinInfo) {
+        Set<JoinKey> keys = new HashSet<>();
+        SimpleTable table = joinInfo.table();
+        Column<?> joinColumn = table.column(joinInfo.joinColumn());
+        Column<?> inverseColumn = table.column(joinInfo.inverseJoinColumn());
         if (joinColumn == null || inverseColumn == null) {
             return keys;
         }
         long rowCount = table.rowCount();
         for (int i = 0; i < rowCount; i++) {
-            io.memris.kernel.RowId rowId = new io.memris.kernel.RowId(i >>> 16, i & 0xFFFF);
+            RowId rowId = new RowId(i >>> 16, i & 0xFFFF);
             Object joinValue = joinColumn.get(rowId);
             Object inverseValue = inverseColumn.get(rowId);
             if (joinValue == null || inverseValue == null) {
@@ -3517,7 +3951,7 @@ public final class RepositoryRuntime<T> {
         return keys;
     }
 
-    private Object readFieldValue(Object entity, io.memris.core.EntityMetadata<?> entityMetadata, String fieldName) {
+    private Object readFieldValue(Object entity, EntityMetadata<?> entityMetadata, String fieldName) {
         if (entity == null || entityMetadata == null) {
             return null;
         }
@@ -3540,8 +3974,8 @@ public final class RepositoryRuntime<T> {
         }
     }
 
-    private io.memris.core.EntityMetadata.FieldMapping findIdField(io.memris.core.EntityMetadata<?> targetMetadata) {
-        for (io.memris.core.EntityMetadata.FieldMapping field : targetMetadata.fields()) {
+    private FieldMapping findIdField(EntityMetadata<?> targetMetadata) {
+        for (var field : targetMetadata.fields()) {
             if (field.name().equals(targetMetadata.idColumnName())) {
                 return field;
             }
@@ -3549,28 +3983,27 @@ public final class RepositoryRuntime<T> {
         return null;
     }
 
-    private JoinTableInfo resolveJoinTable(io.memris.core.EntityMetadata.FieldMapping field) {
+    private JoinTableInfo resolveJoinTable(FieldMapping field, EntityMetadata<?> sourceMetadata,
+            EntityMetadata<?> targetMetadata) {
         if (field.joinTable() != null && !field.joinTable().isBlank()) {
-            return buildJoinTableInfo(field, metadata,
-                    metadataProvider().getMetadata(field.targetEntity()), false);
+            return buildJoinTableInfo(field, sourceMetadata, targetMetadata, false);
         }
         if (field.mappedBy() != null && !field.mappedBy().isBlank()) {
-            io.memris.core.EntityMetadata<?> targetMetadata = metadataProvider().getMetadata(field.targetEntity());
-            io.memris.core.EntityMetadata.FieldMapping ownerField = findFieldByName(targetMetadata, field.mappedBy());
+            var ownerField = findFieldByName(targetMetadata, field.mappedBy());
             if (ownerField == null || ownerField.joinTable() == null || ownerField.joinTable().isBlank()) {
                 return null;
             }
-            return buildJoinTableInfo(ownerField, targetMetadata, metadata, true);
+            return buildJoinTableInfo(ownerField, targetMetadata, sourceMetadata, true);
         }
         return null;
     }
 
-    private JoinTableInfo buildJoinTableInfo(io.memris.core.EntityMetadata.FieldMapping ownerField,
-            io.memris.core.EntityMetadata<?> ownerMetadata,
-            io.memris.core.EntityMetadata<?> inverseMetadata,
+    private JoinTableInfo buildJoinTableInfo(FieldMapping ownerField,
+            EntityMetadata<?> ownerMetadata,
+            EntityMetadata<?> inverseMetadata,
             boolean inverseSide) {
         String joinTableName = ownerField.joinTable();
-        io.memris.storage.SimpleTable joinTable = plan.joinTables().get(joinTableName);
+        SimpleTable joinTable = plan.joinTables().get(joinTableName);
         if (joinTable == null) {
             return null;
         }
@@ -3606,9 +4039,9 @@ public final class RepositoryRuntime<T> {
                 plan.tablesByEntity().get(ownerMetadata.entityClass()));
     }
 
-    private io.memris.core.EntityMetadata.FieldMapping findFieldByName(io.memris.core.EntityMetadata<?> targetMetadata,
+    private FieldMapping findFieldByName(EntityMetadata<?> targetMetadata,
             String name) {
-        for (io.memris.core.EntityMetadata.FieldMapping field : targetMetadata.fields()) {
+        for (var field : targetMetadata.fields()) {
             if (field.name().equals(name)) {
                 return field;
             }
@@ -3616,12 +4049,58 @@ public final class RepositoryRuntime<T> {
         return null;
     }
 
+    private record IndexPlan(
+            String indexName,
+            String[] fieldNames,
+            int[] columnPositions,
+            io.memris.core.Index.IndexType indexType) {
+    }
+
+    private record RangeProbe(
+            Predicate.Operator operator,
+            CompositeKey lower,
+            CompositeKey upper,
+            boolean[] consumed) {
+    }
+
+    private record EntityRuntimeLayout(
+            FieldMapping[] fieldsByColumn,
+            TypeConverter<?, ?>[] convertersByColumn,
+            int idColumnIndex) {
+    }
+
+    private record OneToManyPlan(
+            String fieldName,
+            Class<?> collectionType,
+            byte sourceFkTypeCode,
+            int fkColumnIndex,
+            GeneratedTable targetTable,
+            HeapRuntimeKernel targetKernel,
+            EntityMaterializer<?> targetMaterializer,
+            MethodHandle targetPostLoadHandle,
+            MethodHandle setter) {
+    }
+
+    private record ManyToManyPlan(
+            String fieldName,
+            Class<?> collectionType,
+            byte sourceFkTypeCode,
+            JoinTableInfo joinInfo,
+            EntityMetadata<?> targetMetadata,
+            FieldMapping targetIdField,
+            HeapRuntimeKernel targetKernel,
+            EntityMaterializer<?> targetMaterializer,
+            MethodHandle targetPostLoadHandle,
+            MethodHandle setter,
+            boolean persistEnabled) {
+    }
+
     private record JoinTableInfo(
             String name,
             String joinColumn,
             String inverseJoinColumn,
-            io.memris.storage.SimpleTable table,
-            io.memris.storage.GeneratedTable targetTable) {
+            SimpleTable table,
+            GeneratedTable targetTable) {
     }
 
     private record JoinKey(Object left, Object right) {

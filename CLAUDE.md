@@ -209,6 +209,14 @@ Query methods are parsed from method names. For complete operator reference, see
 
 ## Testing Guidelines
 
+### No Stdout/Stderr Printing in Tests
+
+**IMPORTANT**: Do not print to `System.out` or `System.err` in tests (including debug/benchmark-style tests). Keep test output clean and deterministic.
+
+- Forbidden: `System.out.print*`, `System.err.print*`
+- If diagnostics are needed, assert on measurable outcomes instead of printing.
+- If temporary debugging is unavoidable during local development, remove prints before committing.
+
 ### Single Assertion Requirement
 
 **IMPORTANT**: All tests must use a single AssertJ assertion. The entity classes (Customer, Product, Order, OrderItem) do not implement `equals()`/`hashCode()`, so tests should use AssertJ's `usingRecursiveComparison()` API.

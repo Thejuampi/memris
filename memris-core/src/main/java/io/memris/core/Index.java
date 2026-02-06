@@ -2,6 +2,7 @@ package io.memris.core;
 
 import java.lang.annotation.Documented;
 import java.lang.annotation.ElementType;
+import java.lang.annotation.Repeatable;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
@@ -20,14 +21,21 @@ import java.lang.annotation.Target;
  * }
  * </pre>
  */
-@Target(ElementType.FIELD)
+@Target({ ElementType.FIELD, ElementType.TYPE })
 @Retention(RetentionPolicy.RUNTIME)
 @Documented
+@Repeatable(Indexes.class)
 public @interface Index {
     /**
      * Optional index name for reference.
      */
     String name() default "";
+
+    /**
+     * Fields for composite class-level index declarations.
+     * Ignored for field-level usage.
+     */
+    String[] fields() default {};
 
     /**
      * Index type - HASH for equality lookups, BTREE for range queries.
