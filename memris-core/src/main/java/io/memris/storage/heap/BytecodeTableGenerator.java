@@ -301,7 +301,7 @@ public final class BytecodeTableGenerator {
     }
 
     // Bytecode implementation for typeCodeAt - direct instance field access
-    private static class TypeCodeAtImplementation implements Implementation {
+    private static final class TypeCodeAtImplementation implements Implementation {
         @Override
         public net.bytebuddy.dynamic.scaffold.InstrumentedType prepare(
                 net.bytebuddy.dynamic.scaffold.InstrumentedType instrumentedType) {

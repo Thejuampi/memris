@@ -180,7 +180,7 @@ public class TypeHandlerRegistry {
     /**
      * Holder for the default singleton instance.
      */
-    private static class DefaultHolder {
+    private static final class DefaultHolder {
         static final TypeHandlerRegistry INSTANCE = new TypeHandlerRegistry();
     }
 }

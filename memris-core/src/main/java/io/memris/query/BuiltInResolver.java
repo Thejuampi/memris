@@ -216,9 +216,9 @@ public final class BuiltInResolver {
      * @param target the expected parameter type (supertype)
      * @return minimal number of edges from actual to target, or MAX_VALUE if unreachable
      */
-    private static int inheritanceDistance(Class<?> actual, Class<?> target) {
-        actual = box(actual);
-        target = box(target);
+    private static int inheritanceDistance(Class<?> actualParam, Class<?> targetParam) {
+        var actual = box(actualParam);
+        var target = box(targetParam);
 
         if (actual.equals(target)) {
             return 0;

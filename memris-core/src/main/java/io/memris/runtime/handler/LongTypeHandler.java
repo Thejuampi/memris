@@ -25,14 +25,12 @@ public class LongTypeHandler extends AbstractTypeHandler<Long> {
     
     @Override
     public Long convertValue(Object value) {
-        if (value instanceof Long) {
-            return (Long) value;
-        } else if (value instanceof Number) {
-            return ((Number) value).longValue();
-        } else {
-            throw new IllegalArgumentException(
-                "Cannot convert " + value.getClass() + " to Long");
-        }
+        return switch (value) {
+            case Long l -> l;
+            case Number number -> number.longValue();
+            default -> throw new IllegalArgumentException(
+                    "Cannot convert " + value.getClass() + " to Long");
+        };
     }
     
     @Override
