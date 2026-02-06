@@ -31,6 +31,7 @@ class CompositeIndexMetadataExtractorTest {
             @Index(name = "idx_region_score", fields = { "region", "score" }, type = Index.IndexType.BTREE)
     })
     static class CompositeIndexedEntity {
+        @Id
         @GeneratedValue
         public Long id;
         public String region;
@@ -41,6 +42,7 @@ class CompositeIndexMetadataExtractorTest {
     @Entity
     @Index(name = "idx_bad", fields = { "region", "code" }, type = Index.IndexType.PREFIX)
     static class InvalidCompositePrefixEntity {
+        @Id
         @GeneratedValue
         public Long id;
         public String region;

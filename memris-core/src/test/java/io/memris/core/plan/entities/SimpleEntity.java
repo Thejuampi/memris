@@ -1,6 +1,7 @@
 package io.memris.core.plan.entities;
 
 import io.memris.core.Entity;
+import io.memris.core.Id;
 
 import java.time.LocalDate;
 
@@ -9,6 +10,7 @@ import java.time.LocalDate;
  */
 @Entity
 public final class SimpleEntity {
+    @Id
     private Long id;
 
     private String name;

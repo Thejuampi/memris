@@ -1,9 +1,11 @@
 package io.memris.runtime;
 
 import io.memris.core.Entity;
+import io.memris.core.Id;
 
 @Entity
 public class FloatTestEntity {
+    @Id
     public Long id;
     public float value;
 

@@ -1,6 +1,7 @@
 package io.memris.core.runtime;
 
 import io.memris.core.EntityMetadata;
+import io.memris.core.Id;
 import io.memris.core.MetadataExtractor;
 import io.memris.repository.EntitySaverGenerator;
 import io.memris.storage.GeneratedTable;
@@ -113,6 +114,7 @@ class RepositoryPlanTest {
 
     // Test entity class
     public static class TestEntity {
+        @Id
         public Long id;
         public String name;
     }

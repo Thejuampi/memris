@@ -3,6 +3,7 @@ package io.memris.storage.heap;
 import io.memris.core.Entity;
 import io.memris.core.GeneratedValue;
 import io.memris.core.GenerationType;
+import io.memris.core.Id;
 import io.memris.core.Index;
 import io.memris.core.MemrisArena;
 import io.memris.repository.MemrisRepository;
@@ -53,6 +54,7 @@ class RowLevelConcurrencyTest {
 
     @Entity
     public static class TestEntity {
+        @Id
         @GeneratedValue(strategy = GenerationType.IDENTITY)
         @Index(type = Index.IndexType.HASH)
         public Long id;

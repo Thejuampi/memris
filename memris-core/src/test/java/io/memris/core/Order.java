@@ -1,11 +1,13 @@
 package io.memris.core;
 
 import io.memris.core.ManyToOne;
+import io.memris.core.Id;
 
 /**
  * Order entity for projection tests and e-commerce tests.
  */
 public class Order {
+    @Id
     public Long id;
     public long total;
     public String status;

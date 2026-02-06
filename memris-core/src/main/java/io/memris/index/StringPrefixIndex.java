@@ -49,12 +49,11 @@ public final class StringPrefixIndex {
         // Add rowId for every prefix of the key
         for (int i = 1; i <= normalizedKey.length(); i++) {
             var prefix = normalizedKey.substring(0, i);
-            var set = prefixMap.computeIfAbsent(prefix, ignored -> setFactory.create(4));
-            set.add(rowId);
-            var upgraded = setFactory.maybeUpgrade(set);
-            if (upgraded != set) {
-                prefixMap.replace(prefix, set, upgraded);
-            }
+            prefixMap.compute(prefix, (ignored, existing) -> {
+                var set = existing == null ? setFactory.create(4) : existing;
+                set.add(rowId);
+                return setFactory.maybeUpgrade(set);
+            });
         }
     }
     
@@ -68,14 +67,10 @@ public final class StringPrefixIndex {
         // Remove rowId from every prefix of the key
         for (int i = 1; i <= normalizedKey.length(); i++) {
             var prefix = normalizedKey.substring(0, i);
-            var set = prefixMap.get(prefix);
-            if (set == null) {
-                continue;
-            }
-            set.remove(rowId);
-            if (set.size() == 0) {
-                prefixMap.remove(prefix, set);
-            }
+            prefixMap.computeIfPresent(prefix, (ignored, set) -> {
+                set.remove(rowId);
+                return set.size() == 0 ? null : set;
+            });
         }
     }
     

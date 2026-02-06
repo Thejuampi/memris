@@ -5,6 +5,7 @@ import io.memris.core.MemrisArena;
 import io.memris.repository.MemrisRepository;
 import io.memris.core.JoinColumn;
 import io.memris.core.JoinTable;
+import io.memris.core.Id;
 import io.memris.core.ManyToMany;
 import io.memris.core.ManyToOne;
 import io.memris.core.OneToMany;
@@ -659,6 +660,7 @@ class ECommerceRealWorldTest {
     }
 
     public static class JoinCustomer {
+        @Id
         public Long id;
         public String name;
 
@@ -674,6 +676,7 @@ class ECommerceRealWorldTest {
     }
 
     public static class JoinOrder {
+        @Id
         public Long id;
         public String status;
 
@@ -1276,6 +1279,7 @@ class ECommerceRealWorldTest {
     }
 
     public static class ManyToManyStudent {
+        @Id
         public Long id;
         public String name;
 
@@ -1292,6 +1296,7 @@ class ECommerceRealWorldTest {
     }
 
     public static class ManyToManyCourse {
+        @Id
         public Long id;
         public String name;
 
@@ -1317,6 +1322,7 @@ class ECommerceRealWorldTest {
     }
 
     public static class AnalyticsEvent {
+        @Id
         public Long id;
         public String title;
         public boolean active;

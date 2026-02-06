@@ -1,6 +1,7 @@
 package io.memris.core.scaffold;
 
 import io.memris.core.EntityMetadata;
+import io.memris.core.Id;
 import io.memris.repository.EntitySaverGenerator;
 import io.memris.core.MetadataExtractor;
 import io.memris.runtime.EntitySaver;
@@ -143,12 +144,14 @@ class EntitySaverGeneratorTest {
 
     // Test entity classes
     public static class Customer {
+        @Id
         public Long id;
         public String name;
         public String email;
     }
 
     public static class Order {
+        @Id
         public Long id;
         public Long amount;
         public Customer customer;

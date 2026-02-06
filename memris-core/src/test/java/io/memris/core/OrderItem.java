@@ -7,6 +7,7 @@ import io.memris.core.Entity;
 import io.memris.core.GeneratedValue;
 import io.memris.core.GenerationType;
 import io.memris.core.Index;
+import io.memris.core.Id;
 
 import io.memris.core.Entity;
 import io.memris.core.GeneratedValue;
@@ -20,6 +21,7 @@ import io.memris.core.Index;
  * Uses simple field names to avoid case-sensitivity issues in query parsing.
  */
 public class OrderItem {
+    @Id
     public Long id;
     public long order; // Foreign key to Order - simple name
     public long product; // Foreign key to Product - simple name

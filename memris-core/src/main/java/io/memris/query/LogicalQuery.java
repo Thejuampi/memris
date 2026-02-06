@@ -345,7 +345,7 @@ public record LogicalQuery(
          * Create a condition on the entity's ID property.
          * <p>
          * The special $ID marker resolves to the entity's actual ID column
-         * at compile time (via @Id or JPA @Id annotation).
+         * at compile time (via explicit `@io.memris.core.Id`).
          */
         public static Condition idCondition(int argumentIndex) {
             return new Condition(ID_PROPERTY, Operator.EQ, argumentIndex, false, Combinator.AND);

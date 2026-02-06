@@ -1,12 +1,14 @@
 package io.memris.core.plan.entities;
 
 import io.memris.core.Entity;
+import io.memris.core.Id;
 
 /**
  * Entity with embedded value object.
  */
 @Entity
 public final class EmbeddedEntity {
+    @Id
     private Long id;
     private String username;
 

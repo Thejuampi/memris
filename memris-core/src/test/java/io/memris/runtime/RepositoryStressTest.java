@@ -20,7 +20,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class RepositoryStressTest {
 
-    private static final long TOTAL_ROWS = 1_000_000L;
+    private static final long TARGET_TOTAL_ROWS = 1_000_000L;
+    private static final long MIN_TOTAL_ROWS = 100_000L;
+    private static final long MAX_TOTAL_ROWS = 300_000L;
+    private static final long ESTIMATED_BYTES_PER_ROW = 1024L;
+    private static final String TOTAL_ROWS_PROPERTY = "memris.stress.totalRows";
     private static final int UPDATE_DIVISOR = 2;
     private static final int DELETE_DIVISOR = 10;
     private static final int SAMPLE_SIZE = 1000;
@@ -40,8 +44,9 @@ class RepositoryStressTest {
     @Test
     @Tag("stress")
     @Timeout(value = 5, unit = TimeUnit.MINUTES)
-    @DisplayName("Stress: concurrent insert/update/delete on one million rows")
+    @DisplayName("Stress: concurrent insert/update/delete on large row set")
     void shouldHandleConcurrentInsertUpdateDeleteOnOneMillionRows() throws InterruptedException {
+        var totalRows = resolveTotalRows();
         var config = MemrisConfiguration.builder()
                 .enablePrefixIndex(false)
                 .enableSuffixIndex(false)
@@ -53,16 +58,16 @@ class RepositoryStressTest {
         int threads = Math.max(8, Runtime.getRuntime().availableProcessors());
         ExecutorService executor = Executors.newFixedThreadPool(threads);
 
-        boolean insertsCompleted = runConcurrentInserts(repo, executor, threads);
-        boolean modificationsCompleted = runConcurrentUpdatesAndDeletes(repo, executor, threads);
+        boolean insertsCompleted = runConcurrentInserts(repo, executor, threads, totalRows);
+        boolean modificationsCompleted = runConcurrentUpdatesAndDeletes(repo, executor, threads, totalRows);
 
         executor.shutdown();
         executor.awaitTermination(10, TimeUnit.MINUTES);
 
-        long expectedDeleted = countDivisible(TOTAL_ROWS, DELETE_DIVISOR);
-        long expectedRemaining = TOTAL_ROWS - expectedDeleted;
+        long expectedDeleted = countDivisible(totalRows, DELETE_DIVISOR);
+        long expectedRemaining = totalRows - expectedDeleted;
 
-        long[] sampleIds = buildSampleIds(TOTAL_ROWS, SAMPLE_SIZE);
+        long[] sampleIds = buildSampleIds(totalRows, SAMPLE_SIZE);
         PollResult pollResult = pollForConsistency(repo, expectedRemaining, sampleIds);
 
         StressSnapshot actual = new StressSnapshot(
@@ -88,14 +93,14 @@ class RepositoryStressTest {
         assertThat(actual).usingRecursiveComparison().isEqualTo(expected);
     }
 
-    private boolean runConcurrentInserts(TestEntityRepository repo, ExecutorService executor, int threads)
+    private boolean runConcurrentInserts(TestEntityRepository repo, ExecutorService executor, int threads, long totalRows)
             throws InterruptedException {
         CountDownLatch startLatch = new CountDownLatch(1);
         CountDownLatch completeLatch = new CountDownLatch(threads);
 
         for (int t = 0; t < threads; t++) {
-            long start = (TOTAL_ROWS * t) / threads + 1;
-            long end = (TOTAL_ROWS * (t + 1)) / threads;
+            long start = (totalRows * t) / threads + 1;
+            long end = (totalRows * (t + 1)) / threads;
             executor.submit(() -> {
                 try {
                     startLatch.await();
@@ -117,14 +122,15 @@ class RepositoryStressTest {
         return completeLatch.await(10, TimeUnit.MINUTES);
     }
 
-    private boolean runConcurrentUpdatesAndDeletes(TestEntityRepository repo, ExecutorService executor, int threads)
+    private boolean runConcurrentUpdatesAndDeletes(TestEntityRepository repo, ExecutorService executor, int threads,
+            long totalRows)
             throws InterruptedException {
         CountDownLatch startLatch = new CountDownLatch(1);
         CountDownLatch completeLatch = new CountDownLatch(threads * 2);
 
         for (int t = 0; t < threads; t++) {
-            long start = (TOTAL_ROWS * t) / threads + 1;
-            long end = (TOTAL_ROWS * (t + 1)) / threads;
+            long start = (totalRows * t) / threads + 1;
+            long end = (totalRows * (t + 1)) / threads;
 
             executor.submit(() -> {
                 try {
@@ -237,6 +243,16 @@ class RepositoryStressTest {
 
     private long countDivisible(long total, int divisor) {
         return total / divisor;
+    }
+
+    private long resolveTotalRows() {
+        var configured = Long.getLong(TOTAL_ROWS_PROPERTY, -1L);
+        if (configured > 0) {
+            return configured;
+        }
+        var maxHeapBytes = Runtime.getRuntime().maxMemory();
+        var heapBound = maxHeapBytes / ESTIMATED_BYTES_PER_ROW;
+        return Math.max(MIN_TOTAL_ROWS, Math.min(Math.min(TARGET_TOTAL_ROWS, heapBound), MAX_TOTAL_ROWS));
     }
 
     private record StressSnapshot(

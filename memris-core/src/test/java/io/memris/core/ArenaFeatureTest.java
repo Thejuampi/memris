@@ -7,6 +7,7 @@ import io.memris.core.Entity;
 import io.memris.core.GeneratedValue;
 import io.memris.core.GenerationType;
 import io.memris.core.Index;
+import io.memris.core.Id;
 
 import io.memris.core.Entity;
 import io.memris.core.GeneratedValue;
@@ -130,6 +131,7 @@ class ArenaFeatureTest {
 
     // Test entity and repository
     public static class SimpleEntity {
+        @Id
         public Long id;
         public String name;
     }

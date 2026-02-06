@@ -1,6 +1,7 @@
 package io.memris.core;
 
 import io.memris.core.Entity;
+import io.memris.core.Id;
 
 /**
  * Customer entity for e-commerce domain.
@@ -9,6 +10,7 @@ import io.memris.core.Entity;
  */
 @Entity
 public class Customer {
+    @Id
     public Long id;
     public String email;
     public String name;
