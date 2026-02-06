@@ -874,6 +874,9 @@ public final class RepositoryEmitter {
             }
             indexes.put(key, index);
             if (!composite && fieldNames.length == 1 && !key.equals(fieldName)) {
+                // Preserve an explicit field-name index if one already exists.
+                // Custom-name aliases should not override an independently declared
+                // field index with potentially different type/options.
                 indexes.putIfAbsent(fieldName, index);
             }
         }
