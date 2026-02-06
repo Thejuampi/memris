@@ -18,6 +18,7 @@ import java.util.List;
  * Uses cached MethodHandles for field access. Good performance (~5ns overhead),
  * easy to maintain, reliable.
  */
+@SuppressWarnings("PMD.AvoidReassigningParameters")
 public class MethodHandleImplementation implements TableImplementationStrategy {
 
     @Override

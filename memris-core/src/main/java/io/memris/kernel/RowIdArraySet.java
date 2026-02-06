@@ -66,6 +66,7 @@ public final class RowIdArraySet implements MutableRowIdSet {
     }
 
     @Override
+    @SuppressWarnings("PMD.AvoidBranchingStatementAsLastInLoop")
     public void remove(RowId rowId) {
         if (rowId == null) {
             return;

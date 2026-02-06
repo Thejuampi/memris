@@ -432,6 +432,7 @@ public final class JpqlQueryParser {
         throw new IllegalArgumentException("Map return type must declare key type for grouping: " + methodName);
     }
 
+    @SuppressWarnings("PMD.AvoidBranchingStatementAsLastInLoop")
     private static EntityMetadata.FieldMapping resolveProjectionField(EntityMetadata<?> metadata, String path) {
         String[] segments = path.split("\\.");
         EntityMetadata<?> current = metadata;

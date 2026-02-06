@@ -96,6 +96,7 @@ public final class JpqlLexer {
         KEYWORDS.put("FALSE", TokenType.FALSE);
     }
 
+    @SuppressWarnings("PMD.AvoidBranchingStatementAsLastInLoop")
     public static List<Token> tokenize(String input) {
         List<Token> tokens = new ArrayList<>();
         int length = input.length();

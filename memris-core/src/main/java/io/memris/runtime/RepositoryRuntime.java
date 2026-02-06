@@ -2568,13 +2568,13 @@ public final class RepositoryRuntime<T> {
         }
         // For multi-column, fall back to full sort then limit (optimization: could use
         // bounded heap)
-        rows = sortByMultipleColumns(rows, orderBy);
-        if (k < rows.length) {
+        var sortedRows = sortByMultipleColumns(rows, orderBy);
+        if (k < sortedRows.length) {
             int[] limited = new int[k];
-            System.arraycopy(rows, 0, limited, 0, k);
+            System.arraycopy(sortedRows, 0, limited, 0, k);
             return limited;
         }
-        return rows;
+        return sortedRows;
     }
 
     private int[] topKSingleColumn(int[] rows, CompiledQuery.CompiledOrderBy orderBy, int k) {
