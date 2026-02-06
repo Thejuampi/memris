@@ -1,12 +1,14 @@
 package io.memris.core.plan.entities;
 
 import io.memris.core.Entity;
+import io.memris.core.Id;
 
 /**
  * Account entity for nested property tests.
  */
 @Entity
 public final class Account {
+    @Id
     private Long id;
     private String email;
     private String phone;

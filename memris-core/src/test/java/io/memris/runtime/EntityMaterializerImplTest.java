@@ -1,6 +1,7 @@
 package io.memris.runtime;
 
 import io.memris.core.EntityMetadata;
+import io.memris.core.Id;
 import io.memris.core.MetadataExtractor;
 import io.memris.storage.GeneratedTable;
 import io.memris.storage.heap.AbstractTable;
@@ -126,6 +127,7 @@ class EntityMaterializerImplTest {
     
     // Test entity
     public static class TestEntity {
+        @Id
         public Long id;
         public String name;
         public Integer age;

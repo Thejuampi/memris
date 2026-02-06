@@ -4,6 +4,7 @@ import io.memris.core.Entity;
 import io.memris.core.EntityMetadata;
 import io.memris.core.EntityMetadataProvider;
 import io.memris.core.GeneratedValue;
+import io.memris.core.Id;
 import io.memris.core.JoinColumn;
 import io.memris.core.ManyToOne;
 import io.memris.core.MemrisArena;
@@ -118,6 +119,7 @@ class RepositoryRuntimeHotPathRegressionTest {
 
     @Entity
     public static class SetupParent {
+        @Id
         @GeneratedValue
         public Long id;
         public String name;
@@ -134,6 +136,7 @@ class RepositoryRuntimeHotPathRegressionTest {
 
     @Entity
     public static class SetupChild {
+        @Id
         @GeneratedValue
         public Long id;
         @ManyToOne
@@ -152,6 +155,7 @@ class RepositoryRuntimeHotPathRegressionTest {
 
     @Entity
     public static class ConvertedInventory {
+        @Id
         @GeneratedValue
         public Long id;
         public String sku;

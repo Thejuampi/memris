@@ -7,6 +7,7 @@ import io.memris.core.Entity;
 import io.memris.core.GeneratedValue;
 import io.memris.core.GenerationType;
 import io.memris.core.Index;
+import io.memris.core.Id;
 
 import io.memris.core.Entity;
 import io.memris.core.GeneratedValue;
@@ -20,6 +21,7 @@ import io.memris.core.Index;
  * Prices are stored in cents (e.g., $19.99 = 1999).
  */
 public class Product {
+    @Id
     public Long id;
     public String sku;
     public String name;

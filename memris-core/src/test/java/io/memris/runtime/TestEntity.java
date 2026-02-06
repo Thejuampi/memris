@@ -1,10 +1,12 @@
 package io.memris.runtime;
 
 import io.memris.core.Entity;
+import io.memris.core.Id;
 import io.memris.core.Index;
 
 @Entity
 public class TestEntity {
+    @Id
     public Long id;
     
     @Index(type = Index.IndexType.PREFIX)

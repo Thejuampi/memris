@@ -3,6 +3,7 @@ package io.memris.runtime.codegen;
 import io.memris.core.MemrisArena;
 import io.memris.core.ManyToOne;
 import io.memris.core.JoinColumn;
+import io.memris.core.Id;
 import io.memris.repository.MemrisRepository;
 import io.memris.repository.MemrisRepositoryFactory;
 
@@ -181,6 +182,7 @@ class RuntimeExecutorGeneratorArenaIsolationTest {
     // Test entities and repositories
 
     public static class Product {
+        @Id
         public Long id;
         public String name;
         public int price;
@@ -193,6 +195,7 @@ class RuntimeExecutorGeneratorArenaIsolationTest {
     }
 
     public static class Category {
+        @Id
         public Long id;
         public String name;
         public String description;
@@ -205,6 +208,7 @@ class RuntimeExecutorGeneratorArenaIsolationTest {
     }
 
     public static class ProductWithCategory {
+        @Id
         public Long id;
         public String name;
 

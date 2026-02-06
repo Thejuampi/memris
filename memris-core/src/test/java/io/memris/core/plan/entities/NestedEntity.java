@@ -1,6 +1,7 @@
 package io.memris.core.plan.entities;
 
 import io.memris.core.Entity;
+import io.memris.core.Id;
 import io.memris.core.ManyToOne;
 
 /**
@@ -8,6 +9,7 @@ import io.memris.core.ManyToOne;
  */
 @Entity
 public final class NestedEntity {
+    @Id
     private Long id;
 
     private String name;

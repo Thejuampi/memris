@@ -51,15 +51,8 @@ public final class MetadataExtractor {
         try {
             Constructor<T> constructor = entityClass.getDeclaredConstructor();
 
-            // Find ID field
-            String idColumnName = "id";
-            for (var field : entityClass.getDeclaredFields()) {
-                if (field.getName().equals("id")
-                        || field.isAnnotationPresent(GeneratedValue.class)) {
-                    idColumnName = field.getName();
-                    break;
-                }
-            }
+            var idField = resolveIdField(entityClass);
+            var idColumnName = idField.getName();
             
             // Build field mappings with relationship support
             var fields = new ArrayList<FieldMapping>();
@@ -528,13 +521,30 @@ public final class MetadataExtractor {
 
 
     private static Class<?> resolveIdFieldType(Class<?> entityClass) {
-        for (Field field : entityClass.getDeclaredFields()) {
-            if (field.getName().equals("id")
-                    || field.isAnnotationPresent(GeneratedValue.class)) {
-                return field.getType();
+        return resolveIdField(entityClass).getType();
+    }
+
+    private static Field resolveIdField(Class<?> entityClass) {
+        Field resolved = null;
+        for (var field : entityClass.getDeclaredFields()) {
+            if (!isIdField(field)) {
+                continue;
             }
+            if (resolved != null) {
+                throw new IllegalArgumentException("Multiple ID fields found in " + entityClass.getName());
+            }
+            resolved = field;
         }
-        return Long.class;
+
+        if (resolved == null) {
+            throw new IllegalArgumentException("Missing explicit ID field in " + entityClass.getName()
+                    + ". Annotate exactly one field with @io.memris.core.Id.");
+        }
+        return resolved;
+    }
+
+    private static boolean isIdField(Field field) {
+        return field.isAnnotationPresent(Id.class);
     }
 
     private static Class<?> resolveStorageType(Class<?> fieldType) {

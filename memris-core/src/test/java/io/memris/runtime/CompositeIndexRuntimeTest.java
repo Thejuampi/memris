@@ -2,6 +2,7 @@ package io.memris.runtime;
 
 import io.memris.core.Entity;
 import io.memris.core.GeneratedValue;
+import io.memris.core.Id;
 import io.memris.core.Index;
 import io.memris.core.Indexes;
 import io.memris.core.MemrisArena;
@@ -63,6 +64,7 @@ class CompositeIndexRuntimeTest {
             @Index(name = "idx_region_score", fields = { "region", "score" }, type = Index.IndexType.BTREE)
     })
     public static class CompositeIndexedRecord {
+        @Id
         @GeneratedValue
         public Long id;
         public String region;

@@ -11,6 +11,7 @@ public final class MemrisEntityInformation<T, ID> implements EntityInformation<T
         this.domainClass = domainClass;
         this.idProperty = resolveIdProperty(domainClass);
         this.idField = resolveIdField(domainClass, idProperty);
+        this.idField.setAccessible(true);
     }
 
     @Override
@@ -21,7 +22,6 @@ public final class MemrisEntityInformation<T, ID> implements EntityInformation<T
     @Override
     public ID getId(T entity) {
         try {
-            idField.setAccessible(true);
             @SuppressWarnings("unchecked")
             var value = (ID) idField.get(entity);
             return value;
@@ -52,15 +52,11 @@ public final class MemrisEntityInformation<T, ID> implements EntityInformation<T
 
     private static String resolveIdProperty(Class<?> domainClass) {
         for (var field : domainClass.getDeclaredFields()) {
-            if (hasAnnotation(field, "javax.persistence.Id")
-                    || hasAnnotation(field, "javax.persistence.GeneratedValue")) {
-                return field.getName();
-            }
-            if (field.getName().equals("id")) {
+            if (hasAnnotation(field, "javax.persistence.Id")) {
                 return field.getName();
             }
         }
-        return "id";
+        throw new IllegalStateException("Missing explicit javax.persistence.Id field on " + domainClass.getName());
     }
 
     private static boolean hasAnnotation(java.lang.reflect.Field field, String name) {

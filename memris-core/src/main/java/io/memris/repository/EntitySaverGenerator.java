@@ -2,6 +2,7 @@ package io.memris.repository;
 
 import io.memris.core.EntityMetadata;
 import io.memris.core.EntityMetadata.FieldMapping;
+import io.memris.core.Id;
 import io.memris.core.converter.TypeConverter;
 import io.memris.core.converter.TypeConverterRegistry;
 import io.memris.runtime.EntitySaver;
@@ -165,15 +166,19 @@ public final class EntitySaverGenerator {
             for (int i = 0; i < relationshipFields.size(); i++) {
                 var rf = relationshipFields.get(i);
                 try {
-                    var targetIdField = rf.targetEntityClass.getDeclaredField("id");
+                    var targetIdField = findAnnotatedIdField(rf.targetEntityClass);
+                    if (targetIdField == null) {
+                        throw new IllegalStateException("Missing explicit @Id field on "
+                                + rf.targetEntityClass.getName());
+                    }
                     if (!Modifier.isPublic(targetIdField.getModifiers())) {
                         targetIdField.setAccessible(true);
                     }
                     var mh = lookup.unreflectGetter(targetIdField);
                     args[converterFields.size() + i] = mh;
                     paramTypes[converterFields.size() + i] = MethodHandle.class;
-                } catch (NoSuchFieldException | IllegalAccessException e) {
-                    throw new RuntimeException("Failed to create MethodHandle for " + rf.field.getName() + ".id", e);
+                } catch (IllegalAccessException e) {
+                    throw new RuntimeException("Failed to create MethodHandle for " + rf.field.getName(), e);
                 }
             }
 
@@ -305,15 +310,21 @@ public final class EntitySaverGenerator {
     }
 
     private static Field findIdField(Class<?> entityClass) {
+        Field resolved = null;
         for (var field : entityClass.getDeclaredFields()) {
-            if (field.getName().equals("id") ||
-                    field.isAnnotationPresent(io.memris.core.GeneratedValue.class)) {
-                if (Modifier.isPublic(field.getModifiers())) {
-                    return field;
-                }
+            if (!isIdField(field) || !Modifier.isPublic(field.getModifiers())) {
+                continue;
             }
+            if (resolved != null) {
+                throw new IllegalArgumentException("Multiple public ID fields found in " + entityClass.getName());
+            }
+            resolved = field;
         }
-        return null;
+        return resolved;
+    }
+
+    private static boolean isIdField(Field field) {
+        return field.isAnnotationPresent(Id.class);
     }
 
     private static String converterFieldName(int index) {
@@ -700,13 +711,30 @@ public final class EntitySaverGenerator {
 
         // Find and access the id field
         try {
-            var idField = targetClass.getDeclaredField("id");
+            var idField = findAnnotatedIdField(targetClass);
+            if (idField == null) {
+                return null;
+            }
             if (!Modifier.isPublic(idField.getModifiers())) {
                 idField.setAccessible(true);
             }
             return idField.get(relatedEntity);
-        } catch (NoSuchFieldException | IllegalAccessException e) {
+        } catch (IllegalAccessException e) {
             return null;
         }
+    }
+
+    private static Field findAnnotatedIdField(Class<?> entityClass) {
+        Field resolved = null;
+        for (var field : entityClass.getDeclaredFields()) {
+            if (!field.isAnnotationPresent(Id.class)) {
+                continue;
+            }
+            if (resolved != null) {
+                throw new IllegalArgumentException("Multiple ID fields found in " + entityClass.getName());
+            }
+            resolved = field;
+        }
+        return resolved;
     }
 }
