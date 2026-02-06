@@ -182,7 +182,7 @@ public final class MemrisConfiguration {
      * <p>
      * Provides a fluent API for building configuration instances.
      */
-    public static class Builder {
+    public static final class Builder {
         private TableImplementation tableImplementation = TableImplementation.BYTECODE;
         private int pageSize = 1024;
         private int maxPages = 1024;

@@ -25,44 +25,41 @@ public class CharTypeHandler extends AbstractTypeHandler<Character> {
     
     @Override
     public Character convertValue(Object value) {
-        if (value instanceof Character) {
-            return (Character) value;
-        } else if (value instanceof Number) {
-            return (char) ((Number) value).intValue();
-        } else if (value instanceof String && ((String) value).length() == 1) {
-            return ((String) value).charAt(0);
-        } else {
-            throw new IllegalArgumentException(
-                "Cannot convert " + value.getClass() + " to Character");
-        }
+        return switch (value) {
+            case Character c -> c;
+            case Number number -> (char) number.intValue();
+            case String s when s.length() == 1 -> s.charAt(0);
+            default -> throw new IllegalArgumentException(
+                    "Cannot convert " + value.getClass() + " to Character");
+        };
     }
     
     @Override
     protected Selection executeEquals(GeneratedTable table, int columnIndex, Character value, boolean ignoreCase) {
-        return createSelection(table, table.scanEqualsInt(columnIndex, value.charValue()));
+        return createSelection(table, table.scanEqualsInt(columnIndex, value));
     }
     
     @Override
     protected Selection executeGreaterThan(GeneratedTable table, int columnIndex, Character value) {
-        int charCode = value.charValue();
+        int charCode = value;
         return createSelection(table, table.scanBetweenInt(columnIndex, charCode + 1, Character.MAX_VALUE));
     }
     
     @Override
     protected Selection executeGreaterThanOrEqual(GeneratedTable table, int columnIndex, Character value) {
-        int charCode = value.charValue();
+        int charCode = value;
         return createSelection(table, table.scanBetweenInt(columnIndex, charCode, Character.MAX_VALUE));
     }
     
     @Override
     protected Selection executeLessThan(GeneratedTable table, int columnIndex, Character value) {
-        int charCode = value.charValue();
+        int charCode = value;
         return createSelection(table, table.scanBetweenInt(columnIndex, Character.MIN_VALUE, charCode - 1));
     }
     
     @Override
     protected Selection executeLessThanOrEqual(GeneratedTable table, int columnIndex, Character value) {
-        int charCode = value.charValue();
+        int charCode = value;
         return createSelection(table, table.scanBetweenInt(columnIndex, Character.MIN_VALUE, charCode));
     }
     
@@ -81,7 +78,7 @@ public class CharTypeHandler extends AbstractTypeHandler<Character> {
     
     @Override
     protected Selection executeIn(GeneratedTable table, int columnIndex, Character value) {
-        return createSelection(table, table.scanInInt(columnIndex, new int[]{(int) value.charValue()}));
+        return createSelection(table, table.scanInInt(columnIndex, new int[]{(int) value}));
     }
     
     /**

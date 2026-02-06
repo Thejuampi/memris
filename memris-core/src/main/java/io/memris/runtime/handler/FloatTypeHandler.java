@@ -32,14 +32,12 @@ public class FloatTypeHandler extends AbstractTypeHandler<Float> {
 
     @Override
     public Float convertValue(Object value) {
-        if (value instanceof Float) {
-            return (Float) value;
-        } else if (value instanceof Number) {
-            return ((Number) value).floatValue();
-        } else {
-            throw new IllegalArgumentException(
+        return switch (value) {
+            case Float v -> v;
+            case Number number -> number.floatValue();
+            default -> throw new IllegalArgumentException(
                     "Cannot convert " + value.getClass() + " to Float");
-        }
+        };
     }
 
     /**

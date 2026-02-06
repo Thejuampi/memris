@@ -25,14 +25,12 @@ public class IntTypeHandler extends AbstractTypeHandler<Integer> {
     
     @Override
     public Integer convertValue(Object value) {
-        if (value instanceof Integer) {
-            return (Integer) value;
-        } else if (value instanceof Number) {
-            return ((Number) value).intValue();
-        } else {
-            throw new IllegalArgumentException(
-                "Cannot convert " + value.getClass() + " to Integer");
-        }
+        return switch (value) {
+            case Integer i -> i;
+            case Number number -> number.intValue();
+            default -> throw new IllegalArgumentException(
+                    "Cannot convert " + value.getClass() + " to Integer");
+        };
     }
     
     @Override

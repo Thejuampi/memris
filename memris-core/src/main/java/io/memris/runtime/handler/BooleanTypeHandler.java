@@ -25,14 +25,12 @@ public class BooleanTypeHandler extends AbstractTypeHandler<Boolean> {
     
     @Override
     public Boolean convertValue(Object value) {
-        if (value instanceof Boolean) {
-            return (Boolean) value;
-        } else if (value instanceof Number) {
-            return ((Number) value).intValue() != 0;
-        } else {
-            throw new IllegalArgumentException(
-                "Cannot convert " + value.getClass() + " to Boolean");
-        }
+        return switch (value) {
+            case Boolean b -> b;
+            case Number number -> number.intValue() != 0;
+            default -> throw new IllegalArgumentException(
+                    "Cannot convert " + value.getClass() + " to Boolean");
+        };
     }
     
     @Override

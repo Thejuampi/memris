@@ -25,14 +25,12 @@ public class ShortTypeHandler extends AbstractTypeHandler<Short> {
     
     @Override
     public Short convertValue(Object value) {
-        if (value instanceof Short) {
-            return (Short) value;
-        } else if (value instanceof Number) {
-            return ((Number) value).shortValue();
-        } else {
-            throw new IllegalArgumentException(
-                "Cannot convert " + value.getClass() + " to Short");
-        }
+        return switch (value) {
+            case Short i -> i;
+            case Number number -> number.shortValue();
+            default -> throw new IllegalArgumentException(
+                    "Cannot convert " + value.getClass() + " to Short");
+        };
     }
     
     @Override

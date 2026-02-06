@@ -81,7 +81,7 @@ public final class RowIdArraySet implements MutableRowIdSet {
                 values[i] = values[lastIndex];
                 values[lastIndex] = 0L;
                 size = lastIndex;
-                return;
+                break;
             }
         } finally {
             lock.unlockWrite(stamp);
