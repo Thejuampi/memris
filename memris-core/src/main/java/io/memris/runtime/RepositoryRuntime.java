@@ -11,7 +11,6 @@ import io.memris.core.MemrisConfiguration;
 import io.memris.core.MetadataExtractor;
 import io.memris.repository.MemrisRepositoryFactory;
 import io.memris.core.TypeCodes;
-import io.memris.core.converter.EnumStringConverter;
 import io.memris.kernel.Predicate;
 import io.memris.kernel.RowId;
 import io.memris.kernel.RowIdSet;
