@@ -4,11 +4,22 @@ import io.memris.core.converter.TypeConverter;
 
 import java.lang.reflect.ParameterizedType;
 
+/**
+ * Adapts a JPA {@code AttributeConverter} into a Memris {@link TypeConverter}.
+ *
+ * @param <J> Java-side type
+ * @param <S> storage-side type
+ */
 public final class MemrisJpaAttributeConverterAdapter<J, S> implements TypeConverter<J, S> {
     private final jakarta.persistence.AttributeConverter<J, S> delegate;
     private final Class<J> javaType;
     private final Class<S> storageType;
 
+    /**
+     * Creates an adapter for the provided converter instance.
+     *
+     * @param delegate JPA attribute converter
+     */
     @SuppressWarnings("unchecked")
     public MemrisJpaAttributeConverterAdapter(Object delegate) {
         this.delegate = (jakarta.persistence.AttributeConverter<J, S>) delegate;

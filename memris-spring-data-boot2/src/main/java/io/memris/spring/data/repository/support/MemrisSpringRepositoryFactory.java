@@ -7,9 +7,17 @@ import org.springframework.data.repository.core.RepositoryInformation;
 import org.springframework.data.repository.core.RepositoryMetadata;
 import org.springframework.data.repository.core.support.RepositoryFactorySupport;
 
+/**
+ * Repository factory that delegates repository creation to a {@link MemrisArena}.
+ */
 public final class MemrisSpringRepositoryFactory extends RepositoryFactorySupport {
     private final MemrisArena arena;
 
+    /**
+     * Creates a factory bound to the provided arena.
+     *
+     * @param arena Memris arena used for repository creation
+     */
     public MemrisSpringRepositoryFactory(MemrisArena arena) {
         this.arena = arena;
     }

@@ -3,6 +3,9 @@ package io.memris.spring.boot.autoconfigure;
 import io.memris.core.MemrisConfiguration;
 import lombok.Data;
 
+/**
+ * Per-arena Memris tuning properties.
+ */
 @Data
 public class MemrisConfigurationProperties {
     private int pageSize = 1024;
@@ -14,6 +17,17 @@ public class MemrisConfigurationProperties {
     private boolean enablePrefixIndex = true;
     private boolean enableSuffixIndex = true;
 
+    /**
+     * Creates property values with defaults suitable for local development.
+     */
+    public MemrisConfigurationProperties() {
+    }
+
+    /**
+     * Creates the immutable Memris configuration from these bound properties.
+     *
+     * @return Memris configuration
+     */
     public MemrisConfiguration toConfiguration() {
         return MemrisConfiguration.builder()
                 .pageSize(pageSize)

@@ -5,7 +5,16 @@ import org.springframework.data.repository.config.RepositoryConfigurationExtensi
 
 import java.lang.annotation.Annotation;
 
+/**
+ * Registers Memris repository definitions when {@link EnableMemrisRepositories} is used.
+ */
 public final class MemrisRepositoriesRegistrar extends RepositoryBeanDefinitionRegistrarSupport {
+
+    /**
+     * Creates a registrar instance.
+     */
+    public MemrisRepositoriesRegistrar() {
+    }
 
     @Override
     protected Class<? extends Annotation> getAnnotation() {

@@ -2,11 +2,22 @@ package io.memris.spring.data.repository.support;
 
 import org.springframework.data.repository.core.EntityInformation;
 
+/**
+ * Spring Data {@link EntityInformation} implementation backed by explicit JPA ID metadata.
+ *
+ * @param <T> aggregate type
+ * @param <ID> identifier type
+ */
 public final class MemrisEntityInformation<T, ID> implements EntityInformation<T, ID> {
     private final Class<T> domainClass;
     private final String idProperty;
     private final java.lang.reflect.Field idField;
 
+    /**
+     * Creates entity information for the given domain class.
+     *
+     * @param domainClass aggregate type
+     */
     public MemrisEntityInformation(Class<T> domainClass) {
         this.domainClass = domainClass;
         this.idProperty = resolveIdProperty(domainClass);
