@@ -179,6 +179,8 @@ public final class PageColumnLong {
 
     /**
      * Scan for values equal to target.
+     * <p>
+     * Uses loop unrolling (8x) for improved performance with branchless comparison.
      *
      * @param target  the target value
      * @param limit   maximum offset to scan (published count)
@@ -200,7 +202,22 @@ public final class PageColumnLong {
             }
             byte[] present = page.present;
             long[] data = page.values;
-            for (int i = 0; i < pageLimit; i++) {
+
+            // Unrolled loop: process 8 elements per iteration
+            int i = 0;
+            int unrollLimit = pageLimit - 7;
+            for (; i < unrollLimit; i += 8) {
+                if (present[i] != 0 && data[i] == target) results[found++] = base + i;
+                if (present[i + 1] != 0 && data[i + 1] == target) results[found++] = base + i + 1;
+                if (present[i + 2] != 0 && data[i + 2] == target) results[found++] = base + i + 2;
+                if (present[i + 3] != 0 && data[i + 3] == target) results[found++] = base + i + 3;
+                if (present[i + 4] != 0 && data[i + 4] == target) results[found++] = base + i + 4;
+                if (present[i + 5] != 0 && data[i + 5] == target) results[found++] = base + i + 5;
+                if (present[i + 6] != 0 && data[i + 6] == target) results[found++] = base + i + 6;
+                if (present[i + 7] != 0 && data[i + 7] == target) results[found++] = base + i + 7;
+            }
+            // Handle remaining elements
+            for (; i < pageLimit; i++) {
                 if (present[i] != 0 && data[i] == target) {
                     results[found++] = base + i;
                 }
@@ -218,6 +235,8 @@ public final class PageColumnLong {
 
     /**
      * Scan for values less than target.
+     * <p>
+     * Uses loop unrolling (8x) for improved performance.
      *
      * @param target  the target value
      * @param limit   maximum offset to scan (published count)
@@ -239,7 +258,22 @@ public final class PageColumnLong {
             }
             byte[] present = page.present;
             long[] data = page.values;
-            for (int i = 0; i < pageLimit; i++) {
+
+            // Unrolled loop: process 8 elements per iteration
+            int i = 0;
+            int unrollLimit = pageLimit - 7;
+            for (; i < unrollLimit; i += 8) {
+                if (present[i] != 0 && data[i] < target) results[found++] = base + i;
+                if (present[i + 1] != 0 && data[i + 1] < target) results[found++] = base + i + 1;
+                if (present[i + 2] != 0 && data[i + 2] < target) results[found++] = base + i + 2;
+                if (present[i + 3] != 0 && data[i + 3] < target) results[found++] = base + i + 3;
+                if (present[i + 4] != 0 && data[i + 4] < target) results[found++] = base + i + 4;
+                if (present[i + 5] != 0 && data[i + 5] < target) results[found++] = base + i + 5;
+                if (present[i + 6] != 0 && data[i + 6] < target) results[found++] = base + i + 6;
+                if (present[i + 7] != 0 && data[i + 7] < target) results[found++] = base + i + 7;
+            }
+            // Handle remaining elements
+            for (; i < pageLimit; i++) {
                 if (present[i] != 0 && data[i] < target) {
                     results[found++] = base + i;
                 }
@@ -252,6 +286,8 @@ public final class PageColumnLong {
 
     /**
      * Scan for values greater than target.
+     * <p>
+     * Uses loop unrolling (8x) for improved performance.
      *
      * @param target  the target value
      * @param limit   maximum offset to scan (published count)
@@ -273,7 +309,22 @@ public final class PageColumnLong {
             }
             byte[] present = page.present;
             long[] data = page.values;
-            for (int i = 0; i < pageLimit; i++) {
+
+            // Unrolled loop: process 8 elements per iteration
+            int i = 0;
+            int unrollLimit = pageLimit - 7;
+            for (; i < unrollLimit; i += 8) {
+                if (present[i] != 0 && data[i] > target) results[found++] = base + i;
+                if (present[i + 1] != 0 && data[i + 1] > target) results[found++] = base + i + 1;
+                if (present[i + 2] != 0 && data[i + 2] > target) results[found++] = base + i + 2;
+                if (present[i + 3] != 0 && data[i + 3] > target) results[found++] = base + i + 3;
+                if (present[i + 4] != 0 && data[i + 4] > target) results[found++] = base + i + 4;
+                if (present[i + 5] != 0 && data[i + 5] > target) results[found++] = base + i + 5;
+                if (present[i + 6] != 0 && data[i + 6] > target) results[found++] = base + i + 6;
+                if (present[i + 7] != 0 && data[i + 7] > target) results[found++] = base + i + 7;
+            }
+            // Handle remaining elements
+            for (; i < pageLimit; i++) {
                 if (present[i] != 0 && data[i] > target) {
                     results[found++] = base + i;
                 }
@@ -286,6 +337,8 @@ public final class PageColumnLong {
 
     /**
      * Scan for values greater than or equal to target.
+     * <p>
+     * Uses loop unrolling (8x) for improved performance.
      *
      * @param target  the target value
      * @param limit   maximum offset to scan (published count)
@@ -307,7 +360,22 @@ public final class PageColumnLong {
             }
             byte[] present = page.present;
             long[] data = page.values;
-            for (int i = 0; i < pageLimit; i++) {
+
+            // Unrolled loop: process 8 elements per iteration
+            int i = 0;
+            int unrollLimit = pageLimit - 7;
+            for (; i < unrollLimit; i += 8) {
+                if (present[i] != 0 && data[i] >= target) results[found++] = base + i;
+                if (present[i + 1] != 0 && data[i + 1] >= target) results[found++] = base + i + 1;
+                if (present[i + 2] != 0 && data[i + 2] >= target) results[found++] = base + i + 2;
+                if (present[i + 3] != 0 && data[i + 3] >= target) results[found++] = base + i + 3;
+                if (present[i + 4] != 0 && data[i + 4] >= target) results[found++] = base + i + 4;
+                if (present[i + 5] != 0 && data[i + 5] >= target) results[found++] = base + i + 5;
+                if (present[i + 6] != 0 && data[i + 6] >= target) results[found++] = base + i + 6;
+                if (present[i + 7] != 0 && data[i + 7] >= target) results[found++] = base + i + 7;
+            }
+            // Handle remaining elements
+            for (; i < pageLimit; i++) {
                 if (present[i] != 0 && data[i] >= target) {
                     results[found++] = base + i;
                 }
@@ -320,6 +388,8 @@ public final class PageColumnLong {
 
     /**
      * Scan for values less than or equal to target.
+     * <p>
+     * Uses loop unrolling (8x) for improved performance.
      *
      * @param target  the target value
      * @param limit   maximum offset to scan (published count)
@@ -341,7 +411,22 @@ public final class PageColumnLong {
             }
             byte[] present = page.present;
             long[] data = page.values;
-            for (int i = 0; i < pageLimit; i++) {
+
+            // Unrolled loop: process 8 elements per iteration
+            int i = 0;
+            int unrollLimit = pageLimit - 7;
+            for (; i < unrollLimit; i += 8) {
+                if (present[i] != 0 && data[i] <= target) results[found++] = base + i;
+                if (present[i + 1] != 0 && data[i + 1] <= target) results[found++] = base + i + 1;
+                if (present[i + 2] != 0 && data[i + 2] <= target) results[found++] = base + i + 2;
+                if (present[i + 3] != 0 && data[i + 3] <= target) results[found++] = base + i + 3;
+                if (present[i + 4] != 0 && data[i + 4] <= target) results[found++] = base + i + 4;
+                if (present[i + 5] != 0 && data[i + 5] <= target) results[found++] = base + i + 5;
+                if (present[i + 6] != 0 && data[i + 6] <= target) results[found++] = base + i + 6;
+                if (present[i + 7] != 0 && data[i + 7] <= target) results[found++] = base + i + 7;
+            }
+            // Handle remaining elements
+            for (; i < pageLimit; i++) {
                 if (present[i] != 0 && data[i] <= target) {
                     results[found++] = base + i;
                 }
@@ -354,6 +439,8 @@ public final class PageColumnLong {
 
     /**
      * Scan for values in range [lower, upper] (inclusive).
+     * <p>
+     * Uses loop unrolling (8x) for improved performance.
      *
      * @param lower   lower bound (inclusive)
      * @param upper   upper bound (inclusive)
@@ -376,7 +463,30 @@ public final class PageColumnLong {
             }
             byte[] present = page.present;
             long[] data = page.values;
-            for (int i = 0; i < pageLimit; i++) {
+
+            // Unrolled loop: process 8 elements per iteration
+            int i = 0;
+            int unrollLimit = pageLimit - 7;
+            for (; i < unrollLimit; i += 8) {
+                long v0 = data[i];
+                if (present[i] != 0 && v0 >= lower && v0 <= upper) results[found++] = base + i;
+                long v1 = data[i + 1];
+                if (present[i + 1] != 0 && v1 >= lower && v1 <= upper) results[found++] = base + i + 1;
+                long v2 = data[i + 2];
+                if (present[i + 2] != 0 && v2 >= lower && v2 <= upper) results[found++] = base + i + 2;
+                long v3 = data[i + 3];
+                if (present[i + 3] != 0 && v3 >= lower && v3 <= upper) results[found++] = base + i + 3;
+                long v4 = data[i + 4];
+                if (present[i + 4] != 0 && v4 >= lower && v4 <= upper) results[found++] = base + i + 4;
+                long v5 = data[i + 5];
+                if (present[i + 5] != 0 && v5 >= lower && v5 <= upper) results[found++] = base + i + 5;
+                long v6 = data[i + 6];
+                if (present[i + 6] != 0 && v6 >= lower && v6 <= upper) results[found++] = base + i + 6;
+                long v7 = data[i + 7];
+                if (present[i + 7] != 0 && v7 >= lower && v7 <= upper) results[found++] = base + i + 7;
+            }
+            // Handle remaining elements
+            for (; i < pageLimit; i++) {
                 long value = data[i];
                 if (present[i] != 0 && value >= lower && value <= upper) {
                     results[found++] = base + i;
@@ -392,6 +502,7 @@ public final class PageColumnLong {
      * Scan for values IN a collection.
      * <p>
      * Uses HashSet for O(1) target lookup instead of O(n*m) nested loop.
+     * Uses loop unrolling (8x) for improved performance.
      *
      * @param targets the target values
      * @param limit   maximum offset to scan (published count)
@@ -423,7 +534,22 @@ public final class PageColumnLong {
             }
             byte[] present = page.present;
             long[] data = page.values;
-            for (int i = 0; i < pageLimit; i++) {
+
+            // Unrolled loop: process 8 elements per iteration
+            int i = 0;
+            int unrollLimit = pageLimit - 7;
+            for (; i < unrollLimit; i += 8) {
+                if (present[i] != 0 && targetSet.contains(data[i])) results[found++] = base + i;
+                if (present[i + 1] != 0 && targetSet.contains(data[i + 1])) results[found++] = base + i + 1;
+                if (present[i + 2] != 0 && targetSet.contains(data[i + 2])) results[found++] = base + i + 2;
+                if (present[i + 3] != 0 && targetSet.contains(data[i + 3])) results[found++] = base + i + 3;
+                if (present[i + 4] != 0 && targetSet.contains(data[i + 4])) results[found++] = base + i + 4;
+                if (present[i + 5] != 0 && targetSet.contains(data[i + 5])) results[found++] = base + i + 5;
+                if (present[i + 6] != 0 && targetSet.contains(data[i + 6])) results[found++] = base + i + 6;
+                if (present[i + 7] != 0 && targetSet.contains(data[i + 7])) results[found++] = base + i + 7;
+            }
+            // Handle remaining elements
+            for (; i < pageLimit; i++) {
                 if (present[i] != 0 && targetSet.contains(data[i])) {
                     results[found++] = base + i;
                 }

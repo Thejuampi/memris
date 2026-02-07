@@ -180,6 +180,8 @@ public final class PageColumnString {
 
     /**
      * Scan for values equal to target.
+     * <p>
+     * Uses length pre-check and loop unrolling for improved performance.
      *
      * @param target  the target value
      * @param limit   maximum offset to scan (published count)
@@ -193,6 +195,7 @@ public final class PageColumnString {
         var count = Math.min(published, limit);
         var results = new int[count];
         var found = 0;
+        var targetLength = target.length();
 
         var remaining = count;
         for (var pageId = 0; pageId < maxPages && remaining > 0; pageId++) {
@@ -205,9 +208,44 @@ public final class PageColumnString {
             }
             byte[] present = page.present;
             String[] data = page.values;
-            for (var i = 0; i < pageLimit; i++) {
-                if (present[i] != 0 && target.equals(data[i])) {
-                    results[found++] = base + i;
+
+            // Unrolled loop: process 4 elements per iteration
+            // Strings are more expensive, so smaller unroll factor
+            int i = 0;
+            int unrollLimit = pageLimit - 3;
+            for (; i < unrollLimit; i += 4) {
+                if (present[i] != 0) {
+                    var s = data[i];
+                    if (s != null && s.length() == targetLength && target.equals(s)) {
+                        results[found++] = base + i;
+                    }
+                }
+                if (present[i + 1] != 0) {
+                    var s = data[i + 1];
+                    if (s != null && s.length() == targetLength && target.equals(s)) {
+                        results[found++] = base + i + 1;
+                    }
+                }
+                if (present[i + 2] != 0) {
+                    var s = data[i + 2];
+                    if (s != null && s.length() == targetLength && target.equals(s)) {
+                        results[found++] = base + i + 2;
+                    }
+                }
+                if (present[i + 3] != 0) {
+                    var s = data[i + 3];
+                    if (s != null && s.length() == targetLength && target.equals(s)) {
+                        results[found++] = base + i + 3;
+                    }
+                }
+            }
+            // Handle remaining elements
+            for (; i < pageLimit; i++) {
+                if (present[i] != 0) {
+                    var s = data[i];
+                    if (s != null && s.length() == targetLength && target.equals(s)) {
+                        results[found++] = base + i;
+                    }
                 }
             }
             remaining -= pageLimit;
@@ -218,6 +256,8 @@ public final class PageColumnString {
 
     /**
      * Scan for values equal to target (case-insensitive).
+     * <p>
+     * Uses loop unrolling and length pre-check for improved performance.
      *
      * @param target  the target value
      * @param limit   maximum offset to scan (published count)
@@ -231,8 +271,9 @@ public final class PageColumnString {
         var count = Math.min(published, limit);
         var results = new int[count];
         var found = 0;
-
         var lowerTarget = target.toLowerCase();
+        var targetLength = target.length();
+
         var remaining = count;
         for (var pageId = 0; pageId < maxPages && remaining > 0; pageId++) {
             var pageLimit = Math.min(pageSize, remaining);
@@ -244,13 +285,43 @@ public final class PageColumnString {
             }
             byte[] present = page.present;
             String[] data = page.values;
-            for (var i = 0; i < pageLimit; i++) {
-                if (present[i] == 0) {
-                    continue;
+
+            // Unrolled loop: process 4 elements per iteration
+            int i = 0;
+            int unrollLimit = pageLimit - 3;
+            for (; i < unrollLimit; i += 4) {
+                if (present[i] != 0) {
+                    var s = data[i];
+                    if (s != null && s.length() == targetLength && s.toLowerCase().equals(lowerTarget)) {
+                        results[found++] = base + i;
+                    }
                 }
-                var value = data[i];
-                if (value != null && value.toLowerCase().equals(lowerTarget)) {
-                    results[found++] = base + i;
+                if (present[i + 1] != 0) {
+                    var s = data[i + 1];
+                    if (s != null && s.length() == targetLength && s.toLowerCase().equals(lowerTarget)) {
+                        results[found++] = base + i + 1;
+                    }
+                }
+                if (present[i + 2] != 0) {
+                    var s = data[i + 2];
+                    if (s != null && s.length() == targetLength && s.toLowerCase().equals(lowerTarget)) {
+                        results[found++] = base + i + 2;
+                    }
+                }
+                if (present[i + 3] != 0) {
+                    var s = data[i + 3];
+                    if (s != null && s.length() == targetLength && s.toLowerCase().equals(lowerTarget)) {
+                        results[found++] = base + i + 3;
+                    }
+                }
+            }
+            // Handle remaining elements
+            for (; i < pageLimit; i++) {
+                if (present[i] != 0) {
+                    var s = data[i];
+                    if (s != null && s.length() == targetLength && s.toLowerCase().equals(lowerTarget)) {
+                        results[found++] = base + i;
+                    }
                 }
             }
             remaining -= pageLimit;
@@ -263,6 +334,7 @@ public final class PageColumnString {
      * Scan for values IN a collection.
      * <p>
      * Uses HashSet for O(1) target lookup instead of O(n*m) nested loop.
+     * Uses loop unrolling for improved performance.
      *
      * @param targets the target values
      * @param limit   maximum offset to scan (published count)
@@ -296,7 +368,18 @@ public final class PageColumnString {
             }
             byte[] present = page.present;
             String[] data = page.values;
-            for (var i = 0; i < pageLimit; i++) {
+
+            // Unrolled loop: process 4 elements per iteration
+            int i = 0;
+            int unrollLimit = pageLimit - 3;
+            for (; i < unrollLimit; i += 4) {
+                if (present[i] != 0 && targetSet.contains(data[i])) results[found++] = base + i;
+                if (present[i + 1] != 0 && targetSet.contains(data[i + 1])) results[found++] = base + i + 1;
+                if (present[i + 2] != 0 && targetSet.contains(data[i + 2])) results[found++] = base + i + 2;
+                if (present[i + 3] != 0 && targetSet.contains(data[i + 3])) results[found++] = base + i + 3;
+            }
+            // Handle remaining elements
+            for (; i < pageLimit; i++) {
                 if (present[i] != 0 && targetSet.contains(data[i])) {
                     results[found++] = base + i;
                 }

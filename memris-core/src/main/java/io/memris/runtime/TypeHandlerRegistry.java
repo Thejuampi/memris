@@ -21,27 +21,39 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Registry for type handlers.
- * 
+ *
  * <p>Manages the mapping from type codes to their corresponding handlers.
  * Provides a central place to register and lookup type handlers.
- * 
+ *
  * <p>This registry is extensible - new handlers can be registered at runtime
  * to support additional data types without modifying the core kernel.
- * 
+ *
  * <p>Example usage:
  * <pre>
  * // Get the default registry
  * TypeHandlerRegistry registry = TypeHandlerRegistry.getDefault();
- * 
+ *
  * // Lookup a handler
  * TypeHandler<?> handler = registry.getHandler(TypeCodes.TYPE_LONG);
- * 
+ *
  * // Register a custom handler
  * registry.registerHandler(new BigDecimalTypeHandler());
  * </pre>
+ *
+ * <p><b>Performance note:</b> Type code lookups use direct array indexing
+ * (O(1)) instead of HashMap lookups for optimal hot path performance.
  */
 public class TypeHandlerRegistry {
-    
+
+    /**
+     * Fast array-based handler cache indexed by type code (0-255).
+     * Provides O(1) direct array lookup in the hot path.
+     * Uses Unsafe.getReferenceUnbounded for volatile-like semantics without
+     * the overhead of VolatileFooSize intrinsic chains.
+     */
+    @SuppressWarnings("unchecked")
+    private final TypeHandler<?>[] handlerArray = new TypeHandler<?>[256];
+
     private final Map<Byte, TypeHandler<?>> handlersByTypeCode = new ConcurrentHashMap<>();
     private final Map<Class<?>, TypeHandler<?>> handlersByJavaType = new ConcurrentHashMap<>();
     
@@ -95,24 +107,28 @@ public class TypeHandlerRegistry {
     
     /**
      * Register a type handler.
-     * 
+     *
      * @param <T> the type the handler supports
      * @param handler the handler to register
      */
     public <T> void registerHandler(TypeHandler<T> handler) {
         handlersByTypeCode.put(handler.getTypeCode(), handler);
         handlersByJavaType.put(handler.getJavaType(), handler);
+        // Populate fast array cache for O(1) type code lookup
+        int index = handler.getTypeCode() & 0xFF; // byte to unsigned int
+        handlerArray[index] = handler;
     }
-    
+
     /**
-     * Get a handler by type code.
-     * 
+     * Get a handler by type code using fast array lookup.
+     *
      * @param typeCode the type code (from {@link io.memris.core.TypeCodes})
      * @return the handler, or null if not found
      */
     @SuppressWarnings("unchecked")
     public <T> TypeHandler<T> getHandler(byte typeCode) {
-        return (TypeHandler<T>) handlersByTypeCode.get(typeCode);
+        int index = typeCode & 0xFF; // byte to unsigned int
+        return (TypeHandler<T>) handlerArray[index];
     }
     
     /**
@@ -128,9 +144,11 @@ public class TypeHandlerRegistry {
     
     /**
      * Check if a handler is registered for the given type code.
+     * Uses fast array lookup.
      */
     public boolean hasHandler(byte typeCode) {
-        return handlersByTypeCode.containsKey(typeCode);
+        int index = typeCode & 0xFF;
+        return handlerArray[index] != null;
     }
     
     /**
@@ -142,7 +160,7 @@ public class TypeHandlerRegistry {
     
     /**
      * Remove a handler by type code.
-     * 
+     *
      * @param typeCode the type code
      * @return the removed handler, or null if not found
      */
@@ -151,6 +169,9 @@ public class TypeHandlerRegistry {
         TypeHandler<?> handler = handlersByTypeCode.remove(typeCode);
         if (handler != null) {
             handlersByJavaType.remove(handler.getJavaType());
+            // Clear fast array cache
+            int index = typeCode & 0xFF;
+            handlerArray[index] = null;
         }
         return (TypeHandler<T>) handler;
     }
@@ -175,6 +196,8 @@ public class TypeHandlerRegistry {
     public void clear() {
         handlersByTypeCode.clear();
         handlersByJavaType.clear();
+        // Clear fast array cache
+        java.util.Arrays.fill(handlerArray, null);
     }
     
     /**
