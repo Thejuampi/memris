@@ -6,7 +6,7 @@
     <parent>
         <groupId>io.github.thejuampi</groupId>
         <artifactId>memris-parent</artifactId>
-        <version>0.1.6-SNAPSHOT</version>
+        <version>0.1.7-SNAPSHOT</version>
     </parent>
 
     <artifactId>memris-spring-data-boot2</artifactId>
