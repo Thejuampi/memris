@@ -7,7 +7,7 @@
         <groupId>io.github.thejuampi</groupId>
         <artifactId>memris-parent</artifactId>
         <version>0.1.6-SNAPSHOT</version>
-        <relativePath>../pom.xml</relativePath>
+        <relativePath/>
     </parent>
 
     <artifactId>memris-spring-boot-starter-3</artifactId>
