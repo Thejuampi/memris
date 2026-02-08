@@ -27,9 +27,9 @@ class BytecodeTableGeneratorTest {
                                 .newInstance(32, 4, 1);
                 GeneratedTable table = (GeneratedTable) abstractTable;
 
-                long ref1 = table.insertFrom(new Object[] { 1L, "Alice", 100, 1000L });
-                long ref2 = table.insertFrom(new Object[] { 2L, "Bob", 101, 1000L });
-                long ref3 = table.insertFrom(new Object[] { 3L, "Charlie", 102, 1000L });
+                table.insertFrom(new Object[] { 1L, "Alice", 100, 1000L });
+                table.insertFrom(new Object[] { 2L, "Bob", 101, 1000L });
+                table.insertFrom(new Object[] { 3L, "Charlie", 102, 1000L });
 
                 int[] matches = table.scanEqualsLong(0, 2L);
 
