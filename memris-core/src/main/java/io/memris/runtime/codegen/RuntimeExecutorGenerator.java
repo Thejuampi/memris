@@ -36,8 +36,9 @@ import static net.bytebuddy.matcher.ElementMatchers.named;
  * logic</li>
  * <li>{@code FkReader} - reads foreign key values</li>
  * <li>{@code TargetRowResolver} - resolves target rows for projections</li>
- * <li>{@code ConditionExecutor} - executes query conditions</li>
- * <li>{@code OrderKeyBuilder} - builds sort keys for ordering</li>
+ * <li>{@code GroupingValueReader} - reads grouping keys for aggregations</li>
+ * <li>{@code BetweenExecutor} - executes BETWEEN predicates</li>
+ * <li>{@code InListExecutor} - executes IN-list predicates</li>
  * </ul>
  * <p>
  * Feature toggle: Set system property {@code memris.codegen.enabled=false}
@@ -109,6 +110,12 @@ public final class RuntimeExecutorGenerator {
 
     private static FieldValueReader doGenerateFieldValueReader(int columnIndex, byte typeCode,
             TypeConverter<?, ?> converter) {
+        // Equivalent generated Java (simplified):
+        // final class FieldValueReader$GenN implements FieldValueReader {
+        //     public Object read(GeneratedTable table, int rowIndex) {
+        //         return interceptor.read(table, rowIndex);
+        //     }
+        // }
         String className = "io.memris.runtime.codegen.FieldValueReader$Gen" + CLASS_COUNTER.incrementAndGet();
 
         try {
@@ -448,6 +455,12 @@ public final class RuntimeExecutorGenerator {
     }
 
     private static FkReader doGenerateFkReader(int columnIndex, byte typeCode) {
+        // Equivalent generated Java (simplified):
+        // final class FkReader$GenN implements FkReader {
+        //     public Object read(GeneratedTable table, int rowIndex) {
+        //         return interceptor.read(table, rowIndex);
+        //     }
+        // }
         String className = "io.memris.runtime.codegen.FkReader$Gen" + CLASS_COUNTER.incrementAndGet();
 
         try {
@@ -582,6 +595,12 @@ public final class RuntimeExecutorGenerator {
 
     private static TargetRowResolver doGenerateTargetRowResolver(
             boolean targetColumnIsId, byte fkTypeCode, int targetColumnIndex) {
+        // Equivalent generated Java (simplified):
+        // final class TargetRowResolver$GenN implements TargetRowResolver {
+        //     public int resolve(GeneratedTable table, Object fkValue) {
+        //         return interceptor.resolve(table, fkValue);
+        //     }
+        // }
         String className = "io.memris.runtime.codegen.TargetRowResolver$Gen" + CLASS_COUNTER.incrementAndGet();
 
         try {
@@ -791,6 +810,12 @@ public final class RuntimeExecutorGenerator {
     }
 
     private static GroupingValueReader doGenerateGroupingValueReader(int columnIndex, byte typeCode) {
+        // Equivalent generated Java (simplified):
+        // final class GroupingValueReader$GenN implements GroupingValueReader {
+        //     public Object read(GeneratedTable table, int rowIndex) {
+        //         return interceptor.read(table, rowIndex);
+        //     }
+        // }
         String className = "io.memris.runtime.codegen.GroupingValueReader$Gen" + CLASS_COUNTER.incrementAndGet();
 
         try {
@@ -1023,6 +1048,12 @@ public final class RuntimeExecutorGenerator {
     }
 
     private static BetweenExecutor doGenerateBetweenExecutor(int columnIndex, byte typeCode) {
+        // Equivalent generated Java (simplified):
+        // final class BetweenExecutor$GenN implements BetweenExecutor {
+        //     public Selection execute(GeneratedTable table, int argIndex, Object[] args) {
+        //         return interceptor.execute(table, argIndex, args);
+        //     }
+        // }
         String className = "io.memris.runtime.codegen.BetweenExecutor$Gen" + CLASS_COUNTER.incrementAndGet();
 
         try {
@@ -1268,6 +1299,12 @@ public final class RuntimeExecutorGenerator {
     }
 
     private static InListExecutor doGenerateInListExecutor(int columnIndex, byte typeCode) {
+        // Equivalent generated Java (simplified):
+        // final class InListExecutor$GenN implements InListExecutor {
+        //     public Selection execute(GeneratedTable table, Object value) {
+        //         return interceptor.execute(table, value);
+        //     }
+        // }
         String className = "io.memris.runtime.codegen.InListExecutor$Gen" + CLASS_COUNTER.incrementAndGet();
 
         try {

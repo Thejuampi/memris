@@ -45,6 +45,24 @@ public final class EntitySaverGenerator {
      * @param entityClass the entity class
      * @param metadata    the entity metadata
      * @return a generated EntitySaver instance
+     *
+     * Equivalent generated Java (simplified):
+     *
+     * <pre>{@code
+     * final class Customer$MemrisSaver$123 implements EntitySaver<Customer, Object> {
+     *     private final TypeConverter<?, ?> c0;
+     *     private final MethodHandle relId0;
+     *
+     *     public Object save(Object entity, GeneratedTable table, Object id) {
+     *         // materialize storage array, then table.insertFrom(values)
+     *         // return assigned id
+     *     }
+     *
+     *     public Object extractId(Object entity) { ... }
+     *     public void setId(Object entity, Object id) { ... }
+     *     public Object resolveRelationshipId(String field, Object entity) { ... }
+     * }
+     * }</pre>
      */
     public static <T> EntitySaver<T, ?> generate(Class<T> entityClass, EntityMetadata<T> metadata) {
         var idField = resolveIdField(entityClass, metadata);

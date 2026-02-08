@@ -21,6 +21,23 @@ import java.util.List;
 @SuppressWarnings("PMD.AvoidReassigningParameters")
 public class MethodHandleImplementation implements TableImplementationStrategy {
 
+    /**
+     * Wires GeneratedTable methods to MethodDelegation interceptors.
+     *
+     * Equivalent generated Java (simplified):
+     *
+     * <pre>{@code
+     * final class PersonTable extends AbstractTable implements GeneratedTable {
+     *     public long readLong(int columnIndex, int rowIndex) {
+     *         return (long) readInterceptor.intercept(columnIndex, rowIndex, this);
+     *     }
+     *
+     *     public int[] scanEqualsLong(int columnIndex, long value) {
+     *         return scanEqualsLongInterceptor.intercept(columnIndex, value, this);
+     *     }
+     * }
+     * }</pre>
+     */
     @Override
     public DynamicType.Builder<AbstractTable> implementMethods(
             DynamicType.Builder<AbstractTable> builder,
@@ -47,6 +64,14 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
 
     private static DynamicType.Builder<AbstractTable> addMetadataMethods(
             DynamicType.Builder<AbstractTable> builder, int columnCount) {
+
+        // Equivalent generated Java (simplified):
+        // int columnCount() { return <constant>; }
+        // byte typeCodeAt(int i) { return TypeCodeInterceptor.intercept(i, this); }
+        // long allocatedCount() { return super.allocatedCount(); }
+        // int liveCount() { return super.rowCount(); }
+        // long currentGeneration() { return super.currentGeneration(); }
+        // long rowGeneration(int rowIndex) { return RowGenerationInterceptor.intercept(rowIndex, this); }
 
         builder = builder.method(net.bytebuddy.matcher.ElementMatchers.named("columnCount"))
                 .intercept(FixedValue.value(columnCount));
@@ -88,6 +113,12 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
             DynamicType.Builder<AbstractTable> builder,
             List<ColumnFieldInfo> columnFields) {
 
+        // Equivalent generated Java (simplified):
+        // long readLong(int columnIndex, int rowIndex) {
+        //     return (long) readInterceptor.intercept(columnIndex, rowIndex, this);
+        // }
+        // int readInt(...) and String readString(...) delegate to the same interceptor.
+
         ReadInterceptor interceptor = new ReadInterceptor(columnFields);
 
         builder = builder.method(net.bytebuddy.matcher.ElementMatchers.named("readLong"))
@@ -108,6 +139,12 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
     private static DynamicType.Builder<AbstractTable> addScanMethods(
             DynamicType.Builder<AbstractTable> builder,
             List<ColumnFieldInfo> columnFields) {
+
+        // Equivalent generated Java (simplified):
+        // int[] scanEqualsLong(int columnIndex, long value) {
+        //     return scanEqualsLongInterceptor.intercept(columnIndex, value, this);
+        // }
+        // ...same pattern for scanBetween*/scanIn*/scanAll with specialized interceptors.
 
         // Each scan method gets its own specialized interceptor - O(1) dispatch, no
         // runtime switch
@@ -149,6 +186,11 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
             DynamicType.Builder<AbstractTable> builder,
             List<ColumnFieldInfo> columnFields) {
 
+        // Equivalent generated Java (simplified):
+        // long insertFrom(Object[] values) { return insertInterceptor.intercept(values, this); }
+        // void tombstone(long ref) { tombstoneInterceptor.intercept(ref, this); }
+        // boolean isLive(long ref) { return isLiveInterceptor.intercept(ref, this); }
+
         builder = builder.method(net.bytebuddy.matcher.ElementMatchers.named("insertFrom"))
                 .intercept(MethodDelegation.to(new InsertInterceptor(columnFields)));
 
@@ -164,6 +206,11 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
 
     private static DynamicType.Builder<AbstractTable> addIdIndexMethods(
             DynamicType.Builder<AbstractTable> builder) {
+
+        // Equivalent generated Java (simplified):
+        // long lookupById(long id) { return lookupInterceptor.intercept(id, this); }
+        // long lookupByIdString(String id) { return lookupByIdStringInterceptor.intercept(id, this); }
+        // void removeById(Object id) { removeInterceptor.intercept(id, this); }
 
         builder = builder.method(net.bytebuddy.matcher.ElementMatchers.named("lookupById"))
                 .intercept(MethodDelegation.to(new LookupInterceptor("long")));

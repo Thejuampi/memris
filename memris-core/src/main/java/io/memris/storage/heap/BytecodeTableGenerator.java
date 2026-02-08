@@ -58,6 +58,22 @@ public final class BytecodeTableGenerator {
      *
      * @param metadata the table metadata
      * @return the generated table class
+     *
+     * Equivalent generated Java (simplified):
+     *
+     * <pre>{@code
+     * final class PersonBytecodeTable extends AbstractTable implements GeneratedTable {
+     *     private final PageColumnLong col0;
+     *     private final PageColumnString col1;
+     *     private final PageColumnInt col2;
+     *     private final byte[] TYPE_CODES;
+     *
+     *     public PersonBytecodeTable(int pageSize, int maxPages, int initialPages) {
+     *         super("Person", pageSize, maxPages, initialPages);
+     *         // ConstructorInterceptor initializes all generated fields.
+     *     }
+     * }
+     * }</pre>
      */
     public static Class<? extends AbstractTable> generate(TableMetadata metadata) {
         String className = metadata.entityName() + "BytecodeTable";
@@ -150,6 +166,12 @@ public final class BytecodeTableGenerator {
             List<ColumnFieldInfo> columnFields,
             Class<?> idIndexType,
             String entityName) {
+        // Equivalent generated Java (simplified):
+        // PersonBytecodeTable(int pageSize, int maxPages, int initialPages) {
+        //     super(entityName, pageSize, maxPages, initialPages);
+        //     constructorInterceptor.intercept(this, new Object[] {pageSize, maxPages,
+        //     initialPages});
+        // }
         try {
             return builder.defineConstructor(Visibility.PUBLIC)
                     .withParameters(int.class, int.class, int.class)
@@ -167,6 +189,25 @@ public final class BytecodeTableGenerator {
     }
 
     @SuppressWarnings("PMD.AvoidReassigningParameters")
+    /**
+     * Wires generated table methods to either direct bytecode implementations or
+     * interceptor delegates.
+     *
+     * Equivalent Java code for generated method mapping (simplified):
+     *
+     * <pre>{@code
+     * builder.readLong(...)   -> new ReadMethodImplementation(..., TYPE_LONG)
+     * builder.readInt(...)    -> new ReadMethodImplementation(..., TYPE_INT)
+     * builder.readString(...) -> new ReadMethodImplementation(..., TYPE_STRING)
+     *
+     * builder.scanEqualsLong(...)   -> new ScanMethodImplementation(..., SCAN_EQUALS_LONG)
+     * builder.scanBetweenLong(...)  -> new ScanMethodImplementation(..., SCAN_BETWEEN_LONG)
+     * builder.scanInString(...)     -> new ScanMethodImplementation(..., SCAN_IN_STRING)
+     *
+     * builder.insertFrom(...) -> new InsertInterceptor(...)
+     * builder.tombstone(...)  -> new TombstoneInterceptor()
+     * }</pre>
+     */
     private static DynamicType.Builder<AbstractTable> implementGeneratedTableMethods(
             DynamicType.Builder<AbstractTable> builder,
             List<ColumnFieldInfo> columnFields) {
@@ -266,6 +307,10 @@ public final class BytecodeTableGenerator {
                 .intercept(MethodDelegation.to(new IsLiveInterceptor()));
 
         // Per-column direct accessor methods (zero dispatch)
+        // Equivalent generated Java (simplified):
+        // readCol0Long(int rowIndex), readCol1String(int rowIndex), ...
+        // scanEqualsCol0Long(long value), scanEqualsCol2Int(int value), ...
+        // Note: only scanEquals* per-column methods are generated currently.
         for (ColumnFieldInfo field : columnFields) {
             String capitalizedName = capitalize(field.fieldName());
             byte typeCode = field.typeCode();
@@ -322,6 +367,22 @@ public final class BytecodeTableGenerator {
     // MethodHandle)
     // ====================================================================================
 
+    /**
+     * Initializes generated table instance fields using constructor arguments.
+     *
+     * Equivalent Java code for generated constructor tail (simplified):
+     *
+     * <pre>{@code
+     * this.col0 = new PageColumnLong(pageSize, maxPages, initialPages);
+     * this.col1 = new PageColumnString(pageSize, maxPages, initialPages);
+     * ...
+     * this.CACHED_COLUMN_FIELDS = new Field[] { col0Field, col1Field, ... };
+     *
+     * this.idIndex = new LongIdIndex(DEFAULT_ID_INDEX_CAPACITY);
+     * this.ID_INDEX_FIELD = idIndexField;
+     * this.TYPE_CODES = new byte[] { TYPE_LONG, TYPE_STRING, ... };
+     * }</pre>
+     */
     public static class ConstructorInterceptor {
         private final List<ColumnFieldInfo> columnFields;
         private final Class<?> idIndexType;
@@ -381,7 +442,18 @@ public final class BytecodeTableGenerator {
         }
     }
 
-    // Bytecode implementation for typeCodeAt - direct instance field access
+    /**
+     * Generates O(1) `typeCodeAt` lookup via direct `TYPE_CODES[columnIndex]`
+     * access.
+     *
+     * Equivalent Java code for PersonBytecodeTable.typeCodeAt(int columnIndex):
+     *
+     * <pre>{@code
+     * public byte typeCodeAt(int columnIndex) {
+     *     return this.TYPE_CODES[columnIndex];
+     * }
+     * }</pre>
+     */
     private static final class TypeCodeAtImplementation implements Implementation {
         @Override
         public net.bytebuddy.dynamic.scaffold.InstrumentedType prepare(
@@ -849,14 +921,16 @@ public final class BytecodeTableGenerator {
      *         }
      *         long result;
      *         switch (columnIndex) {
-     *             case 0:
+     *             case 0: // compatible long-family column
      *                 result = this.col0.get(rowIndex);
      *                 break;
-     *             case 3:
+     *             case 1: // in-range but incompatible for readLong
+     *                 throw new IllegalArgumentException("Column 1 type mismatch for requested read operation");
+     *             case 3: // compatible long-family column
      *                 result = this.col3.get(rowIndex);
      *                 break;
      *             default:
-     *                 throw new IllegalArgumentException("Type mismatch/OOB");
+     *                 throw new IndexOutOfBoundsException("Column index out of bounds");
      *         }
      *         if (this.getSeqLock(rowIndex) == version) {
      *             return result;
@@ -1049,22 +1123,24 @@ public final class BytecodeTableGenerator {
     /**
      * Generates O(1) scan operations by dispatching to the correct column field.
      *
-     * Equivalent Java code for PersonBytecodeTable.scanEqualLong(int columnIndex,
+     * Equivalent Java code for PersonBytecodeTable.scanEqualsLong(int columnIndex,
      * long value):
      * 
      * <pre>{@code
-     * public int[] scanEqualLong(int columnIndex, long value) {
+     * public int[] scanEqualsLong(int columnIndex, long value) {
      *     int limit = (int) this.allocatedCount();
      *     int[] results;
      *     switch (columnIndex) {
      *         case 0: // id
      *             results = this.col0.scanEquals(value, limit);
      *             break;
+     *         case 1: // in-range but incompatible for scanEqualsLong
+     *             throw new IllegalArgumentException("Column 1 type mismatch for requested scan operation");
      *         case 3: // salary
      *             results = this.col3.scanEquals(value, limit);
      *             break;
      *         default:
-     *             throw new IllegalArgumentException("Column type mismatch");
+     *             throw new IndexOutOfBoundsException("Column index out of bounds");
      *     }
      *     return filterTombstoned(results);
      * }

@@ -30,6 +30,22 @@ import java.util.List;
 
 public final class EntityMaterializerGenerator {
 
+    /**
+     * Generates an entity materializer implementation for one entity metadata shape.
+     *
+     * Equivalent generated Java (simplified):
+     *
+     * <pre>{@code
+     * final class Customer$MemrisMaterializer$123 implements EntityMaterializer<Customer> {
+     *     public Customer materialize(HeapRuntimeKernel kernel, int rowIndex) {
+     *         var table = kernel.table();
+     *         var entity = new Customer();
+     *         // read typed column values, convert if configured, then assign fields
+     *         return entity;
+     *     }
+     * }
+     * }</pre>
+     */
     public <T> EntityMaterializer<T> generate(EntityMetadata<T> metadata) {
         Class<T> entityClass = metadata.entityClass();
         Constructor<T> ctor = metadata.entityConstructor();
@@ -138,6 +154,20 @@ public final class EntityMaterializerGenerator {
         }
     }
 
+    /**
+     * ASM appender that emits the body of `materialize(kernel, rowIndex)`.
+     *
+     * Equivalent generated Java (simplified):
+     *
+     * <pre>{@code
+     * Customer entity = new Customer();
+     * GeneratedTable table = kernel.table();
+     * entity.id = table.readLong(0, rowIndex);
+     * entity.name = table.readString(1, rowIndex);
+     * // converter fields are applied where configured
+     * return entity;
+     * }</pre>
+     */
     private record MaterializeAppender(Class<?> entityClass, List<FieldInfo> fields) implements ByteCodeAppender {
 
         @Override

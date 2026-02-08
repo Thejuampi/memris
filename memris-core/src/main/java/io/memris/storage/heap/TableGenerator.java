@@ -28,6 +28,24 @@ public final class TableGenerator {
 
     /**
      * Generate a table class from entity metadata with specified configuration.
+     *
+     * Equivalent generated Java (simplified):
+     *
+     * <pre>{@code
+     * final class PersonTable extends AbstractTable implements GeneratedTable {
+     *     public final PageColumnLong idColumn;
+     *     public final PageColumnString nameColumn;
+     *     public final PageColumnInt ageColumn;
+     *     public LongIdIndex idIndex; // or StringIdIndex depending on id type
+     *     private final byte[] TYPE_CODES;
+     *
+     *     public PersonTable(int pageSize, int maxPages, int initialPages) {
+     *         super("Person", pageSize, maxPages, initialPages);
+     *         // ConstructorInterceptor initializes column fields, idIndex and
+     *         // TYPE_CODES.
+     *     }
+     * }
+     * }</pre>
      */
     @SuppressWarnings("unchecked")
     public static Class<? extends AbstractTable> generate(TableMetadata metadata, MemrisConfiguration configuration) {
@@ -96,6 +114,16 @@ public final class TableGenerator {
 
     /**
      * Interceptor for constructor initialization with TYPE_CODES.
+     *
+     * Equivalent generated Java (simplified):
+     *
+     * <pre>{@code
+     * this.idColumn = new PageColumnLong(pageSize, maxPages, initialPages);
+     * this.nameColumn = new PageColumnString(pageSize, maxPages, initialPages);
+     * this.ageColumn = new PageColumnInt(pageSize, maxPages, initialPages);
+     * this.idIndex = new LongIdIndex(DEFAULT_ID_INDEX_CAPACITY);
+     * this.TYPE_CODES = new byte[] { TYPE_LONG, TYPE_STRING, TYPE_INT };
+     * }</pre>
      */
     public static class ConstructorInterceptor {
         private final List<TableImplementationStrategy.ColumnFieldInfo> columnFields;
