@@ -30,6 +30,8 @@ import io.memris.runtime.RepositoryMethodBinding;
 import io.memris.runtime.RepositoryMethodExecutor;
 import io.memris.runtime.RepositoryPlan;
 import io.memris.runtime.RepositoryRuntime;
+import io.memris.runtime.IdLookup;
+import io.memris.runtime.codegen.RuntimeExecutorGenerator;
 
 import io.memris.storage.GeneratedTable;
 import io.memris.storage.SimpleTable;
@@ -103,8 +105,7 @@ public final class RepositoryEmitter {
 
         for (int i = 0; i < methods.length; i++) {
             var method = methods[i];
-            var logicalQuery = QueryPlanner.parse(method, entityClass
-            );
+            var logicalQuery = QueryPlanner.parse(method, entityClass);
             compiledQueries[i] = compiler.compile(logicalQuery);
         }
 
@@ -164,7 +165,8 @@ public final class RepositoryEmitter {
                 kernelsByEntity,
                 materializersByEntity,
                 joinTables,
-                entitySaver);
+                entitySaver,
+                generateIdLookup(metadata, typeCodes));
 
         // Create RepositoryRuntime with factory and arena references for index queries
         var runtime = new RepositoryRuntime<>(plan, arena.getFactory(), arena, metadata);
@@ -248,7 +250,8 @@ public final class RepositoryEmitter {
             }
             var inverseJoinColumn = field.referencedColumnName();
             if (inverseJoinColumn == null || inverseJoinColumn.isBlank()) {
-                inverseJoinColumn = field.targetEntity().getSimpleName().toLowerCase(ROOT) + "_" + targetMetadata.idColumnName();
+                inverseJoinColumn = field.targetEntity().getSimpleName().toLowerCase(ROOT) + "_"
+                        + targetMetadata.idColumnName();
             }
             var finalJoinColumn = joinColumn;
             var finalInverseJoinColumn = inverseJoinColumn;
@@ -477,6 +480,14 @@ public final class RepositoryEmitter {
                 .sorted(Comparator.comparingInt(FieldMapping::columnPosition))
                 .map(fm -> metadata.fieldSetters().get(fm.name()))
                 .toArray(MethodHandle[]::new);
+    }
+
+    private static <T> IdLookup generateIdLookup(EntityMetadata<T> metadata, byte[] typeCodes) {
+        int idColumnIndex = metadata.resolveColumnPosition(metadata.idColumnName());
+        byte idTypeCode = (typeCodes != null && idColumnIndex >= 0 && idColumnIndex < typeCodes.length)
+                ? typeCodes[idColumnIndex]
+                : TypeCodes.TYPE_LONG;
+        return RuntimeExecutorGenerator.generateIdLookup(idTypeCode);
     }
 
     @SuppressWarnings("unchecked")

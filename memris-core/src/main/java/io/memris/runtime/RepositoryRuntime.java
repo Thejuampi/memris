@@ -76,6 +76,7 @@ public final class RepositoryRuntime<T> {
     private final IndexPlan[] indexPlans;
     private final Map<String, IndexPlan> indexPlansByField;
     private final AtomicLong idCounter;
+    private final IdLookup idLookup;
     private static final ThreadLocal<SortBuffers> SORT_BUFFERS = ThreadLocal.withInitial(SortBuffers::new);
 
     /**
@@ -137,6 +138,8 @@ public final class RepositoryRuntime<T> {
         this.indexPlans = buildIndexPlans(metadata);
         this.indexFieldReaders = buildIndexFieldReaders(metadata, indexPlans);
         this.indexPlansByField = buildIndexPlansByField(indexPlans);
+        // IdLookup is always provided by RepositoryPlan - no null check needed
+        this.idLookup = plan.idLookup();
     }
 
     public static ConditionExecutor[][] buildConditionExecutors(CompiledQuery[] queries, String[] columnNames,
@@ -986,14 +989,8 @@ public final class RepositoryRuntime<T> {
         var id = args[0];
         var table = plan.table();
 
-        long packedRef;
-        if (id instanceof Long longId) {
-            packedRef = table.lookupById(longId);
-        } else if (id instanceof String stringId) {
-            packedRef = table.lookupByIdString(stringId);
-        } else {
-            throw new IllegalArgumentException("Unsupported ID type: " + id.getClass());
-        }
+        // Uses pre-compiled IdLookup to eliminate runtime type branching
+        long packedRef = idLookup.lookup(table, id);
 
         if (packedRef < 0) {
             return Optional.empty();
@@ -1579,14 +1576,8 @@ public final class RepositoryRuntime<T> {
         Object id = args[0];
         GeneratedTable table = plan.table();
 
-        long packedRef;
-        if (id instanceof Long longId) {
-            packedRef = table.lookupById(longId);
-        } else if (id instanceof String stringId) {
-            packedRef = table.lookupByIdString(stringId);
-        } else {
-            throw new IllegalArgumentException("Unsupported ID type: " + id.getClass());
-        }
+        // Uses pre-compiled IdLookup to eliminate runtime type branching
+        long packedRef = idLookup.lookup(table, id);
 
         return packedRef >= 0;
     }
@@ -1613,16 +1604,8 @@ public final class RepositoryRuntime<T> {
         }
 
         GeneratedTable table = plan.table();
-        long packedRef;
-        if (id instanceof Long longId) {
-            packedRef = table.lookupById(longId);
-        } else if (id instanceof String stringId) {
-            packedRef = table.lookupByIdString(stringId);
-        } else if (id instanceof Integer intId) {
-            packedRef = table.lookupById(intId.longValue());
-        } else {
-            throw new IllegalArgumentException("Unsupported ID type: " + id.getClass());
-        }
+        // Uses pre-compiled IdLookup to eliminate runtime type branching
+        long packedRef = idLookup.lookup(table, id);
 
         if (packedRef >= 0) {
             int rowIndex = io.memris.storage.Selection.index(packedRef);
@@ -1648,14 +1631,8 @@ public final class RepositoryRuntime<T> {
         Object id = args[0];
         GeneratedTable table = plan.table();
 
-        long packedRef;
-        if (id instanceof Long longId) {
-            packedRef = table.lookupById(longId);
-        } else if (id instanceof String stringId) {
-            packedRef = table.lookupByIdString(stringId);
-        } else {
-            throw new IllegalArgumentException("Unsupported ID type: " + id.getClass());
-        }
+        // Uses pre-compiled IdLookup to eliminate runtime type branching
+        long packedRef = idLookup.lookup(table, id);
 
         if (packedRef >= 0) {
             int rowIndex = io.memris.storage.Selection.index(packedRef);
@@ -1671,16 +1648,8 @@ public final class RepositoryRuntime<T> {
 
         long count = 0;
         for (Object id : ids) {
-            long packedRef;
-            if (id instanceof Long longId) {
-                packedRef = table.lookupById(longId);
-            } else if (id instanceof String stringId) {
-                packedRef = table.lookupByIdString(stringId);
-            } else if (id instanceof Integer intId) {
-                packedRef = table.lookupById(intId.longValue());
-            } else {
-                throw new IllegalArgumentException("Unsupported ID type: " + id.getClass());
-            }
+            // Uses pre-compiled IdLookup to eliminate runtime type branching
+            long packedRef = idLookup.lookup(table, id);
 
             if (packedRef >= 0) {
                 int rowIndex = io.memris.storage.Selection.index(packedRef);
@@ -1807,13 +1776,8 @@ public final class RepositoryRuntime<T> {
         if (idValue == null) {
             return -1;
         }
-        if (idValue instanceof String stringId) {
-            return table.lookupByIdString(stringId);
-        }
-        if (idValue instanceof Number number) {
-            return table.lookupById(number.longValue());
-        }
-        return -1;
+        // Uses pre-compiled IdLookup to eliminate runtime type branching
+        return idLookup.lookup(table, idValue);
     }
 
     private Object[] readIndexValues(int rowIndex) {

@@ -35,6 +35,7 @@ public final class RepositoryPlan<T> {
     private final java.util.Map<Class<?>, EntityMaterializer<?>> materializersByEntity;
     private final java.util.Map<String, SimpleTable> joinTables;
     private final EntitySaver<T, ?> entitySaver;
+    private final IdLookup idLookup;
     private final java.util.IdentityHashMap<CompiledQuery, Integer> queryIndexByInstance;
 
     private RepositoryPlan(Builder<T> builder) {
@@ -55,6 +56,7 @@ public final class RepositoryPlan<T> {
         this.materializersByEntity = builder.materializersByEntity;
         this.joinTables = builder.joinTables;
         this.entitySaver = builder.entitySaver;
+        this.idLookup = builder.idLookup;
         this.queryIndexByInstance = new java.util.IdentityHashMap<>();
         if (this.queries != null) {
             for (int i = 0; i < this.queries.length; i++) {
@@ -143,6 +145,10 @@ public final class RepositoryPlan<T> {
         return entitySaver;
     }
 
+    public IdLookup idLookup() {
+        return idLookup;
+    }
+
     /**
      * Create a RepositoryPlan from a GeneratedTable.
      */
@@ -165,7 +171,8 @@ public final class RepositoryPlan<T> {
             java.util.Map<Class<?>, HeapRuntimeKernel> kernelsByEntity,
             java.util.Map<Class<?>, EntityMaterializer<?>> materializersByEntity,
             java.util.Map<String, SimpleTable> joinTables,
-            EntitySaver<T, ?> entitySaver) {
+            EntitySaver<T, ?> entitySaver,
+            IdLookup idLookup) {
 
         HeapRuntimeKernel kernel = new HeapRuntimeKernel(table);
 
@@ -187,6 +194,7 @@ public final class RepositoryPlan<T> {
                 .materializersByEntity(materializersByEntity)
                 .joinTables(joinTables)
                 .entitySaver(entitySaver)
+                .idLookup(idLookup)
                 .build();
     }
 
@@ -212,6 +220,7 @@ public final class RepositoryPlan<T> {
         private java.util.Map<Class<?>, EntityMaterializer<?>> materializersByEntity = java.util.Map.of();
         private java.util.Map<String, SimpleTable> joinTables = java.util.Map.of();
         private EntitySaver<T, ?> entitySaver;
+        private IdLookup idLookup;
 
         public Builder<T> entityClass(Class<T> entityClass) {
             this.entityClass = entityClass;
@@ -295,6 +304,11 @@ public final class RepositoryPlan<T> {
 
         public Builder<T> entitySaver(EntitySaver<T, ?> entitySaver) {
             this.entitySaver = entitySaver;
+            return this;
+        }
+
+        public Builder<T> idLookup(IdLookup idLookup) {
+            this.idLookup = idLookup;
             return this;
         }
 

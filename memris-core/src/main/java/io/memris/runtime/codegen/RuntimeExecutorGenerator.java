@@ -49,7 +49,10 @@ public final class RuntimeExecutorGenerator {
     private static final ConcurrentHashMap<String, Object> CACHE = new ConcurrentHashMap<>();
     private static final AtomicLong CLASS_COUNTER = new AtomicLong(0);
 
-    /** System property to disable code generation (deprecated, use MemrisConfiguration) */
+    /**
+     * System property to disable code generation (deprecated, use
+     * MemrisConfiguration)
+     */
     public static final String CODEGEN_ENABLED_PROPERTY = "memris.codegen.enabled";
 
     private static volatile MemrisConfiguration configuration;
@@ -71,7 +74,8 @@ public final class RuntimeExecutorGenerator {
      * Check if code generation is enabled.
      * Uses MemrisConfiguration if set, otherwise falls back to system property.
      * Defaults to true; set -Dmemris.codegen.enabled=false to disable via property,
-     * or use MemrisConfiguration.builder().codegenEnabled(false).build() programmatically.
+     * or use MemrisConfiguration.builder().codegenEnabled(false).build()
+     * programmatically.
      */
     public static boolean isEnabled() {
         if (configuration != null) {
@@ -112,9 +116,9 @@ public final class RuntimeExecutorGenerator {
             TypeConverter<?, ?> converter) {
         // Equivalent generated Java (simplified):
         // final class FieldValueReader$GenN implements FieldValueReader {
-        //     public Object read(GeneratedTable table, int rowIndex) {
-        //         return interceptor.read(table, rowIndex);
-        //     }
+        // public Object read(GeneratedTable table, int rowIndex) {
+        // return interceptor.read(table, rowIndex);
+        // }
         // }
         String className = "io.memris.runtime.codegen.FieldValueReader$Gen" + CLASS_COUNTER.incrementAndGet();
 
@@ -457,9 +461,9 @@ public final class RuntimeExecutorGenerator {
     private static FkReader doGenerateFkReader(int columnIndex, byte typeCode) {
         // Equivalent generated Java (simplified):
         // final class FkReader$GenN implements FkReader {
-        //     public Object read(GeneratedTable table, int rowIndex) {
-        //         return interceptor.read(table, rowIndex);
-        //     }
+        // public Object read(GeneratedTable table, int rowIndex) {
+        // return interceptor.read(table, rowIndex);
+        // }
         // }
         String className = "io.memris.runtime.codegen.FkReader$Gen" + CLASS_COUNTER.incrementAndGet();
 
@@ -597,9 +601,9 @@ public final class RuntimeExecutorGenerator {
             boolean targetColumnIsId, byte fkTypeCode, int targetColumnIndex) {
         // Equivalent generated Java (simplified):
         // final class TargetRowResolver$GenN implements TargetRowResolver {
-        //     public int resolve(GeneratedTable table, Object fkValue) {
-        //         return interceptor.resolve(table, fkValue);
-        //     }
+        // public int resolve(GeneratedTable table, Object fkValue) {
+        // return interceptor.resolve(table, fkValue);
+        // }
         // }
         String className = "io.memris.runtime.codegen.TargetRowResolver$Gen" + CLASS_COUNTER.incrementAndGet();
 
@@ -812,9 +816,9 @@ public final class RuntimeExecutorGenerator {
     private static GroupingValueReader doGenerateGroupingValueReader(int columnIndex, byte typeCode) {
         // Equivalent generated Java (simplified):
         // final class GroupingValueReader$GenN implements GroupingValueReader {
-        //     public Object read(GeneratedTable table, int rowIndex) {
-        //         return interceptor.read(table, rowIndex);
-        //     }
+        // public Object read(GeneratedTable table, int rowIndex) {
+        // return interceptor.read(table, rowIndex);
+        // }
         // }
         String className = "io.memris.runtime.codegen.GroupingValueReader$Gen" + CLASS_COUNTER.incrementAndGet();
 
@@ -1050,9 +1054,9 @@ public final class RuntimeExecutorGenerator {
     private static BetweenExecutor doGenerateBetweenExecutor(int columnIndex, byte typeCode) {
         // Equivalent generated Java (simplified):
         // final class BetweenExecutor$GenN implements BetweenExecutor {
-        //     public Selection execute(GeneratedTable table, int argIndex, Object[] args) {
-        //         return interceptor.execute(table, argIndex, args);
-        //     }
+        // public Selection execute(GeneratedTable table, int argIndex, Object[] args) {
+        // return interceptor.execute(table, argIndex, args);
+        // }
         // }
         String className = "io.memris.runtime.codegen.BetweenExecutor$Gen" + CLASS_COUNTER.incrementAndGet();
 
@@ -1083,7 +1087,8 @@ public final class RuntimeExecutorGenerator {
             case TypeCodes.TYPE_CHAR -> new CharBetweenExecutor(columnIndex);
             case TypeCodes.TYPE_FLOAT -> new FloatBetweenExecutor(columnIndex);
             case TypeCodes.TYPE_DOUBLE -> new DoubleBetweenExecutor(columnIndex);
-            case TypeCodes.TYPE_INSTANT, TypeCodes.TYPE_LOCAL_DATE, TypeCodes.TYPE_LOCAL_DATE_TIME, TypeCodes.TYPE_DATE ->
+            case TypeCodes.TYPE_INSTANT, TypeCodes.TYPE_LOCAL_DATE, TypeCodes.TYPE_LOCAL_DATE_TIME,
+                    TypeCodes.TYPE_DATE ->
                 new TemporalBetweenExecutor(columnIndex, typeCode);
             default -> new UnsupportedBetweenExecutor(typeCode);
         };
@@ -1263,7 +1268,8 @@ public final class RuntimeExecutorGenerator {
                     long max = FloatEncoding.doubleToSortableLong(((Number) args[argIndex + 1]).doubleValue());
                     return createSelection(table, table.scanBetweenLong(columnIndex, min, max));
                 };
-            case TypeCodes.TYPE_INSTANT, TypeCodes.TYPE_LOCAL_DATE, TypeCodes.TYPE_LOCAL_DATE_TIME, TypeCodes.TYPE_DATE ->
+            case TypeCodes.TYPE_INSTANT, TypeCodes.TYPE_LOCAL_DATE, TypeCodes.TYPE_LOCAL_DATE_TIME,
+                    TypeCodes.TYPE_DATE ->
                 (table, argIndex, args) -> {
                     if (argIndex + 1 >= args.length) {
                         throw new IllegalArgumentException("BETWEEN requires two arguments");
@@ -1301,9 +1307,9 @@ public final class RuntimeExecutorGenerator {
     private static InListExecutor doGenerateInListExecutor(int columnIndex, byte typeCode) {
         // Equivalent generated Java (simplified):
         // final class InListExecutor$GenN implements InListExecutor {
-        //     public Selection execute(GeneratedTable table, Object value) {
-        //         return interceptor.execute(table, value);
-        //     }
+        // public Selection execute(GeneratedTable table, Object value) {
+        // return interceptor.execute(table, value);
+        // }
         // }
         String className = "io.memris.runtime.codegen.InListExecutor$Gen" + CLASS_COUNTER.incrementAndGet();
 
@@ -1605,6 +1611,250 @@ public final class RuntimeExecutorGenerator {
             packed[i] = Selection.pack(rowIndex, table.rowGeneration(rowIndex));
         }
         return new SelectionImpl(packed);
+    }
+
+    // ========================================================================
+    // IdLookup Generation
+    // ========================================================================
+
+    /**
+     * Generate a specialized IdLookup for the given ID type.
+     * Eliminates runtime branching on ID types (Long, Integer, String) in hot
+     * paths.
+     */
+    public static io.memris.runtime.IdLookup generateIdLookup(byte idTypeCode) {
+        if (!isEnabled()) {
+            return createFallbackIdLookup(idTypeCode);
+        }
+
+        String key = "IDL_" + idTypeCode;
+        return (io.memris.runtime.IdLookup) CACHE.computeIfAbsent(key, k -> doGenerateIdLookup(idTypeCode));
+    }
+
+    private static io.memris.runtime.IdLookup doGenerateIdLookup(byte idTypeCode) {
+        String className = "io.memris.runtime.codegen.IdLookup$Gen" + CLASS_COUNTER.incrementAndGet();
+
+        try {
+            Object interceptor = createIdLookupInterceptor(idTypeCode);
+
+            DynamicType.Builder<?> builder = new ByteBuddy()
+                    .subclass(Object.class)
+                    .implement(io.memris.runtime.IdLookup.class)
+                    .name(className);
+
+            builder = builder.method(named("lookup"))
+                    .intercept(MethodDelegation.to(interceptor));
+
+            try (DynamicType.Unloaded<?> unloaded = builder.make()) {
+                Class<?> implClass = unloaded.load(RuntimeExecutorGenerator.class.getClassLoader()).getLoaded();
+                return (io.memris.runtime.IdLookup) implClass.getDeclaredConstructor().newInstance();
+            }
+        } catch (Exception e) {
+            return createFallbackIdLookup(idTypeCode);
+        }
+    }
+
+    private static Object createIdLookupInterceptor(byte idTypeCode) {
+        return switch (idTypeCode) {
+            case TypeCodes.TYPE_STRING -> new StringIdLookup();
+            case TypeCodes.TYPE_INT -> new IntIdLookup();
+            case TypeCodes.TYPE_SHORT -> new ShortIdLookup();
+            case TypeCodes.TYPE_BYTE -> new ByteIdLookup();
+            default -> new LongIdLookup();
+        };
+    }
+
+    public static class LongIdLookup {
+        @RuntimeType
+        public long lookup(GeneratedTable table, Object id) {
+            if (id instanceof Long longId) {
+                return table.lookupById(longId);
+            }
+            if (id instanceof Number num) {
+                return table.lookupById(num.longValue());
+            }
+            return -1L;
+        }
+    }
+
+    public static class IntIdLookup {
+        @RuntimeType
+        public long lookup(GeneratedTable table, Object id) {
+            if (id instanceof Integer intId) {
+                return table.lookupById(intId.longValue());
+            }
+            if (id instanceof Number num) {
+                return table.lookupById(num.longValue());
+            }
+            return -1L;
+        }
+    }
+
+    public static class ShortIdLookup {
+        @RuntimeType
+        public long lookup(GeneratedTable table, Object id) {
+            if (id instanceof Short shortId) {
+                return table.lookupById(shortId.longValue());
+            }
+            if (id instanceof Number num) {
+                return table.lookupById(num.longValue());
+            }
+            return -1L;
+        }
+    }
+
+    public static class ByteIdLookup {
+        @RuntimeType
+        public long lookup(GeneratedTable table, Object id) {
+            if (id instanceof Byte byteId) {
+                return table.lookupById(byteId.longValue());
+            }
+            if (id instanceof Number num) {
+                return table.lookupById(num.longValue());
+            }
+            return -1L;
+        }
+    }
+
+    public static class StringIdLookup {
+        @RuntimeType
+        public long lookup(GeneratedTable table, Object id) {
+            if (id instanceof String stringId) {
+                return table.lookupByIdString(stringId);
+            }
+            return -1L;
+        }
+    }
+
+    private static io.memris.runtime.IdLookup createFallbackIdLookup(byte idTypeCode) {
+        return switch (idTypeCode) {
+            case TypeCodes.TYPE_STRING -> (table, id) -> {
+                if (id instanceof String stringId) {
+                    return table.lookupByIdString(stringId);
+                }
+                return -1L;
+            };
+            case TypeCodes.TYPE_INT, TypeCodes.TYPE_SHORT, TypeCodes.TYPE_BYTE -> (table, id) -> {
+                if (id instanceof Number num) {
+                    return table.lookupById(num.longValue());
+                }
+                return -1L;
+            };
+            default -> (table, id) -> {
+                if (id instanceof Long longId) {
+                    return table.lookupById(longId);
+                }
+                if (id instanceof Number num) {
+                    return table.lookupById(num.longValue());
+                }
+                return -1L;
+            };
+        };
+    }
+
+    // ========================================================================
+    // StorageValueReader Generation
+    // ========================================================================
+
+    /**
+     * Generate a specialized StorageValueReader for the given column and type.
+     * Eliminates runtime branching on type codes when reading raw storage values.
+     */
+    public static io.memris.runtime.StorageValueReader generateStorageValueReader(int columnIndex, byte typeCode) {
+        if (!isEnabled()) {
+            return createFallbackStorageValueReader(columnIndex, typeCode);
+        }
+
+        String key = "SVR_" + columnIndex + "_" + typeCode;
+        return (io.memris.runtime.StorageValueReader) CACHE.computeIfAbsent(key,
+                k -> doGenerateStorageValueReader(columnIndex, typeCode));
+    }
+
+    private static io.memris.runtime.StorageValueReader doGenerateStorageValueReader(int columnIndex, byte typeCode) {
+        String className = "io.memris.runtime.codegen.StorageValueReader$Gen" + CLASS_COUNTER.incrementAndGet();
+
+        try {
+            Object interceptor = createStorageValueReaderInterceptor(columnIndex, typeCode);
+
+            DynamicType.Builder<?> builder = new ByteBuddy()
+                    .subclass(Object.class)
+                    .implement(io.memris.runtime.StorageValueReader.class)
+                    .name(className);
+
+            builder = builder.method(named("read"))
+                    .intercept(MethodDelegation.to(interceptor));
+
+            try (DynamicType.Unloaded<?> unloaded = builder.make()) {
+                Class<?> implClass = unloaded.load(RuntimeExecutorGenerator.class.getClassLoader()).getLoaded();
+                return (io.memris.runtime.StorageValueReader) implClass.getDeclaredConstructor().newInstance();
+            }
+        } catch (Exception e) {
+            return createFallbackStorageValueReader(columnIndex, typeCode);
+        }
+    }
+
+    private static Object createStorageValueReaderInterceptor(int columnIndex, byte typeCode) {
+        return switch (typeCode) {
+            case TypeCodes.TYPE_STRING, TypeCodes.TYPE_BIG_DECIMAL, TypeCodes.TYPE_BIG_INTEGER ->
+                new StringStorageReader(columnIndex);
+            case TypeCodes.TYPE_LONG, TypeCodes.TYPE_INSTANT, TypeCodes.TYPE_LOCAL_DATE,
+                    TypeCodes.TYPE_LOCAL_DATE_TIME, TypeCodes.TYPE_DATE, TypeCodes.TYPE_DOUBLE ->
+                new LongStorageReader(columnIndex);
+            default ->
+                new IntStorageReader(columnIndex);
+        };
+    }
+
+    public static class StringStorageReader {
+        private final int columnIndex;
+
+        public StringStorageReader(int columnIndex) {
+            this.columnIndex = columnIndex;
+        }
+
+        @RuntimeType
+        public Object read(GeneratedTable table, int rowIndex) {
+            return table.readString(columnIndex, rowIndex);
+        }
+    }
+
+    public static class LongStorageReader {
+        private final int columnIndex;
+
+        public LongStorageReader(int columnIndex) {
+            this.columnIndex = columnIndex;
+        }
+
+        @RuntimeType
+        public Object read(GeneratedTable table, int rowIndex) {
+            return table.readLong(columnIndex, rowIndex);
+        }
+    }
+
+    public static class IntStorageReader {
+        private final int columnIndex;
+
+        public IntStorageReader(int columnIndex) {
+            this.columnIndex = columnIndex;
+        }
+
+        @RuntimeType
+        public Object read(GeneratedTable table, int rowIndex) {
+            return table.readInt(columnIndex, rowIndex);
+        }
+    }
+
+    private static io.memris.runtime.StorageValueReader createFallbackStorageValueReader(int columnIndex,
+            byte typeCode) {
+        return switch (typeCode) {
+            case TypeCodes.TYPE_STRING, TypeCodes.TYPE_BIG_DECIMAL, TypeCodes.TYPE_BIG_INTEGER ->
+                (table, rowIndex) -> table.readString(columnIndex, rowIndex);
+            case TypeCodes.TYPE_LONG, TypeCodes.TYPE_INSTANT, TypeCodes.TYPE_LOCAL_DATE,
+                    TypeCodes.TYPE_LOCAL_DATE_TIME, TypeCodes.TYPE_DATE, TypeCodes.TYPE_DOUBLE ->
+                (table, rowIndex) -> table.readLong(columnIndex, rowIndex);
+            default ->
+                (table, rowIndex) -> table.readInt(columnIndex, rowIndex);
+        };
     }
 
     /**
