@@ -28,7 +28,7 @@ class JoinMaterializerImplTest {
         JoinMaterializerImpl materializer = new JoinMaterializerImpl(1, 0, true, TypeCodes.TYPE_LONG, null, null);
         SourceEntity source = new SourceEntity();
         HeapRuntimeKernel targetKernel = new HeapRuntimeKernel(targetTable);
-        EntityMaterializer<TargetEntity> targetMaterializer = (kernel, rowIndex) -> new TargetEntity(10L);
+        EntityMaterializer<TargetEntity> targetMaterializer = (table, rowIndex) -> new TargetEntity(10L);
 
         materializer.hydrate(source, io.memris.storage.Selection.index(sourceRef), sourceTable, targetTable, targetKernel, targetMaterializer);
 
@@ -51,8 +51,8 @@ class JoinMaterializerImplTest {
         JoinMaterializerImpl materializer = new JoinMaterializerImpl(1, 0, true, TypeCodes.TYPE_LONG, setter, postLoad);
         SourceEntity source = new SourceEntity();
         HeapRuntimeKernel targetKernel = new HeapRuntimeKernel(targetTable);
-        EntityMaterializer<TargetEntity> targetMaterializer = (kernel, rowIndex) ->
-                new TargetEntity(kernel.table().readLong(0, rowIndex));
+        EntityMaterializer<TargetEntity> targetMaterializer = (table, rowIndex) ->
+                new TargetEntity(table.readLong(0, rowIndex));
 
         materializer.hydrate(source, io.memris.storage.Selection.index(sourceRef), sourceTable, targetTable, targetKernel, targetMaterializer);
 
