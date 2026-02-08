@@ -13,7 +13,8 @@ import java.util.UUID;
 /**
  * Registry for TypeConverters with support for client-registered custom
  * converters.
- * Uses method handles for efficient reflection-free conversion.
+ * Provides default type converters, field-level converter overrides, and
+ * no-op converter classification for code generation fast paths.
  */
 public final class TypeConverterRegistry {
     private static final TypeConverterRegistry INSTANCE = new TypeConverterRegistry();
@@ -150,6 +151,10 @@ public final class TypeConverterRegistry {
         return getConverter(javaType) != null;
     }
 
+    /**
+     * Returns true for registry-defined converters that are semantic no-ops and can
+     * be skipped by generated code paths.
+     */
     public static boolean isNoOpConverter(TypeConverter<?, ?> converter) {
         return converter instanceof NoOpConverter;
     }

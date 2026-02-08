@@ -33,8 +33,9 @@ import java.util.Map;
 /**
  * Generates EntitySaver implementations using ByteBuddy with zero reflection.
  * <p>
- * All generated classes use direct field access - no MethodHandle fields.
- * This eliminates MethodHandle.invoke() overhead during entity save operations.
+ * Generated savers use direct entity field access for column values.
+ * Relationship ID extraction uses cached MethodHandles resolved once at saver
+ * generation time.
  */
 public final class EntitySaverGenerator {
 
@@ -50,12 +51,13 @@ public final class EntitySaverGenerator {
      *
      * <pre>{@code
      * final class Customer$MemrisSaver$123 implements EntitySaver<Customer, Object> {
-     *     private final TypeConverter<?, ?> emailConverter;
+     *     private final TypeConverter<?, ?> emailConverter; // emitted only for non-no-op converters
      *     private final MethodHandle relId0;
      *
      *     public Object save(Object entity, GeneratedTable table, Object id) {
+     *         // set entity.id = id
      *         // materialize storage array, then table.insertFrom(values)
-     *         // return assigned id
+     *         // return saved entity instance
      *     }
      *
      *     public Object extractId(Object entity) { ... }

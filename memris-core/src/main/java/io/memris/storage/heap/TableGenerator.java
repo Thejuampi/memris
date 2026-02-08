@@ -11,6 +11,8 @@ import net.bytebuddy.implementation.bind.annotation.AllArguments;
 import net.bytebuddy.implementation.bind.annotation.RuntimeType;
 import net.bytebuddy.implementation.bind.annotation.This;
 
+import java.lang.reflect.Field;
+
 import java.util.ArrayList;
 import java.util.List;
 
@@ -86,6 +88,10 @@ public final class TableGenerator {
         // Add TYPE_CODES field (instance final)
         builder = builder.defineField("TYPE_CODES", byte[].class, Visibility.PRIVATE, FieldManifestation.FINAL);
 
+        // Add cached Field arrays for bytecode implementations
+        builder = builder.defineField("CACHED_COLUMN_FIELDS", Field[].class, Visibility.PRIVATE, FieldManifestation.FINAL);
+        builder = builder.defineField("ID_INDEX_FIELD", Field.class, Visibility.PRIVATE, FieldManifestation.FINAL);
+
         // Add constructor using MethodCall to super constructor and then field initialization
         try {
             builder = builder.defineConstructor(Visibility.PUBLIC)
@@ -141,6 +147,7 @@ public final class TableGenerator {
             var initialPages = (int) args[2];
 
             // Initialize column fields
+            var cachedColumnFields = new Field[columnFields.size()];
             for (TableImplementationStrategy.ColumnFieldInfo field : columnFields) {
                 var declaredField = obj.getClass().getDeclaredField(field.fieldName());
                 declaredField.setAccessible(true);
@@ -148,6 +155,7 @@ public final class TableGenerator {
                         .getDeclaredConstructor(int.class, int.class, int.class)
                         .newInstance(pageSize, maxPages, initialPages);
                 declaredField.set(obj, columnInstance);
+                cachedColumnFields[field.index()] = declaredField;
             }
 
             // Initialize idIndex field
@@ -157,6 +165,14 @@ public final class TableGenerator {
                     .getDeclaredConstructor(int.class)
                     .newInstance(DEFAULT_ID_INDEX_CAPACITY);
             idIndexField.set(obj, idIndexInstance);
+
+            var cachedFieldsField = obj.getClass().getDeclaredField("CACHED_COLUMN_FIELDS");
+            cachedFieldsField.setAccessible(true);
+            cachedFieldsField.set(obj, cachedColumnFields);
+
+            var cachedIdIndexField = obj.getClass().getDeclaredField("ID_INDEX_FIELD");
+            cachedIdIndexField.setAccessible(true);
+            cachedIdIndexField.set(obj, idIndexField);
 
             // Initialize static TYPE_CODES field
             var typeCodes = new byte[columnFields.size()];
