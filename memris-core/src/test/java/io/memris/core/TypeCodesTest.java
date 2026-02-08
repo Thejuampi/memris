@@ -9,18 +9,30 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Date;
+import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.assertj.core.api.Assertions.assertThat;
 
 class TypeCodesTest {
 
     @Test
     void resolvesCommonTypes() {
-        assertEquals(TypeCodes.TYPE_INSTANT, TypeCodes.forClass(Instant.class));
-        assertEquals(TypeCodes.TYPE_LOCAL_DATE, TypeCodes.forClass(LocalDate.class));
-        assertEquals(TypeCodes.TYPE_LOCAL_DATE_TIME, TypeCodes.forClass(LocalDateTime.class));
-        assertEquals(TypeCodes.TYPE_DATE, TypeCodes.forClass(Date.class));
-        assertEquals(TypeCodes.TYPE_BIG_DECIMAL, TypeCodes.forClass(BigDecimal.class));
-        assertEquals(TypeCodes.TYPE_BIG_INTEGER, TypeCodes.forClass(BigInteger.class));
+        var actual = Map.of(
+                Instant.class, TypeCodes.forClass(Instant.class),
+                LocalDate.class, TypeCodes.forClass(LocalDate.class),
+                LocalDateTime.class, TypeCodes.forClass(LocalDateTime.class),
+                Date.class, TypeCodes.forClass(Date.class),
+                BigDecimal.class, TypeCodes.forClass(BigDecimal.class),
+                BigInteger.class, TypeCodes.forClass(BigInteger.class)
+        );
+        var expected = Map.of(
+                Instant.class, TypeCodes.TYPE_INSTANT,
+                LocalDate.class, TypeCodes.TYPE_LOCAL_DATE,
+                LocalDateTime.class, TypeCodes.TYPE_LOCAL_DATE_TIME,
+                Date.class, TypeCodes.TYPE_DATE,
+                BigDecimal.class, TypeCodes.TYPE_BIG_DECIMAL,
+                BigInteger.class, TypeCodes.TYPE_BIG_INTEGER
+        );
+        assertThat(actual).isEqualTo(expected);
     }
 }

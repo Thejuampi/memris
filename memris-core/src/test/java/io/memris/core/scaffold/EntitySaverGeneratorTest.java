@@ -14,7 +14,8 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.fail;
 
 /**
  * TDD Tests for EntitySaverGenerator - zero-reflection entity save operations.
@@ -56,13 +57,11 @@ class EntitySaverGeneratorTest {
         Customer saved = (Customer) rawSaver.save(customer, table, id);
 
         // Verify entity was saved with ID
-        assertEquals(id, saved.id);
-        assertEquals("Alice", saved.name);
-        assertEquals("alice@example.com", saved.email);
+        assertThat(saved).usingRecursiveComparison().isEqualTo(new Customer(id, "Alice", "alice@example.com"));
 
         // Verify in table
         long ref = table.lookupById(id);
-        assertTrue(ref >= 0);
+        assertThat(ref).isGreaterThanOrEqualTo(0L);
     }
 
     @Test
@@ -76,7 +75,7 @@ class EntitySaverGeneratorTest {
 
         Object extracted = saver.extractId(customer);
 
-        assertEquals(42L, extracted);
+        assertThat(extracted).isEqualTo(42L);
     }
 
     @Test
@@ -86,13 +85,13 @@ class EntitySaverGeneratorTest {
         EntitySaver<Customer, ?> saver = EntitySaverGenerator.generate(entityClass, metadata);
 
         Customer customer = new Customer();
-        assertNull(customer.id);
+        assertThat(customer.id).isNull();
 
         @SuppressWarnings("rawtypes")
         EntitySaver rawSaver = saver;
         rawSaver.setId(customer, 99L);
 
-        assertEquals(99L, customer.id);
+        assertThat(customer.id).isEqualTo(99L);
     }
 
     @Test
@@ -113,7 +112,7 @@ class EntitySaverGeneratorTest {
 
         // Resolve relationship ID
         Object customerId = saver.resolveRelationshipId("customer", customer);
-        assertEquals(5L, customerId);
+        assertThat(customerId).isEqualTo(5L);
     }
 
     @Test
@@ -144,6 +143,15 @@ class EntitySaverGeneratorTest {
 
     // Test entity classes
     public static class Customer {
+        public Customer() {
+        }
+
+        public Customer(Long id, String name, String email) {
+            this.id = id;
+            this.name = name;
+            this.email = email;
+        }
+
         @Id
         public Long id;
         public String name;

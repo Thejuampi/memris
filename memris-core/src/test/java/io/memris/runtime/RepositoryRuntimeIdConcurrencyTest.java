@@ -3,11 +3,12 @@ package io.memris.runtime;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 
+import java.util.HashSet;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Tests for RepositoryRuntime ID generation thread-safety.
@@ -24,6 +25,7 @@ class RepositoryRuntimeIdConcurrencyTest {
         ConcurrentHashMap<Long, Integer> idCounts;
         AtomicInteger duplicateCount;
         AtomicReference<Long> firstDuplicate;
+        boolean finished;
         try (ExecutorService executor = Executors.newFixedThreadPool(threadCount)) {
             CountDownLatch startLatch = new CountDownLatch(1);
             CountDownLatch completeLatch = new CountDownLatch(threadCount);
@@ -53,14 +55,13 @@ class RepositoryRuntimeIdConcurrencyTest {
             }
 
             startLatch.countDown();
-            assertTrue(completeLatch.await(30, TimeUnit.SECONDS), "Threads should complete within timeout");
+            finished = completeLatch.await(30, TimeUnit.SECONDS);
             executor.shutdown();
         }
 
-        assertEquals(0, duplicateCount.get(),
-            "Found " + duplicateCount.get() + " duplicate IDs. First duplicate: " + firstDuplicate.get());
-        assertEquals(totalIds, idCounts.size(),
-            "Expected " + totalIds + " unique IDs but got " + idCounts.size());
+        var actual = new UniquenessSummary(duplicateCount.get(), idCounts.size(), totalIds, firstDuplicate.get(), finished);
+        var expected = new UniquenessSummary(0, totalIds, totalIds, null, true);
+        assertThat(actual).usingRecursiveComparison().isEqualTo(expected);
     }
 
     @Test
@@ -70,6 +71,7 @@ class RepositoryRuntimeIdConcurrencyTest {
         int idsPerThread = 100;
 
         ConcurrentLinkedQueue<Long> allIds;
+        boolean finished;
         try (ExecutorService executor = Executors.newFixedThreadPool(threadCount)) {
             CountDownLatch startLatch = new CountDownLatch(1);
             CountDownLatch completeLatch = new CountDownLatch(threadCount);
@@ -91,19 +93,14 @@ class RepositoryRuntimeIdConcurrencyTest {
             }
 
             startLatch.countDown();
-            assertTrue(completeLatch.await(30, TimeUnit.SECONDS));
+            finished = completeLatch.await(30, TimeUnit.SECONDS);
             executor.shutdown();
         }
 
-        // Verify all IDs are positive
-        for (Long id : allIds) {
-            assertNotNull(id);
-            assertTrue(id > 0, "ID should be positive: " + id);
-        }
-
-        // Verify no duplicates
-        assertEquals(allIds.size(), new java.util.HashSet<>(allIds).size(),
-            "All IDs should be unique");
+        var allPositive = allIds.stream().allMatch(id -> id != null && id > 0);
+        var actual = new MonotonicSummary(allIds.size(), new HashSet<>(allIds).size(), allPositive, finished);
+        var expected = new MonotonicSummary(allIds.size(), allIds.size(), true, true);
+        assertThat(actual).usingRecursiveComparison().isEqualTo(expected);
     }
 
     /**
@@ -117,5 +114,11 @@ class RepositoryRuntimeIdConcurrencyTest {
         static Long generateNextId() {
             return idCounter.getAndIncrement();
         }
+    }
+
+    private record UniquenessSummary(int duplicates, int uniqueIds, int expectedIds, Long firstDuplicate, boolean completed) {
+    }
+
+    private record MonotonicSummary(int totalIds, int uniqueIds, boolean allPositive, boolean completed) {
     }
 }
