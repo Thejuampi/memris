@@ -27,6 +27,8 @@ import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.List;
 
+import io.memris.storage.heap.TableImplementationStrategy.ColumnFieldInfo;
+
 /**
  * Generates table implementation classes using ByteBuddy with direct field
  * access.
@@ -124,7 +126,7 @@ public final class BytecodeTableGenerator {
         builder = addConstructor(builder, columnFields, idIndexType, metadata.entityName());
 
         // Implement GeneratedTable methods
-        builder = implementGeneratedTableMethods(builder, columnFields);
+        builder = implementMethods(builder, columnFields);
 
         // Load the class
         return builder.make()
@@ -208,7 +210,7 @@ public final class BytecodeTableGenerator {
      * builder.tombstone(...)  -> new TombstoneInterceptor()
      * }</pre>
      */
-    private static DynamicType.Builder<AbstractTable> implementGeneratedTableMethods(
+    static DynamicType.Builder<AbstractTable> implementMethods(
             DynamicType.Builder<AbstractTable> builder,
             List<ColumnFieldInfo> columnFields) {
 
@@ -356,10 +358,6 @@ public final class BytecodeTableGenerator {
         }
 
         return builder;
-    }
-
-    // Column field info record
-    private record ColumnFieldInfo(String fieldName, Class<?> columnType, byte typeCode, int index) {
     }
 
     // ====================================================================================

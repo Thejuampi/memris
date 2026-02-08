@@ -7,7 +7,8 @@ import io.memris.storage.GeneratedTable;
  * <p>
  * Implementations are generated at build-time as bytecode, providing:
  * <ul>
- *   <li>Zero reflection - uses pre-compiled MethodHandles</li>
+ *   <li>Zero reflection in the generated hot path</li>
+ *   <li>Typed {@link GeneratedTable} reads with direct entity field assignment</li>
  *   <li>Direct field access - no Map lookups</li>
  *   <li>Type conversion - applies TypeConverters where needed</li>
  * </ul>

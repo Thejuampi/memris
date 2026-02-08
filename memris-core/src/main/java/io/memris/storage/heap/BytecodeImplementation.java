@@ -10,6 +10,6 @@ public class BytecodeImplementation implements TableImplementationStrategy {
             DynamicType.Builder<AbstractTable> builder,
             List<ColumnFieldInfo> columnFields,
             Class<?> idIndexType) {
-        return new MethodHandleImplementation().implementMethods(builder, columnFields, idIndexType);
+        return BytecodeTableGenerator.implementMethods(builder, columnFields);
     }
 }

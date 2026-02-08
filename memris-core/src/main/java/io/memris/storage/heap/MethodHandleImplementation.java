@@ -21,6 +21,66 @@ import java.util.List;
 @SuppressWarnings("PMD.AvoidReassigningParameters")
 public class MethodHandleImplementation implements TableImplementationStrategy {
 
+    private static final ClassValue<GeneratedFieldCache> GENERATED_FIELD_CACHE = new ClassValue<>() {
+        @Override
+        protected GeneratedFieldCache computeValue(Class<?> type) {
+            return new GeneratedFieldCache(resolveAccessibleField(type, "TYPE_CODES"),
+                    resolveAccessibleField(type, "idIndex"));
+        }
+    };
+
+    private static final java.lang.reflect.Method ALLOCATED_COUNT_METHOD = resolveAccessibleMethod(
+            AbstractTable.class,
+            "allocatedCount");
+    private static final java.lang.reflect.Method IS_TOMBSTONE_METHOD = resolveAccessibleMethod(
+            AbstractTable.class,
+            "isTombstone",
+            io.memris.kernel.RowId.class);
+    private static final java.lang.reflect.Method ALLOCATE_ROW_ID_METHOD = resolveAccessibleMethod(
+            AbstractTable.class,
+            "allocateRowId");
+    private static final java.lang.reflect.Method ROW_GENERATION_METHOD = resolveAccessibleMethod(
+            AbstractTable.class,
+            "rowGeneration",
+            int.class);
+    private static final java.lang.reflect.Method INCREMENT_ROW_COUNT_METHOD = resolveAccessibleMethod(
+            AbstractTable.class,
+            "incrementRowCount");
+    private static final java.lang.reflect.Method TOMBSTONE_METHOD = resolveAccessibleMethod(
+            AbstractTable.class,
+            "tombstone",
+            io.memris.kernel.RowId.class,
+            long.class);
+
+    private static GeneratedFieldCache getGeneratedFieldCache(Object obj) {
+        return GENERATED_FIELD_CACHE.get(obj.getClass());
+    }
+
+    private static Field resolveAccessibleField(Class<?> type, String fieldName) {
+        try {
+            var field = type.getDeclaredField(fieldName);
+            field.setAccessible(true);
+            return field;
+        } catch (NoSuchFieldException e) {
+            throw new IllegalStateException("Generated table field missing: " + fieldName + " on " + type.getName(),
+                    e);
+        }
+    }
+
+    private static java.lang.reflect.Method resolveAccessibleMethod(Class<?> type, String methodName,
+            Class<?>... params) {
+        try {
+            var method = type.getDeclaredMethod(methodName, params);
+            method.setAccessible(true);
+            return method;
+        } catch (NoSuchMethodException e) {
+            throw new IllegalStateException("Required method missing: " + methodName + " on " + type.getName(), e);
+        }
+    }
+
+    private record GeneratedFieldCache(Field typeCodesField, Field idIndexField) {
+    }
+
     /**
      * Wires GeneratedTable methods to MethodDelegation interceptors.
      *
@@ -231,9 +291,7 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
     public static class TypeCodeInterceptor {
         @RuntimeType
         public static byte intercept(@Argument(0) int columnIndex, @This Object obj) throws Exception {
-            Field typeCodesField = obj.getClass().getDeclaredField("TYPE_CODES");
-            typeCodesField.setAccessible(true);
-            byte[] typeCodes = (byte[]) typeCodesField.get(obj); // Get instance field, not static
+            byte[] typeCodes = (byte[]) getGeneratedFieldCache(obj).typeCodesField().get(obj);
             if (columnIndex < 0 || columnIndex >= typeCodes.length) {
                 throw new IndexOutOfBoundsException("Column index out of range: " + columnIndex);
             }
@@ -251,9 +309,13 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
     public static class ReadInterceptor {
         private final List<ColumnFieldInfo> columnFields;
         private final MethodHandles.Lookup lookup = MethodHandles.lookup();
+        private final Field[] columnFieldRefs;
+        private final MethodHandle[] columnGetters;
 
         public ReadInterceptor(List<ColumnFieldInfo> columnFields) {
             this.columnFields = columnFields;
+            this.columnFieldRefs = new Field[columnFields.size()];
+            this.columnGetters = new MethodHandle[columnFields.size()];
         }
 
         @RuntimeType
@@ -268,9 +330,7 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
                 return ((AbstractTable) obj).readWithSeqLock(rowIndex, () -> {
                     try {
                         ColumnFieldInfo fieldInfo = columnFields.get(columnIndex);
-                        Field field = obj.getClass().getDeclaredField(fieldInfo.fieldName());
-                        MethodHandle getter = lookup.unreflectGetter(field);
-                        Object column = getter.invoke(obj);
+                        Object column = resolveColumn(obj, fieldInfo, columnIndex, columnFieldRefs, columnGetters, lookup);
 
                         byte typeCode = fieldInfo.typeCode();
                         if (typeCode == io.memris.core.TypeCodes.TYPE_LONG
@@ -310,9 +370,13 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
     public static class PresentInterceptor {
         private final List<ColumnFieldInfo> columnFields;
         private final MethodHandles.Lookup lookup = MethodHandles.lookup();
+        private final Field[] columnFieldRefs;
+        private final MethodHandle[] columnGetters;
 
         public PresentInterceptor(List<ColumnFieldInfo> columnFields) {
             this.columnFields = columnFields;
+            this.columnFieldRefs = new Field[columnFields.size()];
+            this.columnGetters = new MethodHandle[columnFields.size()];
         }
 
         @RuntimeType
@@ -327,9 +391,7 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
                 return ((AbstractTable) obj).readWithSeqLock(rowIndex, () -> {
                     try {
                         ColumnFieldInfo fieldInfo = columnFields.get(columnIndex);
-                        Field field = obj.getClass().getDeclaredField(fieldInfo.fieldName());
-                        MethodHandle getter = lookup.unreflectGetter(field);
-                        Object column = getter.invoke(obj);
+                        Object column = resolveColumn(obj, fieldInfo, columnIndex, columnFieldRefs, columnGetters, lookup);
 
                         byte typeCode = fieldInfo.typeCode();
                         if (typeCode == io.memris.core.TypeCodes.TYPE_LONG
@@ -372,9 +434,13 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
     public static class ScanEqualsLongInterceptor {
         private final List<ColumnFieldInfo> columnFields;
         private final MethodHandles.Lookup lookup = MethodHandles.lookup();
+        private final Field[] columnFieldRefs;
+        private final MethodHandle[] columnGetters;
 
         public ScanEqualsLongInterceptor(List<ColumnFieldInfo> columnFields) {
             this.columnFields = columnFields;
+            this.columnFieldRefs = new Field[columnFields.size()];
+            this.columnGetters = new MethodHandle[columnFields.size()];
         }
 
         @RuntimeType
@@ -384,13 +450,8 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
                 throw new IndexOutOfBoundsException("Column index out of range: " + columnIndex);
             }
             ColumnFieldInfo fieldInfo = columnFields.get(columnIndex);
-            Field field = obj.getClass().getDeclaredField(fieldInfo.fieldName());
-            MethodHandle getter = lookup.unreflectGetter(field);
-            PageColumnLong column = (PageColumnLong) getter.invoke(obj);
-
-            java.lang.reflect.Method allocatedMethod = AbstractTable.class.getDeclaredMethod("allocatedCount");
-            allocatedMethod.setAccessible(true);
-            int limit = (int) (long) allocatedMethod.invoke(obj);
+            PageColumnLong column = (PageColumnLong) resolveColumn(obj, fieldInfo, columnIndex, columnFieldRefs, columnGetters, lookup);
+            int limit = (int) (long) ALLOCATED_COUNT_METHOD.invoke(obj);
 
             int[] results = column.scanEquals(value, limit);
             return filterTombstoned(results, obj);
@@ -399,16 +460,12 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
         private int[] filterTombstoned(int[] rows, Object obj) throws Exception {
             if (rows.length == 0)
                 return rows;
-            java.lang.reflect.Method isTombstoneMethod = AbstractTable.class.getDeclaredMethod("isTombstone",
-                    io.memris.kernel.RowId.class);
-            isTombstoneMethod.setAccessible(true);
-
             int[] filtered = new int[rows.length];
             int count = 0;
             int pageSize = ((AbstractTable) obj).pageSize();
             for (int rowIndex : rows) {
                 io.memris.kernel.RowId rowId = new io.memris.kernel.RowId(rowIndex / pageSize, rowIndex % pageSize);
-                if (!(boolean) isTombstoneMethod.invoke(obj, rowId)) {
+                if (!(boolean) IS_TOMBSTONE_METHOD.invoke(obj, rowId)) {
                     filtered[count++] = rowIndex;
                 }
             }
@@ -421,9 +478,13 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
     public static class ScanEqualsIntInterceptor {
         private final List<ColumnFieldInfo> columnFields;
         private final MethodHandles.Lookup lookup = MethodHandles.lookup();
+        private final Field[] columnFieldRefs;
+        private final MethodHandle[] columnGetters;
 
         public ScanEqualsIntInterceptor(List<ColumnFieldInfo> columnFields) {
             this.columnFields = columnFields;
+            this.columnFieldRefs = new Field[columnFields.size()];
+            this.columnGetters = new MethodHandle[columnFields.size()];
         }
 
         @RuntimeType
@@ -433,13 +494,8 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
                 throw new IndexOutOfBoundsException("Column index out of range: " + columnIndex);
             }
             ColumnFieldInfo fieldInfo = columnFields.get(columnIndex);
-            Field field = obj.getClass().getDeclaredField(fieldInfo.fieldName());
-            MethodHandle getter = lookup.unreflectGetter(field);
-            PageColumnInt column = (PageColumnInt) getter.invoke(obj);
-
-            java.lang.reflect.Method allocatedMethod = AbstractTable.class.getDeclaredMethod("allocatedCount");
-            allocatedMethod.setAccessible(true);
-            int limit = (int) (long) allocatedMethod.invoke(obj);
+            PageColumnInt column = (PageColumnInt) resolveColumn(obj, fieldInfo, columnIndex, columnFieldRefs, columnGetters, lookup);
+            int limit = (int) (long) ALLOCATED_COUNT_METHOD.invoke(obj);
 
             int[] results = column.scanEquals(value, limit);
             return filterTombstoned(results, obj);
@@ -448,16 +504,12 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
         private int[] filterTombstoned(int[] rows, Object obj) throws Exception {
             if (rows.length == 0)
                 return rows;
-            java.lang.reflect.Method isTombstoneMethod = AbstractTable.class.getDeclaredMethod("isTombstone",
-                    io.memris.kernel.RowId.class);
-            isTombstoneMethod.setAccessible(true);
-
             int[] filtered = new int[rows.length];
             int count = 0;
             int pageSize = ((AbstractTable) obj).pageSize();
             for (int rowIndex : rows) {
                 io.memris.kernel.RowId rowId = new io.memris.kernel.RowId(rowIndex / pageSize, rowIndex % pageSize);
-                if (!(boolean) isTombstoneMethod.invoke(obj, rowId)) {
+                if (!(boolean) IS_TOMBSTONE_METHOD.invoke(obj, rowId)) {
                     filtered[count++] = rowIndex;
                 }
             }
@@ -470,22 +522,24 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
     public static class ScanEqualsStringInterceptor {
         private final List<ColumnFieldInfo> columnFields;
         private final MethodHandles.Lookup lookup = MethodHandles.lookup();
+        private final Field[] columnFieldRefs;
+        private final MethodHandle[] columnGetters;
 
         public ScanEqualsStringInterceptor(List<ColumnFieldInfo> columnFields) {
             this.columnFields = columnFields;
+            this.columnFieldRefs = new Field[columnFields.size()];
+            this.columnGetters = new MethodHandle[columnFields.size()];
         }
 
         @RuntimeType
         public int[] intercept(@Argument(0) int columnIndex, @Argument(1) String value, @This Object obj)
                 throws Throwable {
+            if (columnIndex < 0 || columnIndex >= columnFields.size()) {
+                throw new IndexOutOfBoundsException("Column index out of range: " + columnIndex);
+            }
             ColumnFieldInfo fieldInfo = columnFields.get(columnIndex);
-            Field field = obj.getClass().getDeclaredField(fieldInfo.fieldName());
-            MethodHandle getter = lookup.unreflectGetter(field);
-            PageColumnString column = (PageColumnString) getter.invoke(obj);
-
-            java.lang.reflect.Method allocatedMethod = AbstractTable.class.getDeclaredMethod("allocatedCount");
-            allocatedMethod.setAccessible(true);
-            int limit = (int) (long) allocatedMethod.invoke(obj);
+            PageColumnString column = (PageColumnString) resolveColumn(obj, fieldInfo, columnIndex, columnFieldRefs, columnGetters, lookup);
+            int limit = (int) (long) ALLOCATED_COUNT_METHOD.invoke(obj);
 
             int[] results = column.scanEquals(value, limit);
             return filterTombstoned(results, obj);
@@ -494,16 +548,12 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
         private int[] filterTombstoned(int[] rows, Object obj) throws Exception {
             if (rows.length == 0)
                 return rows;
-            java.lang.reflect.Method isTombstoneMethod = AbstractTable.class.getDeclaredMethod("isTombstone",
-                    io.memris.kernel.RowId.class);
-            isTombstoneMethod.setAccessible(true);
-
             int[] filtered = new int[rows.length];
             int count = 0;
             int pageSize = ((AbstractTable) obj).pageSize();
             for (int rowIndex : rows) {
                 io.memris.kernel.RowId rowId = new io.memris.kernel.RowId(rowIndex / pageSize, rowIndex % pageSize);
-                if (!(boolean) isTombstoneMethod.invoke(obj, rowId)) {
+                if (!(boolean) IS_TOMBSTONE_METHOD.invoke(obj, rowId)) {
                     filtered[count++] = rowIndex;
                 }
             }
@@ -516,9 +566,13 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
     public static class ScanEqualsStringIgnoreCaseInterceptor {
         private final List<ColumnFieldInfo> columnFields;
         private final MethodHandles.Lookup lookup = MethodHandles.lookup();
+        private final Field[] columnFieldRefs;
+        private final MethodHandle[] columnGetters;
 
         public ScanEqualsStringIgnoreCaseInterceptor(List<ColumnFieldInfo> columnFields) {
             this.columnFields = columnFields;
+            this.columnFieldRefs = new Field[columnFields.size()];
+            this.columnGetters = new MethodHandle[columnFields.size()];
         }
 
         @RuntimeType
@@ -528,13 +582,8 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
                 throw new IndexOutOfBoundsException("Column index out of range: " + columnIndex);
             }
             ColumnFieldInfo fieldInfo = columnFields.get(columnIndex);
-            Field field = obj.getClass().getDeclaredField(fieldInfo.fieldName());
-            MethodHandle getter = lookup.unreflectGetter(field);
-            PageColumnString column = (PageColumnString) getter.invoke(obj);
-
-            java.lang.reflect.Method allocatedMethod = AbstractTable.class.getDeclaredMethod("allocatedCount");
-            allocatedMethod.setAccessible(true);
-            int limit = (int) (long) allocatedMethod.invoke(obj);
+            PageColumnString column = (PageColumnString) resolveColumn(obj, fieldInfo, columnIndex, columnFieldRefs, columnGetters, lookup);
+            int limit = (int) (long) ALLOCATED_COUNT_METHOD.invoke(obj);
 
             int[] results = column.scanEqualsIgnoreCase(value, limit);
             return filterTombstoned(results, obj);
@@ -543,16 +592,12 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
         private int[] filterTombstoned(int[] rows, Object obj) throws Exception {
             if (rows.length == 0)
                 return rows;
-            java.lang.reflect.Method isTombstoneMethod = AbstractTable.class.getDeclaredMethod("isTombstone",
-                    io.memris.kernel.RowId.class);
-            isTombstoneMethod.setAccessible(true);
-
             int[] filtered = new int[rows.length];
             int count = 0;
             int pageSize = ((AbstractTable) obj).pageSize();
             for (int rowIndex : rows) {
                 io.memris.kernel.RowId rowId = new io.memris.kernel.RowId(rowIndex / pageSize, rowIndex % pageSize);
-                if (!(boolean) isTombstoneMethod.invoke(obj, rowId)) {
+                if (!(boolean) IS_TOMBSTONE_METHOD.invoke(obj, rowId)) {
                     filtered[count++] = rowIndex;
                 }
             }
@@ -565,9 +610,13 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
     public static class ScanBetweenLongInterceptor {
         private final List<ColumnFieldInfo> columnFields;
         private final MethodHandles.Lookup lookup = MethodHandles.lookup();
+        private final Field[] columnFieldRefs;
+        private final MethodHandle[] columnGetters;
 
         public ScanBetweenLongInterceptor(List<ColumnFieldInfo> columnFields) {
             this.columnFields = columnFields;
+            this.columnFieldRefs = new Field[columnFields.size()];
+            this.columnGetters = new MethodHandle[columnFields.size()];
         }
 
         @RuntimeType
@@ -577,13 +626,8 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
                 throw new IndexOutOfBoundsException("Column index out of range: " + columnIndex);
             }
             ColumnFieldInfo fieldInfo = columnFields.get(columnIndex);
-            Field field = obj.getClass().getDeclaredField(fieldInfo.fieldName());
-            MethodHandle getter = lookup.unreflectGetter(field);
-            PageColumnLong column = (PageColumnLong) getter.invoke(obj);
-
-            java.lang.reflect.Method allocatedMethod = AbstractTable.class.getDeclaredMethod("allocatedCount");
-            allocatedMethod.setAccessible(true);
-            int limit = (int) (long) allocatedMethod.invoke(obj);
+            PageColumnLong column = (PageColumnLong) resolveColumn(obj, fieldInfo, columnIndex, columnFieldRefs, columnGetters, lookup);
+            int limit = (int) (long) ALLOCATED_COUNT_METHOD.invoke(obj);
 
             int[] results = column.scanBetween(lower, upper, limit);
             return filterTombstoned(results, obj);
@@ -592,16 +636,12 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
         private int[] filterTombstoned(int[] rows, Object obj) throws Exception {
             if (rows.length == 0)
                 return rows;
-            java.lang.reflect.Method isTombstoneMethod = AbstractTable.class.getDeclaredMethod("isTombstone",
-                    io.memris.kernel.RowId.class);
-            isTombstoneMethod.setAccessible(true);
-
             int[] filtered = new int[rows.length];
             int count = 0;
             int pageSize = ((AbstractTable) obj).pageSize();
             for (int rowIndex : rows) {
                 io.memris.kernel.RowId rowId = new io.memris.kernel.RowId(rowIndex / pageSize, rowIndex % pageSize);
-                if (!(boolean) isTombstoneMethod.invoke(obj, rowId)) {
+                if (!(boolean) IS_TOMBSTONE_METHOD.invoke(obj, rowId)) {
                     filtered[count++] = rowIndex;
                 }
             }
@@ -614,9 +654,13 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
     public static class ScanBetweenIntInterceptor {
         private final List<ColumnFieldInfo> columnFields;
         private final MethodHandles.Lookup lookup = MethodHandles.lookup();
+        private final Field[] columnFieldRefs;
+        private final MethodHandle[] columnGetters;
 
         public ScanBetweenIntInterceptor(List<ColumnFieldInfo> columnFields) {
             this.columnFields = columnFields;
+            this.columnFieldRefs = new Field[columnFields.size()];
+            this.columnGetters = new MethodHandle[columnFields.size()];
         }
 
         @RuntimeType
@@ -626,13 +670,8 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
                 throw new IndexOutOfBoundsException("Column index out of range: " + columnIndex);
             }
             ColumnFieldInfo fieldInfo = columnFields.get(columnIndex);
-            Field field = obj.getClass().getDeclaredField(fieldInfo.fieldName());
-            MethodHandle getter = lookup.unreflectGetter(field);
-            PageColumnInt column = (PageColumnInt) getter.invoke(obj);
-
-            java.lang.reflect.Method allocatedMethod = AbstractTable.class.getDeclaredMethod("allocatedCount");
-            allocatedMethod.setAccessible(true);
-            int limit = (int) (long) allocatedMethod.invoke(obj);
+            PageColumnInt column = (PageColumnInt) resolveColumn(obj, fieldInfo, columnIndex, columnFieldRefs, columnGetters, lookup);
+            int limit = (int) (long) ALLOCATED_COUNT_METHOD.invoke(obj);
 
             int[] results = column.scanBetween(lower, upper, limit);
             return filterTombstoned(results, obj);
@@ -641,16 +680,12 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
         private int[] filterTombstoned(int[] rows, Object obj) throws Exception {
             if (rows.length == 0)
                 return rows;
-            java.lang.reflect.Method isTombstoneMethod = AbstractTable.class.getDeclaredMethod("isTombstone",
-                    io.memris.kernel.RowId.class);
-            isTombstoneMethod.setAccessible(true);
-
             int[] filtered = new int[rows.length];
             int count = 0;
             int pageSize = ((AbstractTable) obj).pageSize();
             for (int rowIndex : rows) {
                 io.memris.kernel.RowId rowId = new io.memris.kernel.RowId(rowIndex / pageSize, rowIndex % pageSize);
-                if (!(boolean) isTombstoneMethod.invoke(obj, rowId)) {
+                if (!(boolean) IS_TOMBSTONE_METHOD.invoke(obj, rowId)) {
                     filtered[count++] = rowIndex;
                 }
             }
@@ -663,9 +698,13 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
     public static class ScanInLongInterceptor {
         private final List<ColumnFieldInfo> columnFields;
         private final MethodHandles.Lookup lookup = MethodHandles.lookup();
+        private final Field[] columnFieldRefs;
+        private final MethodHandle[] columnGetters;
 
         public ScanInLongInterceptor(List<ColumnFieldInfo> columnFields) {
             this.columnFields = columnFields;
+            this.columnFieldRefs = new Field[columnFields.size()];
+            this.columnGetters = new MethodHandle[columnFields.size()];
         }
 
         @RuntimeType
@@ -675,13 +714,8 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
                 throw new IndexOutOfBoundsException("Column index out of range: " + columnIndex);
             }
             ColumnFieldInfo fieldInfo = columnFields.get(columnIndex);
-            Field field = obj.getClass().getDeclaredField(fieldInfo.fieldName());
-            MethodHandle getter = lookup.unreflectGetter(field);
-            PageColumnLong column = (PageColumnLong) getter.invoke(obj);
-
-            java.lang.reflect.Method allocatedMethod = AbstractTable.class.getDeclaredMethod("allocatedCount");
-            allocatedMethod.setAccessible(true);
-            int limit = (int) (long) allocatedMethod.invoke(obj);
+            PageColumnLong column = (PageColumnLong) resolveColumn(obj, fieldInfo, columnIndex, columnFieldRefs, columnGetters, lookup);
+            int limit = (int) (long) ALLOCATED_COUNT_METHOD.invoke(obj);
 
             int[] results = column.scanIn(values, limit);
             return filterTombstoned(results, obj);
@@ -690,16 +724,12 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
         private int[] filterTombstoned(int[] rows, Object obj) throws Exception {
             if (rows.length == 0)
                 return rows;
-            java.lang.reflect.Method isTombstoneMethod = AbstractTable.class.getDeclaredMethod("isTombstone",
-                    io.memris.kernel.RowId.class);
-            isTombstoneMethod.setAccessible(true);
-
             int[] filtered = new int[rows.length];
             int count = 0;
             int pageSize = ((AbstractTable) obj).pageSize();
             for (int rowIndex : rows) {
                 io.memris.kernel.RowId rowId = new io.memris.kernel.RowId(rowIndex / pageSize, rowIndex % pageSize);
-                if (!(boolean) isTombstoneMethod.invoke(obj, rowId)) {
+                if (!(boolean) IS_TOMBSTONE_METHOD.invoke(obj, rowId)) {
                     filtered[count++] = rowIndex;
                 }
             }
@@ -712,22 +742,24 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
     public static class ScanInIntInterceptor {
         private final List<ColumnFieldInfo> columnFields;
         private final MethodHandles.Lookup lookup = MethodHandles.lookup();
+        private final Field[] columnFieldRefs;
+        private final MethodHandle[] columnGetters;
 
         public ScanInIntInterceptor(List<ColumnFieldInfo> columnFields) {
             this.columnFields = columnFields;
+            this.columnFieldRefs = new Field[columnFields.size()];
+            this.columnGetters = new MethodHandle[columnFields.size()];
         }
 
         @RuntimeType
         public int[] intercept(@Argument(0) int columnIndex, @Argument(1) int[] values, @This Object obj)
                 throws Throwable {
+            if (columnIndex < 0 || columnIndex >= columnFields.size()) {
+                throw new IndexOutOfBoundsException("Column index out of range: " + columnIndex);
+            }
             ColumnFieldInfo fieldInfo = columnFields.get(columnIndex);
-            Field field = obj.getClass().getDeclaredField(fieldInfo.fieldName());
-            MethodHandle getter = lookup.unreflectGetter(field);
-            PageColumnInt column = (PageColumnInt) getter.invoke(obj);
-
-            java.lang.reflect.Method allocatedMethod = AbstractTable.class.getDeclaredMethod("allocatedCount");
-            allocatedMethod.setAccessible(true);
-            int limit = (int) (long) allocatedMethod.invoke(obj);
+            PageColumnInt column = (PageColumnInt) resolveColumn(obj, fieldInfo, columnIndex, columnFieldRefs, columnGetters, lookup);
+            int limit = (int) (long) ALLOCATED_COUNT_METHOD.invoke(obj);
 
             int[] results = column.scanIn(values, limit);
             return filterTombstoned(results, obj);
@@ -736,16 +768,12 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
         private int[] filterTombstoned(int[] rows, Object obj) throws Exception {
             if (rows.length == 0)
                 return rows;
-            java.lang.reflect.Method isTombstoneMethod = AbstractTable.class.getDeclaredMethod("isTombstone",
-                    io.memris.kernel.RowId.class);
-            isTombstoneMethod.setAccessible(true);
-
             int[] filtered = new int[rows.length];
             int count = 0;
             int pageSize = ((AbstractTable) obj).pageSize();
             for (int rowIndex : rows) {
                 io.memris.kernel.RowId rowId = new io.memris.kernel.RowId(rowIndex / pageSize, rowIndex % pageSize);
-                if (!(boolean) isTombstoneMethod.invoke(obj, rowId)) {
+                if (!(boolean) IS_TOMBSTONE_METHOD.invoke(obj, rowId)) {
                     filtered[count++] = rowIndex;
                 }
             }
@@ -758,22 +786,24 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
     public static class ScanInStringInterceptor {
         private final List<ColumnFieldInfo> columnFields;
         private final MethodHandles.Lookup lookup = MethodHandles.lookup();
+        private final Field[] columnFieldRefs;
+        private final MethodHandle[] columnGetters;
 
         public ScanInStringInterceptor(List<ColumnFieldInfo> columnFields) {
             this.columnFields = columnFields;
+            this.columnFieldRefs = new Field[columnFields.size()];
+            this.columnGetters = new MethodHandle[columnFields.size()];
         }
 
         @RuntimeType
         public int[] intercept(@Argument(0) int columnIndex, @Argument(1) String[] values, @This Object obj)
                 throws Throwable {
+            if (columnIndex < 0 || columnIndex >= columnFields.size()) {
+                throw new IndexOutOfBoundsException("Column index out of range: " + columnIndex);
+            }
             ColumnFieldInfo fieldInfo = columnFields.get(columnIndex);
-            Field field = obj.getClass().getDeclaredField(fieldInfo.fieldName());
-            MethodHandle getter = lookup.unreflectGetter(field);
-            PageColumnString column = (PageColumnString) getter.invoke(obj);
-
-            java.lang.reflect.Method allocatedMethod = AbstractTable.class.getDeclaredMethod("allocatedCount");
-            allocatedMethod.setAccessible(true);
-            int limit = (int) (long) allocatedMethod.invoke(obj);
+            PageColumnString column = (PageColumnString) resolveColumn(obj, fieldInfo, columnIndex, columnFieldRefs, columnGetters, lookup);
+            int limit = (int) (long) ALLOCATED_COUNT_METHOD.invoke(obj);
 
             int[] results = column.scanIn(values, limit);
             return filterTombstoned(results, obj);
@@ -782,16 +812,12 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
         private int[] filterTombstoned(int[] rows, Object obj) throws Exception {
             if (rows.length == 0)
                 return rows;
-            java.lang.reflect.Method isTombstoneMethod = AbstractTable.class.getDeclaredMethod("isTombstone",
-                    io.memris.kernel.RowId.class);
-            isTombstoneMethod.setAccessible(true);
-
             int[] filtered = new int[rows.length];
             int count = 0;
             int pageSize = ((AbstractTable) obj).pageSize();
             for (int rowIndex : rows) {
                 io.memris.kernel.RowId rowId = new io.memris.kernel.RowId(rowIndex / pageSize, rowIndex % pageSize);
-                if (!(boolean) isTombstoneMethod.invoke(obj, rowId)) {
+                if (!(boolean) IS_TOMBSTONE_METHOD.invoke(obj, rowId)) {
                     filtered[count++] = rowIndex;
                 }
             }
@@ -804,14 +830,7 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
     public static class ScanAllInterceptor {
         @RuntimeType
         public int[] intercept(@This Object obj) throws Exception {
-            java.lang.reflect.Method allocatedMethod = AbstractTable.class.getDeclaredMethod("allocatedCount");
-            allocatedMethod.setAccessible(true);
-            long allocated = (long) allocatedMethod.invoke(obj);
-
-            // Get tombstone BitSet to filter deleted rows
-            java.lang.reflect.Method isTombstoneMethod = AbstractTable.class.getDeclaredMethod("isTombstone",
-                    io.memris.kernel.RowId.class);
-            isTombstoneMethod.setAccessible(true);
+            long allocated = (long) ALLOCATED_COUNT_METHOD.invoke(obj);
 
             int[] temp = new int[(int) allocated];
             int count = 0;
@@ -820,7 +839,7 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
                 int pageId = i / pageSize;
                 int offset = i % pageSize;
                 io.memris.kernel.RowId rowId = new io.memris.kernel.RowId(pageId, offset);
-                boolean isTombstoned = (boolean) isTombstoneMethod.invoke(obj, rowId);
+                boolean isTombstoned = (boolean) IS_TOMBSTONE_METHOD.invoke(obj, rowId);
                 if (!isTombstoned) {
                     temp[count++] = i;
                 }
@@ -836,9 +855,13 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
     public static class InsertInterceptor {
         private final List<ColumnFieldInfo> columnFields;
         private final MethodHandles.Lookup lookup = MethodHandles.lookup();
+        private final Field[] columnFieldRefs;
+        private final MethodHandle[] columnGetters;
 
         public InsertInterceptor(List<ColumnFieldInfo> columnFields) {
             this.columnFields = columnFields;
+            this.columnFieldRefs = new Field[columnFields.size()];
+            this.columnGetters = new MethodHandle[columnFields.size()];
         }
 
         @RuntimeType
@@ -849,16 +872,12 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
             }
 
             // Allocate row
-            java.lang.reflect.Method allocateMethod = AbstractTable.class.getDeclaredMethod("allocateRowId");
-            allocateMethod.setAccessible(true);
-            io.memris.kernel.RowId rowId = (io.memris.kernel.RowId) allocateMethod.invoke(obj);
+            io.memris.kernel.RowId rowId = (io.memris.kernel.RowId) ALLOCATE_ROW_ID_METHOD.invoke(obj);
             int pageSize = ((AbstractTable) obj).pageSize();
             int rowIndex = (int) (rowId.page() * pageSize + rowId.offset());
 
             // Get generation for this row
-            java.lang.reflect.Method rowGenMethod = AbstractTable.class.getDeclaredMethod("rowGeneration", int.class);
-            rowGenMethod.setAccessible(true);
-            long generation = (long) rowGenMethod.invoke(obj, rowIndex);
+            long generation = (long) ROW_GENERATION_METHOD.invoke(obj, rowIndex);
 
             AbstractTable table = (AbstractTable) obj;
             table.beginSeqLock(rowIndex);
@@ -866,9 +885,7 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
                 // Write values to columns using MethodHandles
                 for (int i = 0; i < columnFields.size(); i++) {
                     ColumnFieldInfo fieldInfo = columnFields.get(i);
-                    Field field = obj.getClass().getDeclaredField(fieldInfo.fieldName());
-                    MethodHandle getter = lookup.unreflectGetter(field);
-                    Object column = getter.invoke(obj);
+                    Object column = resolveColumn(obj, fieldInfo, i, columnFieldRefs, columnGetters, lookup);
                     Object value = values[i];
 
                     byte typeCode = fieldInfo.typeCode();
@@ -963,9 +980,7 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
                 // Publish row to make data visible to scans
                 for (int i = 0; i < columnFields.size(); i++) {
                     ColumnFieldInfo fieldInfo = columnFields.get(i);
-                    Field field = obj.getClass().getDeclaredField(fieldInfo.fieldName());
-                    MethodHandle getter = lookup.unreflectGetter(field);
-                    Object column = getter.invoke(obj);
+                    Object column = resolveColumn(obj, fieldInfo, i, columnFieldRefs, columnGetters, lookup);
 
                     byte typeCode = fieldInfo.typeCode();
                     if (typeCode == io.memris.core.TypeCodes.TYPE_LONG
@@ -996,9 +1011,7 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
             }
 
             // Update ID index
-            Field idIndexField = obj.getClass().getDeclaredField("idIndex");
-            MethodHandle idIndexGetter = lookup.unreflectGetter(idIndexField);
-            Object idIndex = idIndexGetter.invoke(obj);
+            Object idIndex = getGeneratedFieldCache(obj).idIndexField().get(obj);
             Object idValue = values[0];
 
             if (idIndex instanceof LongIdIndex longIdIndex && idValue instanceof Number) {
@@ -1008,9 +1021,7 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
             }
 
             // Increment row count
-            java.lang.reflect.Method incrementMethod = AbstractTable.class.getDeclaredMethod("incrementRowCount");
-            incrementMethod.setAccessible(true);
-            incrementMethod.invoke(obj);
+            INCREMENT_ROW_COUNT_METHOD.invoke(obj);
 
             return io.memris.storage.Selection.pack(rowIndex, generation);
         }
@@ -1019,9 +1030,13 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
     public static class TombstoneInterceptor {
         private final List<ColumnFieldInfo> columnFields;
         private final MethodHandles.Lookup lookup = MethodHandles.lookup();
+        private final Field[] columnFieldRefs;
+        private final MethodHandle[] columnGetters;
 
         public TombstoneInterceptor(List<ColumnFieldInfo> columnFields) {
             this.columnFields = columnFields;
+            this.columnFieldRefs = new Field[columnFields.size()];
+            this.columnGetters = new MethodHandle[columnFields.size()];
         }
 
         @RuntimeType
@@ -1039,9 +1054,7 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
                 // Read ID column (first column) for index cleanup
                 if (!columnFields.isEmpty()) {
                     ColumnFieldInfo idFieldInfo = columnFields.get(0);
-                    Field idColumnField = obj.getClass().getDeclaredField(idFieldInfo.fieldName());
-                    MethodHandle idColGetter = lookup.unreflectGetter(idColumnField);
-                    Object idColumn = idColGetter.invoke(obj);
+                    Object idColumn = resolveColumn(obj, idFieldInfo, 0, columnFieldRefs, columnGetters, lookup);
 
                     byte typeCode = idFieldInfo.typeCode();
                     if (typeCode == io.memris.core.TypeCodes.TYPE_LONG
@@ -1066,19 +1079,14 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
                 }
 
                 // Use generation-validated tombstone
-                java.lang.reflect.Method tombstoneMethod = AbstractTable.class.getDeclaredMethod("tombstone",
-                        io.memris.kernel.RowId.class, long.class);
-                tombstoneMethod.setAccessible(true);
-                tombstoneMethod.invoke(obj, rowId, generation);
+                TOMBSTONE_METHOD.invoke(obj, rowId, generation);
             } finally {
                 table.endSeqLock(rowIndex);
             }
 
             // Remove from ID index after tombstoning (eventual consistency)
             if (idValue != null) {
-                Field idIndexField = obj.getClass().getDeclaredField("idIndex");
-                MethodHandle idIndexGetter = lookup.unreflectGetter(idIndexField);
-                Object idIndex = idIndexGetter.invoke(obj);
+                Object idIndex = getGeneratedFieldCache(obj).idIndexField().get(obj);
 
                 if (idIndex instanceof LongIdIndex longIdx && idValue instanceof Number) {
                     longIdx.remove(((Number) idValue).longValue());
@@ -1119,18 +1127,7 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
 
         @RuntimeType
         public Object intercept(@Argument(0) Object key, @This Object obj) throws Throwable {
-            Field idIndexField = obj.getClass().getDeclaredField("idIndex");
-            MethodHandle getter = lookup.unreflectGetter(idIndexField);
-            Object idIndex = getter.invoke(obj);
-
-            // Get tombstone check method
-            java.lang.reflect.Method isTombstoneMethod = AbstractTable.class.getDeclaredMethod("isTombstone",
-                    io.memris.kernel.RowId.class);
-            isTombstoneMethod.setAccessible(true);
-
-            // Get generation check method
-            java.lang.reflect.Method rowGenMethod = AbstractTable.class.getDeclaredMethod("rowGeneration", int.class);
-            rowGenMethod.setAccessible(true);
+            Object idIndex = getGeneratedFieldCache(obj).idIndexField().get(obj);
 
             if ("long".equals(operation)) {
                 LongIdIndex idx = (LongIdIndex) idIndex;
@@ -1144,12 +1141,12 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
                 int rowIndex = (int) (rowId.page() * pageSize + rowId.offset());
 
                 // Validate not tombstoned
-                boolean isTombstoned = (boolean) isTombstoneMethod.invoke(obj, rowId);
+                boolean isTombstoned = (boolean) IS_TOMBSTONE_METHOD.invoke(obj, rowId);
                 if (isTombstoned)
                     return -1L;
 
                 // Validate generation matches
-                long storedGen = (long) rowGenMethod.invoke(obj, rowIndex);
+                long storedGen = (long) ROW_GENERATION_METHOD.invoke(obj, rowIndex);
                 if (storedGen != generation)
                     return -1L;
 
@@ -1166,12 +1163,12 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
                 int rowIndex = (int) (rowId.page() * pageSize + rowId.offset());
 
                 // Validate not tombstoned
-                boolean isTombstoned = (boolean) isTombstoneMethod.invoke(obj, rowId);
+                boolean isTombstoned = (boolean) IS_TOMBSTONE_METHOD.invoke(obj, rowId);
                 if (isTombstoned)
                     return -1L;
 
                 // Validate generation matches
-                long storedGen = (long) rowGenMethod.invoke(obj, rowIndex);
+                long storedGen = (long) ROW_GENERATION_METHOD.invoke(obj, rowIndex);
                 if (storedGen != generation)
                     return -1L;
 
@@ -1187,5 +1184,29 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
                 throw new IllegalStateException("Unknown operation: " + operation);
             }
         }
+    }
+
+    private static Object resolveColumn(Object obj,
+            ColumnFieldInfo fieldInfo,
+            int columnIndex,
+            Field[] columnFieldRefs,
+            MethodHandle[] columnGetters,
+            MethodHandles.Lookup lookup) throws Throwable {
+        var getter = columnGetters[columnIndex];
+        if (getter == null) {
+            synchronized (columnGetters) {
+                getter = columnGetters[columnIndex];
+                if (getter == null) {
+                    var field = columnFieldRefs[columnIndex];
+                    if (field == null) {
+                        field = resolveAccessibleField(obj.getClass(), fieldInfo.fieldName());
+                        columnFieldRefs[columnIndex] = field;
+                    }
+                    getter = lookup.unreflectGetter(field);
+                    columnGetters[columnIndex] = getter;
+                }
+            }
+        }
+        return getter.invoke(obj);
     }
 }
