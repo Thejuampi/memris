@@ -17,6 +17,11 @@ import net.bytebuddy.implementation.bind.annotation.Argument;
 import net.bytebuddy.implementation.bind.annotation.RuntimeType;
 import net.bytebuddy.implementation.bind.annotation.This;
 import net.bytebuddy.jar.asm.Opcodes;
+import net.bytebuddy.description.method.MethodDescription;
+import net.bytebuddy.implementation.bytecode.ByteCodeAppender;
+import net.bytebuddy.dynamic.scaffold.InstrumentedType;
+import net.bytebuddy.jar.asm.Label;
+import net.bytebuddy.jar.asm.MethodVisitor;
 
 import java.lang.reflect.Field;
 import java.util.ArrayList;
@@ -86,6 +91,12 @@ public final class BytecodeTableGenerator {
         builder = builder.defineField("TYPE_CODES", byte[].class,
                 Visibility.PRIVATE, FieldManifestation.FINAL);
 
+        // Add cached Field arrays to avoid per-operation reflection lookups
+        builder = builder.defineField("CACHED_COLUMN_FIELDS", Field[].class,
+                Visibility.PRIVATE, FieldManifestation.FINAL);
+        builder = builder.defineField("ID_INDEX_FIELD", Field.class,
+                Visibility.PRIVATE, FieldManifestation.FINAL);
+
         // Add constructor
         builder = addConstructor(builder, columnFields, idIndexType, metadata.entityName());
 
@@ -136,7 +147,8 @@ public final class BytecodeTableGenerator {
             return builder.defineConstructor(Visibility.PUBLIC)
                     .withParameters(int.class, int.class, int.class)
                     .intercept(MethodCall
-                            .invoke(AbstractTable.class.getDeclaredConstructor(String.class, int.class, int.class, int.class))
+                            .invoke(AbstractTable.class.getDeclaredConstructor(String.class, int.class, int.class,
+                                    int.class))
                             .with(entityName)
                             .withArgument(0)
                             .withArgument(1)
@@ -178,46 +190,47 @@ public final class BytecodeTableGenerator {
             throw new RuntimeException("Failed to find currentGeneration method", e);
         }
 
-        // Read methods
+        // Read methods - Direct Bytecode Generation
         builder = builder.method(net.bytebuddy.matcher.ElementMatchers.named("readLong"))
-                .intercept(MethodDelegation.to(new ReadInterceptor(columnFields)));
+                .intercept(new ReadMethodImplementation(columnFields, TypeCodes.TYPE_LONG));
 
         builder = builder.method(net.bytebuddy.matcher.ElementMatchers.named("readInt"))
-                .intercept(MethodDelegation.to(new ReadInterceptor(columnFields)));
+                .intercept(new ReadMethodImplementation(columnFields, TypeCodes.TYPE_INT));
 
         builder = builder.method(net.bytebuddy.matcher.ElementMatchers.named("readString"))
-                .intercept(MethodDelegation.to(new ReadInterceptor(columnFields)));
+                .intercept(new ReadMethodImplementation(columnFields, TypeCodes.TYPE_STRING));
 
         builder = builder.method(net.bytebuddy.matcher.ElementMatchers.named("isPresent"))
                 .intercept(MethodDelegation.to(new PresentInterceptor(columnFields)));
 
         // Scan methods
         builder = builder.method(net.bytebuddy.matcher.ElementMatchers.named("scanEqualsLong"))
-                .intercept(MethodDelegation.to(new ScanEqualsLongInterceptor(columnFields)));
+                .intercept(new ScanMethodImplementation(columnFields, ScanMethodImplementation.SCAN_EQUALS_LONG));
 
         builder = builder.method(net.bytebuddy.matcher.ElementMatchers.named("scanEqualsInt"))
-                .intercept(MethodDelegation.to(new ScanEqualsIntInterceptor(columnFields)));
+                .intercept(new ScanMethodImplementation(columnFields, ScanMethodImplementation.SCAN_EQUALS_INT));
 
         builder = builder.method(net.bytebuddy.matcher.ElementMatchers.named("scanEqualsString"))
-                .intercept(MethodDelegation.to(new ScanEqualsStringInterceptor(columnFields)));
+                .intercept(new ScanMethodImplementation(columnFields, ScanMethodImplementation.SCAN_EQUALS_STRING));
 
         builder = builder.method(net.bytebuddy.matcher.ElementMatchers.named("scanEqualsStringIgnoreCase"))
-                .intercept(MethodDelegation.to(new ScanEqualsStringIgnoreCaseInterceptor(columnFields)));
+                .intercept(new ScanMethodImplementation(columnFields,
+                        ScanMethodImplementation.SCAN_EQUALS_STRING_IGNORE_CASE));
 
         builder = builder.method(net.bytebuddy.matcher.ElementMatchers.named("scanBetweenLong"))
-                .intercept(MethodDelegation.to(new ScanBetweenLongInterceptor(columnFields)));
+                .intercept(new ScanMethodImplementation(columnFields, ScanMethodImplementation.SCAN_BETWEEN_LONG));
 
         builder = builder.method(net.bytebuddy.matcher.ElementMatchers.named("scanBetweenInt"))
-                .intercept(MethodDelegation.to(new ScanBetweenIntInterceptor(columnFields)));
+                .intercept(new ScanMethodImplementation(columnFields, ScanMethodImplementation.SCAN_BETWEEN_INT));
 
         builder = builder.method(net.bytebuddy.matcher.ElementMatchers.named("scanInLong"))
-                .intercept(MethodDelegation.to(new ScanInLongInterceptor(columnFields)));
+                .intercept(new ScanMethodImplementation(columnFields, ScanMethodImplementation.SCAN_IN_LONG));
 
         builder = builder.method(net.bytebuddy.matcher.ElementMatchers.named("scanInInt"))
-                .intercept(MethodDelegation.to(new ScanInIntInterceptor(columnFields)));
+                .intercept(new ScanMethodImplementation(columnFields, ScanMethodImplementation.SCAN_IN_INT));
 
         builder = builder.method(net.bytebuddy.matcher.ElementMatchers.named("scanInString"))
-                .intercept(MethodDelegation.to(new ScanInStringInterceptor(columnFields)));
+                .intercept(new ScanMethodImplementation(columnFields, ScanMethodImplementation.SCAN_IN_STRING));
 
         builder = builder.method(net.bytebuddy.matcher.ElementMatchers.named("scanAll"))
                 .intercept(MethodDelegation.to(new ScanAllInterceptor()));
@@ -244,6 +257,48 @@ public final class BytecodeTableGenerator {
 
         builder = builder.method(net.bytebuddy.matcher.ElementMatchers.named("isLive"))
                 .intercept(MethodDelegation.to(new IsLiveInterceptor()));
+
+        // Per-column direct accessor methods (zero dispatch)
+        for (ColumnFieldInfo field : columnFields) {
+            String capitalizedName = capitalize(field.fieldName());
+            byte typeCode = field.typeCode();
+
+            // Generate per-column read methods
+            if (isLongCompatible(typeCode)) {
+                builder = builder.defineMethod("read" + capitalizedName + "Long", long.class, Visibility.PUBLIC)
+                        .withParameter(int.class, "rowIndex")
+                        .intercept(new PerColumnReadImplementation(field, TypeCodes.TYPE_LONG));
+            }
+            if (isIntCompatible(typeCode)) {
+                builder = builder.defineMethod("read" + capitalizedName + "Int", int.class, Visibility.PUBLIC)
+                        .withParameter(int.class, "rowIndex")
+                        .intercept(new PerColumnReadImplementation(field, TypeCodes.TYPE_INT));
+            }
+            if (typeCode == TypeCodes.TYPE_STRING || typeCode == TypeCodes.TYPE_BIG_DECIMAL
+                    || typeCode == TypeCodes.TYPE_BIG_INTEGER) {
+                builder = builder.defineMethod("read" + capitalizedName + "String", String.class, Visibility.PUBLIC)
+                        .withParameter(int.class, "rowIndex")
+                        .intercept(new PerColumnReadImplementation(field, TypeCodes.TYPE_STRING));
+            }
+
+            // Generate per-column scan methods
+            if (isLongCompatible(typeCode)) {
+                builder = builder.defineMethod("scanEquals" + capitalizedName + "Long", int[].class, Visibility.PUBLIC)
+                        .withParameter(long.class, "value")
+                        .intercept(new PerColumnScanImplementation(field, ScanMethodImplementation.SCAN_EQUALS_LONG));
+            }
+            if (isIntCompatible(typeCode)) {
+                builder = builder.defineMethod("scanEquals" + capitalizedName + "Int", int[].class, Visibility.PUBLIC)
+                        .withParameter(int.class, "value")
+                        .intercept(new PerColumnScanImplementation(field, ScanMethodImplementation.SCAN_EQUALS_INT));
+            }
+            if (typeCode == TypeCodes.TYPE_STRING) {
+                builder = builder
+                        .defineMethod("scanEquals" + capitalizedName + "String", int[].class, Visibility.PUBLIC)
+                        .withParameter(String.class, "value")
+                        .intercept(new PerColumnScanImplementation(field, ScanMethodImplementation.SCAN_EQUALS_STRING));
+            }
+        }
 
         return builder;
     }
@@ -272,23 +327,38 @@ public final class BytecodeTableGenerator {
             int maxPages = (int) args[1];
             int initialPages = (int) args[2];
 
-            // Initialize column fields
-            for (ColumnFieldInfo field : columnFields) {
+            // Pre-resolve and cache column fields for fast access in hot paths
+            Field[] cachedColumnFields = new Field[columnFields.size()];
+
+            // Initialize column fields and cache them
+            for (int i = 0; i < columnFields.size(); i++) {
+                ColumnFieldInfo field = columnFields.get(i);
                 Field declaredField = obj.getClass().getDeclaredField(field.fieldName());
                 declaredField.setAccessible(true);
                 Object columnInstance = field.columnType()
                         .getDeclaredConstructor(int.class, int.class, int.class)
                         .newInstance(pageSize, maxPages, initialPages);
                 declaredField.set(obj, columnInstance);
+                cachedColumnFields[i] = declaredField;
             }
 
-            // Initialize idIndex field
+            // Store cached column fields
+            Field cachedFieldsField = obj.getClass().getDeclaredField("CACHED_COLUMN_FIELDS");
+            cachedFieldsField.setAccessible(true);
+            cachedFieldsField.set(obj, cachedColumnFields);
+
+            // Initialize idIndex field and cache it
             Field idIndexField = obj.getClass().getDeclaredField("idIndex");
             idIndexField.setAccessible(true);
             Object idIndexInstance = idIndexType
                     .getDeclaredConstructor(int.class)
                     .newInstance(DEFAULT_ID_INDEX_CAPACITY);
             idIndexField.set(obj, idIndexInstance);
+
+            // Cache the idIndex field for fast access
+            Field idIndexCacheField = obj.getClass().getDeclaredField("ID_INDEX_FIELD");
+            idIndexCacheField.setAccessible(true);
+            idIndexCacheField.set(obj, idIndexField);
 
             // Initialize TYPE_CODES field
             byte[] typeCodes = new byte[columnFields.size()];
@@ -342,56 +412,18 @@ public final class BytecodeTableGenerator {
         }
     }
 
-    public static class ReadInterceptor {
-        private final List<ColumnFieldInfo> columnFields;
+    // Helper method to get cached column fields (reduces per-operation reflection)
+    private static Field[] getCachedColumnFields(Object obj) throws Exception {
+        Field cacheField = obj.getClass().getDeclaredField("CACHED_COLUMN_FIELDS");
+        cacheField.setAccessible(true);
+        return (Field[]) cacheField.get(obj);
+    }
 
-        public ReadInterceptor(List<ColumnFieldInfo> columnFields) {
-            this.columnFields = columnFields;
-        }
-
-        @RuntimeType
-        public Object intercept(@Argument(0) int columnIndex,
-                @Argument(1) int rowIndex,
-                @This Object obj) throws Exception {
-            if (columnIndex < 0 || columnIndex >= columnFields.size()) {
-                throw new IndexOutOfBoundsException("Column index out of range: " + columnIndex);
-            }
-
-            AbstractTable table = (AbstractTable) obj;
-            ColumnFieldInfo fieldInfo = columnFields.get(columnIndex);
-            Field field = obj.getClass().getDeclaredField(fieldInfo.fieldName());
-            field.setAccessible(true);
-
-            return table.readWithSeqLock(rowIndex, () -> {
-                try {
-                    Object column = field.get(obj);
-                    byte typeCode = fieldInfo.typeCode();
-                    if (typeCode == TypeCodes.TYPE_LONG
-                            || typeCode == TypeCodes.TYPE_DOUBLE
-                            || typeCode == TypeCodes.TYPE_INSTANT
-                            || typeCode == TypeCodes.TYPE_LOCAL_DATE
-                            || typeCode == TypeCodes.TYPE_LOCAL_DATE_TIME
-                            || typeCode == TypeCodes.TYPE_DATE) {
-                        return ((PageColumnLong) column).get(rowIndex);
-                    } else if (typeCode == TypeCodes.TYPE_INT
-                            || typeCode == TypeCodes.TYPE_FLOAT
-                            || typeCode == TypeCodes.TYPE_BOOLEAN
-                            || typeCode == TypeCodes.TYPE_BYTE
-                            || typeCode == TypeCodes.TYPE_SHORT
-                            || typeCode == TypeCodes.TYPE_CHAR) {
-                        return ((PageColumnInt) column).get(rowIndex);
-                    } else if (typeCode == TypeCodes.TYPE_STRING
-                            || typeCode == TypeCodes.TYPE_BIG_DECIMAL
-                            || typeCode == TypeCodes.TYPE_BIG_INTEGER) {
-                        return ((PageColumnString) column).get(rowIndex);
-                    } else {
-                        throw new IllegalStateException("Unknown type code: " + typeCode);
-                    }
-                } catch (IllegalAccessException e) {
-                    throw new RuntimeException(e);
-                }
-            });
-        }
+    // Helper method to get cached ID index field
+    private static Field getCachedIdIndexField(Object obj) throws Exception {
+        Field cacheField = obj.getClass().getDeclaredField("ID_INDEX_FIELD");
+        cacheField.setAccessible(true);
+        return (Field) cacheField.get(obj);
     }
 
     public static class PresentInterceptor {
@@ -411,8 +443,10 @@ public final class BytecodeTableGenerator {
 
             AbstractTable table = (AbstractTable) obj;
             ColumnFieldInfo fieldInfo = columnFields.get(columnIndex);
-            Field field = obj.getClass().getDeclaredField(fieldInfo.fieldName());
-            field.setAccessible(true);
+
+            // Use cached field instead of getDeclaredField
+            Field[] cachedFields = getCachedColumnFields(obj);
+            Field field = cachedFields[columnIndex];
 
             return table.readWithSeqLock(rowIndex, () -> {
                 try {
@@ -443,391 +477,6 @@ public final class BytecodeTableGenerator {
                     throw new RuntimeException(e);
                 }
             });
-        }
-    }
-
-    public static class ScanEqualsLongInterceptor {
-        private final List<ColumnFieldInfo> columnFields;
-
-        public ScanEqualsLongInterceptor(List<ColumnFieldInfo> columnFields) {
-            this.columnFields = columnFields;
-        }
-
-        @RuntimeType
-        public int[] intercept(@Argument(0) int columnIndex, @Argument(1) long value, @This Object obj)
-                throws Exception {
-            ColumnFieldInfo fieldInfo = columnFields.get(columnIndex);
-            Field field = obj.getClass().getDeclaredField(fieldInfo.fieldName());
-            field.setAccessible(true);
-            PageColumnLong column = (PageColumnLong) field.get(obj);
-
-            AbstractTable table = (AbstractTable) obj;
-            int limit = (int) table.allocatedCount();
-            int[] results = column.scanEquals(value, limit);
-            return filterTombstoned(results, table);
-        }
-
-        private int[] filterTombstoned(int[] rows, AbstractTable table) {
-            if (rows.length == 0)
-                return rows;
-
-            int[] filtered = new int[rows.length];
-            int count = 0;
-            int pageSize = table.pageSize();
-            for (int rowIndex : rows) {
-                int pageId = rowIndex / pageSize;
-                int offset = rowIndex % pageSize;
-                RowId rowId = new RowId(pageId, offset);
-                if (!table.isTombstone(rowId)) {
-                    filtered[count++] = rowIndex;
-                }
-            }
-            int[] result = new int[count];
-            System.arraycopy(filtered, 0, result, 0, count);
-            return result;
-        }
-    }
-
-    public static class ScanEqualsIntInterceptor {
-        private final List<ColumnFieldInfo> columnFields;
-
-        public ScanEqualsIntInterceptor(List<ColumnFieldInfo> columnFields) {
-            this.columnFields = columnFields;
-        }
-
-        @RuntimeType
-        public int[] intercept(@Argument(0) int columnIndex, @Argument(1) int value, @This Object obj)
-                throws Exception {
-            ColumnFieldInfo fieldInfo = columnFields.get(columnIndex);
-            Field field = obj.getClass().getDeclaredField(fieldInfo.fieldName());
-            field.setAccessible(true);
-            PageColumnInt column = (PageColumnInt) field.get(obj);
-
-            AbstractTable table = (AbstractTable) obj;
-            int limit = (int) table.allocatedCount();
-            int[] results = column.scanEquals(value, limit);
-            return filterTombstoned(results, table);
-        }
-
-        private int[] filterTombstoned(int[] rows, AbstractTable table) {
-            if (rows.length == 0)
-                return rows;
-
-            int[] filtered = new int[rows.length];
-            int count = 0;
-            int pageSize = table.pageSize();
-            for (int rowIndex : rows) {
-                int pageId = rowIndex / pageSize;
-                int offset = rowIndex % pageSize;
-                RowId rowId = new RowId(pageId, offset);
-                if (!table.isTombstone(rowId)) {
-                    filtered[count++] = rowIndex;
-                }
-            }
-            int[] result = new int[count];
-            System.arraycopy(filtered, 0, result, 0, count);
-            return result;
-        }
-    }
-
-    public static class ScanEqualsStringInterceptor {
-        private final List<ColumnFieldInfo> columnFields;
-
-        public ScanEqualsStringInterceptor(List<ColumnFieldInfo> columnFields) {
-            this.columnFields = columnFields;
-        }
-
-        @RuntimeType
-        public int[] intercept(@Argument(0) int columnIndex, @Argument(1) String value, @This Object obj)
-                throws Exception {
-            ColumnFieldInfo fieldInfo = columnFields.get(columnIndex);
-            Field field = obj.getClass().getDeclaredField(fieldInfo.fieldName());
-            field.setAccessible(true);
-            PageColumnString column = (PageColumnString) field.get(obj);
-
-            AbstractTable table = (AbstractTable) obj;
-            int limit = (int) table.allocatedCount();
-            int[] results = column.scanEquals(value, limit);
-            return filterTombstoned(results, table);
-        }
-
-        private int[] filterTombstoned(int[] rows, AbstractTable table) {
-            if (rows.length == 0)
-                return rows;
-
-            int[] filtered = new int[rows.length];
-            int count = 0;
-            int pageSize = table.pageSize();
-            for (int rowIndex : rows) {
-                int pageId = rowIndex / pageSize;
-                int offset = rowIndex % pageSize;
-                RowId rowId = new RowId(pageId, offset);
-                if (!table.isTombstone(rowId)) {
-                    filtered[count++] = rowIndex;
-                }
-            }
-            int[] result = new int[count];
-            System.arraycopy(filtered, 0, result, 0, count);
-            return result;
-        }
-    }
-
-    public static class ScanEqualsStringIgnoreCaseInterceptor {
-        private final List<ColumnFieldInfo> columnFields;
-
-        public ScanEqualsStringIgnoreCaseInterceptor(List<ColumnFieldInfo> columnFields) {
-            this.columnFields = columnFields;
-        }
-
-        @RuntimeType
-        public int[] intercept(@Argument(0) int columnIndex, @Argument(1) String value, @This Object obj)
-                throws Exception {
-            ColumnFieldInfo fieldInfo = columnFields.get(columnIndex);
-            Field field = obj.getClass().getDeclaredField(fieldInfo.fieldName());
-            field.setAccessible(true);
-            PageColumnString column = (PageColumnString) field.get(obj);
-
-            AbstractTable table = (AbstractTable) obj;
-            int limit = (int) table.allocatedCount();
-            int[] results = column.scanEqualsIgnoreCase(value, limit);
-            return filterTombstoned(results, table);
-        }
-
-        private int[] filterTombstoned(int[] rows, AbstractTable table) {
-            if (rows.length == 0)
-                return rows;
-
-            int[] filtered = new int[rows.length];
-            int count = 0;
-            int pageSize = table.pageSize();
-            for (int rowIndex : rows) {
-                int pageId = rowIndex / pageSize;
-                int offset = rowIndex % pageSize;
-                RowId rowId = new RowId(pageId, offset);
-                if (!table.isTombstone(rowId)) {
-                    filtered[count++] = rowIndex;
-                }
-            }
-            int[] result = new int[count];
-            System.arraycopy(filtered, 0, result, 0, count);
-            return result;
-        }
-    }
-
-    public static class ScanBetweenLongInterceptor {
-        private final List<ColumnFieldInfo> columnFields;
-
-        public ScanBetweenLongInterceptor(List<ColumnFieldInfo> columnFields) {
-            this.columnFields = columnFields;
-        }
-
-        @RuntimeType
-        public int[] intercept(@Argument(0) int columnIndex, @Argument(1) long min, @Argument(2) long max,
-                @This Object obj) throws Exception {
-            ColumnFieldInfo fieldInfo = columnFields.get(columnIndex);
-            Field field = obj.getClass().getDeclaredField(fieldInfo.fieldName());
-            field.setAccessible(true);
-            Object column = field.get(obj);
-
-            AbstractTable table = (AbstractTable) obj;
-            int limit = (int) table.allocatedCount();
-            int[] results;
-            if (column instanceof PageColumnLong longCol) {
-                results = longCol.scanBetween(min, max, limit);
-            } else if (column instanceof PageColumnInt intCol) {
-                results = intCol.scanBetween((int) min, (int) max, limit);
-            } else {
-                throw new IllegalStateException("Column " + columnIndex + " is not a numeric column");
-            }
-            return filterTombstoned(results, table);
-        }
-
-        private int[] filterTombstoned(int[] rows, AbstractTable table) {
-            if (rows.length == 0)
-                return rows;
-
-            int[] filtered = new int[rows.length];
-            int count = 0;
-            int pageSize = table.pageSize();
-            for (int rowIndex : rows) {
-                int pageId = rowIndex / pageSize;
-                int offset = rowIndex % pageSize;
-                RowId rowId = new RowId(pageId, offset);
-                if (!table.isTombstone(rowId)) {
-                    filtered[count++] = rowIndex;
-                }
-            }
-            int[] result = new int[count];
-            System.arraycopy(filtered, 0, result, 0, count);
-            return result;
-        }
-    }
-
-    public static class ScanBetweenIntInterceptor {
-        private final List<ColumnFieldInfo> columnFields;
-
-        public ScanBetweenIntInterceptor(List<ColumnFieldInfo> columnFields) {
-            this.columnFields = columnFields;
-        }
-
-        @RuntimeType
-        public int[] intercept(@Argument(0) int columnIndex, @Argument(1) int min, @Argument(2) int max,
-                @This Object obj) throws Exception {
-            ColumnFieldInfo fieldInfo = columnFields.get(columnIndex);
-            Field field = obj.getClass().getDeclaredField(fieldInfo.fieldName());
-            field.setAccessible(true);
-            PageColumnInt column = (PageColumnInt) field.get(obj);
-
-            AbstractTable table = (AbstractTable) obj;
-            int limit = (int) table.allocatedCount();
-            int[] results = column.scanBetween(min, max, limit);
-            return filterTombstoned(results, table);
-        }
-
-        private int[] filterTombstoned(int[] rows, AbstractTable table) {
-            if (rows.length == 0)
-                return rows;
-
-            int[] filtered = new int[rows.length];
-            int count = 0;
-            int pageSize = table.pageSize();
-            for (int rowIndex : rows) {
-                int pageId = rowIndex / pageSize;
-                int offset = rowIndex % pageSize;
-                RowId rowId = new RowId(pageId, offset);
-                if (!table.isTombstone(rowId)) {
-                    filtered[count++] = rowIndex;
-                }
-            }
-            int[] result = new int[count];
-            System.arraycopy(filtered, 0, result, 0, count);
-            return result;
-        }
-    }
-
-    public static class ScanInLongInterceptor {
-        private final List<ColumnFieldInfo> columnFields;
-
-        public ScanInLongInterceptor(List<ColumnFieldInfo> columnFields) {
-            this.columnFields = columnFields;
-        }
-
-        @RuntimeType
-        public int[] intercept(@Argument(0) int columnIndex, @Argument(1) long[] values, @This Object obj)
-                throws Exception {
-            ColumnFieldInfo fieldInfo = columnFields.get(columnIndex);
-            Field field = obj.getClass().getDeclaredField(fieldInfo.fieldName());
-            field.setAccessible(true);
-            PageColumnLong column = (PageColumnLong) field.get(obj);
-
-            AbstractTable table = (AbstractTable) obj;
-            int limit = (int) table.allocatedCount();
-            int[] results = column.scanIn(values, limit);
-            return filterTombstoned(results, table);
-        }
-
-        private int[] filterTombstoned(int[] rows, AbstractTable table) {
-            if (rows.length == 0)
-                return rows;
-
-            int[] filtered = new int[rows.length];
-            int count = 0;
-            int pageSize = table.pageSize();
-            for (int rowIndex : rows) {
-                int pageId = rowIndex / pageSize;
-                int offset = rowIndex % pageSize;
-                RowId rowId = new RowId(pageId, offset);
-                if (!table.isTombstone(rowId)) {
-                    filtered[count++] = rowIndex;
-                }
-            }
-            int[] result = new int[count];
-            System.arraycopy(filtered, 0, result, 0, count);
-            return result;
-        }
-    }
-
-    public static class ScanInIntInterceptor {
-        private final List<ColumnFieldInfo> columnFields;
-
-        public ScanInIntInterceptor(List<ColumnFieldInfo> columnFields) {
-            this.columnFields = columnFields;
-        }
-
-        @RuntimeType
-        public int[] intercept(@Argument(0) int columnIndex, @Argument(1) int[] values, @This Object obj)
-                throws Exception {
-            ColumnFieldInfo fieldInfo = columnFields.get(columnIndex);
-            Field field = obj.getClass().getDeclaredField(fieldInfo.fieldName());
-            field.setAccessible(true);
-            PageColumnInt column = (PageColumnInt) field.get(obj);
-
-            AbstractTable table = (AbstractTable) obj;
-            int limit = (int) table.allocatedCount();
-            int[] results = column.scanIn(values, limit);
-            return filterTombstoned(results, table);
-        }
-
-        private int[] filterTombstoned(int[] rows, AbstractTable table) {
-            if (rows.length == 0)
-                return rows;
-
-            int[] filtered = new int[rows.length];
-            int count = 0;
-            int pageSize = table.pageSize();
-            for (int rowIndex : rows) {
-                int pageId = rowIndex / pageSize;
-                int offset = rowIndex % pageSize;
-                RowId rowId = new RowId(pageId, offset);
-                if (!table.isTombstone(rowId)) {
-                    filtered[count++] = rowIndex;
-                }
-            }
-            int[] result = new int[count];
-            System.arraycopy(filtered, 0, result, 0, count);
-            return result;
-        }
-    }
-
-    public static class ScanInStringInterceptor {
-        private final List<ColumnFieldInfo> columnFields;
-
-        public ScanInStringInterceptor(List<ColumnFieldInfo> columnFields) {
-            this.columnFields = columnFields;
-        }
-
-        @RuntimeType
-        public int[] intercept(@Argument(0) int columnIndex, @Argument(1) String[] values, @This Object obj)
-                throws Exception {
-            ColumnFieldInfo fieldInfo = columnFields.get(columnIndex);
-            Field field = obj.getClass().getDeclaredField(fieldInfo.fieldName());
-            field.setAccessible(true);
-            PageColumnString column = (PageColumnString) field.get(obj);
-
-            AbstractTable table = (AbstractTable) obj;
-            int limit = (int) table.allocatedCount();
-            int[] results = column.scanIn(values, limit);
-            return filterTombstoned(results, table);
-        }
-
-        private int[] filterTombstoned(int[] rows, AbstractTable table) {
-            if (rows.length == 0)
-                return rows;
-
-            int[] filtered = new int[rows.length];
-            int count = 0;
-            int pageSize = table.pageSize();
-            for (int rowIndex : rows) {
-                int pageId = rowIndex / pageSize;
-                int offset = rowIndex % pageSize;
-                RowId rowId = new RowId(pageId, offset);
-                if (!table.isTombstone(rowId)) {
-                    filtered[count++] = rowIndex;
-                }
-            }
-            int[] result = new int[count];
-            System.arraycopy(filtered, 0, result, 0, count);
-            return result;
         }
     }
 
@@ -864,8 +513,8 @@ public final class BytecodeTableGenerator {
 
         @RuntimeType
         public Object intercept(@Argument(0) Object key, @This Object obj) throws Exception {
-            Field idIndexField = obj.getClass().getDeclaredField("idIndex");
-            idIndexField.setAccessible(true);
+            // Use cached field instead of getDeclaredField
+            Field idIndexField = getCachedIdIndexField(obj);
             Object idIndex = idIndexField.get(obj);
             AbstractTable table = (AbstractTable) obj;
             int pageSize = table.pageSize();
@@ -938,11 +587,14 @@ public final class BytecodeTableGenerator {
             // Begin seqlock - mark row as being written (odd)
             table.beginSeqLock(rowIndex);
             try {
+                // Get cached fields once instead of per-column reflection
+                Field[] cachedFields = getCachedColumnFields(obj);
+                Field idIndexField = getCachedIdIndexField(obj);
+
                 // Write values to columns
                 for (int i = 0; i < columnFields.size(); i++) {
                     ColumnFieldInfo fieldInfo = columnFields.get(i);
-                    Field field = obj.getClass().getDeclaredField(fieldInfo.fieldName());
-                    field.setAccessible(true);
+                    Field field = cachedFields[i];
                     Object column = field.get(obj);
                     Object value = values[i];
 
@@ -1033,9 +685,7 @@ public final class BytecodeTableGenerator {
                     }
                 }
 
-                // Update ID index
-                Field idIndexField = obj.getClass().getDeclaredField("idIndex");
-                idIndexField.setAccessible(true);
+                // Update ID index using cached field
                 Object idIndex = idIndexField.get(obj);
                 Object idValue = values[0];
 
@@ -1045,11 +695,10 @@ public final class BytecodeTableGenerator {
                     stringIdIndex.put((String) idValue, rowId, generation);
                 }
 
-                // Publish row to make data visible
+                // Publish row to make data visible using cached fields
                 for (int i = 0; i < columnFields.size(); i++) {
                     ColumnFieldInfo fieldInfo = columnFields.get(i);
-                    Field field = obj.getClass().getDeclaredField(fieldInfo.fieldName());
-                    field.setAccessible(true);
+                    Field field = cachedFields[i];
                     Object column = field.get(obj);
 
                     byte typeCode = fieldInfo.typeCode();
@@ -1096,10 +745,10 @@ public final class BytecodeTableGenerator {
             int offset = rowIndex % pageSize;
             RowId rowId = new RowId(pageId, offset);
 
-            // Read ID column for index cleanup
-            Field idColumnField = obj.getClass().getDeclaredField("col0");
-            idColumnField.setAccessible(true);
-            Object idColumn = idColumnField.get(obj);
+            // Use cached fields instead of getDeclaredField
+            Field[] cachedFields = getCachedColumnFields(obj);
+            Field idIndexField = getCachedIdIndexField(obj);
+            Object idColumn = cachedFields[0].get(obj); // col0 is always the ID column
 
             Object idValue = null;
             table.beginSeqLock(rowIndex);
@@ -1123,10 +772,8 @@ public final class BytecodeTableGenerator {
                 table.endSeqLock(rowIndex);
             }
 
-            // Remove from ID index
+            // Remove from ID index using cached field
             if (idValue != null) {
-                Field idIndexField = obj.getClass().getDeclaredField("idIndex");
-                idIndexField.setAccessible(true);
                 Object idIndex = idIndexField.get(obj);
 
                 if (idIndex instanceof LongIdIndex longIdx && idValue instanceof Number) {
@@ -1154,6 +801,725 @@ public final class BytecodeTableGenerator {
             }
 
             return table.rowGeneration(rowIndex) == generation;
+        }
+    }
+
+    // ====================================================================================
+    // Phase 2: Direct Bytecode Generation Implementations
+    // ====================================================================================
+
+    /**
+     * Generates O(1) read operations with seqlock retry path.
+     *
+     * Equivalent Java code for PersonBytecodeTable.readLong(int columnIndex, int
+     * rowIndex):
+     * 
+     * <pre>{@code
+     * public long readLong(int columnIndex, int rowIndex) {
+     *     while (true) {
+     *         long version = this.getSeqLock(rowIndex);
+     *         if ((version & 1) != 0) { // odd means write in progress
+     *             AbstractTable.backoff(1);
+     *             continue;
+     *         }
+     *         long result;
+     *         switch (columnIndex) {
+     *             case 0:
+     *                 result = this.col0.get(rowIndex);
+     *                 break;
+     *             case 3:
+     *                 result = this.col3.get(rowIndex);
+     *                 break;
+     *             default:
+     *                 throw new IllegalArgumentException("Type mismatch/OOB");
+     *         }
+     *         if (this.getSeqLock(rowIndex) == version) {
+     *             return result;
+     *         }
+     *     }
+     * }
+     * }</pre>
+     */
+    private static class ReadMethodImplementation implements Implementation {
+        private final List<ColumnFieldInfo> columnFields;
+        private final int targetTypeCode; // TYPE_LONG, TYPE_INT, or TYPE_STRING
+
+        public ReadMethodImplementation(List<ColumnFieldInfo> columnFields, int targetTypeCode) {
+            this.columnFields = columnFields;
+            this.targetTypeCode = targetTypeCode;
+        }
+
+        @Override
+        public InstrumentedType prepare(InstrumentedType instrumentedType) {
+            return instrumentedType;
+        }
+
+        @Override
+        public ByteCodeAppender appender(Target implementationTarget) {
+            return new Appender(columnFields, targetTypeCode);
+        }
+
+        private static class Appender implements ByteCodeAppender {
+            private final List<ColumnFieldInfo> columnFields;
+            private final int targetTypeCode;
+
+            public Appender(List<ColumnFieldInfo> columnFields, int targetTypeCode) {
+                this.columnFields = columnFields;
+                this.targetTypeCode = targetTypeCode;
+            }
+
+            @Override
+            public Size apply(MethodVisitor mv, Context implementationContext, MethodDescription instrumentedMethod) {
+                // Locals: 0=this, 1=columnIndex, 2=rowIndex, 3=version(long),
+                // 5=result(long/int/obj)
+                int resultVar = 5;
+
+                mv.visitCode();
+
+                // Initialize version (3) to 0 to satisfy verifier at loopStart merge
+                mv.visitInsn(Opcodes.LCONST_0);
+                mv.visitVarInsn(Opcodes.LSTORE, 3);
+
+                Label loopStart = new Label();
+                Label retry = new Label();
+                Label checkVersion = new Label();
+
+                mv.visitLabel(loopStart);
+                mv.visitFrame(Opcodes.F_APPEND, 1, new Object[] { Opcodes.LONG }, 0, null);
+
+                // 1. long version = this.getSeqLock(rowIndex);
+                mv.visitVarInsn(Opcodes.ALOAD, 0);
+                mv.visitVarInsn(Opcodes.ILOAD, 2);
+                mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL,
+                        implementationContext.getInstrumentedType().getSuperClass().asErasure().getInternalName(),
+                        "getSeqLock", "(I)J", false);
+                mv.visitVarInsn(Opcodes.LSTORE, 3);
+
+                // 2. if ((version & 1) != 0) goto retry;
+                mv.visitVarInsn(Opcodes.LLOAD, 3);
+                mv.visitInsn(Opcodes.LCONST_1);
+                mv.visitInsn(Opcodes.LAND);
+                mv.visitInsn(Opcodes.LCONST_0);
+                mv.visitInsn(Opcodes.LCMP);
+                mv.visitJumpInsn(Opcodes.IFNE, retry);
+
+                // 3. Switch for READ
+                mv.visitVarInsn(Opcodes.ILOAD, 1); // columnIndex
+
+                Label defaultLabel = new Label();
+                Label[] columnLabels = new Label[columnFields.size()];
+                for (int i = 0; i < columnFields.size(); i++) {
+                    columnLabels[i] = new Label();
+                }
+
+                mv.visitTableSwitchInsn(0, columnFields.size() - 1, defaultLabel, columnLabels);
+
+                for (int i = 0; i < columnFields.size(); i++) {
+                    mv.visitLabel(columnLabels[i]);
+                    mv.visitFrame(Opcodes.F_SAME, 0, null, 0, null);
+                    ColumnFieldInfo fieldInfo = columnFields.get(i);
+                    byte typeCode = fieldInfo.typeCode();
+
+                    if (isCompatible(typeCode, targetTypeCode)) {
+                        mv.visitVarInsn(Opcodes.ALOAD, 0);
+                        String owner = implementationContext.getInstrumentedType().getInternalName();
+                        String fieldName = fieldInfo.fieldName();
+                        String fieldDesc = net.bytebuddy.jar.asm.Type.getDescriptor(fieldInfo.columnType());
+                        mv.visitFieldInsn(Opcodes.GETFIELD, owner, fieldName, fieldDesc);
+
+                        mv.visitVarInsn(Opcodes.ILOAD, 2); // rowIndex
+
+                        String colTypeInternal = net.bytebuddy.jar.asm.Type.getInternalName(fieldInfo.columnType());
+                        if (targetTypeCode == TypeCodes.TYPE_LONG) {
+                            mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, colTypeInternal, "get", "(I)J", false);
+                            mv.visitVarInsn(Opcodes.LSTORE, resultVar);
+                        } else if (targetTypeCode == TypeCodes.TYPE_INT) {
+                            mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, colTypeInternal, "get", "(I)I", false);
+                            mv.visitVarInsn(Opcodes.ISTORE, resultVar);
+                        } else {
+                            mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, colTypeInternal, "get", "(I)Ljava/lang/String;",
+                                    false);
+                            mv.visitVarInsn(Opcodes.ASTORE, resultVar);
+                        }
+                        mv.visitJumpInsn(Opcodes.GOTO, checkVersion);
+                    } else {
+                        generateThrowException(mv, "java/lang/IllegalArgumentException",
+                                "Column " + i + " type mismatch for requested read operation");
+                    }
+                }
+
+                mv.visitLabel(defaultLabel);
+                mv.visitFrame(Opcodes.F_SAME, 0, null, 0, null);
+                generateThrowException(mv, "java/lang/IndexOutOfBoundsException", "Column index out of bounds");
+
+                // 4. Check version
+                mv.visitLabel(checkVersion);
+                if (targetTypeCode == TypeCodes.TYPE_LONG) {
+                    mv.visitFrame(Opcodes.F_APPEND, 1, new Object[] { Opcodes.LONG }, 0, null);
+                } else if (targetTypeCode == TypeCodes.TYPE_INT) {
+                    mv.visitFrame(Opcodes.F_APPEND, 1, new Object[] { Opcodes.INTEGER }, 0, null);
+                } else {
+                    mv.visitFrame(Opcodes.F_APPEND, 1, new Object[] { "java/lang/String" }, 0, null);
+                }
+                mv.visitVarInsn(Opcodes.ALOAD, 0);
+                mv.visitVarInsn(Opcodes.ILOAD, 2);
+                mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL,
+                        implementationContext.getInstrumentedType().getSuperClass().asErasure().getInternalName(),
+                        "getSeqLock", "(I)J", false);
+                mv.visitVarInsn(Opcodes.LLOAD, 3);
+                mv.visitInsn(Opcodes.LCMP);
+                mv.visitJumpInsn(Opcodes.IFNE, retry); // if (current != version) retry
+
+                // 5. Return result
+                if (targetTypeCode == TypeCodes.TYPE_LONG) {
+                    mv.visitVarInsn(Opcodes.LLOAD, resultVar);
+                    mv.visitInsn(Opcodes.LRETURN);
+                } else if (targetTypeCode == TypeCodes.TYPE_INT) {
+                    mv.visitVarInsn(Opcodes.ILOAD, resultVar);
+                    mv.visitInsn(Opcodes.IRETURN);
+                } else {
+                    mv.visitVarInsn(Opcodes.ALOAD, resultVar);
+                    mv.visitInsn(Opcodes.ARETURN);
+                }
+
+                // 6. Retry logic
+                mv.visitLabel(retry);
+                mv.visitFrame(Opcodes.F_CHOP, 1, null, 0, null);
+                mv.visitIntInsn(Opcodes.BIPUSH, 1); // backoff(1)
+                mv.visitMethodInsn(Opcodes.INVOKESTATIC,
+                        net.bytebuddy.jar.asm.Type.getInternalName(AbstractTable.class),
+                        "backoff", "(I)V", false);
+                mv.visitJumpInsn(Opcodes.GOTO, loopStart);
+
+                mv.visitMaxs(6, 8);
+                return new Size(6, 8);
+            }
+
+            private boolean isCompatible(byte actualType, int requestType) {
+                if (requestType == TypeCodes.TYPE_LONG) {
+                    return actualType == TypeCodes.TYPE_LONG || actualType == TypeCodes.TYPE_DOUBLE
+                            || actualType == TypeCodes.TYPE_INSTANT || actualType == TypeCodes.TYPE_LOCAL_DATE
+                            || actualType == TypeCodes.TYPE_LOCAL_DATE_TIME || actualType == TypeCodes.TYPE_DATE;
+                } else if (requestType == TypeCodes.TYPE_INT) {
+                    return actualType == TypeCodes.TYPE_INT || actualType == TypeCodes.TYPE_FLOAT
+                            || actualType == TypeCodes.TYPE_BOOLEAN || actualType == TypeCodes.TYPE_BYTE
+                            || actualType == TypeCodes.TYPE_SHORT || actualType == TypeCodes.TYPE_CHAR;
+                } else { // String
+                    return actualType == TypeCodes.TYPE_STRING || actualType == TypeCodes.TYPE_BIG_DECIMAL
+                            || actualType == TypeCodes.TYPE_BIG_INTEGER;
+                }
+            }
+
+            private void generateThrowException(MethodVisitor mv, String exceptionType, String message) {
+                mv.visitTypeInsn(Opcodes.NEW, exceptionType);
+                mv.visitInsn(Opcodes.DUP);
+                mv.visitLdcInsn(message);
+                mv.visitMethodInsn(Opcodes.INVOKESPECIAL, exceptionType, "<init>", "(Ljava/lang/String;)V", false);
+                mv.visitInsn(Opcodes.ATHROW);
+            }
+        }
+
+    }
+
+    /**
+     * Generates O(1) scan operations by dispatching to the correct column field.
+     *
+     * Equivalent Java code for PersonBytecodeTable.scanEqualLong(int columnIndex,
+     * long value):
+     * 
+     * <pre>{@code
+     * public int[] scanEqualLong(int columnIndex, long value) {
+     *     int limit = (int) this.allocatedCount();
+     *     int[] results;
+     *     switch (columnIndex) {
+     *         case 0: // id
+     *             results = this.col0.scanEquals(value, limit);
+     *             break;
+     *         case 3: // salary
+     *             results = this.col3.scanEquals(value, limit);
+     *             break;
+     *         default:
+     *             throw new IllegalArgumentException("Column type mismatch");
+     *     }
+     *     return filterTombstoned(results);
+     * }
+     * }</pre>
+     */
+    private static class ScanMethodImplementation implements Implementation {
+        private final List<ColumnFieldInfo> columnFields;
+        private final int scanType;
+
+        static final int SCAN_EQUALS_LONG = 0;
+        static final int SCAN_EQUALS_INT = 1;
+        static final int SCAN_EQUALS_STRING = 2;
+        static final int SCAN_EQUALS_STRING_IGNORE_CASE = 3;
+        static final int SCAN_BETWEEN_LONG = 4;
+        static final int SCAN_BETWEEN_INT = 5;
+        static final int SCAN_IN_LONG = 6;
+        static final int SCAN_IN_INT = 7;
+        static final int SCAN_IN_STRING = 8;
+
+        public ScanMethodImplementation(List<ColumnFieldInfo> columnFields, int scanType) {
+            this.columnFields = columnFields;
+            this.scanType = scanType;
+        }
+
+        @Override
+        public InstrumentedType prepare(InstrumentedType instrumentedType) {
+            return instrumentedType;
+        }
+
+        @Override
+        public ByteCodeAppender appender(Target implementationTarget) {
+            return new Appender(columnFields, scanType);
+        }
+
+        private static class Appender implements ByteCodeAppender {
+            private final List<ColumnFieldInfo> columnFields;
+            private final int scanType;
+
+            public Appender(List<ColumnFieldInfo> columnFields, int scanType) {
+                this.columnFields = columnFields;
+                this.scanType = scanType;
+            }
+
+            @Override
+            public Size apply(MethodVisitor mv, Context implementationContext, MethodDescription instrumentedMethod) {
+                mv.visitCode();
+
+                Label defaultLabel = new Label();
+                Label[] columnLabels = new Label[columnFields.size()];
+                for (int i = 0; i < columnFields.size(); i++) {
+                    columnLabels[i] = new Label();
+                }
+
+                // Arg 0 = this, Arg 1 = columnIndex.
+                mv.visitVarInsn(Opcodes.ILOAD, 1);
+                mv.visitTableSwitchInsn(0, columnFields.size() - 1, defaultLabel, columnLabels);
+
+                for (int i = 0; i < columnFields.size(); i++) {
+                    mv.visitLabel(columnLabels[i]);
+                    mv.visitFrame(Opcodes.F_SAME, 0, null, 0, null);
+                    ColumnFieldInfo fieldInfo = columnFields.get(i);
+                    byte typeCode = fieldInfo.typeCode();
+
+                    if (isCompatible(typeCode, scanType)) {
+                        mv.visitVarInsn(Opcodes.ALOAD, 0);
+                        String owner = implementationContext.getInstrumentedType().getInternalName();
+                        String fieldName = fieldInfo.fieldName();
+                        String fieldDesc = net.bytebuddy.jar.asm.Type.getDescriptor(fieldInfo.columnType());
+                        mv.visitFieldInsn(Opcodes.GETFIELD, owner, fieldName, fieldDesc);
+
+                        // Load arguments and invoke scan
+                        generateScanInvocation(mv, fieldInfo, implementationContext);
+
+                        // Filter tombstones
+                        mv.visitVarInsn(Opcodes.ALOAD, 0); // table
+                        mv.visitInsn(Opcodes.SWAP); // table, rows
+                        mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL,
+                                implementationContext.getInstrumentedType().getSuperClass().asErasure()
+                                        .getInternalName(),
+                                "filterTombstoned", "([I)[I", false);
+
+                        mv.visitInsn(Opcodes.ARETURN);
+                    } else {
+                        generateThrowException(mv, "java/lang/IllegalArgumentException",
+                                "Column " + i + " type mismatch for requested scan operation");
+                    }
+                }
+
+                mv.visitLabel(defaultLabel);
+                mv.visitFrame(Opcodes.F_SAME, 0, null, 0, null);
+                generateThrowException(mv, "java/lang/IndexOutOfBoundsException", "Column index out of bounds");
+
+                mv.visitMaxs(8, 8); // Conservative maxs
+                return new Size(8, 8);
+            }
+
+            private void generateScanInvocation(MethodVisitor mv, ColumnFieldInfo fieldInfo, Context context) {
+                String colTypeInternal = net.bytebuddy.jar.asm.Type.getInternalName(fieldInfo.columnType());
+                boolean isIntColumn = isIntCompatible(fieldInfo.typeCode());
+
+                // 1. Load scan arguments
+                if (scanType == SCAN_EQUALS_LONG) {
+                    mv.visitVarInsn(Opcodes.LLOAD, 2); // value
+                } else if (scanType == SCAN_EQUALS_INT) {
+                    mv.visitVarInsn(Opcodes.ILOAD, 2); // value
+                } else if (scanType == SCAN_EQUALS_STRING || scanType == SCAN_EQUALS_STRING_IGNORE_CASE) {
+                    mv.visitVarInsn(Opcodes.ALOAD, 2); // value
+                } else if (scanType == SCAN_BETWEEN_LONG) {
+                    if (isIntColumn) {
+                        // Cast long args to int for INT columns
+                        mv.visitVarInsn(Opcodes.LLOAD, 2); // min (long)
+                        mv.visitInsn(Opcodes.L2I); // min (int)
+                        mv.visitVarInsn(Opcodes.LLOAD, 4); // max (long)
+                        mv.visitInsn(Opcodes.L2I); // max (int)
+                    } else {
+                        mv.visitVarInsn(Opcodes.LLOAD, 2); // min
+                        mv.visitVarInsn(Opcodes.LLOAD, 4); // max
+                    }
+                } else if (scanType == SCAN_BETWEEN_INT) {
+                    mv.visitVarInsn(Opcodes.ILOAD, 2); // min
+                    mv.visitVarInsn(Opcodes.ILOAD, 3); // max
+                } else if (scanType == SCAN_IN_LONG || scanType == SCAN_IN_INT || scanType == SCAN_IN_STRING) {
+                    mv.visitVarInsn(Opcodes.ALOAD, 2); // array/set
+                }
+
+                // 2. Load limit (allocatedCount)
+                mv.visitVarInsn(Opcodes.ALOAD, 0);
+                mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL,
+                        context.getInstrumentedType().getSuperClass().asErasure().getInternalName(),
+                        "allocatedCount", "()J", false);
+                mv.visitInsn(Opcodes.L2I); // allocatedCount returns long, but scan expects int limit
+
+                // 3. Invoke scan
+                if (scanType == SCAN_EQUALS_LONG) {
+                    mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, colTypeInternal, "scanEquals", "(JI)[I", false);
+                } else if (scanType == SCAN_EQUALS_INT) {
+                    mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, colTypeInternal, "scanEquals", "(II)[I", false);
+                } else if (scanType == SCAN_EQUALS_STRING) {
+                    mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, colTypeInternal, "scanEquals", "(Ljava/lang/String;I)[I",
+                            false);
+                } else if (scanType == SCAN_EQUALS_STRING_IGNORE_CASE) {
+                    mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, colTypeInternal, "scanEqualsIgnoreCase",
+                            "(Ljava/lang/String;I)[I", false);
+                } else if (scanType == SCAN_BETWEEN_LONG) {
+                    if (isIntColumn) {
+                        // Use int version for INT columns
+                        mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, colTypeInternal, "scanBetween", "(III)[I", false);
+                    } else {
+                        mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, colTypeInternal, "scanBetween", "(JJI)[I", false);
+                    }
+                } else if (scanType == SCAN_BETWEEN_INT) {
+                    mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, colTypeInternal, "scanBetween", "(III)[I", false);
+                } else if (scanType == SCAN_IN_LONG) {
+                    mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, colTypeInternal, "scanIn", "([JI)[I", false);
+                } else if (scanType == SCAN_IN_INT) {
+                    mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, colTypeInternal, "scanIn", "([II)[I", false);
+                } else if (scanType == SCAN_IN_STRING) {
+                    mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, colTypeInternal, "scanIn", "([Ljava/lang/String;I)[I",
+                            false);
+                }
+            }
+
+            private boolean isCompatible(byte actualType, int scanType) {
+                switch (scanType) {
+                    case SCAN_EQUALS_LONG:
+                    case SCAN_IN_LONG:
+                        // scanInLong only supports long-family (can't easily convert long[] to int[])
+                        return actualType == TypeCodes.TYPE_LONG || actualType == TypeCodes.TYPE_DOUBLE
+                                || actualType == TypeCodes.TYPE_INSTANT || actualType == TypeCodes.TYPE_LOCAL_DATE
+                                || actualType == TypeCodes.TYPE_LOCAL_DATE_TIME || actualType == TypeCodes.TYPE_DATE;
+                    case SCAN_BETWEEN_LONG:
+                        // scanBetweenLong supports both int/long columns (scalar casts work)
+                        return actualType == TypeCodes.TYPE_LONG || actualType == TypeCodes.TYPE_DOUBLE
+                                || actualType == TypeCodes.TYPE_INSTANT || actualType == TypeCodes.TYPE_LOCAL_DATE
+                                || actualType == TypeCodes.TYPE_LOCAL_DATE_TIME || actualType == TypeCodes.TYPE_DATE
+                                || actualType == TypeCodes.TYPE_INT || actualType == TypeCodes.TYPE_FLOAT
+                                || actualType == TypeCodes.TYPE_BOOLEAN || actualType == TypeCodes.TYPE_BYTE
+                                || actualType == TypeCodes.TYPE_SHORT || actualType == TypeCodes.TYPE_CHAR;
+                    case SCAN_EQUALS_INT:
+                    case SCAN_BETWEEN_INT:
+                    case SCAN_IN_INT:
+                        return actualType == TypeCodes.TYPE_INT || actualType == TypeCodes.TYPE_FLOAT
+                                || actualType == TypeCodes.TYPE_BOOLEAN || actualType == TypeCodes.TYPE_BYTE
+                                || actualType == TypeCodes.TYPE_SHORT || actualType == TypeCodes.TYPE_CHAR;
+                    case SCAN_EQUALS_STRING:
+                    case SCAN_EQUALS_STRING_IGNORE_CASE:
+                    case SCAN_IN_STRING:
+                        return actualType == TypeCodes.TYPE_STRING || actualType == TypeCodes.TYPE_BIG_DECIMAL
+                                || actualType == TypeCodes.TYPE_BIG_INTEGER;
+                    default:
+                        return false;
+                }
+            }
+
+            private void generateThrowException(MethodVisitor mv, String exceptionType, String message) {
+                mv.visitTypeInsn(Opcodes.NEW, exceptionType);
+                mv.visitInsn(Opcodes.DUP);
+                mv.visitLdcInsn(message);
+                mv.visitMethodInsn(Opcodes.INVOKESPECIAL, exceptionType, "<init>", "(Ljava/lang/String;)V", false);
+                mv.visitInsn(Opcodes.ATHROW);
+            }
+        }
+    }
+
+    // ====================================================================================
+    // Helper Methods for Per-Column Generation
+    // ====================================================================================
+
+    private static String capitalize(String fieldName) {
+        if (fieldName == null || fieldName.isEmpty()) {
+            return fieldName;
+        }
+        // Convert col0 -> Col0, colId -> ColId
+        return Character.toUpperCase(fieldName.charAt(0)) + fieldName.substring(1);
+    }
+
+    private static boolean isLongCompatible(byte typeCode) {
+        return typeCode == TypeCodes.TYPE_LONG || typeCode == TypeCodes.TYPE_DOUBLE
+                || typeCode == TypeCodes.TYPE_INSTANT || typeCode == TypeCodes.TYPE_LOCAL_DATE
+                || typeCode == TypeCodes.TYPE_LOCAL_DATE_TIME || typeCode == TypeCodes.TYPE_DATE;
+    }
+
+    private static boolean isIntCompatible(byte typeCode) {
+        return typeCode == TypeCodes.TYPE_INT || typeCode == TypeCodes.TYPE_FLOAT
+                || typeCode == TypeCodes.TYPE_BOOLEAN || typeCode == TypeCodes.TYPE_BYTE
+                || typeCode == TypeCodes.TYPE_SHORT || typeCode == TypeCodes.TYPE_CHAR;
+    }
+
+    // ====================================================================================
+    // Per-Column Direct Accessor Implementations
+    // ====================================================================================
+
+    /**
+     * Generates per-column read method with zero dispatch.
+     *
+     * Equivalent Java code for PersonBytecodeTable.readCol0Long(int rowIndex):
+     * 
+     * <pre>{@code
+     * public long readCol0Long(int rowIndex) {
+     *     while (true) {
+     *         long version = this.getSeqLock(rowIndex);
+     *         if ((version & 1) != 0) {
+     *             AbstractTable.backoff(1);
+     *             continue;
+     *         }
+     *         long result = this.col0.get(rowIndex);
+     *         if (this.getSeqLock(rowIndex) == version) {
+     *             return result;
+     *         }
+     *     }
+     * }
+     * }</pre>
+     */
+    private static class PerColumnReadImplementation implements Implementation {
+        private final ColumnFieldInfo field;
+        private final int targetTypeCode;
+
+        public PerColumnReadImplementation(ColumnFieldInfo field, int targetTypeCode) {
+            this.field = field;
+            this.targetTypeCode = targetTypeCode;
+        }
+
+        @Override
+        public InstrumentedType prepare(InstrumentedType instrumentedType) {
+            return instrumentedType;
+        }
+
+        @Override
+        public ByteCodeAppender appender(Target implementationTarget) {
+            return new Appender(field, targetTypeCode);
+        }
+
+        private static class Appender implements ByteCodeAppender {
+            private final ColumnFieldInfo field;
+            private final int targetTypeCode;
+
+            public Appender(ColumnFieldInfo field, int targetTypeCode) {
+                this.field = field;
+                this.targetTypeCode = targetTypeCode;
+            }
+
+            @Override
+            public Size apply(MethodVisitor mv, Context implementationContext, MethodDescription instrumentedMethod) {
+                // Locals: 0=this, 1=rowIndex, 2=version(long), 4=result(long/int/obj)
+                Label loopStart = new Label();
+                Label retry = new Label();
+                Label checkVersion = new Label();
+
+                int resultVar = (targetTypeCode == TypeCodes.TYPE_LONG) ? 4 : 4;
+
+                mv.visitCode();
+
+                // 1. Loop start
+                mv.visitLabel(loopStart);
+                mv.visitFrame(Opcodes.F_SAME, 0, null, 0, null);
+
+                // 2. version = getSeqLock(rowIndex)
+                mv.visitVarInsn(Opcodes.ALOAD, 0);
+                mv.visitVarInsn(Opcodes.ILOAD, 1);
+                mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL,
+                        implementationContext.getInstrumentedType().getSuperClass().asErasure().getInternalName(),
+                        "getSeqLock", "(I)J", false);
+                mv.visitVarInsn(Opcodes.LSTORE, 2);
+
+                // 3. if ((version & 1) != 0) goto retry
+                mv.visitVarInsn(Opcodes.LLOAD, 2);
+                mv.visitInsn(Opcodes.LCONST_1);
+                mv.visitInsn(Opcodes.LAND);
+                mv.visitInsn(Opcodes.LCONST_0);
+                mv.visitInsn(Opcodes.LCMP);
+                mv.visitJumpInsn(Opcodes.IFNE, retry);
+
+                // 4. Direct field access - no switch needed
+                mv.visitVarInsn(Opcodes.ALOAD, 0);
+                String owner = implementationContext.getInstrumentedType().getInternalName();
+                String fieldName = field.fieldName();
+                String fieldDesc = net.bytebuddy.jar.asm.Type.getDescriptor(field.columnType());
+                mv.visitFieldInsn(Opcodes.GETFIELD, owner, fieldName, fieldDesc);
+
+                mv.visitVarInsn(Opcodes.ILOAD, 1); // rowIndex
+
+                String colTypeInternal = net.bytebuddy.jar.asm.Type.getInternalName(field.columnType());
+                if (targetTypeCode == TypeCodes.TYPE_LONG) {
+                    mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, colTypeInternal, "get", "(I)J", false);
+                    mv.visitVarInsn(Opcodes.LSTORE, resultVar);
+                } else if (targetTypeCode == TypeCodes.TYPE_INT) {
+                    mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, colTypeInternal, "get", "(I)I", false);
+                    mv.visitVarInsn(Opcodes.ISTORE, resultVar);
+                } else {
+                    mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, colTypeInternal, "get", "(I)Ljava/lang/String;", false);
+                    mv.visitVarInsn(Opcodes.ASTORE, resultVar);
+                }
+                mv.visitJumpInsn(Opcodes.GOTO, checkVersion);
+
+                // 5. Check version - use F_FULL to explicitly list all locals
+                mv.visitLabel(checkVersion);
+                String ownerInternal = implementationContext.getInstrumentedType().getInternalName();
+                if (targetTypeCode == TypeCodes.TYPE_LONG) {
+                    // locals: this, rowIndex(int), version(long), result(long)
+                    // Note: long counts as 1 in stackmap frame (second slot is implicit)
+                    mv.visitFrame(Opcodes.F_FULL, 4,
+                            new Object[] { ownerInternal, Opcodes.INTEGER, Opcodes.LONG, Opcodes.LONG }, 0, null);
+                } else if (targetTypeCode == TypeCodes.TYPE_INT) {
+                    // locals: this, rowIndex(int), version(long), result(int)
+                    mv.visitFrame(Opcodes.F_FULL, 4,
+                            new Object[] { ownerInternal, Opcodes.INTEGER, Opcodes.LONG, Opcodes.INTEGER }, 0, null);
+                } else {
+                    // locals: this, rowIndex(int), version(long), result(String)
+                    mv.visitFrame(Opcodes.F_FULL, 4,
+                            new Object[] { ownerInternal, Opcodes.INTEGER, Opcodes.LONG, "java/lang/String" }, 0, null);
+                }
+                mv.visitVarInsn(Opcodes.ALOAD, 0);
+                mv.visitVarInsn(Opcodes.ILOAD, 1);
+                mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL,
+                        implementationContext.getInstrumentedType().getSuperClass().asErasure().getInternalName(),
+                        "getSeqLock", "(I)J", false);
+                mv.visitVarInsn(Opcodes.LLOAD, 2);
+                mv.visitInsn(Opcodes.LCMP);
+                mv.visitJumpInsn(Opcodes.IFNE, retry);
+
+                // 6. Return result
+                if (targetTypeCode == TypeCodes.TYPE_LONG) {
+                    mv.visitVarInsn(Opcodes.LLOAD, resultVar);
+                    mv.visitInsn(Opcodes.LRETURN);
+                } else if (targetTypeCode == TypeCodes.TYPE_INT) {
+                    mv.visitVarInsn(Opcodes.ILOAD, resultVar);
+                    mv.visitInsn(Opcodes.IRETURN);
+                } else {
+                    mv.visitVarInsn(Opcodes.ALOAD, resultVar);
+                    mv.visitInsn(Opcodes.ARETURN);
+                }
+
+                // 7. Retry logic - use F_FULL to match loop start state (only this, rowIndex)
+                mv.visitLabel(retry);
+                mv.visitFrame(Opcodes.F_FULL, 2,
+                        new Object[] { ownerInternal, Opcodes.INTEGER }, 0, null);
+                mv.visitIntInsn(Opcodes.BIPUSH, 1);
+                mv.visitMethodInsn(Opcodes.INVOKESTATIC,
+                        net.bytebuddy.jar.asm.Type.getInternalName(AbstractTable.class),
+                        "backoff", "(I)V", false);
+                mv.visitJumpInsn(Opcodes.GOTO, loopStart);
+
+                mv.visitMaxs(6, 8);
+                return new Size(6, 8);
+            }
+        }
+    }
+
+    /**
+     * Generates per-column scan method with zero dispatch.
+     *
+     * Equivalent Java code for PersonBytecodeTable.scanEqualsCol0Long(long value):
+     * 
+     * <pre>{@code
+     * public int[] scanEqualsCol0Long(long value) {
+     *     int limit = (int) this.allocatedCount();
+     *     int[] results = this.col0.scanEquals(value, limit);
+     *     return filterTombstoned(results);
+     * }
+     * }</pre>
+     */
+    private static class PerColumnScanImplementation implements Implementation {
+        private final ColumnFieldInfo field;
+        private final int scanType;
+
+        public PerColumnScanImplementation(ColumnFieldInfo field, int scanType) {
+            this.field = field;
+            this.scanType = scanType;
+        }
+
+        @Override
+        public InstrumentedType prepare(InstrumentedType instrumentedType) {
+            return instrumentedType;
+        }
+
+        @Override
+        public ByteCodeAppender appender(Target implementationTarget) {
+            return new Appender(field, scanType);
+        }
+
+        private static class Appender implements ByteCodeAppender {
+            private final ColumnFieldInfo field;
+            private final int scanType;
+
+            public Appender(ColumnFieldInfo field, int scanType) {
+                this.field = field;
+                this.scanType = scanType;
+            }
+
+            @Override
+            public Size apply(MethodVisitor mv, Context implementationContext, MethodDescription instrumentedMethod) {
+                mv.visitCode();
+
+                // 1. Get limit = (int) allocatedCount()
+                mv.visitVarInsn(Opcodes.ALOAD, 0);
+                mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL,
+                        implementationContext.getInstrumentedType().getSuperClass().asErasure().getInternalName(),
+                        "allocatedCount", "()J", false);
+                mv.visitInsn(Opcodes.L2I);
+                int limitVar = (scanType == ScanMethodImplementation.SCAN_EQUALS_LONG
+                        || scanType == ScanMethodImplementation.SCAN_BETWEEN_LONG
+                        || scanType == ScanMethodImplementation.SCAN_IN_LONG) ? 3 : 2;
+                mv.visitVarInsn(Opcodes.ISTORE, limitVar);
+
+                // 2. Load column field
+                mv.visitVarInsn(Opcodes.ALOAD, 0);
+                String owner = implementationContext.getInstrumentedType().getInternalName();
+                String colTypeInternal = net.bytebuddy.jar.asm.Type.getInternalName(field.columnType());
+                mv.visitFieldInsn(Opcodes.GETFIELD, owner, field.fieldName(),
+                        net.bytebuddy.jar.asm.Type.getDescriptor(field.columnType()));
+
+                // 3. Load value argument and limit, invoke scan method
+                if (scanType == ScanMethodImplementation.SCAN_EQUALS_LONG) {
+                    mv.visitVarInsn(Opcodes.LLOAD, 1); // value (long)
+                    mv.visitVarInsn(Opcodes.ILOAD, limitVar);
+                    mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, colTypeInternal, "scanEquals", "(JI)[I", false);
+                } else if (scanType == ScanMethodImplementation.SCAN_EQUALS_INT) {
+                    mv.visitVarInsn(Opcodes.ILOAD, 1); // value (int)
+                    mv.visitVarInsn(Opcodes.ILOAD, limitVar);
+                    mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, colTypeInternal, "scanEquals", "(II)[I", false);
+                } else if (scanType == ScanMethodImplementation.SCAN_EQUALS_STRING) {
+                    mv.visitVarInsn(Opcodes.ALOAD, 1); // value (String)
+                    mv.visitVarInsn(Opcodes.ILOAD, limitVar);
+                    mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, colTypeInternal, "scanEquals",
+                            "(Ljava/lang/String;I)[I", false);
+                }
+
+                // 4. Call filterTombstoned(results)
+                mv.visitVarInsn(Opcodes.ALOAD, 0);
+                mv.visitInsn(Opcodes.SWAP);
+                mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL,
+                        implementationContext.getInstrumentedType().getSuperClass().asErasure().getInternalName(),
+                        "filterTombstoned", "([I)[I", false);
+
+                // 5. Return
+                mv.visitInsn(Opcodes.ARETURN);
+
+                mv.visitMaxs(5, 5);
+                return new Size(5, 5);
+            }
         }
     }
 }
