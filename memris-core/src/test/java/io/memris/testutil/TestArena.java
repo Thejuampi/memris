@@ -17,6 +17,9 @@ public final class TestArena {
              var arena = factory.createArena()) {
             return callback.apply(arena);
         } catch (Exception exception) {
+            if (exception instanceof InterruptedException || exception.getCause() instanceof InterruptedException) {
+                Thread.currentThread().interrupt();
+            }
             throw new RuntimeException(exception);
         }
     }
@@ -26,6 +29,9 @@ public final class TestArena {
              var arena = factory.createArena()) {
             callback.accept(arena);
         } catch (Exception exception) {
+            if (exception instanceof InterruptedException || exception.getCause() instanceof InterruptedException) {
+                Thread.currentThread().interrupt();
+            }
             throw new RuntimeException(exception);
         }
     }
@@ -35,6 +41,9 @@ public final class TestArena {
              var arena = factory.createArena()) {
             return callback.apply(arena);
         } catch (Exception exception) {
+            if (exception instanceof InterruptedException || exception.getCause() instanceof InterruptedException) {
+                Thread.currentThread().interrupt();
+            }
             throw new RuntimeException(exception);
         }
     }
@@ -44,6 +53,9 @@ public final class TestArena {
              var arena = factory.createArena()) {
             callback.accept(arena);
         } catch (Exception exception) {
+            if (exception instanceof InterruptedException || exception.getCause() instanceof InterruptedException) {
+                Thread.currentThread().interrupt();
+            }
             throw new RuntimeException(exception);
         }
     }
