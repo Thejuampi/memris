@@ -259,7 +259,7 @@ class BytecodeTableGeneratorTest {
                         // Check for linkage errors (the bug we're preventing)
                         Throwable caught = error.get();
                         if (caught != null) {
-                                if (caught instanceof LinkageError || caught instanceof IllegalAccessError) {
+                                if (caught instanceof LinkageError) {
                                         fail("Seqlock retry path has linkage error (likely backoff method issue): "
                                                         + caught.getMessage());
                                 }
