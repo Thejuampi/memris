@@ -2,6 +2,9 @@ package io.memris.core.plan.entities;
 
 import io.memris.query.*;
 import org.junit.jupiter.api.*;
+
+import java.util.List;
+
 import static org.assertj.core.api.Assertions.*;
 
 /**
@@ -10,52 +13,64 @@ import static org.assertj.core.api.Assertions.*;
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 class ComplexNestingTest {
 
+    private record TokenView(QueryMethodTokenType type, String value, boolean ignoreCase) {
+    }
+
+    private static List<TokenView> snapshot(List<QueryMethodToken> tokens) {
+        return tokens.stream()
+                .map(token -> new TokenView(token.type(), token.value(), token.ignoreCase()))
+                .toList();
+    }
+
     // ==================== Deep Nesting Tests ====================
 
     @Test
     @Order(1)
     void tokenizeDeepNesting_TwoLevelPath() {
-        Class<DeepNestedEntity> entityClass = DeepNestedEntity.class;
+        var entityClass = DeepNestedEntity.class;
         var tokens = QueryMethodLexer.tokenize(entityClass, "findByDepartmentName");
 
-        assertThat(tokens).hasSize(2);
-        assertThat(tokens.get(1).type()).isEqualTo(QueryMethodTokenType.PROPERTY_PATH);
-        assertThat(tokens.get(1).value()).isEqualTo("department.name");
+        assertThat(snapshot(tokens)).containsExactly(
+                new TokenView(QueryMethodTokenType.FIND_BY, "find", false),
+                new TokenView(QueryMethodTokenType.PROPERTY_PATH, "department.name", false)
+        );
     }
 
     @Test
     @Order(2)
     void tokenizeDeepNesting_ThreeLevelPath() {
-        Class<DeepNestedEntity> entityClass = DeepNestedEntity.class;
+        var entityClass = DeepNestedEntity.class;
         var tokens = QueryMethodLexer.tokenize(entityClass, "findByDepartmentAddressCity");
 
-        assertThat(tokens).hasSize(2);
-        assertThat(tokens.get(1).type()).isEqualTo(QueryMethodTokenType.PROPERTY_PATH);
-        assertThat(tokens.get(1).value()).isEqualTo("department.address.city");
+        assertThat(snapshot(tokens)).containsExactly(
+                new TokenView(QueryMethodTokenType.FIND_BY, "find", false),
+                new TokenView(QueryMethodTokenType.PROPERTY_PATH, "department.address.city", false)
+        );
     }
 
     @Test
     @Order(3)
     void tokenizeDeepNesting_FourLevelPath() {
-        Class<DeepNestedEntity> entityClass = DeepNestedEntity.class;
+        var entityClass = DeepNestedEntity.class;
         var tokens = QueryMethodLexer.tokenize(entityClass, "findByDepartmentAddressState");
 
-        assertThat(tokens).hasSize(2);
-        assertThat(tokens.get(1).type()).isEqualTo(QueryMethodTokenType.PROPERTY_PATH);
-        assertThat(tokens.get(1).value()).isEqualTo("department.address.state");
+        assertThat(snapshot(tokens)).containsExactly(
+                new TokenView(QueryMethodTokenType.FIND_BY, "find", false),
+                new TokenView(QueryMethodTokenType.PROPERTY_PATH, "department.address.state", false)
+        );
     }
 
     @Test
     @Order(4)
     void tokenizeDeepNesting_WithOperator() {
-        Class<DeepNestedEntity> entityClass = DeepNestedEntity.class;
+        var entityClass = DeepNestedEntity.class;
         var tokens = QueryMethodLexer.tokenize(entityClass, "findByDepartmentNameLike");
 
-        assertThat(tokens).hasSize(3);
-        assertThat(tokens.get(1).type()).isEqualTo(QueryMethodTokenType.PROPERTY_PATH);
-        assertThat(tokens.get(1).value()).isEqualTo("department.name");
-        assertThat(tokens.get(2).type()).isEqualTo(QueryMethodTokenType.OPERATOR);
-        assertThat(tokens.get(2).value()).isEqualTo("Like");
+        assertThat(snapshot(tokens)).containsExactly(
+                new TokenView(QueryMethodTokenType.FIND_BY, "find", false),
+                new TokenView(QueryMethodTokenType.PROPERTY_PATH, "department.name", false),
+                new TokenView(QueryMethodTokenType.OPERATOR, "Like", false)
+        );
     }
 
     // ==================== Self-Referential Tests ====================
@@ -63,36 +78,38 @@ class ComplexNestingTest {
     @Test
     @Order(5)
     void tokenizeSelfReferential_SingleLevel() {
-        Class<SelfReferentialEntity> entityClass = SelfReferentialEntity.class;
+        var entityClass = SelfReferentialEntity.class;
         var tokens = QueryMethodLexer.tokenize(entityClass, "findByParentName");
 
-        assertThat(tokens).hasSize(2);
-        assertThat(tokens.get(1).type()).isEqualTo(QueryMethodTokenType.PROPERTY_PATH);
-        assertThat(tokens.get(1).value()).isEqualTo("parent.name");
+        assertThat(snapshot(tokens)).containsExactly(
+                new TokenView(QueryMethodTokenType.FIND_BY, "find", false),
+                new TokenView(QueryMethodTokenType.PROPERTY_PATH, "parent.name", false)
+        );
     }
 
     @Test
     @Order(6)
     void tokenizeSelfReferential_TwoLevels() {
-        Class<SelfReferentialEntity> entityClass = SelfReferentialEntity.class;
+        var entityClass = SelfReferentialEntity.class;
         var tokens = QueryMethodLexer.tokenize(entityClass, "findByParentParentName");
 
-        assertThat(tokens).hasSize(2);
-        assertThat(tokens.get(1).type()).isEqualTo(QueryMethodTokenType.PROPERTY_PATH);
-        assertThat(tokens.get(1).value()).isEqualTo("parent.parent.name");
+        assertThat(snapshot(tokens)).containsExactly(
+                new TokenView(QueryMethodTokenType.FIND_BY, "find", false),
+                new TokenView(QueryMethodTokenType.PROPERTY_PATH, "parent.parent.name", false)
+        );
     }
 
     @Test
     @Order(7)
     void tokenizeSelfReferential_WithComparison() {
-        Class<SelfReferentialEntity> entityClass = SelfReferentialEntity.class;
+        var entityClass = SelfReferentialEntity.class;
         var tokens = QueryMethodLexer.tokenize(entityClass, "findByParentIdGreaterThan");
 
-        assertThat(tokens).hasSize(3);
-        assertThat(tokens.get(1).type()).isEqualTo(QueryMethodTokenType.PROPERTY_PATH);
-        assertThat(tokens.get(1).value()).isEqualTo("parent.id");
-        assertThat(tokens.get(2).type()).isEqualTo(QueryMethodTokenType.OPERATOR);
-        assertThat(tokens.get(2).value()).isEqualTo("GreaterThan");
+        assertThat(snapshot(tokens)).containsExactly(
+                new TokenView(QueryMethodTokenType.FIND_BY, "find", false),
+                new TokenView(QueryMethodTokenType.PROPERTY_PATH, "parent.id", false),
+                new TokenView(QueryMethodTokenType.OPERATOR, "GreaterThan", false)
+        );
     }
 
     // ==================== Embedded Value Object Tests ====================
@@ -100,36 +117,38 @@ class ComplexNestingTest {
     @Test
     @Order(8)
     void tokenizeEmbeddedProperty_SimpleAccess() {
-        Class<EmbeddedEntity> entityClass = EmbeddedEntity.class;
+        var entityClass = EmbeddedEntity.class;
         var tokens = QueryMethodLexer.tokenize(entityClass, "findByProfileFirstName");
 
-        assertThat(tokens).hasSize(2);
-        assertThat(tokens.get(1).type()).isEqualTo(QueryMethodTokenType.PROPERTY_PATH);
-        assertThat(tokens.get(1).value()).isEqualTo("profile.firstName");
+        assertThat(snapshot(tokens)).containsExactly(
+                new TokenView(QueryMethodTokenType.FIND_BY, "find", false),
+                new TokenView(QueryMethodTokenType.PROPERTY_PATH, "profile.firstName", false)
+        );
     }
 
     @Test
     @Order(9)
     void tokenizeEmbeddedProperty_MultipleFields() {
-        Class<EmbeddedEntity> entityClass = EmbeddedEntity.class;
+        var entityClass = EmbeddedEntity.class;
         var tokens = QueryMethodLexer.tokenize(entityClass, "findByProfileLastName");
 
-        assertThat(tokens).hasSize(2);
-        assertThat(tokens.get(1).type()).isEqualTo(QueryMethodTokenType.PROPERTY_PATH);
-        assertThat(tokens.get(1).value()).isEqualTo("profile.lastName");
+        assertThat(snapshot(tokens)).containsExactly(
+                new TokenView(QueryMethodTokenType.FIND_BY, "find", false),
+                new TokenView(QueryMethodTokenType.PROPERTY_PATH, "profile.lastName", false)
+        );
     }
 
     @Test
     @Order(10)
     void tokenizeEmbeddedProperty_WithOperator() {
-        Class<EmbeddedEntity> entityClass = EmbeddedEntity.class;
+        var entityClass = EmbeddedEntity.class;
         var tokens = QueryMethodLexer.tokenize(entityClass, "findByProfileEmailLike");
 
-        assertThat(tokens).hasSize(3);
-        assertThat(tokens.get(1).type()).isEqualTo(QueryMethodTokenType.PROPERTY_PATH);
-        assertThat(tokens.get(1).value()).isEqualTo("profile.email");
-        assertThat(tokens.get(2).type()).isEqualTo(QueryMethodTokenType.OPERATOR);
-        assertThat(tokens.get(2).value()).isEqualTo("Like");
+        assertThat(snapshot(tokens)).containsExactly(
+                new TokenView(QueryMethodTokenType.FIND_BY, "find", false),
+                new TokenView(QueryMethodTokenType.PROPERTY_PATH, "profile.email", false),
+                new TokenView(QueryMethodTokenType.OPERATOR, "Like", false)
+        );
     }
 
     // ==================== Complex Combination Tests ====================
@@ -137,43 +156,46 @@ class ComplexNestingTest {
     @Test
     @Order(11)
     void tokenizeComplex_DeepNestingAndOr() {
-        Class<DeepNestedEntity> entityClass = DeepNestedEntity.class;
+        var entityClass = DeepNestedEntity.class;
         var tokens = QueryMethodLexer.tokenize(entityClass, "findByDepartmentNameOrAccountEmail");
 
-        assertThat(tokens).hasSize(4);
-        assertThat(tokens.get(0).type()).isEqualTo(QueryMethodTokenType.FIND_BY);
-        assertThat(tokens.get(1).type()).isEqualTo(QueryMethodTokenType.PROPERTY_PATH);
-        assertThat(tokens.get(1).value()).isEqualTo("department.name");
-        assertThat(tokens.get(2).type()).isEqualTo(QueryMethodTokenType.OR);
-        assertThat(tokens.get(3).type()).isEqualTo(QueryMethodTokenType.PROPERTY_PATH);
-        assertThat(tokens.get(3).value()).isEqualTo("account.email");
+        assertThat(snapshot(tokens)).containsExactly(
+                new TokenView(QueryMethodTokenType.FIND_BY, "find", false),
+                new TokenView(QueryMethodTokenType.PROPERTY_PATH, "department.name", false),
+                new TokenView(QueryMethodTokenType.OR, "Or", false),
+                new TokenView(QueryMethodTokenType.PROPERTY_PATH, "account.email", false)
+        );
     }
 
     @Test
     @Order(12)
     void tokenizeComplex_DeepNestingWithOperators() {
-        Class<DeepNestedEntity> entityClass = DeepNestedEntity.class;
+        var entityClass = DeepNestedEntity.class;
         var tokens = QueryMethodLexer.tokenize(entityClass, "findByDepartmentNameLikeAndAccountEmailLike");
 
-        assertThat(tokens).hasSize(6);
-        assertThat(tokens.get(1).value()).isEqualTo("department.name");
-        assertThat(tokens.get(2).value()).isEqualTo("Like");
-        assertThat(tokens.get(3).value()).isEqualTo("And");
-        assertThat(tokens.get(4).value()).isEqualTo("account.email");
-        assertThat(tokens.get(5).value()).isEqualTo("Like");
+        assertThat(snapshot(tokens)).containsExactly(
+                new TokenView(QueryMethodTokenType.FIND_BY, "find", false),
+                new TokenView(QueryMethodTokenType.PROPERTY_PATH, "department.name", false),
+                new TokenView(QueryMethodTokenType.OPERATOR, "Like", false),
+                new TokenView(QueryMethodTokenType.AND, "And", false),
+                new TokenView(QueryMethodTokenType.PROPERTY_PATH, "account.email", false),
+                new TokenView(QueryMethodTokenType.OPERATOR, "Like", false)
+        );
     }
 
     @Test
     @Order(13)
     void tokenizeComplex_DeepNestingOrderBy() {
-        Class<DeepNestedEntity> entityClass = DeepNestedEntity.class;
+        var entityClass = DeepNestedEntity.class;
         var tokens = QueryMethodLexer.tokenize(entityClass, "findByDepartmentNameOrderByAccountEmailDesc");
 
-        assertThat(tokens).hasSize(5);
-        assertThat(tokens.get(1).value()).isEqualTo("department.name");
-        assertThat(tokens.get(2).value()).isEqualTo("OrderBy");
-        assertThat(tokens.get(3).value()).isEqualTo("account.email");
-        assertThat(tokens.get(4).type()).isEqualTo(QueryMethodTokenType.DESC);
+        assertThat(snapshot(tokens)).containsExactly(
+                new TokenView(QueryMethodTokenType.FIND_BY, "find", false),
+                new TokenView(QueryMethodTokenType.PROPERTY_PATH, "department.name", false),
+                new TokenView(QueryMethodTokenType.OPERATOR, "OrderBy", false),
+                new TokenView(QueryMethodTokenType.PROPERTY_PATH, "account.email", false),
+                new TokenView(QueryMethodTokenType.DESC, "Desc", false)
+        );
     }
 
     // ==================== Special Characters and Case Tests ====================
@@ -192,14 +214,15 @@ class ComplexNestingTest {
     @Test
     @Order(15)
     void tokenizePropertyWithNumbers_NumberCreatesSegment() {
-        Class<SimpleEntity> entityClass = SimpleEntity.class;
+        var entityClass = SimpleEntity.class;
         var tokens = QueryMethodLexer.tokenize(entityClass, "findByAge2");
 
         // Numbers after capital letters are part of the property name
         // "Age2" is treated as a single property "age2"
-        assertThat(tokens).hasSize(2);
-        assertThat(tokens.get(1).type()).isEqualTo(QueryMethodTokenType.PROPERTY_PATH);
-        assertThat(tokens.get(1).value()).isEqualTo("age2");
+        assertThat(snapshot(tokens)).containsExactly(
+                new TokenView(QueryMethodTokenType.FIND_BY, "find", false),
+                new TokenView(QueryMethodTokenType.PROPERTY_PATH, "age2", false)
+        );
     }
 
     // ==================== Edge Case Tests ====================
@@ -207,48 +230,42 @@ class ComplexNestingTest {
     @Test
     @Order(16)
     void tokenizeWithAllPrefix_NoPredicate() {
-        Class<SimpleEntity> entityClass = SimpleEntity.class;
+        var entityClass = SimpleEntity.class;
         var tokens = QueryMethodLexer.tokenize(entityClass, "findAll");
 
-        assertThat(tokens).hasSize(1);
-        assertThat(tokens.getFirst().type()).isEqualTo(QueryMethodTokenType.OPERATION);
-        assertThat(tokens.getFirst().value()).isEqualTo(OpCode.FIND_ALL.name());
+        assertThat(snapshot(tokens)).containsExactly(
+                new TokenView(QueryMethodTokenType.OPERATION, OpCode.FIND_ALL.name(), false)
+        );
     }
 
     @Test
     @Order(17)
     void tokenizeWithCountPrefix() {
-        Class<SimpleEntity> entityClass = SimpleEntity.class;
+        var entityClass = SimpleEntity.class;
         var tokens = QueryMethodLexer.tokenize(entityClass, "countByName");
 
-        assertThat(tokens).hasSize(2);
-        assertThat(tokens.get(0).type()).isEqualTo(QueryMethodTokenType.COUNT_BY);
-        assertThat(tokens.get(1).type()).isEqualTo(QueryMethodTokenType.PROPERTY_PATH);
-        assertThat(tokens.get(1).value()).isEqualTo("name");
+        assertThat(List.of(tokens.get(0).type(), tokens.get(1).type(), tokens.get(1).value()))
+                .containsExactly(QueryMethodTokenType.COUNT_BY, QueryMethodTokenType.PROPERTY_PATH, "name");
     }
 
     @Test
     @Order(18)
     void tokenizeWithExistsPrefix() {
-        Class<SimpleEntity> entityClass = SimpleEntity.class;
+        var entityClass = SimpleEntity.class;
         var tokens = QueryMethodLexer.tokenize(entityClass, "existsByName");
 
-        assertThat(tokens).hasSize(2);
-        assertThat(tokens.get(0).type()).isEqualTo(QueryMethodTokenType.EXISTS_BY);
-        assertThat(tokens.get(1).type()).isEqualTo(QueryMethodTokenType.PROPERTY_PATH);
-        assertThat(tokens.get(1).value()).isEqualTo("name");
+        assertThat(List.of(tokens.get(0).type(), tokens.get(1).type(), tokens.get(1).value()))
+                .containsExactly(QueryMethodTokenType.EXISTS_BY, QueryMethodTokenType.PROPERTY_PATH, "name");
     }
 
     @Test
     @Order(19)
     void tokenizeWithDeletePrefix() {
-        Class<SimpleEntity> entityClass = SimpleEntity.class;
+        var entityClass = SimpleEntity.class;
         var tokens = QueryMethodLexer.tokenize(entityClass, "deleteByName");
 
-        assertThat(tokens).hasSize(2);
-        assertThat(tokens.get(0).type()).isEqualTo(QueryMethodTokenType.DELETE_BY);
-        assertThat(tokens.get(1).type()).isEqualTo(QueryMethodTokenType.PROPERTY_PATH);
-        assertThat(tokens.get(1).value()).isEqualTo("name");
+        assertThat(List.of(tokens.get(0).type(), tokens.get(1).type(), tokens.get(1).value()))
+                .containsExactly(QueryMethodTokenType.DELETE_BY, QueryMethodTokenType.PROPERTY_PATH, "name");
     }
 
     // ==================== IgnoreCase with Deep Nesting ====================
@@ -256,26 +273,29 @@ class ComplexNestingTest {
     @Test
     @Order(20)
     void tokenizeIgnoreCase_DeepNesting() {
-        Class<DeepNestedEntity> entityClass = DeepNestedEntity.class;
+        var entityClass = DeepNestedEntity.class;
         var tokens = QueryMethodLexer.tokenize(entityClass, "findByDepartmentNameLikeIgnoreCase");
 
-        assertThat(tokens).hasSize(4);
-        assertThat(tokens.get(1).value()).isEqualTo("department.name");
-        assertThat(tokens.get(2).value()).isEqualTo("Like");
-        assertThat(tokens.get(3).value()).isEqualTo("IgnoreCase");
-        assertThat(tokens.get(3).ignoreCase()).isTrue();
+        assertThat(snapshot(tokens)).containsExactly(
+                new TokenView(QueryMethodTokenType.FIND_BY, "find", false),
+                new TokenView(QueryMethodTokenType.PROPERTY_PATH, "department.name", false),
+                new TokenView(QueryMethodTokenType.OPERATOR, "Like", false),
+                new TokenView(QueryMethodTokenType.OPERATOR, "IgnoreCase", true)
+        );
     }
 
     @Test
     @Order(21)
     void tokenizeIgnoreCase_EmbeddedProperty() {
-        Class<EmbeddedEntity> entityClass = EmbeddedEntity.class;
+        var entityClass = EmbeddedEntity.class;
         var tokens = QueryMethodLexer.tokenize(entityClass, "findByProfileEmailLikeIgnoreCase");
 
-        assertThat(tokens).hasSize(4);
-        assertThat(tokens.get(1).value()).isEqualTo("profile.email");
-        assertThat(tokens.get(2).value()).isEqualTo("Like");
-        assertThat(tokens.get(3).ignoreCase()).isTrue();
+        assertThat(snapshot(tokens)).containsExactly(
+                new TokenView(QueryMethodTokenType.FIND_BY, "find", false),
+                new TokenView(QueryMethodTokenType.PROPERTY_PATH, "profile.email", false),
+                new TokenView(QueryMethodTokenType.OPERATOR, "Like", false),
+                new TokenView(QueryMethodTokenType.OPERATOR, "IgnoreCase", true)
+        );
     }
 
     // ==================== OrderBy with Complex Nesting ====================
@@ -283,28 +303,34 @@ class ComplexNestingTest {
     @Test
     @Order(22)
     void tokenizeOrderBy_DeepNestingMultiProperty() {
-        Class<DeepNestedEntity> entityClass = DeepNestedEntity.class;
+        var entityClass = DeepNestedEntity.class;
         var tokens = QueryMethodLexer.tokenize(entityClass, "findByDepartmentNameOrderByDepartmentAddressCityAsc");
 
-        assertThat(tokens).hasSize(5);
-        assertThat(tokens.get(1).value()).isEqualTo("department.name");
-        assertThat(tokens.get(2).value()).isEqualTo("OrderBy");
-        assertThat(tokens.get(3).value()).isEqualTo("department.address.city");
-        assertThat(tokens.get(4).type()).isEqualTo(QueryMethodTokenType.ASC);
+        assertThat(snapshot(tokens)).containsExactly(
+                new TokenView(QueryMethodTokenType.FIND_BY, "find", false),
+                new TokenView(QueryMethodTokenType.PROPERTY_PATH, "department.name", false),
+                new TokenView(QueryMethodTokenType.OPERATOR, "OrderBy", false),
+                new TokenView(QueryMethodTokenType.PROPERTY_PATH, "department.address.city", false),
+                new TokenView(QueryMethodTokenType.ASC, "Asc", false)
+        );
     }
 
     @Test
     @Order(23)
     void tokenizeOrderBy_MultipleDeepNesting() {
-        Class<DeepNestedEntity> entityClass = DeepNestedEntity.class;
+        var entityClass = DeepNestedEntity.class;
         var tokens = QueryMethodLexer.tokenize(entityClass,
                 "findByDepartmentNameOrderByDepartmentAddressCityAscAndAccountEmailDesc");
 
-        assertThat(tokens).hasSize(8);
-        assertThat(tokens.get(3).value()).isEqualTo("department.address.city");
-        assertThat(tokens.get(4).type()).isEqualTo(QueryMethodTokenType.ASC);
-        assertThat(tokens.get(5).value()).isEqualTo("And");
-        assertThat(tokens.get(6).value()).isEqualTo("account.email");
-        assertThat(tokens.get(7).type()).isEqualTo(QueryMethodTokenType.DESC);
+        assertThat(snapshot(tokens)).containsExactly(
+                new TokenView(QueryMethodTokenType.FIND_BY, "find", false),
+                new TokenView(QueryMethodTokenType.PROPERTY_PATH, "department.name", false),
+                new TokenView(QueryMethodTokenType.OPERATOR, "OrderBy", false),
+                new TokenView(QueryMethodTokenType.PROPERTY_PATH, "department.address.city", false),
+                new TokenView(QueryMethodTokenType.ASC, "Asc", false),
+                new TokenView(QueryMethodTokenType.AND, "And", false),
+                new TokenView(QueryMethodTokenType.PROPERTY_PATH, "account.email", false),
+                new TokenView(QueryMethodTokenType.DESC, "Desc", false)
+        );
     }
 }
