@@ -1,18 +1,5 @@
 package io.memris.core;
 
-import io.memris.repository.MemrisRepositoryFactory;
-import io.memris.core.MemrisArena;
-import io.memris.repository.MemrisRepository;
-import io.memris.core.Entity;
-import io.memris.core.GeneratedValue;
-import io.memris.core.GenerationType;
-import io.memris.core.Index;
-
-import io.memris.core.Entity;
-import io.memris.core.GeneratedValue;
-import io.memris.core.GenerationType;
-import io.memris.core.Index;
-
 import io.memris.core.converter.TypeConverter;
 import io.memris.core.converter.TypeConverterRegistry;
 import org.junit.jupiter.api.Test;
@@ -24,72 +11,88 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Date;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.assertj.core.api.Assertions.assertThat;
 
 class TypeConverterRegistryTest {
 
     @Test
     void timeConvertersUseEpochLongs() {
-        TypeConverterRegistry registry = TypeConverterRegistry.getInstance();
-
-        TypeConverter<Instant, ?> instantConverter = registry.getConverter(Instant.class);
-        assertNotNull(instantConverter);
-        Object instantStorage = instantConverter.toStorage(Instant.ofEpochMilli(1234L));
-        assertEquals(1234L, instantStorage);
-
-        @SuppressWarnings("unchecked")
-        TypeConverter<Instant, Long> typedInstant = (TypeConverter<Instant, Long>) instantConverter;
-        assertEquals(Instant.ofEpochMilli(1234L), typedInstant.fromStorage(1234L));
-
-        TypeConverter<LocalDate, ?> dateConverter = registry.getConverter(LocalDate.class);
-        assertNotNull(dateConverter);
-        Object dateStorage = dateConverter.toStorage(LocalDate.ofEpochDay(5));
-        assertEquals(5L, dateStorage);
-
-        @SuppressWarnings("unchecked")
-        TypeConverter<LocalDate, Long> typedDate = (TypeConverter<LocalDate, Long>) dateConverter;
-        assertEquals(LocalDate.ofEpochDay(5), typedDate.fromStorage(5L));
-
-        TypeConverter<LocalDateTime, ?> dateTimeConverter = registry.getConverter(LocalDateTime.class);
-        assertNotNull(dateTimeConverter);
-        Object dateTimeStorage = dateTimeConverter.toStorage(LocalDateTime.of(1970, 1, 1, 0, 0, 1));
-        assertEquals(1000L, dateTimeStorage);
-
-        @SuppressWarnings("unchecked")
-        TypeConverter<LocalDateTime, Long> typedDateTime = (TypeConverter<LocalDateTime, Long>) dateTimeConverter;
-        assertEquals(LocalDateTime.of(1970, 1, 1, 0, 0, 1), typedDateTime.fromStorage(1000L));
-
-        TypeConverter<Date, ?> utilDateConverter = registry.getConverter(Date.class);
-        assertNotNull(utilDateConverter);
-        Object utilDateStorage = utilDateConverter.toStorage(new Date(9876L));
-        assertEquals(9876L, utilDateStorage);
-
-        @SuppressWarnings("unchecked")
-        TypeConverter<Date, Long> typedUtilDate = (TypeConverter<Date, Long>) utilDateConverter;
-        assertEquals(new Date(9876L), typedUtilDate.fromStorage(9876L));
+        var registry = TypeConverterRegistry.getInstance();
+        var instantConverter = registry.getConverter(Instant.class);
+        var localDateConverter = registry.getConverter(LocalDate.class);
+        var localDateTimeConverter = registry.getConverter(LocalDateTime.class);
+        var dateConverter = registry.getConverter(Date.class);
+        assertThat(instantConverter).isNotNull();
+        assertThat(localDateConverter).isNotNull();
+        assertThat(localDateTimeConverter).isNotNull();
+        assertThat(dateConverter).isNotNull();
+        var actual = new TimeSnapshot(
+                instantConverter.toStorage(Instant.ofEpochMilli(1234L)),
+                fromStorage(instantConverter, 1234L),
+                localDateConverter.toStorage(LocalDate.ofEpochDay(5)),
+                fromStorage(localDateConverter, 5L),
+                localDateTimeConverter.toStorage(LocalDateTime.of(1970, 1, 1, 0, 0, 1)),
+                fromStorage(localDateTimeConverter, 1000L),
+                dateConverter.toStorage(new Date(9876L)),
+                fromStorage(dateConverter, 9876L)
+        );
+        var expected = new TimeSnapshot(
+                1234L,
+                Instant.ofEpochMilli(1234L),
+                5L,
+                LocalDate.ofEpochDay(5),
+                1000L,
+                LocalDateTime.of(1970, 1, 1, 0, 0, 1),
+                9876L,
+                new Date(9876L)
+        );
+        assertThat(actual).usingRecursiveComparison().isEqualTo(expected);
     }
 
     @Test
     void bigConvertersUseStrings() {
-        TypeConverterRegistry registry = TypeConverterRegistry.getInstance();
+        var registry = TypeConverterRegistry.getInstance();
+        var bigDecimalConverter = registry.getConverter(BigDecimal.class);
+        var bigIntegerConverter = registry.getConverter(BigInteger.class);
+        assertThat(bigDecimalConverter).isNotNull();
+        assertThat(bigIntegerConverter).isNotNull();
+        var actual = new BigSnapshot(
+                bigDecimalConverter.toStorage(new BigDecimal("123.45")),
+                fromStorage(bigDecimalConverter, "123.45"),
+                bigIntegerConverter.toStorage(new BigInteger("987654321")),
+                fromStorage(bigIntegerConverter, "987654321")
+        );
+        var expected = new BigSnapshot(
+                "123.45",
+                new BigDecimal("123.45"),
+                "987654321",
+                new BigInteger("987654321")
+        );
+        assertThat(actual).usingRecursiveComparison().isEqualTo(expected);
+    }
 
-        TypeConverter<BigDecimal, ?> decimalConverter = registry.getConverter(BigDecimal.class);
-        assertNotNull(decimalConverter);
-        Object decimalStorage = decimalConverter.toStorage(new BigDecimal("123.45"));
-        assertEquals("123.45", decimalStorage);
+    @SuppressWarnings("unchecked")
+    private static <T, S> T fromStorage(TypeConverter<T, ?> converter, S value) {
+        return ((TypeConverter<T, S>) converter).fromStorage(value);
+    }
 
-        @SuppressWarnings("unchecked")
-        TypeConverter<BigDecimal, String> typedDecimal = (TypeConverter<BigDecimal, String>) decimalConverter;
-        assertEquals(new BigDecimal("123.45"), typedDecimal.fromStorage("123.45"));
+    private record TimeSnapshot(
+            Object instantStorage,
+            Object instantFromStorage,
+            Object dateStorage,
+            Object dateFromStorage,
+            Object dateTimeStorage,
+            Object dateTimeFromStorage,
+            Object utilDateStorage,
+            Object utilDateFromStorage
+    ) {
+    }
 
-        TypeConverter<BigInteger, ?> integerConverter = registry.getConverter(BigInteger.class);
-        assertNotNull(integerConverter);
-        Object integerStorage = integerConverter.toStorage(new BigInteger("987654321"));
-        assertEquals("987654321", integerStorage);
-
-        @SuppressWarnings("unchecked")
-        TypeConverter<BigInteger, String> typedInteger = (TypeConverter<BigInteger, String>) integerConverter;
-        assertEquals(new BigInteger("987654321"), typedInteger.fromStorage("987654321"));
+    private record BigSnapshot(
+            Object decimalStorage,
+            Object decimalFromStorage,
+            Object integerStorage,
+            Object integerFromStorage
+    ) {
     }
 }

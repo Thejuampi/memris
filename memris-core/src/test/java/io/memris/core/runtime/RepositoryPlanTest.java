@@ -11,9 +11,7 @@ import io.memris.runtime.EntitySaver;
 import io.memris.runtime.RepositoryPlan;
 import org.junit.jupiter.api.Test;
 
-import java.lang.invoke.MethodHandle;
-
-import static org.junit.jupiter.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * TDD Tests for RepositoryPlan with EntitySaver integration.
@@ -28,7 +26,6 @@ class RepositoryPlanTest {
 
         // Generate EntitySaver
         EntitySaver<TestEntity, ?> entitySaver = EntitySaverGenerator.generate(entityClass, metadata);
-        assertNotNull(entitySaver);
 
         // Create minimal RepositoryPlan with EntitySaver
         CompiledQuery[] queries = new CompiledQuery[0];
@@ -46,9 +43,7 @@ class RepositoryPlanTest {
                 .entitySaver(entitySaver)
                 .build();
 
-        // Verify EntitySaver is present
-        assertNotNull(plan.entitySaver());
-        assertSame(entitySaver, plan.entitySaver());
+        assertThat(plan.entitySaver()).isSameAs(entitySaver);
     }
 
     @Test
@@ -68,8 +63,7 @@ class RepositoryPlanTest {
                 .typeCodes(typeCodes)
                 .build();
 
-        // Verify EntitySaver is null when not set
-        assertNull(plan.entitySaver());
+        assertThat(plan.entitySaver()).isNull();
     }
 
     @Test
@@ -99,17 +93,11 @@ class RepositoryPlanTest {
         @SuppressWarnings("rawtypes")
         EntitySaver rawSaver = plan.entitySaver();
 
-        // Test extractId (should return null for new entity)
         Object id = rawSaver.extractId(entity);
-        assertNull(id);
-
-        // Test setId
         rawSaver.setId(entity, 42L);
-        assertEquals(42L, entity.id);
-
-        // Test extractId after setting
-        id = rawSaver.extractId(entity);
-        assertEquals(42L, id);
+        var actual = new SaverSnapshot(id, entity.id, rawSaver.extractId(entity));
+        var expected = new SaverSnapshot(null, 42L, 42L);
+        assertThat(actual).usingRecursiveComparison().isEqualTo(expected);
     }
 
     // Test entity class
@@ -117,5 +105,8 @@ class RepositoryPlanTest {
         @Id
         public Long id;
         public String name;
+    }
+
+    private record SaverSnapshot(Object idBeforeSet, Long idAfterSet, Object extractedAfterSet) {
     }
 }

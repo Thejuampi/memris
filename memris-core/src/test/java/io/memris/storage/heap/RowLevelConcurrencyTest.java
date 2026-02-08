@@ -24,7 +24,8 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.HashSet;
 import java.util.Set;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 
 /**
  * TDD tests for row-level seqlock and multi-writer concurrency safety.
@@ -107,15 +108,15 @@ class RowLevelConcurrencyTest {
 
         // Force row generation access through multiple paths
         // This would cause StackOverflowError if interceptor recurses
-        assertDoesNotThrow(() -> {
+        assertThatCode(() -> {
             // Query triggers selection creation which calls rowGeneration()
             List<TestEntity> results = repo.findByName("test");
-            assertFalse(results.isEmpty());
+            assertThat(results).isNotEmpty();
 
             // Find by ID triggers lookup which validates generation
             Optional<TestEntity> found = repo.findById(saved.getId());
-            assertTrue(found.isPresent());
-        });
+            assertThat(found).isPresent();
+        }).doesNotThrowAnyException();
 
         arena.close();
     }
@@ -213,15 +214,14 @@ class RowLevelConcurrencyTest {
         startLatch.countDown();
 
         // Wait for completion
-        assertTrue(completeLatch.await(30, TimeUnit.SECONDS),
-            "Test should complete within timeout");
+        assertThat(completeLatch.await(30, TimeUnit.SECONDS)).isTrue();
 
         writers.shutdown();
         readers.shutdown();
 
         // Assert no torn reads detected
-        assertEquals(0, tornReadCount.get(),
-            "Should have no torn reads, but found: " + lastTornRead.get());
+        assertThat(new TornReadSummary(tornReadCount.get(), lastTornRead.get())).usingRecursiveComparison()
+                .isEqualTo(new TornReadSummary(0, null));
 
         arena.close();
     }
@@ -270,31 +270,28 @@ class RowLevelConcurrencyTest {
         }
 
         startLatch.countDown();
-        assertTrue(completeLatch.await(30, TimeUnit.SECONDS));
+        assertThat(completeLatch.await(30, TimeUnit.SECONDS)).isTrue();
         executor.shutdown();
 
         // Verify all entities are correctly saved and retrievable
         for (int t = 0; t < threadCount; t++) {
             for (Long id : threadEntityIds[t]) {
                 Optional<TestEntity> found = repo.findById(id);
-                assertTrue(found.isPresent(), "Entity " + id + " should exist");
+                assertThat(found).isPresent();
 
                 TestEntity entity = found.orElseThrow();
                 String name = entity.getName();
                 int value = entity.getValue();
 
                 // Validate entity belongs to the correct thread
-                assertTrue(name.startsWith("thread-" + t),
-                    "Entity " + id + " name should belong to thread " + t + ": " + name);
-                assertTrue(value >= t * 1000 && value < t * 1000 + entitiesPerThread,
-                    "Entity " + id + " value should be in thread " + t + " range: " + value);
+                assertThat(name.startsWith("thread-" + t)).isTrue();
+                assertThat(value >= t * 1000 && value < t * 1000 + entitiesPerThread).isTrue();
             }
         }
 
         // Verify total count
         long totalCount = repo.count();
-        assertEquals(threadCount * entitiesPerThread, totalCount,
-            "Should have correct total entity count");
+        assertThat(totalCount).isEqualTo(threadCount * entitiesPerThread);
 
         arena.close();
     }
@@ -350,19 +347,17 @@ class RowLevelConcurrencyTest {
         }
 
         startLatch.countDown();
-        assertTrue(completeLatch.await(30, TimeUnit.SECONDS));
+        assertThat(completeLatch.await(30, TimeUnit.SECONDS)).isTrue();
         executor.shutdown();
 
         // Should have no errors
-        assertEquals(0, errorCount.get(),
-            "Should have no errors during concurrent deletes");
+        assertThat(errorCount.get()).isEqualTo(0);
 
         // Verify entities are deleted (or at least, count is reduced)
         // Note: Due to eventual index consistency, count might not reflect deletions immediately
         long remainingCount = repo.count();
         // At minimum, verify no exceptions were thrown during concurrent deletes
-        assertEquals(entityCount, successCount.get(),
-            "All delete operations should succeed");
+        assertThat(successCount.get()).isEqualTo(entityCount);
 
         arena.close();
     }
@@ -389,8 +384,7 @@ class RowLevelConcurrencyTest {
 
         // Verify it's gone
         Optional<TestEntity> deleted = repo.findById(originalId);
-        assertFalse(deleted.isPresent(),
-            "Deleted entity should not be found");
+        assertThat(deleted).isEmpty();
 
         // Create new entity (may reuse the row)
         TestEntity newEntity = new TestEntity("new", 200);
@@ -398,16 +392,21 @@ class RowLevelConcurrencyTest {
 
         // New entity should be findable with correct data
         Optional<TestEntity> found = repo.findById(newSaved.getId());
-        assertTrue(found.isPresent(), "New entity should be found");
+        assertThat(found).isPresent();
         TestEntity foundEntity = found.orElseThrow();
-        assertEquals("new", foundEntity.getName());
-        assertEquals(200, foundEntity.getValue());
+        assertThat(new EntitySnapshot(foundEntity.getName(), foundEntity.getValue())).usingRecursiveComparison()
+                .isEqualTo(new EntitySnapshot("new", 200));
 
         // Old reference should still not work
         Optional<TestEntity> stillDeleted = repo.findById(originalId);
-        assertFalse(stillDeleted.isPresent(),
-            "Old ID should still not be found after row reuse");
+        assertThat(stillDeleted).isEmpty();
 
         arena.close();
+    }
+
+    private record TornReadSummary(int tornReadCount, String lastTornRead) {
+    }
+
+    private record EntitySnapshot(String name, int value) {
     }
 }

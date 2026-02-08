@@ -147,8 +147,8 @@ class HeapRuntimeKernelTest {
 
         List<DoubleTestEntity> results = repo.findByValueBetween(1e140, 1e160);
 
-        assertThat(results).hasSize(1);
-        assertThat(results.get(0).value).isEqualTo(1e150);
+        assertThat(results).usingRecursiveFieldByFieldElementComparatorIgnoringFields("id")
+                .containsExactly(new DoubleTestEntity(null, 1e150));
     }
 
     @Test
@@ -163,8 +163,8 @@ class HeapRuntimeKernelTest {
 
         List<DoubleTestEntity> results = repo.findByValueBetween(-60.0, -40.0);
 
-        assertThat(results).hasSize(1);
-        assertThat(results.get(0).value).isEqualTo(-50.5);
+        assertThat(results).usingRecursiveFieldByFieldElementComparatorIgnoringFields("id")
+                .containsExactly(new DoubleTestEntity(null, -50.5));
     }
 
     @Test
@@ -230,8 +230,8 @@ class HeapRuntimeKernelTest {
 
         List<ByteTestEntity> results = repo.findByValueBetween((byte) -60, (byte) -40);
 
-        assertThat(results).hasSize(1);
-        assertThat(results.get(0).value).isEqualTo((byte) -50);
+        assertThat(results).usingRecursiveFieldByFieldElementComparatorIgnoringFields("id")
+                .containsExactly(new ByteTestEntity(null, (byte) -50));
     }
 
     // ==================== SHORT BETWEEN TESTS ====================
@@ -265,8 +265,8 @@ class HeapRuntimeKernelTest {
 
         List<ShortTestEntity> results = repo.findByValueBetween((short) -600, (short) -400);
 
-        assertThat(results).hasSize(1);
-        assertThat(results.get(0).value).isEqualTo((short) -500);
+        assertThat(results).usingRecursiveFieldByFieldElementComparatorIgnoringFields("id")
+                .containsExactly(new ShortTestEntity(null, (short) -500));
     }
 
     @Test

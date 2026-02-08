@@ -3,7 +3,7 @@ package io.memris.storage.heap;
 import io.memris.kernel.RowId;
 import org.junit.jupiter.api.Test;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * TDD tests for LongIdIndex.
@@ -14,7 +14,7 @@ class LongIdIndexTest {
     @Test
     void newIndexHasZeroSize() {
         LongIdIndex index = new LongIdIndex(16);
-        assertEquals(0, index.size());
+        assertThat(index.size()).isEqualTo(0);
     }
 
     @Test
@@ -24,14 +24,14 @@ class LongIdIndexTest {
 
         index.put(42L, rowId, 1L);
 
-        assertEquals(rowId, index.get(42L));
+        assertThat(index.get(42L)).isEqualTo(rowId);
     }
 
     @Test
     void getReturnsNullForMissingKey() {
         LongIdIndex index = new LongIdIndex(16);
 
-        assertNull(index.get(999L));
+        assertThat(index.get(999L)).isNull();
     }
 
     @Test
@@ -43,25 +43,25 @@ class LongIdIndexTest {
         index.put(42L, rowId1, 1L);
         index.put(42L, rowId2, 2L); // Update
 
-        assertEquals(rowId2, index.get(42L));
-        assertEquals(1, index.size());
+        assertThat(new IndexSnapshot(index.get(42L), index.size())).usingRecursiveComparison()
+                .isEqualTo(new IndexSnapshot(rowId2, 1));
     }
 
     @Test
     void sizeTracksNumberOfKeys() {
         LongIdIndex index = new LongIdIndex(16);
 
-        assertEquals(0, index.size());
+        assertThat(index.size()).isEqualTo(0);
 
         index.put(1L, new RowId(0, 0), 1L);
-        assertEquals(1, index.size());
+        assertThat(index.size()).isEqualTo(1);
 
         index.put(2L, new RowId(0, 1), 1L);
-        assertEquals(2, index.size());
+        assertThat(index.size()).isEqualTo(2);
 
         // Same key doesn't increase size
         index.put(1L, new RowId(1, 0), 2L);
-        assertEquals(2, index.size());
+        assertThat(index.size()).isEqualTo(2);
     }
 
     @Test
@@ -70,11 +70,11 @@ class LongIdIndexTest {
         RowId rowId = new RowId(0, 5);
 
         index.put(42L, rowId, 1L);
-        assertEquals(1, index.size());
+        assertThat(index.size()).isEqualTo(1);
 
         index.remove(42L);
-        assertEquals(0, index.size());
-        assertNull(index.get(42L));
+        assertThat(new IndexSnapshot(index.get(42L), index.size())).usingRecursiveComparison()
+                .isEqualTo(new IndexSnapshot(null, 0));
     }
 
     @Test
@@ -82,7 +82,7 @@ class LongIdIndexTest {
         LongIdIndex index = new LongIdIndex(16);
 
         index.remove(999L); // Should not throw
-        assertEquals(0, index.size());
+        assertThat(index.size()).isEqualTo(0);
     }
 
     @Test
@@ -92,8 +92,8 @@ class LongIdIndexTest {
 
         index.put(42L, rowId, 1L);
 
-        assertTrue(index.hasKey(42L));
-        assertFalse(index.hasKey(999L));
+        assertThat(new KeySnapshot(index.hasKey(42L), index.hasKey(999L))).usingRecursiveComparison()
+                .isEqualTo(new KeySnapshot(true, false));
     }
 
     @Test
@@ -104,10 +104,9 @@ class LongIdIndexTest {
         index.put(2L, new RowId(0, 1), 1L);
         index.put(3L, new RowId(0, 2), 1L);
 
-        assertEquals(new RowId(0, 0), index.get(1L));
-        assertEquals(new RowId(0, 1), index.get(2L));
-        assertEquals(new RowId(0, 2), index.get(3L));
-        assertEquals(3, index.size());
+        assertThat(new MultiSnapshot(index.get(1L), index.get(2L), index.get(3L), index.size()))
+                .usingRecursiveComparison()
+                .isEqualTo(new MultiSnapshot(new RowId(0, 0), new RowId(0, 1), new RowId(0, 2), 3));
     }
 
     @Test
@@ -117,6 +116,15 @@ class LongIdIndexTest {
 
         index.put(-1L, rowId, 1L);
 
-        assertEquals(rowId, index.get(-1L));
+        assertThat(index.get(-1L)).isEqualTo(rowId);
+    }
+
+    private record IndexSnapshot(RowId rowId, int size) {
+    }
+
+    private record KeySnapshot(boolean hasExistingKey, boolean hasMissingKey) {
+    }
+
+    private record MultiSnapshot(RowId first, RowId second, RowId third, int size) {
     }
 }

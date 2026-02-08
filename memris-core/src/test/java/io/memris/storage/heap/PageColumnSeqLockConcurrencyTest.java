@@ -7,7 +7,7 @@ import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Tests for PageColumn* seqlock thread-safety.
@@ -83,11 +83,12 @@ class PageColumnSeqLockConcurrencyTest {
         }
 
         startLatch.countDown();
-        assertTrue(completeLatch.await(30, TimeUnit.SECONDS), "Threads should complete within timeout");
+        var completed = completeLatch.await(30, TimeUnit.SECONDS);
         executor.shutdown();
 
-        assertEquals(0, tornReadCount.get(),
-            "Found " + tornReadCount.get() + " torn reads. First: " + firstTornRead.get());
+        assertThat(new SeqLockReadSummary(completed, tornReadCount.get(), firstTornRead.get()))
+                .usingRecursiveComparison()
+                .isEqualTo(new SeqLockReadSummary(true, 0, null));
     }
 
     @Test
@@ -148,9 +149,16 @@ class PageColumnSeqLockConcurrencyTest {
         }
 
         startLatch.countDown();
-        assertTrue(completeLatch.await(30, TimeUnit.SECONDS));
+        var completed = completeLatch.await(30, TimeUnit.SECONDS);
         executor.shutdown();
 
-        assertEquals(0, inconsistentScanCount.get(), "Inconsistent scans detected");
+        assertThat(new SeqLockScanSummary(completed, inconsistentScanCount.get())).usingRecursiveComparison()
+                .isEqualTo(new SeqLockScanSummary(true, 0));
+    }
+
+    private record SeqLockReadSummary(boolean completed, int tornReadCount, String firstTornRead) {
+    }
+
+    private record SeqLockScanSummary(boolean completed, int inconsistentScanCount) {
     }
 }

@@ -2,8 +2,7 @@ package io.memris.storage.heap;
 
 import org.junit.jupiter.api.Test;
 
-import static org.junit.jupiter.api.Assertions.assertArrayEquals;
-import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * TDD tests for PageColumnLong.
@@ -16,7 +15,7 @@ class PageColumnLongTest {
     @Test
     void newColumnHasZeroPublished() {
         PageColumnLong column = new PageColumnLong(PAGE_SIZE);
-        assertEquals(0, column.publishedCount());
+        assertThat(column.publishedCount()).isEqualTo(0);
     }
 
     @Test
@@ -25,14 +24,14 @@ class PageColumnLongTest {
         column.set(0, 42L);
         column.publish(1);
 
-        assertEquals(42L, column.get(0));
+        assertThat(column.get(0)).isEqualTo(42L);
     }
 
     @Test
     void getReturnsDefaultForUnpublished() {
         PageColumnLong column = new PageColumnLong(PAGE_SIZE);
         // Not published yet
-        assertEquals(0L, column.get(0));
+        assertThat(column.get(0)).isEqualTo(0L);
     }
 
     @Test
@@ -43,26 +42,24 @@ class PageColumnLongTest {
         column.set(2, 3L);
         column.publish(3);
 
-        assertEquals(1L, column.get(0));
-        assertEquals(2L, column.get(1));
-        assertEquals(3L, column.get(2));
+        assertThat(new long[]{column.get(0), column.get(1), column.get(2)}).containsExactly(1L, 2L, 3L);
     }
 
     @Test
     void publishedCountMonotonic() {
         PageColumnLong column = new PageColumnLong(PAGE_SIZE);
 
-        assertEquals(0, column.publishedCount());
+        assertThat(column.publishedCount()).isEqualTo(0);
 
         column.publish(1);
-        assertEquals(1, column.publishedCount());
+        assertThat(column.publishedCount()).isEqualTo(1);
 
         column.publish(5);
-        assertEquals(5, column.publishedCount());
+        assertThat(column.publishedCount()).isEqualTo(5);
 
         // Can't decrease published
         column.publish(3);
-        assertEquals(5, column.publishedCount());
+        assertThat(column.publishedCount()).isEqualTo(5);
     }
 
     @Test
@@ -77,7 +74,7 @@ class PageColumnLongTest {
 
         int[] matches = column.scanEquals(10L, 20);
 
-        assertArrayEquals(new int[]{0, 5, 10}, matches);
+        assertThat(matches).containsExactly(0, 5, 10);
     }
 
     @Test
@@ -90,7 +87,7 @@ class PageColumnLongTest {
 
         int[] matches = column.scanEquals(99L, 2);
 
-        assertArrayEquals(new int[]{}, matches);
+        assertThat(matches).isEmpty();
     }
 
     @Test
@@ -106,7 +103,7 @@ class PageColumnLongTest {
         int[] matches = column.scanEquals(10L, 4);
 
         // Should only scan published range
-        assertArrayEquals(new int[]{0, 1}, matches);
+        assertThat(matches).containsExactly(0, 1);
     }
 
     @Test
@@ -122,7 +119,7 @@ class PageColumnLongTest {
         int[] matches = column.scanGreaterThan(20L, 4);
 
         // Both 50 and 30 are > 20
-        assertArrayEquals(new int[]{1, 2}, matches);
+        assertThat(matches).containsExactly(1, 2);
     }
 
     @Test
@@ -138,7 +135,7 @@ class PageColumnLongTest {
 
         int[] matches = column.scanBetween(10L, 30L, 5);
 
-        assertArrayEquals(new int[]{0, 1, 2}, matches);
+        assertThat(matches).containsExactly(0, 1, 2);
     }
 
     @Test
@@ -153,6 +150,6 @@ class PageColumnLongTest {
 
         int[] matches = column.scanIn(new long[]{20L, 30L, 99L}, 4);
 
-        assertArrayEquals(new int[]{1, 2, 3}, matches);
+        assertThat(matches).containsExactly(1, 2, 3);
     }
 }

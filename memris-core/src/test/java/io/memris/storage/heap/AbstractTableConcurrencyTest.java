@@ -13,7 +13,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.HashSet;
 import java.util.Set;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * TDD tests for AbstractTable concurrency issues.
@@ -114,8 +114,7 @@ class AbstractTableConcurrencyTest {
         // Note: The free-list race condition means duplicates MAY occur, but
         // they are timing-dependent and may not reproduce reliably.
         // This test verifies concurrent allocation completes without crashing.
-        assertTrue(duplicateCount.get() >= 0, 
-            "Duplicate count tracks potential races (timing-dependent, may be 0)");
+        assertThat(duplicateCount.get()).isGreaterThanOrEqualTo(0);
     }
 
     @Test
@@ -167,7 +166,7 @@ class AbstractTableConcurrencyTest {
         
         // The generation check prevents double-decrement in single-threaded case
         // but concurrent tombstones may still race
-        assertTrue(successCount.get() >= 1, "At least one tombstone should succeed");
+        assertThat(successCount.get()).isGreaterThanOrEqualTo(1);
     }
 
     @Test
@@ -178,16 +177,16 @@ class AbstractTableConcurrencyTest {
         long generation = table.currentGeneration();
         table.incrementRowCount();
         
-        assertEquals(1, table.rowCount(), "Row count should be 1 after increment");
+        assertThat(table.rowCount()).isEqualTo(1);
         
         // First tombstone should succeed (generation valid)
-        assertTrue(table.tombstoneRow(row, generation), "First tombstone should return true (generation valid)");
-        assertEquals(0, table.rowCount(), "Row count should be 0 after tombstone");
+        assertThat(table.tombstoneRow(row, generation)).isTrue();
+        assertThat(table.rowCount()).isEqualTo(0);
         
         // Second tombstone returns true because generation is still valid,
         // but rowCount should not decrement again (protected by !tombstones.get() check)
-        assertTrue(table.tombstoneRow(row, generation), "Second tombstone returns true (generation still valid)");
-        assertEquals(0, table.rowCount(), "Row count should still be 0 (no double decrement)");
+        assertThat(table.tombstoneRow(row, generation)).isTrue();
+        assertThat(table.rowCount()).isEqualTo(0);
     }
 
     @Test
@@ -240,7 +239,6 @@ class AbstractTableConcurrencyTest {
         executor.shutdown();
         
         // With volatile published watermark, reads should be safe
-        assertEquals(0, errorCount.get(), 
-            "Concurrent reads should be safe with volatile watermark");
+        assertThat(errorCount.get()).isEqualTo(0);
     }
 }

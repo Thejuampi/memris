@@ -2,7 +2,7 @@ package io.memris.storage.heap;
 
 import org.junit.jupiter.api.Test;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * TDD tests for PageColumnString.
@@ -15,7 +15,7 @@ class PageColumnStringTest {
     @Test
     void newColumnHasZeroPublished() {
         PageColumnString column = new PageColumnString(PAGE_SIZE);
-        assertEquals(0, column.publishedCount());
+        assertThat(column.publishedCount()).isEqualTo(0);
     }
 
     @Test
@@ -24,14 +24,14 @@ class PageColumnStringTest {
         column.set(0, "hello");
         column.publish(1);
 
-        assertEquals("hello", column.get(0));
+        assertThat(column.get(0)).isEqualTo("hello");
     }
 
     @Test
     void getReturnsNullForUnpublished() {
         PageColumnString column = new PageColumnString(PAGE_SIZE);
         // Not published yet
-        assertNull(column.get(0));
+        assertThat(column.get(0)).isNull();
     }
 
     @Test
@@ -42,26 +42,24 @@ class PageColumnStringTest {
         column.set(2, "three");
         column.publish(3);
 
-        assertEquals("one", column.get(0));
-        assertEquals("two", column.get(1));
-        assertEquals("three", column.get(2));
+        assertThat(new String[]{column.get(0), column.get(1), column.get(2)}).containsExactly("one", "two", "three");
     }
 
     @Test
     void publishedCountMonotonic() {
         PageColumnString column = new PageColumnString(PAGE_SIZE);
 
-        assertEquals(0, column.publishedCount());
+        assertThat(column.publishedCount()).isEqualTo(0);
 
         column.publish(1);
-        assertEquals(1, column.publishedCount());
+        assertThat(column.publishedCount()).isEqualTo(1);
 
         column.publish(5);
-        assertEquals(5, column.publishedCount());
+        assertThat(column.publishedCount()).isEqualTo(5);
 
         // Can't decrease published
         column.publish(3);
-        assertEquals(5, column.publishedCount());
+        assertThat(column.publishedCount()).isEqualTo(5);
     }
 
     @Test
@@ -76,7 +74,7 @@ class PageColumnStringTest {
 
         int[] matches = column.scanEquals("apple", 20);
 
-        assertArrayEquals(new int[]{0, 10}, matches);
+        assertThat(matches).containsExactly(0, 10);
     }
 
     @Test
@@ -89,7 +87,7 @@ class PageColumnStringTest {
 
         int[] matches = column.scanEquals("cherry", 2);
 
-        assertArrayEquals(new int[]{}, matches);
+        assertThat(matches).isEmpty();
     }
 
     @Test
@@ -105,7 +103,7 @@ class PageColumnStringTest {
         int[] matches = column.scanEquals("apple", 4);
 
         // Should only scan published range
-        assertArrayEquals(new int[]{0, 1}, matches);
+        assertThat(matches).containsExactly(0, 1);
     }
 
     @Test
@@ -120,7 +118,7 @@ class PageColumnStringTest {
 
         int[] matches = column.scanIn(new String[]{"banana", "cherry", "fig"}, 4);
 
-        assertArrayEquals(new int[]{1, 2}, matches);
+        assertThat(matches).containsExactly(1, 2);
     }
 
     @Test
@@ -135,6 +133,6 @@ class PageColumnStringTest {
 
         int[] matches = column.scanEqualsIgnoreCase("apple", 4);
 
-        assertArrayEquals(new int[]{0, 3}, matches);
+        assertThat(matches).containsExactly(0, 3);
     }
 }

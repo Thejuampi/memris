@@ -9,7 +9,7 @@ import io.memris.kernel.RowId;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Tests for AbstractTable tombstone thread-safety.
@@ -36,7 +36,7 @@ class AbstractTableTombstoneConcurrencyTest {
         }
 
         // Verify initial count
-        assertEquals(rowCount, table.rowCount(), "Initial row count should be " + rowCount);
+        assertThat(table.rowCount()).isEqualTo(rowCount);
 
         ExecutorService executor = Executors.newFixedThreadPool(threadCount);
         CountDownLatch startLatch = new CountDownLatch(1);
@@ -62,12 +62,11 @@ class AbstractTableTombstoneConcurrencyTest {
         }
 
         startLatch.countDown();
-        assertTrue(completeLatch.await(30, TimeUnit.SECONDS), "Threads should complete within timeout");
+        var completed = completeLatch.await(30, TimeUnit.SECONDS);
         executor.shutdown();
 
-        // After all tombstones, row count should be 0
-        assertEquals(0, table.rowCount(), 
-            "Row count should be 0 after tombstoning all rows, but was " + table.rowCount());
+        assertThat(new TombstoneSummary(completed, table.rowCount())).usingRecursiveComparison()
+                .isEqualTo(new TombstoneSummary(true, 0));
     }
 
     @Test
@@ -106,7 +105,6 @@ class AbstractTableTombstoneConcurrencyTest {
                     }
                 } catch (Exception e) {
                     errorCount.incrementAndGet();
-                    e.printStackTrace();
                 } finally {
                     completeLatch.countDown();
                 }
@@ -114,14 +112,14 @@ class AbstractTableTombstoneConcurrencyTest {
         }
 
         startLatch.countDown();
-        assertTrue(completeLatch.await(30, TimeUnit.SECONDS));
+        var completed = completeLatch.await(30, TimeUnit.SECONDS);
         executor.shutdown();
 
-        assertEquals(0, errorCount.get(), "Errors occurred during concurrent operations");
-        // Row count should be between 0 and rowCount (inclusive)
         long finalCount = table.rowCount();
-        assertTrue(finalCount >= 0 && finalCount <= rowCount,
-            "Final row count " + finalCount + " should be between 0 and " + rowCount);
+        var inRange = finalCount >= 0 && finalCount <= rowCount;
+        assertThat(new TombstoneClearSummary(completed, errorCount.get(), inRange))
+                .usingRecursiveComparison()
+                .isEqualTo(new TombstoneClearSummary(true, 0, true));
     }
 
     /**
@@ -145,5 +143,11 @@ class AbstractTableTombstoneConcurrencyTest {
             int index = (int) (rowId.page() * PAGE_SIZE + rowId.offset());
             deallocateRowId(index);
         }
+    }
+
+    private record TombstoneSummary(boolean completed, long finalCount) {
+    }
+
+    private record TombstoneClearSummary(boolean completed, int errorCount, boolean countInRange) {
     }
 }

@@ -2,6 +2,9 @@ package io.memris.core.plan.entities;
 
 import io.memris.query.*;
 import org.junit.jupiter.api.*;
+
+import java.util.List;
+
 import static org.assertj.core.api.Assertions.*;
 
 /**
@@ -10,31 +13,39 @@ import static org.assertj.core.api.Assertions.*;
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 class ContextAwareLexerTest {
 
+    private record TokenView(QueryMethodTokenType type, String value, boolean ignoreCase) {
+    }
+
+    private static List<TokenView> snapshot(List<QueryMethodToken> tokens) {
+        return tokens.stream()
+                .map(token -> new TokenView(token.type(), token.value(), token.ignoreCase()))
+                .toList();
+    }
+
     // ==================== Simple Property Tests ====================
 
     @Test
     @Order(1)
     void tokenizeSimpleProperty_ResolvesFromEntityFields() {
-        Class<SimpleEntity> entityClass = SimpleEntity.class;
+        var entityClass = SimpleEntity.class;
         var tokens = QueryMethodLexer.tokenize(entityClass, "findByName");
 
-        assertThat(tokens).hasSize(2);
-        assertThat(tokens.get(0).type()).isEqualTo(QueryMethodTokenType.FIND_BY);
-        assertThat(tokens.get(0).value()).isEqualTo("find");
-        assertThat(tokens.get(1).type()).isEqualTo(QueryMethodTokenType.PROPERTY_PATH);
-        assertThat(tokens.get(1).value()).isEqualTo("name");
+        assertThat(snapshot(tokens)).containsExactly(
+                new TokenView(QueryMethodTokenType.FIND_BY, "find", false),
+                new TokenView(QueryMethodTokenType.PROPERTY_PATH, "name", false)
+        );
     }
 
     @Test
     @Order(2)
     void tokenizeSimpleProperty_LowercasesPropertyName() {
-        Class<SimpleEntity> entityClass = SimpleEntity.class;
+        var entityClass = SimpleEntity.class;
         var tokens = QueryMethodLexer.tokenize(entityClass, "findByAge");
 
-        assertThat(tokens).hasSize(2);
-        assertThat(tokens.get(0).type()).isEqualTo(QueryMethodTokenType.FIND_BY);
-        assertThat(tokens.get(1).type()).isEqualTo(QueryMethodTokenType.PROPERTY_PATH);
-        assertThat(tokens.get(1).value()).isEqualTo("age");
+        assertThat(snapshot(tokens)).containsExactly(
+                new TokenView(QueryMethodTokenType.FIND_BY, "find", false),
+                new TokenView(QueryMethodTokenType.PROPERTY_PATH, "age", false)
+        );
     }
 
     @Test
@@ -44,9 +55,9 @@ class ContextAwareLexerTest {
         // Returns only property tokens, no prefix (backward compatible mode)
         var tokens = QueryMethodLexer.tokenize("findByNonExistentField");
 
-        assertThat(tokens).hasSize(1);
-        assertThat(tokens.get(0).type()).isEqualTo(QueryMethodTokenType.PROPERTY_PATH);
-        assertThat(tokens.get(0).value()).isEqualTo("nonexistentfield");
+        assertThat(snapshot(tokens)).containsExactly(
+                new TokenView(QueryMethodTokenType.PROPERTY_PATH, "nonexistentfield", false)
+        );
     }
 
     // ==================== Nested/Joined Property Tests ====================
@@ -54,23 +65,25 @@ class ContextAwareLexerTest {
     @Test
     @Order(4)
     void tokenizeNestedProperty_ResolvesToDotNotation() {
-        Class<NestedEntity> entityClass = NestedEntity.class;
+        var entityClass = NestedEntity.class;
         var tokens = QueryMethodLexer.tokenize(entityClass, "findByDepartmentName");
 
-        assertThat(tokens).hasSize(2);
-        assertThat(tokens.get(0).type()).isEqualTo(QueryMethodTokenType.FIND_BY);
-        assertThat(tokens.get(1).type()).isEqualTo(QueryMethodTokenType.PROPERTY_PATH);
-        assertThat(tokens.get(1).value()).isEqualTo("department.name");
+        assertThat(snapshot(tokens)).containsExactly(
+                new TokenView(QueryMethodTokenType.FIND_BY, "find", false),
+                new TokenView(QueryMethodTokenType.PROPERTY_PATH, "department.name", false)
+        );
     }
 
     @Test
     @Order(5)
     void tokenizeNestedProperty_UsesEntityMetadata() {
-        Class<NestedEntity> entityClass = NestedEntity.class;
+        var entityClass = NestedEntity.class;
         var tokens = QueryMethodLexer.tokenize(entityClass, "findByDepartmentName");
 
-        assertThat(tokens).hasSize(2);
-        assertThat(tokens.get(1).value()).isEqualTo("department.name");
+        assertThat(snapshot(tokens)).containsExactly(
+                new TokenView(QueryMethodTokenType.FIND_BY, "find", false),
+                new TokenView(QueryMethodTokenType.PROPERTY_PATH, "department.name", false)
+        );
     }
 
     // ==================== Comparison Operator Tests ====================
@@ -78,27 +91,27 @@ class ContextAwareLexerTest {
     @Test
     @Order(6)
     void tokenizeGreaterThan_ProducesOperatorToken() {
-        Class<SimpleEntity> entityClass = SimpleEntity.class;
+        var entityClass = SimpleEntity.class;
         var tokens = QueryMethodLexer.tokenize(entityClass, "findByAgeGreaterThan");
 
-        assertThat(tokens).hasSize(3);
-        assertThat(tokens.get(0).type()).isEqualTo(QueryMethodTokenType.FIND_BY);
-        assertThat(tokens.get(1).type()).isEqualTo(QueryMethodTokenType.PROPERTY_PATH);
-        assertThat(tokens.get(2).type()).isEqualTo(QueryMethodTokenType.OPERATOR);
-        assertThat(tokens.get(2).value()).isEqualTo("GreaterThan");
+        assertThat(snapshot(tokens)).containsExactly(
+                new TokenView(QueryMethodTokenType.FIND_BY, "find", false),
+                new TokenView(QueryMethodTokenType.PROPERTY_PATH, "age", false),
+                new TokenView(QueryMethodTokenType.OPERATOR, "GreaterThan", false)
+        );
     }
 
     @Test
     @Order(7)
     void tokenizeBetween_ProducesOperatorToken() {
-        Class<SimpleEntity> entityClass = SimpleEntity.class;
+        var entityClass = SimpleEntity.class;
         var tokens = QueryMethodLexer.tokenize(entityClass, "findByAgeBetween");
 
-        assertThat(tokens).hasSize(3);
-        assertThat(tokens.get(0).type()).isEqualTo(QueryMethodTokenType.FIND_BY);
-        assertThat(tokens.get(1).type()).isEqualTo(QueryMethodTokenType.PROPERTY_PATH);
-        assertThat(tokens.get(2).type()).isEqualTo(QueryMethodTokenType.OPERATOR);
-        assertThat(tokens.get(2).value()).isEqualTo("Between");
+        assertThat(snapshot(tokens)).containsExactly(
+                new TokenView(QueryMethodTokenType.FIND_BY, "find", false),
+                new TokenView(QueryMethodTokenType.PROPERTY_PATH, "age", false),
+                new TokenView(QueryMethodTokenType.OPERATOR, "Between", false)
+        );
     }
 
     // ==================== String Operator Tests ====================
@@ -106,14 +119,14 @@ class ContextAwareLexerTest {
     @Test
     @Order(8)
     void tokenizeLike_ProducesOperatorToken() {
-        Class<SimpleEntity> entityClass = SimpleEntity.class;
+        var entityClass = SimpleEntity.class;
         var tokens = QueryMethodLexer.tokenize(entityClass, "findByNameLike");
 
-        assertThat(tokens).hasSize(3);
-        assertThat(tokens.get(0).type()).isEqualTo(QueryMethodTokenType.FIND_BY);
-        assertThat(tokens.get(1).type()).isEqualTo(QueryMethodTokenType.PROPERTY_PATH);
-        assertThat(tokens.get(2).type()).isEqualTo(QueryMethodTokenType.OPERATOR);
-        assertThat(tokens.get(2).value()).isEqualTo("Like");
+        assertThat(snapshot(tokens)).containsExactly(
+                new TokenView(QueryMethodTokenType.FIND_BY, "find", false),
+                new TokenView(QueryMethodTokenType.PROPERTY_PATH, "name", false),
+                new TokenView(QueryMethodTokenType.OPERATOR, "Like", false)
+        );
     }
 
     // ==================== Boolean/Null Operator Tests ====================
@@ -121,28 +134,27 @@ class ContextAwareLexerTest {
     @Test
     @Order(9)
     void tokenizeTrue_ProducesOperatorToken() {
-        Class<SimpleEntity> entityClass = SimpleEntity.class;
+        var entityClass = SimpleEntity.class;
         var tokens = QueryMethodLexer.tokenize(entityClass, "findByActiveTrue");
 
-        assertThat(tokens).hasSize(3);
-        assertThat(tokens.get(0).type()).isEqualTo(QueryMethodTokenType.FIND_BY);
-        assertThat(tokens.get(1).type()).isEqualTo(QueryMethodTokenType.PROPERTY_PATH);
-        assertThat(tokens.get(2).type()).isEqualTo(QueryMethodTokenType.OPERATOR);
-        assertThat(tokens.get(2).value()).isEqualTo("True");
+        assertThat(snapshot(tokens)).containsExactly(
+                new TokenView(QueryMethodTokenType.FIND_BY, "find", false),
+                new TokenView(QueryMethodTokenType.PROPERTY_PATH, "active", false),
+                new TokenView(QueryMethodTokenType.OPERATOR, "True", false)
+        );
     }
 
     @Test
     @Order(10)
     void tokenizeIsNull_ProducesOperatorToken() {
-        Class<NestedEntity> entityClass = NestedEntity.class;
+        var entityClass = NestedEntity.class;
         var tokens = QueryMethodLexer.tokenize(entityClass, "findByDepartmentIdIsNull");
 
-        assertThat(tokens).hasSize(3);
-        assertThat(tokens.get(0).type()).isEqualTo(QueryMethodTokenType.FIND_BY);
-        assertThat(tokens.get(1).type()).isEqualTo(QueryMethodTokenType.PROPERTY_PATH);
-        assertThat(tokens.get(1).value()).isEqualTo("department.id");
-        assertThat(tokens.get(2).type()).isEqualTo(QueryMethodTokenType.OPERATOR);
-        assertThat(tokens.get(2).value()).isEqualTo("IsNull");
+        assertThat(snapshot(tokens)).containsExactly(
+                new TokenView(QueryMethodTokenType.FIND_BY, "find", false),
+                new TokenView(QueryMethodTokenType.PROPERTY_PATH, "department.id", false),
+                new TokenView(QueryMethodTokenType.OPERATOR, "IsNull", false)
+        );
     }
 
     // ==================== IgnoreCase Modifier Tests ====================
@@ -150,17 +162,15 @@ class ContextAwareLexerTest {
     @Test
     @Order(11)
     void tokenizeLikeIgnoreCase_ProducesOperatorWithIgnoreCaseFlag() {
-        Class<SimpleEntity> entityClass = SimpleEntity.class;
+        var entityClass = SimpleEntity.class;
         var tokens = QueryMethodLexer.tokenize(entityClass, "findByNameLikeIgnoreCase");
 
-        assertThat(tokens).hasSize(4);
-        assertThat(tokens.get(0).type()).isEqualTo(QueryMethodTokenType.FIND_BY);
-        assertThat(tokens.get(1).type()).isEqualTo(QueryMethodTokenType.PROPERTY_PATH);
-        assertThat(tokens.get(2).type()).isEqualTo(QueryMethodTokenType.OPERATOR);
-        assertThat(tokens.get(2).value()).isEqualTo("Like");
-        assertThat(tokens.get(3).type()).isEqualTo(QueryMethodTokenType.OPERATOR);
-        assertThat(tokens.get(3).value()).isEqualTo("IgnoreCase");
-        assertThat(tokens.get(3).ignoreCase()).isTrue();
+        assertThat(snapshot(tokens)).containsExactly(
+                new TokenView(QueryMethodTokenType.FIND_BY, "find", false),
+                new TokenView(QueryMethodTokenType.PROPERTY_PATH, "name", false),
+                new TokenView(QueryMethodTokenType.OPERATOR, "Like", false),
+                new TokenView(QueryMethodTokenType.OPERATOR, "IgnoreCase", true)
+        );
     }
 
     // ==================== AND/OR Combinator Tests ====================
@@ -168,29 +178,29 @@ class ContextAwareLexerTest {
     @Test
     @Order(12)
     void tokenizeAndCombination_ProducesTwoConditions() {
-        Class<SimpleEntity> entityClass = SimpleEntity.class;
+        var entityClass = SimpleEntity.class;
         var tokens = QueryMethodLexer.tokenize(entityClass, "findByNameAndAge");
 
-        assertThat(tokens).hasSize(4);
-        assertThat(tokens.get(0).type()).isEqualTo(QueryMethodTokenType.FIND_BY);
-        assertThat(tokens.get(1).type()).isEqualTo(QueryMethodTokenType.PROPERTY_PATH);
-        assertThat(tokens.get(2).type()).isEqualTo(QueryMethodTokenType.AND);
-        assertThat(tokens.get(2).value()).isEqualTo("And");
-        assertThat(tokens.get(3).type()).isEqualTo(QueryMethodTokenType.PROPERTY_PATH);
+        assertThat(snapshot(tokens)).containsExactly(
+                new TokenView(QueryMethodTokenType.FIND_BY, "find", false),
+                new TokenView(QueryMethodTokenType.PROPERTY_PATH, "name", false),
+                new TokenView(QueryMethodTokenType.AND, "And", false),
+                new TokenView(QueryMethodTokenType.PROPERTY_PATH, "age", false)
+        );
     }
 
     @Test
     @Order(13)
     void tokenizeOrCombination_ProducesTwoConditions() {
-        Class<SimpleEntity> entityClass = SimpleEntity.class;
+        var entityClass = SimpleEntity.class;
         var tokens = QueryMethodLexer.tokenize(entityClass, "findByNameOrAge");
 
-        assertThat(tokens).hasSize(4);
-        assertThat(tokens.get(0).type()).isEqualTo(QueryMethodTokenType.FIND_BY);
-        assertThat(tokens.get(1).type()).isEqualTo(QueryMethodTokenType.PROPERTY_PATH);
-        assertThat(tokens.get(2).type()).isEqualTo(QueryMethodTokenType.OR);
-        assertThat(tokens.get(2).value()).isEqualTo("Or");
-        assertThat(tokens.get(3).type()).isEqualTo(QueryMethodTokenType.PROPERTY_PATH);
+        assertThat(snapshot(tokens)).containsExactly(
+                new TokenView(QueryMethodTokenType.FIND_BY, "find", false),
+                new TokenView(QueryMethodTokenType.PROPERTY_PATH, "name", false),
+                new TokenView(QueryMethodTokenType.OR, "Or", false),
+                new TokenView(QueryMethodTokenType.PROPERTY_PATH, "age", false)
+        );
     }
 
     // ==================== OrderBy Clause Tests ====================
@@ -198,35 +208,30 @@ class ContextAwareLexerTest {
     @Test
     @Order(14)
     void tokenizeOrderBySingleProperty_ProducesCorrectTokens() {
-        Class<SimpleEntity> entityClass = SimpleEntity.class;
+        var entityClass = SimpleEntity.class;
         var tokens = QueryMethodLexer.tokenize(entityClass, "findByAgeOrderByPrice");
 
-        assertThat(tokens).hasSize(4);
-        assertThat(tokens.get(0).type()).isEqualTo(QueryMethodTokenType.FIND_BY);
-        assertThat(tokens.get(1).type()).isEqualTo(QueryMethodTokenType.PROPERTY_PATH);
-        assertThat(tokens.get(1).value()).isEqualTo("age");
-        assertThat(tokens.get(2).type()).isEqualTo(QueryMethodTokenType.OPERATOR);
-        assertThat(tokens.get(2).value()).isEqualTo("OrderBy");
-        assertThat(tokens.get(3).type()).isEqualTo(QueryMethodTokenType.PROPERTY_PATH);
-        assertThat(tokens.get(3).value()).isEqualTo("price");
+        assertThat(snapshot(tokens)).containsExactly(
+                new TokenView(QueryMethodTokenType.FIND_BY, "find", false),
+                new TokenView(QueryMethodTokenType.PROPERTY_PATH, "age", false),
+                new TokenView(QueryMethodTokenType.OPERATOR, "OrderBy", false),
+                new TokenView(QueryMethodTokenType.PROPERTY_PATH, "price", false)
+        );
     }
 
     @Test
     @Order(15)
     void tokenizeOrderByWithDirection_ProducesDirectionToken() {
-        Class<SimpleEntity> entityClass = SimpleEntity.class;
+        var entityClass = SimpleEntity.class;
         var tokens = QueryMethodLexer.tokenize(entityClass, "findByAgeOrderByPriceDesc");
 
-        assertThat(tokens).hasSize(5);
-        assertThat(tokens.get(0).type()).isEqualTo(QueryMethodTokenType.FIND_BY);
-        assertThat(tokens.get(1).type()).isEqualTo(QueryMethodTokenType.PROPERTY_PATH);
-        assertThat(tokens.get(1).value()).isEqualTo("age");
-        assertThat(tokens.get(2).type()).isEqualTo(QueryMethodTokenType.OPERATOR);
-        assertThat(tokens.get(2).value()).isEqualTo("OrderBy");
-        assertThat(tokens.get(3).type()).isEqualTo(QueryMethodTokenType.PROPERTY_PATH);
-        assertThat(tokens.get(3).value()).isEqualTo("price");
-        assertThat(tokens.get(4).type()).isEqualTo(QueryMethodTokenType.DESC);
-        assertThat(tokens.get(4).value()).isEqualTo("Desc");
+        assertThat(snapshot(tokens)).containsExactly(
+                new TokenView(QueryMethodTokenType.FIND_BY, "find", false),
+                new TokenView(QueryMethodTokenType.PROPERTY_PATH, "age", false),
+                new TokenView(QueryMethodTokenType.OPERATOR, "OrderBy", false),
+                new TokenView(QueryMethodTokenType.PROPERTY_PATH, "price", false),
+                new TokenView(QueryMethodTokenType.DESC, "Desc", false)
+        );
     }
 
     // ==================== CRUD Operation Tests ====================
@@ -296,7 +301,6 @@ class ContextAwareLexerTest {
         Class<SimpleEntity> entityClass = SimpleEntity.class;
         var tokens = QueryMethodLexer.tokenize(entityClass, "countAll");
 
-        assertThat(tokens).hasSizeGreaterThanOrEqualTo(1);
-        assertThat(tokens.get(0).type()).isEqualTo(QueryMethodTokenType.COUNT_BY);
+        assertThat(snapshot(tokens).getFirst().type()).isEqualTo(QueryMethodTokenType.COUNT_BY);
     }
 }

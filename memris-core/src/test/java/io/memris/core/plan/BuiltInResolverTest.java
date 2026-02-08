@@ -1,7 +1,6 @@
 package io.memris.core.plan;
 
 import static org.assertj.core.api.Assertions.*;
-import static org.junit.jupiter.api.Assertions.*;
 
 import java.lang.reflect.Method;
 import java.util.List;

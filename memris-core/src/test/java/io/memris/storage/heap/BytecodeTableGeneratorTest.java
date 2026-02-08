@@ -3,7 +3,8 @@ package io.memris.storage.heap;
 import io.memris.storage.GeneratedTable;
 import org.junit.jupiter.api.Test;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.fail;
 
 /**
  * TDD Tests for BytecodeTableGenerator - true bytecode table implementation without MethodHandle.
@@ -31,8 +32,7 @@ class BytecodeTableGeneratorTest {
 
         int[] matches = table.scanEqualsLong(0, 2L);
 
-        assertEquals(1, matches.length);
-        assertEquals(1, matches[0]); // Row index 1 (Bob)
+        assertThat(matches).containsExactly(1);
     }
 
     @Test
@@ -50,8 +50,9 @@ class BytecodeTableGeneratorTest {
 
         int[] matches = table.scanEqualsString(1, "Bob");
 
-        assertEquals(1, matches.length);
-        assertEquals("Bob", table.readString(1, matches[0]));
+        assertThat(new StringMatchSnapshot(matches.length, table.readString(1, matches[0])))
+                .usingRecursiveComparison()
+                .isEqualTo(new StringMatchSnapshot(1, "Bob"));
     }
 
     @Test
@@ -69,8 +70,9 @@ class BytecodeTableGeneratorTest {
 
         int[] matches = table.scanBetweenLong(2, 150L, 250L);
 
-        assertEquals(1, matches.length);
-        assertEquals(200, table.readInt(2, matches[0]));
+        assertThat(new IntMatchSnapshot(matches.length, table.readInt(2, matches[0])))
+                .usingRecursiveComparison()
+                .isEqualTo(new IntMatchSnapshot(1, 200));
     }
 
     @Test
@@ -88,7 +90,7 @@ class BytecodeTableGeneratorTest {
 
         int[] matches = table.scanInLong(0, new long[]{1L, 3L});
 
-        assertEquals(2, matches.length);
+        assertThat(matches).hasSize(2);
     }
 
     @Test
@@ -108,10 +110,10 @@ class BytecodeTableGeneratorTest {
         table.tombstone(ref1);
 
         int[] allMatches = table.scanEqualsLong(0, 1L);
-        assertEquals(0, allMatches.length); // Should be filtered out
+        assertThat(allMatches).isEmpty();
 
         int[] remaining = table.scanAll();
-        assertEquals(2, remaining.length); // Only 2 live rows
+        assertThat(remaining).hasSize(2);
     }
 
     @Test
@@ -124,9 +126,9 @@ class BytecodeTableGeneratorTest {
         GeneratedTable table = (GeneratedTable) abstractTable;
 
         // Type code access should use direct array lookup
-        assertEquals(io.memris.core.TypeCodes.TYPE_LONG, table.typeCodeAt(0));
-        assertEquals(io.memris.core.TypeCodes.TYPE_STRING, table.typeCodeAt(1));
-        assertEquals(io.memris.core.TypeCodes.TYPE_INT, table.typeCodeAt(2));
+        assertThat(new byte[]{table.typeCodeAt(0), table.typeCodeAt(1), table.typeCodeAt(2)})
+                .containsExactly(io.memris.core.TypeCodes.TYPE_LONG, io.memris.core.TypeCodes.TYPE_STRING,
+                        io.memris.core.TypeCodes.TYPE_INT);
     }
 
     @Test
@@ -142,7 +144,7 @@ class BytecodeTableGeneratorTest {
 
         long found = table.lookupById(42L);
 
-        assertEquals(ref, found);
+        assertThat(found).isEqualTo(ref);
     }
 
     @Test
@@ -170,5 +172,11 @@ class BytecodeTableGeneratorTest {
                         new FieldMetadata("age", io.memris.core.TypeCodes.TYPE_INT, false, false)
                 )
         );
+    }
+
+    private record StringMatchSnapshot(int size, String value) {
+    }
+
+    private record IntMatchSnapshot(int size, int value) {
     }
 }

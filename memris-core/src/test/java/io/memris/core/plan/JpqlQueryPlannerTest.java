@@ -10,8 +10,8 @@ import io.memris.core.plan.entities.SimpleEntity;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Method;
+import java.util.Arrays;
 import java.util.List;
-import java.util.Objects;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -20,42 +20,60 @@ class JpqlQueryPlannerTest {
 
     @Test
     void parseSelectWithNamedParam() throws Exception {
-        Method method = TestRepository.class.getMethod("findByName", String.class);
-        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class);
+        var method = TestRepository.class.getMethod("findByName", String.class);
+        var actual = QueryPlanner.parse(method, SimpleEntity.class);
 
-        assertThat(actual.opCode()).isEqualTo(OpCode.FIND);
-        assertThat(actual.returnKind()).isEqualTo(LogicalQuery.ReturnKind.MANY_LIST);
-        assertThat(actual.conditions()).containsExactly(
-                LogicalQuery.Condition.of("name", LogicalQuery.Operator.EQ, 0));
-        assertThat(actual.boundValues()).allMatch(Objects::isNull);
-        assertThat(actual.parameterIndices()).containsExactly(0);
-        assertThat(actual.arity()).isEqualTo(1);
+        assertThat(new Object[] {
+                actual.opCode(),
+                actual.returnKind(),
+                Arrays.asList(actual.conditions()),
+                Arrays.asList(actual.boundValues()),
+                Arrays.stream(actual.parameterIndices()).boxed().toList(),
+                actual.arity()
+        }).containsExactly(
+                OpCode.FIND,
+                LogicalQuery.ReturnKind.MANY_LIST,
+                List.of(LogicalQuery.Condition.of("name", LogicalQuery.Operator.EQ, 0)),
+                Arrays.asList((Object) null),
+                List.of(0),
+                1
+        );
     }
 
     @Test
     void parseSelectProjectionWithAliases() throws Exception {
-        Method method = TestRepository.class.getMethod("findProjection");
-        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class);
+        var method = TestRepository.class.getMethod("findProjection");
+        var actual = QueryPlanner.parse(method, SimpleEntity.class);
 
-        assertThat(actual.opCode()).isEqualTo(OpCode.FIND);
-        assertThat(actual.returnKind()).isEqualTo(LogicalQuery.ReturnKind.MANY_LIST);
-        assertThat(actual.projection()).isNotNull();
-        assertThat(actual.projection().projectionType()).isEqualTo(SimpleProjection.class);
-        assertThat(actual.projection().items()).containsExactly(
-                new LogicalQuery.ProjectionItem("name", "name"),
-                new LogicalQuery.ProjectionItem("age", "age"));
+        assertThat(new Object[] {
+                actual.opCode(),
+                actual.returnKind(),
+                actual.projection().projectionType(),
+                Arrays.asList(actual.projection().items())
+        }).containsExactly(
+                OpCode.FIND,
+                LogicalQuery.ReturnKind.MANY_LIST,
+                SimpleProjection.class,
+                List.of(
+                        new LogicalQuery.ProjectionItem("name", "name"),
+                        new LogicalQuery.ProjectionItem("age", "age")
+                )
+        );
     }
 
     @Test
     void parseSelectProjectionWithNestedPath() throws Exception {
-        Method method = TestRepository.class.getMethod("findNestedProjection");
-        LogicalQuery actual = QueryPlanner.parse(method, NestedEntity.class);
+        var method = TestRepository.class.getMethod("findNestedProjection");
+        var actual = QueryPlanner.parse(method, NestedEntity.class);
 
-        assertThat(actual.projection()).isNotNull();
-        assertThat(actual.projection().projectionType()).isEqualTo(NestedProjection.class);
-        assertThat(actual.projection().items()).containsExactly(
-                new LogicalQuery.ProjectionItem("departmentName", "department.name"),
-                new LogicalQuery.ProjectionItem("city", "address.city"));
+        assertThat(new Object[] {actual.projection().projectionType(), Arrays.asList(actual.projection().items())})
+                .containsExactly(
+                        NestedProjection.class,
+                        List.of(
+                                new LogicalQuery.ProjectionItem("departmentName", "department.name"),
+                                new LogicalQuery.ProjectionItem("city", "address.city")
+                        )
+                );
     }
 
     @Test
@@ -68,115 +86,168 @@ class JpqlQueryPlannerTest {
 
     @Test
     void parseSelectWithNestedPropertyAndIlike() throws Exception {
-        Method method = TestRepository.class.getMethod("findByDepartmentNameAndCity", String.class, String.class);
-        LogicalQuery actual = QueryPlanner.parse(method, NestedEntity.class);
+        var method = TestRepository.class.getMethod("findByDepartmentNameAndCity", String.class, String.class);
+        var actual = QueryPlanner.parse(method, NestedEntity.class);
 
-        assertThat(actual.opCode()).isEqualTo(OpCode.FIND);
-        assertThat(actual.returnKind()).isEqualTo(LogicalQuery.ReturnKind.MANY_LIST);
-        assertThat(actual.conditions()).containsExactly(
-                LogicalQuery.Condition.of("department.name", LogicalQuery.Operator.LIKE, 0, true,
-                        LogicalQuery.Combinator.AND),
-                LogicalQuery.Condition.of("address.city", LogicalQuery.Operator.EQ, 1, false,
-                        LogicalQuery.Combinator.AND));
-        assertThat(actual.boundValues()).allMatch(Objects::isNull);
-        assertThat(actual.parameterIndices()).containsExactly(0, 1);
-        assertThat(actual.arity()).isEqualTo(2);
+        assertThat(new Object[] {
+                actual.opCode(),
+                actual.returnKind(),
+                Arrays.asList(actual.conditions()),
+                Arrays.asList(actual.boundValues()),
+                Arrays.stream(actual.parameterIndices()).boxed().toList(),
+                actual.arity()
+        }).containsExactly(
+                OpCode.FIND,
+                LogicalQuery.ReturnKind.MANY_LIST,
+                List.of(
+                        LogicalQuery.Condition.of("department.name", LogicalQuery.Operator.LIKE, 0, true,
+                                LogicalQuery.Combinator.AND),
+                        LogicalQuery.Condition.of("address.city", LogicalQuery.Operator.EQ, 1, false,
+                                LogicalQuery.Combinator.AND)
+                ),
+                Arrays.asList((Object) null, null),
+                List.of(0, 1),
+                2
+        );
     }
 
     @Test
     void parseBetweenUsesFirstParameterIndex() throws Exception {
-        Method method = TestRepository.class.getMethod("findByAgeBetween", int.class, int.class);
-        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class);
+        var method = TestRepository.class.getMethod("findByAgeBetween", int.class, int.class);
+        var actual = QueryPlanner.parse(method, SimpleEntity.class);
 
-        assertThat(actual.conditions()).containsExactly(
-                LogicalQuery.Condition.of("age", LogicalQuery.Operator.BETWEEN, 0));
-        assertThat(actual.parameterIndices()).containsExactly(0, 1);
-        assertThat(actual.arity()).isEqualTo(2);
+        assertThat(new Object[] {Arrays.asList(actual.conditions()), Arrays.stream(actual.parameterIndices()).boxed().toList(), actual.arity()})
+                .containsExactly(
+                        List.of(LogicalQuery.Condition.of("age", LogicalQuery.Operator.BETWEEN, 0)),
+                        List.of(0, 1),
+                        2
+                );
     }
 
     @Test
     void parseInWithPositionalParam() throws Exception {
-        Method method = TestRepository.class.getMethod("findByAgeIn", List.class);
-        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class);
+        var method = TestRepository.class.getMethod("findByAgeIn", List.class);
+        var actual = QueryPlanner.parse(method, SimpleEntity.class);
 
-        assertThat(actual.conditions()).containsExactly(
-                LogicalQuery.Condition.of("age", LogicalQuery.Operator.IN, 0));
-        assertThat(actual.parameterIndices()).containsExactly(0);
+        assertThat(new Object[] {Arrays.asList(actual.conditions()), Arrays.stream(actual.parameterIndices()).boxed().toList()})
+                .containsExactly(
+                        List.of(LogicalQuery.Condition.of("age", LogicalQuery.Operator.IN, 0)),
+                        List.of(0)
+                );
     }
 
     @Test
     void parseIsNull() throws Exception {
-        Method method = TestRepository.class.getMethod("findByDepartmentIsNull");
-        LogicalQuery actual = QueryPlanner.parse(method, NestedEntity.class);
+        var method = TestRepository.class.getMethod("findByDepartmentIsNull");
+        var actual = QueryPlanner.parse(method, NestedEntity.class);
 
-        assertThat(actual.conditions()).containsExactly(
-                LogicalQuery.Condition.of("department", LogicalQuery.Operator.IS_NULL, 0));
-        assertThat(actual.parameterIndices()).containsExactly(-1);
-        assertThat(actual.boundValues()).containsExactly((Object) null);
-        assertThat(actual.arity()).isEqualTo(1);
+        assertThat(new Object[] {
+                Arrays.asList(actual.conditions()),
+                Arrays.stream(actual.parameterIndices()).boxed().toList(),
+                Arrays.asList(actual.boundValues()),
+                actual.arity()
+        }).containsExactly(
+                List.of(LogicalQuery.Condition.of("department", LogicalQuery.Operator.IS_NULL, 0)),
+                List.of(-1),
+                Arrays.asList((Object) null),
+                1
+        );
     }
 
     @Test
     void parseIsNotNull() throws Exception {
-        Method method = TestRepository.class.getMethod("findByDepartmentIsNotNull");
-        LogicalQuery actual = QueryPlanner.parse(method, NestedEntity.class);
+        var method = TestRepository.class.getMethod("findByDepartmentIsNotNull");
+        var actual = QueryPlanner.parse(method, NestedEntity.class);
 
-        assertThat(actual.conditions()).containsExactly(
-                LogicalQuery.Condition.of("department", LogicalQuery.Operator.NOT_NULL, 0));
-        assertThat(actual.parameterIndices()).containsExactly(-1);
-        assertThat(actual.boundValues()).containsExactly((Object) null);
-        assertThat(actual.arity()).isEqualTo(1);
+        assertThat(new Object[] {
+                Arrays.asList(actual.conditions()),
+                Arrays.stream(actual.parameterIndices()).boxed().toList(),
+                Arrays.asList(actual.boundValues()),
+                actual.arity()
+        }).containsExactly(
+                List.of(LogicalQuery.Condition.of("department", LogicalQuery.Operator.NOT_NULL, 0)),
+                List.of(-1),
+                Arrays.asList((Object) null),
+                1
+        );
     }
 
     @Test
     void parseBooleanLiteralCreatesBoundValue() throws Exception {
-        Method method = TestRepository.class.getMethod("findActive");
-        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class);
+        var method = TestRepository.class.getMethod("findActive");
+        var actual = QueryPlanner.parse(method, SimpleEntity.class);
 
-        assertThat(actual.conditions()).containsExactly(
-                LogicalQuery.Condition.of("active", LogicalQuery.Operator.EQ, 0));
-        assertThat(actual.boundValues()).containsExactly(true);
-        assertThat(actual.parameterIndices()).containsExactly(-1);
-        assertThat(actual.arity()).isEqualTo(1);
+        assertThat(new Object[] {
+                Arrays.asList(actual.conditions()),
+                Arrays.asList(actual.boundValues()),
+                Arrays.stream(actual.parameterIndices()).boxed().toList(),
+                actual.arity()
+        }).containsExactly(
+                List.of(LogicalQuery.Condition.of("active", LogicalQuery.Operator.EQ, 0)),
+                List.of(true),
+                List.of(-1),
+                1
+        );
     }
 
     @Test
     void parseStringAndNumberLiteralsCreateBoundValues() throws Exception {
-        Method method = TestRepository.class.getMethod("findByLiteralNameAndAge");
-        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class);
+        var method = TestRepository.class.getMethod("findByLiteralNameAndAge");
+        var actual = QueryPlanner.parse(method, SimpleEntity.class);
+        var boundValues = Arrays.asList(actual.boundValues());
 
-        assertThat(actual.conditions()).containsExactly(
-                LogicalQuery.Condition.of("name", LogicalQuery.Operator.EQ, 0),
-                LogicalQuery.Condition.of("age", LogicalQuery.Operator.GT, 1));
-        assertThat(actual.boundValues()).hasSize(2);
-        assertThat(actual.boundValues()[0]).isEqualTo("Alice");
-        assertThat(((Number) actual.boundValues()[1]).longValue()).isEqualTo(18L);
-        assertThat(actual.parameterIndices()).containsExactly(-1, -1);
-        assertThat(actual.arity()).isEqualTo(2);
+        assertThat(new Object[] {
+                Arrays.asList(actual.conditions()),
+                boundValues.size(),
+                boundValues.get(0),
+                ((Number) boundValues.get(1)).longValue(),
+                Arrays.stream(actual.parameterIndices()).boxed().toList(),
+                actual.arity()
+        }).containsExactly(
+                List.of(
+                        LogicalQuery.Condition.of("name", LogicalQuery.Operator.EQ, 0),
+                        LogicalQuery.Condition.of("age", LogicalQuery.Operator.GT, 1)
+                ),
+                2,
+                "Alice",
+                18L,
+                List.of(-1, -1),
+                2
+        );
     }
 
     @Test
     void parseParenthesesAndOrBuildsDnf() throws Exception {
-        Method method = TestRepository.class.getMethod("findAdultActiveOrNamed", int.class, String.class);
-        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class);
+        var method = TestRepository.class.getMethod("findAdultActiveOrNamed", int.class, String.class);
+        var actual = QueryPlanner.parse(method, SimpleEntity.class);
 
-        assertThat(actual.conditions()).containsExactly(
-                LogicalQuery.Condition.of("age", LogicalQuery.Operator.GT, 0),
-                LogicalQuery.Condition.of("active", LogicalQuery.Operator.EQ, 1, false, LogicalQuery.Combinator.OR),
-                LogicalQuery.Condition.of("name", LogicalQuery.Operator.EQ, 2));
-        assertThat(actual.boundValues()).containsExactly(null, true, null);
-        assertThat(actual.parameterIndices()).containsExactly(0, -1, 1);
-        assertThat(actual.arity()).isEqualTo(3);
+        assertThat(new Object[] {
+                Arrays.asList(actual.conditions()),
+                Arrays.asList(actual.boundValues()),
+                Arrays.stream(actual.parameterIndices()).boxed().toList(),
+                actual.arity()
+        }).containsExactly(
+                List.of(
+                        LogicalQuery.Condition.of("age", LogicalQuery.Operator.GT, 0),
+                        LogicalQuery.Condition.of("active", LogicalQuery.Operator.EQ, 1, false, LogicalQuery.Combinator.OR),
+                        LogicalQuery.Condition.of("name", LogicalQuery.Operator.EQ, 2)
+                ),
+                Arrays.asList(null, true, null),
+                List.of(0, -1, 1),
+                3
+        );
     }
 
     @Test
     void parseNotKeywordNegatesOperator() throws Exception {
-        Method method = TestRepository.class.getMethod("findNotByName", String.class);
-        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class);
+        var method = TestRepository.class.getMethod("findNotByName", String.class);
+        var actual = QueryPlanner.parse(method, SimpleEntity.class);
 
-        assertThat(actual.conditions()).containsExactly(
-                LogicalQuery.Condition.of("name", LogicalQuery.Operator.NE, 0));
-        assertThat(actual.parameterIndices()).containsExactly(0);
+        assertThat(new Object[] {Arrays.asList(actual.conditions()), Arrays.stream(actual.parameterIndices()).boxed().toList()})
+                .containsExactly(
+                        List.of(LogicalQuery.Condition.of("name", LogicalQuery.Operator.NE, 0)),
+                        List.of(0)
+                );
     }
 
     @Test
@@ -189,45 +260,61 @@ class JpqlQueryPlannerTest {
 
     @Test
     void parseCountQueryUsesCountOpcode() throws Exception {
-        Method method = TestRepository.class.getMethod("countActive");
-        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class);
+        var method = TestRepository.class.getMethod("countActive");
+        var actual = QueryPlanner.parse(method, SimpleEntity.class);
 
-        assertThat(actual.opCode()).isEqualTo(OpCode.COUNT);
-        assertThat(actual.returnKind()).isEqualTo(LogicalQuery.ReturnKind.COUNT_LONG);
-        assertThat(actual.boundValues()).containsExactly(true);
-        assertThat(actual.parameterIndices()).containsExactly(-1);
+        assertThat(new Object[] {
+                actual.opCode(),
+                actual.returnKind(),
+                Arrays.asList(actual.boundValues()),
+                Arrays.stream(actual.parameterIndices()).boxed().toList()
+        }).containsExactly(
+                OpCode.COUNT,
+                LogicalQuery.ReturnKind.COUNT_LONG,
+                List.of(true),
+                List.of(-1)
+        );
     }
 
     @Test
     void parseCountAllQueryUsesCountAllOpcode() throws Exception {
-        Method method = TestRepository.class.getMethod("countAll");
-        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class);
+        var method = TestRepository.class.getMethod("countAll");
+        var actual = QueryPlanner.parse(method, SimpleEntity.class);
 
-        assertThat(actual.opCode()).isEqualTo(OpCode.COUNT_ALL);
-        assertThat(actual.returnKind()).isEqualTo(LogicalQuery.ReturnKind.COUNT_LONG);
-        assertThat(actual.conditions()).isEmpty();
-        assertThat(actual.parameterIndices()).isEmpty();
-        assertThat(actual.boundValues()).isEmpty();
+        assertThat(new Object[] {
+                actual.opCode(),
+                actual.returnKind(),
+                Arrays.asList(actual.conditions()),
+                Arrays.stream(actual.parameterIndices()).boxed().toList(),
+                Arrays.asList(actual.boundValues())
+        }).containsExactly(
+                OpCode.COUNT_ALL,
+                LogicalQuery.ReturnKind.COUNT_LONG,
+                List.of(),
+                List.of(),
+                List.of()
+        );
     }
 
     @Test
     void parseExistsReturnTypeUsesExistsOpcode() throws Exception {
-        Method method = TestRepository.class.getMethod("existsByName", String.class);
-        LogicalQuery actual = QueryPlanner.parse(method, SimpleEntity.class);
+        var method = TestRepository.class.getMethod("existsByName", String.class);
+        var actual = QueryPlanner.parse(method, SimpleEntity.class);
 
-        assertThat(actual.opCode()).isEqualTo(OpCode.EXISTS);
-        assertThat(actual.returnKind()).isEqualTo(LogicalQuery.ReturnKind.EXISTS_BOOL);
-        assertThat(actual.parameterIndices()).containsExactly(0);
+        assertThat(new Object[] {actual.opCode(), actual.returnKind(), Arrays.stream(actual.parameterIndices()).boxed().toList()})
+                .containsExactly(OpCode.EXISTS, LogicalQuery.ReturnKind.EXISTS_BOOL, List.of(0));
     }
 
     @Test
     void parseJoinAliasRewritesPropertyPath() throws Exception {
-        Method method = TestRepository.class.getMethod("findByDepartmentNameUsingJoin", String.class);
-        LogicalQuery actual = QueryPlanner.parse(method, NestedEntity.class);
+        var method = TestRepository.class.getMethod("findByDepartmentNameUsingJoin", String.class);
+        var actual = QueryPlanner.parse(method, NestedEntity.class);
 
-        assertThat(actual.conditions()).containsExactly(
-                LogicalQuery.Condition.of("department.name", LogicalQuery.Operator.EQ, 0));
-        assertThat(actual.parameterIndices()).containsExactly(0);
+        assertThat(new Object[] {Arrays.asList(actual.conditions()), Arrays.stream(actual.parameterIndices()).boxed().toList()})
+                .containsExactly(
+                        List.of(LogicalQuery.Condition.of("department.name", LogicalQuery.Operator.EQ, 0)),
+                        List.of(0)
+                );
     }
 
     @Test

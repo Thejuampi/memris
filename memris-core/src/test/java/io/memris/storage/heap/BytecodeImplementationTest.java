@@ -7,9 +7,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.assertj.core.api.Assertions.assertThat;
 
 class BytecodeImplementationTest {
 
@@ -35,17 +33,16 @@ class BytecodeImplementationTest {
         long ref1 = table.insertFrom(new Object[]{1L, "Alice", 100});
         long ref2 = table.insertFrom(new Object[]{2L, "Bob", 101});
 
-        assertTrue(ref1 >= 0);
-        assertTrue(ref2 >= 0);
-        assertEquals(2L, table.liveCount());
+        assertThat(new InsertSnapshot(ref1 >= 0, ref2 >= 0, table.liveCount())).usingRecursiveComparison()
+                .isEqualTo(new InsertSnapshot(true, true, 2L));
 
         int[] matches = table.scanEqualsString(1, "Alice");
-        assertEquals(1, matches.length);
+        assertThat(matches).hasSize(1);
 
         long found = table.lookupById(1L);
-        assertEquals(ref1, found);
+        assertThat(found).isEqualTo(ref1);
 
-        assertNotNull(table.readString(1, matches[0]));
+        assertThat(table.readString(1, matches[0])).isNotNull();
     }
 
     private TableMetadata createPersonMetadata() {
@@ -58,5 +55,8 @@ class BytecodeImplementationTest {
                         new FieldMetadata("addressId", io.memris.core.TypeCodes.TYPE_INT, false, false)
                 )
         );
+    }
+
+    private record InsertSnapshot(boolean firstInserted, boolean secondInserted, long liveCount) {
     }
 }

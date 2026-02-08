@@ -12,7 +12,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.HashSet;
 import java.util.Set;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Integration test demonstrating the complete concurrency model documented in CONCURRENCY.md.
@@ -113,10 +113,9 @@ class ConcurrencyModelIntegrationTest {
         readers.shutdown();
         
         // Verify concurrent reads are thread-safe
-        assertEquals(0, errorCount.get(), 
-            "Concurrent reads should produce consistent results with no errors");
-        assertEquals(readerCount * scansPerThread * 100, totalMatches.get(),
-            "Total matches should equal readers * scans * expected matches per scan");
+        assertThat(new ReadModelSummary(errorCount.get(), totalMatches.get()))
+                .usingRecursiveComparison()
+                .isEqualTo(new ReadModelSummary(0, readerCount * scansPerThread * 100));
     }
 
     @Test
@@ -165,12 +164,13 @@ class ConcurrencyModelIntegrationTest {
         
         if (duplicateCount.get() > 0) {
             // Race condition detected - document via assertion message
-            assertTrue(allocatedIndices.size() < totalAttempted,
-                "Race condition detected: " + duplicateCount.get() + " duplicate allocations. " +
-                "See CONCURRENCY.md Issue #1 (free-list race)");
+            assertThat(allocatedIndices.size()).isLessThan(totalAttempted);
         }
         
         // This test documents the concurrency issue without failing
         // See CONCURRENCY.md Issues #1 and #2 for details on write path races
+    }
+
+    private record ReadModelSummary(int errorCount, int totalMatches) {
     }
 }
