@@ -518,6 +518,20 @@ public final class RepositoryEmitter {
 
     /**
      * Generate the repository implementation class.
+     *
+     * Equivalent generated Java (simplified):
+     *
+     * <pre>{@code
+     * final class CustomerRepository_MemrisImpl_123 implements CustomerRepository {
+     *     public List<Customer> findByEmail(String email) {
+     *         return (List<Customer>) findInterceptor.intercept(email);
+     *     }
+     *
+     *     public long countByStatus(String status) {
+     *         return (long) countInterceptor.intercept(status);
+     *     }
+     * }
+     * }</pre>
      */
     @SuppressWarnings("unchecked")
     private <T, R extends MemrisRepository<T>> Class<? extends R> generateImplementation(Class<R> repositoryInterface,
