@@ -14,7 +14,7 @@ public final class JoinMaterializerImpl implements JoinMaterializer {
     private final MethodHandle postLoadHandle;
 
     public JoinMaterializerImpl(int sourceColumnIndex, int targetColumnIndex, boolean targetColumnIsId, byte fkTypeCode,
-                                MethodHandle setter, MethodHandle postLoadHandle) {
+            MethodHandle setter, MethodHandle postLoadHandle) {
         this.sourceColumnIndex = sourceColumnIndex;
         this.targetColumnIndex = targetColumnIndex;
         this.targetColumnIsId = targetColumnIsId;
@@ -25,7 +25,7 @@ public final class JoinMaterializerImpl implements JoinMaterializer {
 
     @Override
     public void hydrate(Object sourceEntity, int sourceRowIndex, GeneratedTable sourceTable,
-                        GeneratedTable targetTable, HeapRuntimeKernel targetKernel, EntityMaterializer<?> targetMaterializer) {
+            GeneratedTable targetTable, EntityMaterializer<?> targetMaterializer) {
         if (setter == null || targetMaterializer == null) {
             return;
         }

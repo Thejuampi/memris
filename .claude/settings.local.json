@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(gh pr create --title \"docs: remove audit reports and progress artifacts\" --body \"$\\(cat <<''EOF''\n## Summary\n\nRemove development artifacts that were incorrectly pushed to remote repository.\n\n## Changes\n\n- Deleted performance analysis reports \\(3 files at root\\)\n- Deleted concurrency audit report\n- Deleted implementation status checklist\n- Deleted dynamic table growth analysis\n- Deleted troubleshooting guide with fixed issues\n- Deleted PMD tooling documentation\n- Deleted `.opencode/plans` folder \\(24 AI-generated plan files\\)\n- Deleted `docs/archive` folder\n\n**Total: 36 files removed \\(8,650 lines\\)**\n\n## Preserved\n\n- `docs/BENCHMARK_BASELINES.md` - kept as performance reference documentation\n\n## Motivation\n\nThese files were temporary progress reports, audit artifacts, and AI-generated plans created during development. They are not part of the permanent project documentation and should not have been pushed to the remote branch.\n\nCo-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(gh pr view:*)",
+      "Bash(git fetch:*)",
+      "Bash(git log:*)",
+      "Bash(findstr:*)"
+    ]
+  }
+}

@@ -18,7 +18,7 @@ public final class JoinCollectionMaterializer implements JoinMaterializer {
     private final boolean useSet;
 
     public JoinCollectionMaterializer(int sourceColumnIndex, int targetColumnIndex, byte fkTypeCode,
-                                      MethodHandle setter, MethodHandle postLoadHandle, Class<?> collectionType) {
+            MethodHandle setter, MethodHandle postLoadHandle, Class<?> collectionType) {
         this.sourceColumnIndex = sourceColumnIndex;
         this.targetColumnIndex = targetColumnIndex;
         this.fkTypeCode = fkTypeCode;
@@ -29,7 +29,7 @@ public final class JoinCollectionMaterializer implements JoinMaterializer {
 
     @Override
     public void hydrate(Object sourceEntity, int sourceRowIndex, GeneratedTable sourceTable,
-                        GeneratedTable targetTable, HeapRuntimeKernel targetKernel, EntityMaterializer<?> targetMaterializer) {
+            GeneratedTable targetTable, EntityMaterializer<?> targetMaterializer) {
         if (setter == null || targetMaterializer == null) {
             return;
         }
@@ -41,8 +41,9 @@ public final class JoinCollectionMaterializer implements JoinMaterializer {
         int[] matches = switch (fkTypeCode) {
             case TypeCodes.TYPE_LONG -> targetTable.scanEqualsLong(targetColumnIndex, key);
             case TypeCodes.TYPE_INT,
-                 TypeCodes.TYPE_SHORT,
-                 TypeCodes.TYPE_BYTE -> targetTable.scanEqualsInt(targetColumnIndex, (int) key);
+                    TypeCodes.TYPE_SHORT,
+                    TypeCodes.TYPE_BYTE ->
+                targetTable.scanEqualsInt(targetColumnIndex, (int) key);
             default -> targetTable.scanEqualsLong(targetColumnIndex, key);
         };
 
@@ -64,8 +65,9 @@ public final class JoinCollectionMaterializer implements JoinMaterializer {
         return switch (fkTypeCode) {
             case TypeCodes.TYPE_LONG -> sourceTable.readLong(sourceColumnIndex, rowIndex);
             case TypeCodes.TYPE_INT,
-                 TypeCodes.TYPE_SHORT,
-                 TypeCodes.TYPE_BYTE -> sourceTable.readInt(sourceColumnIndex, rowIndex);
+                    TypeCodes.TYPE_SHORT,
+                    TypeCodes.TYPE_BYTE ->
+                sourceTable.readInt(sourceColumnIndex, rowIndex);
             default -> sourceTable.readLong(sourceColumnIndex, rowIndex);
         };
     }

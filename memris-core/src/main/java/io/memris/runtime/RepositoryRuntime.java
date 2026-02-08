@@ -97,7 +97,8 @@ public final class RepositoryRuntime<T> {
      * @param arena    the arena (for arena-scoped index queries)
      * @param metadata entity metadata for ID generation and field access
      */
-    public RepositoryRuntime(RepositoryPlan<T> plan, MemrisRepositoryFactory factory, MemrisArena arena, EntityMetadata<T> metadata) {
+    public RepositoryRuntime(RepositoryPlan<T> plan, MemrisRepositoryFactory factory, MemrisArena arena,
+            EntityMetadata<T> metadata) {
         if (plan == null) {
             throw new IllegalArgumentException("plan required");
         }
@@ -2050,7 +2051,8 @@ public final class RepositoryRuntime<T> {
             case StringPrefixIndex prefixIndex when key instanceof String value -> prefixIndex.remove(value, rowId);
             case StringSuffixIndex suffixIndex when key instanceof String value -> suffixIndex.remove(value, rowId);
             case CompositeHashIndex hashIndex when key instanceof CompositeKey value -> hashIndex.remove(value, rowId);
-            case CompositeRangeIndex rangeIndex when key instanceof CompositeKey value -> rangeIndex.remove(value, rowId);
+            case CompositeRangeIndex rangeIndex when key instanceof CompositeKey value ->
+                rangeIndex.remove(value, rowId);
             default -> {
             }
         }
@@ -2101,7 +2103,8 @@ public final class RepositoryRuntime<T> {
         return applyJoins(query, args, combined);
     }
 
-    private Selection executeConditionGroup(CompiledQuery.CompiledCondition[] conditions, int start, int end, Object[] args) {
+    private Selection executeConditionGroup(CompiledQuery.CompiledCondition[] conditions, int start, int end,
+            Object[] args) {
         var consumed = new boolean[end - start + 1];
         Selection current = selectWithCompositeIndex(conditions, start, end, args, consumed);
         for (var i = start; i <= end; i++) {
@@ -2141,7 +2144,8 @@ public final class RepositoryRuntime<T> {
                 var localConsumed = new boolean[consumed.length];
                 var match = true;
                 for (var i = 0; i < plan.columnPositions().length; i++) {
-                    var conditionIndex = findConditionIndex(conditions, start, end, plan.columnPositions()[i], LogicalQuery.Operator.EQ);
+                    var conditionIndex = findConditionIndex(conditions, start, end, plan.columnPositions()[i],
+                            LogicalQuery.Operator.EQ);
                     if (conditionIndex < 0) {
                         match = false;
                         break;
@@ -2190,7 +2194,8 @@ public final class RepositoryRuntime<T> {
         var upper = new Object[columnPositions.length];
         var prefix = 0;
         while (prefix < columnPositions.length) {
-            var conditionIndex = findConditionIndex(conditions, start, end, columnPositions[prefix], LogicalQuery.Operator.EQ);
+            var conditionIndex = findConditionIndex(conditions, start, end, columnPositions[prefix],
+                    LogicalQuery.Operator.EQ);
             if (conditionIndex < 0) {
                 break;
             }
@@ -2225,7 +2230,8 @@ public final class RepositoryRuntime<T> {
                 case EQ -> {
                     lower[prefix] = value;
                     upper[prefix] = value;
-                    return new RangeProbe(Predicate.Operator.BETWEEN, CompositeKey.of(lower), CompositeKey.of(upper), consumed);
+                    return new RangeProbe(Predicate.Operator.BETWEEN, CompositeKey.of(lower), CompositeKey.of(upper),
+                            consumed);
                 }
                 case GT -> {
                     lower[prefix] = value;
@@ -2248,7 +2254,8 @@ public final class RepositoryRuntime<T> {
                     var second = args[range.argumentIndex() + 1];
                     lower[prefix] = value;
                     upper[prefix] = second;
-                    return new RangeProbe(Predicate.Operator.BETWEEN, CompositeKey.of(lower), CompositeKey.of(upper), consumed);
+                    return new RangeProbe(Predicate.Operator.BETWEEN, CompositeKey.of(lower), CompositeKey.of(upper),
+                            consumed);
                 }
                 default -> {
                     return null;
@@ -2277,7 +2284,8 @@ public final class RepositoryRuntime<T> {
         return -1;
     }
 
-    private int findConditionIndexAny(CompiledQuery.CompiledCondition[] conditions, int start, int end, int columnIndex) {
+    private int findConditionIndexAny(CompiledQuery.CompiledCondition[] conditions, int start, int end,
+            int columnIndex) {
         for (var i = start; i <= end; i++) {
             var condition = conditions[i];
             if (condition.columnIndex() != columnIndex || condition.ignoreCase()) {
@@ -3692,9 +3700,10 @@ public final class RepositoryRuntime<T> {
             default -> table.readInt(columnIndex, rowIndex);
         };
 
-        TypeConverter<?, ?> converter = layout != null && columnIndex >= 0 && columnIndex < layout.convertersByColumn().length
-                ? layout.convertersByColumn()[columnIndex]
-                : null;
+        TypeConverter<?, ?> converter = layout != null && columnIndex >= 0
+                && columnIndex < layout.convertersByColumn().length
+                        ? layout.convertersByColumn()[columnIndex]
+                        : null;
         if (converter != null && storage != null) {
             @SuppressWarnings("unchecked")
             TypeConverter<Object, Object> typedConverter = (TypeConverter<Object, Object>) converter;
@@ -3771,7 +3780,7 @@ public final class RepositoryRuntime<T> {
         }
 
         for (CompiledQuery.CompiledJoin join : joins) {
-            join.materializer().hydrate(entity, rowIndex, plan.table(), join.targetTable(), join.targetKernel(),
+            join.materializer().hydrate(entity, rowIndex, plan.table(), join.targetTable(),
                     join.targetMaterializer());
         }
     }
@@ -3791,7 +3800,8 @@ public final class RepositoryRuntime<T> {
     private void hydrateOneToMany(T entity, int rowIndex, OneToManyPlan relationPlan) {
         long sourceId = readSourceId(plan.table(), idColumnIndex, relationPlan.sourceFkTypeCode(), rowIndex);
         int[] matches = switch (relationPlan.sourceFkTypeCode()) {
-            case TypeCodes.TYPE_LONG -> relationPlan.targetTable().scanEqualsLong(relationPlan.fkColumnIndex(), sourceId);
+            case TypeCodes.TYPE_LONG ->
+                relationPlan.targetTable().scanEqualsLong(relationPlan.fkColumnIndex(), sourceId);
             case TypeCodes.TYPE_INT, TypeCodes.TYPE_SHORT, TypeCodes.TYPE_BYTE ->
                 relationPlan.targetTable().scanEqualsInt(relationPlan.fkColumnIndex(), (int) sourceId);
             default -> relationPlan.targetTable().scanEqualsLong(relationPlan.fkColumnIndex(), sourceId);
@@ -3855,7 +3865,8 @@ public final class RepositoryRuntime<T> {
                 continue;
             }
 
-            int[] matches = scanTargetById(relationPlan.joinInfo().targetTable(), relationPlan.targetIdField(), targetIdValue);
+            int[] matches = scanTargetById(relationPlan.joinInfo().targetTable(), relationPlan.targetIdField(),
+                    targetIdValue);
             var targetTable = relationPlan.joinInfo().targetTable();
             for (int targetRow : matches) {
                 Object related = relationPlan.targetMaterializer().materialize(targetTable, targetRow);

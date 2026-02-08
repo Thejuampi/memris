@@ -22,15 +22,15 @@ class JoinMaterializerImplTest {
         GeneratedTable sourceTable = newTable(sourceMetadata());
         GeneratedTable targetTable = newTable(targetMetadata());
 
-        long sourceRef = sourceTable.insertFrom(new Object[]{1L, 10L});
-        targetTable.insertFrom(new Object[]{10L});
+        long sourceRef = sourceTable.insertFrom(new Object[] { 1L, 10L });
+        targetTable.insertFrom(new Object[] { 10L });
 
         JoinMaterializerImpl materializer = new JoinMaterializerImpl(1, 0, true, TypeCodes.TYPE_LONG, null, null);
         SourceEntity source = new SourceEntity();
-        HeapRuntimeKernel targetKernel = new HeapRuntimeKernel(targetTable);
         EntityMaterializer<TargetEntity> targetMaterializer = (table, rowIndex) -> new TargetEntity(10L);
 
-        materializer.hydrate(source, io.memris.storage.Selection.index(sourceRef), sourceTable, targetTable, targetKernel, targetMaterializer);
+        materializer.hydrate(source, io.memris.storage.Selection.index(sourceRef), sourceTable, targetTable,
+                targetMaterializer);
 
         assertThat(source.target).isNull();
     }
@@ -40,8 +40,8 @@ class JoinMaterializerImplTest {
         GeneratedTable sourceTable = newTable(sourceMetadata());
         GeneratedTable targetTable = newTable(targetMetadata());
 
-        long sourceRef = sourceTable.insertFrom(new Object[]{1L, 42L});
-        targetTable.insertFrom(new Object[]{42L});
+        long sourceRef = sourceTable.insertFrom(new Object[] { 1L, 42L });
+        targetTable.insertFrom(new Object[] { 42L });
 
         MethodHandle setter = MethodHandles.lookup()
                 .findVirtual(SourceEntity.class, "setTarget", MethodType.methodType(void.class, TargetEntity.class));
@@ -50,11 +50,11 @@ class JoinMaterializerImplTest {
 
         JoinMaterializerImpl materializer = new JoinMaterializerImpl(1, 0, true, TypeCodes.TYPE_LONG, setter, postLoad);
         SourceEntity source = new SourceEntity();
-        HeapRuntimeKernel targetKernel = new HeapRuntimeKernel(targetTable);
-        EntityMaterializer<TargetEntity> targetMaterializer = (table, rowIndex) ->
-                new TargetEntity(table.readLong(0, rowIndex));
+        EntityMaterializer<TargetEntity> targetMaterializer = (table,
+                rowIndex) -> new TargetEntity(table.readLong(0, rowIndex));
 
-        materializer.hydrate(source, io.memris.storage.Selection.index(sourceRef), sourceTable, targetTable, targetKernel, targetMaterializer);
+        materializer.hydrate(source, io.memris.storage.Selection.index(sourceRef), sourceTable, targetTable,
+                targetMaterializer);
 
         assertThat(source.target.postLoaded).isTrue();
     }
@@ -70,17 +70,14 @@ class JoinMaterializerImplTest {
                 "io.memris.test.Source",
                 List.of(
                         new FieldMetadata("id", TypeCodes.TYPE_LONG, true, true),
-                        new FieldMetadata("fk", TypeCodes.TYPE_LONG, false, false)
-                )
-        );
+                        new FieldMetadata("fk", TypeCodes.TYPE_LONG, false, false)));
     }
 
     private TableMetadata targetMetadata() {
         return new TableMetadata(
                 "Target",
                 "io.memris.test.Target",
-                List.of(new FieldMetadata("id", TypeCodes.TYPE_LONG, true, true))
-        );
+                List.of(new FieldMetadata("id", TypeCodes.TYPE_LONG, true, true)));
     }
 
     private static final class SourceEntity {
