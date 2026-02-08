@@ -16,6 +16,9 @@ import java.util.Optional;
 import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static io.memris.testutil.EntityAssertions.assertEntitiesMatchAnyOrder;
+import static io.memris.testutil.EntityAssertions.assertEntitiesMatchExactOrder;
+import static io.memris.testutil.EntityAssertions.assertEntityMatches;
 
 /**
  * Tests for RepositoryRuntime operations.
@@ -51,7 +54,7 @@ class RepositoryRuntimeTest {
 
         // Then
         assertThat(saved.id).isNotNull();
-        assertThat(saved).usingRecursiveComparison().ignoringFields("id").isEqualTo(entity);
+        assertEntityMatches(saved, entity, "id");
     }
 
     @Test
@@ -69,11 +72,11 @@ class RepositoryRuntimeTest {
         // Then
         assertThat(saved).hasSize(3);
         assertThat(saved).extracting(e -> e.id).doesNotContainNull();
-        assertThat(saved).usingRecursiveFieldByFieldElementComparatorIgnoringFields("id").containsExactly(
+        assertEntitiesMatchExactOrder(saved, List.of(
                 new TestEntity(null, "Entity 1", 20),
                 new TestEntity(null, "Entity 2", 30),
                 new TestEntity(null, "Entity 3", 40)
-        );
+        ), "id");
     }
 
     @Test
@@ -88,7 +91,7 @@ class RepositoryRuntimeTest {
 
         // Then
         assertThat(found).isPresent();
-        assertThat(found.orElseThrow()).usingRecursiveComparison().ignoringFields("id").isEqualTo(saved);
+        assertEntityMatches(found.orElseThrow(), saved, "id");
     }
 
     @Test
@@ -237,10 +240,10 @@ class RepositoryRuntimeTest {
 
         List<TestEntity> results = repo.findByNameIn(List.of("Alice", "Charlie"));
 
-        assertThat(results).usingRecursiveFieldByFieldElementComparatorIgnoringFields("id").containsExactlyInAnyOrder(
+        assertEntitiesMatchAnyOrder(results, List.of(
                 new TestEntity(null, "Alice", 25),
                 new TestEntity(null, "Charlie", 35)
-        );
+        ), "id");
     }
 
     @Test
@@ -254,9 +257,7 @@ class RepositoryRuntimeTest {
         List<TestEntity> results = repo.findByNameIn(new String[] { "Bob" });
 
         assertThat(results).hasSize(1);
-        assertThat(results.get(0)).usingRecursiveComparison().ignoringFields("id").isEqualTo(
-                new TestEntity(null, "Bob", 30)
-        );
+        assertEntityMatches(results.get(0), new TestEntity(null, "Bob", 30), "id");
     }
 
     @Test
@@ -273,10 +274,10 @@ class RepositoryRuntimeTest {
 
         // Then
         assertThat(results).hasSize(2);
-        assertThat(results).usingRecursiveFieldByFieldElementComparatorIgnoringFields("id").containsExactly(
+        assertEntitiesMatchExactOrder(results, List.of(
                 new TestEntity(null, "B", 30),
                 new TestEntity(null, "C", 40)
-        );
+        ), "id");
     }
 
     @Test
@@ -293,10 +294,10 @@ class RepositoryRuntimeTest {
         List<TestEntity> results = repo.findByAgeBetween(25, 45);
 
         // Then
-        assertThat(results).usingRecursiveFieldByFieldElementComparatorIgnoringFields("id").containsExactly(
+        assertEntitiesMatchExactOrder(results, List.of(
                 new TestEntity(null, "B", 30),
                 new TestEntity(null, "C", 40)
-        );
+        ), "id");
     }
 
     @Test
@@ -341,9 +342,7 @@ class RepositoryRuntimeTest {
 
         // Then
         assertThat(results).hasSize(1);
-        assertThat(results.get(0)).usingRecursiveComparison().ignoringFields("id").isEqualTo(
-                new TestEntity(null, "Alice", 25)
-        );
+        assertEntityMatches(results.get(0), new TestEntity(null, "Alice", 25), "id");
     }
 
     @Test
@@ -359,10 +358,10 @@ class RepositoryRuntimeTest {
         List<TestEntity> results = repo.findByNameOrAge("Alice", 40);
 
         // Then
-        assertThat(results).usingRecursiveFieldByFieldElementComparatorIgnoringFields("id").containsExactlyInAnyOrder(
+        assertEntitiesMatchAnyOrder(results, List.of(
                 new TestEntity(null, "Alice", 20),
                 new TestEntity(null, "Charlie", 40)
-        );
+        ), "id");
     }
 
     @Test
@@ -378,11 +377,11 @@ class RepositoryRuntimeTest {
         List<TestEntity> results = repo.findByOrderByAgeAsc();
 
         // Then
-        assertThat(results).usingRecursiveFieldByFieldElementComparatorIgnoringFields("id").containsExactly(
+        assertEntitiesMatchExactOrder(results, List.of(
                 new TestEntity(null, "Alice", 20),
                 new TestEntity(null, "Bob", 25),
                 new TestEntity(null, "Charlie", 30)
-        );
+        ), "id");
     }
 
 
@@ -401,10 +400,10 @@ class RepositoryRuntimeTest {
 
         // Then
         assertThat(results).hasSize(2);
-        assertThat(results).usingRecursiveFieldByFieldElementComparatorIgnoringFields("id").containsExactly(
+        assertEntitiesMatchExactOrder(results, List.of(
                 new TestEntity(null, "C", 10),
                 new TestEntity(null, "B", 20)
-        );
+        ), "id");
     }
 
     @Test
@@ -467,16 +466,12 @@ class RepositoryRuntimeTest {
 
         // Then
         assertThat(updated.id).isEqualTo(id);
-        assertThat(updated).usingRecursiveComparison().ignoringFields("id").isEqualTo(
-                new TestEntity(null, "Updated", 30)
-        );
+        assertEntityMatches(updated, new TestEntity(null, "Updated", 30), "id");
 
         // Verify it was actually updated
         Optional<TestEntity> found = repo.findById(id);
         assertThat(found).isPresent();
-        assertThat(found.orElseThrow()).usingRecursiveComparison().ignoringFields("id").isEqualTo(
-                new TestEntity(null, "Updated", 30)
-        );
+        assertEntityMatches(found.orElseThrow(), new TestEntity(null, "Updated", 30), "id");
     }
 
     @Test

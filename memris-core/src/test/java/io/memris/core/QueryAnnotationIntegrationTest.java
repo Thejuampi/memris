@@ -1,26 +1,7 @@
 package io.memris.core;
 
-import io.memris.core.Query;
-
-import io.memris.core.Param;
-import io.memris.core.Modifying;
-
-import io.memris.repository.MemrisRepositoryFactory;
-import io.memris.core.MemrisArena;
 import io.memris.repository.MemrisRepository;
-import io.memris.core.Entity;
-import io.memris.core.GeneratedValue;
-import io.memris.core.GenerationType;
-import io.memris.core.Index;
-
-import io.memris.core.Entity;
-import io.memris.core.GeneratedValue;
-import io.memris.core.GenerationType;
-import io.memris.core.Index;
-
 import io.memris.repository.MemrisRepositoryFactory;
-import io.memris.core.MemrisArena;
-import io.memris.repository.MemrisRepository;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -30,6 +11,9 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static io.memris.testutil.EntityAssertions.assertEntitiesMatchAnyOrder;
+import static io.memris.testutil.EntityAssertions.assertEntitiesMatchExactOrder;
+import static io.memris.testutil.EntityAssertions.assertEntityMatches;
 
 class QueryAnnotationIntegrationTest {
 
@@ -58,9 +42,7 @@ class QueryAnnotationIntegrationTest {
         Optional<Product> found = repo.findBySkuQuery("SKU-2");
 
         assertThat(found).isPresent();
-        assertThat(found.orElseThrow()).usingRecursiveComparison().ignoringFields("id").isEqualTo(
-                new Product("SKU-2", "Product 2", 2000, 20)
-        );
+        assertEntityMatches(found.orElseThrow(), new Product("SKU-2", "Product 2", 2000, 20), "id");
     }
 
     @Test
@@ -72,10 +54,10 @@ class QueryAnnotationIntegrationTest {
 
         List<Product> results = repo.findByPriceRange(1500, 3000);
 
-        assertThat(results).usingRecursiveFieldByFieldElementComparatorIgnoringFields("id").containsExactlyInAnyOrder(
+        assertEntitiesMatchAnyOrder(results, List.of(
                 new Product("SKU-2", "Product 2", 2000, 20),
                 new Product("SKU-3", "Product 3", 3000, 30)
-        );
+        ), "id");
     }
 
     @Test
@@ -87,10 +69,10 @@ class QueryAnnotationIntegrationTest {
 
         List<Product> results = repo.findBySkus(List.of("SKU-1", "SKU-3"));
 
-        assertThat(results).usingRecursiveFieldByFieldElementComparatorIgnoringFields("id").containsExactlyInAnyOrder(
+        assertEntitiesMatchAnyOrder(results, List.of(
                 new Product("SKU-1", "Product 1", 1000, 10),
                 new Product("SKU-3", "Product 3", 3000, 30)
-        );
+        ), "id");
     }
 
     @Test
@@ -116,11 +98,11 @@ class QueryAnnotationIntegrationTest {
         List<Product> results = repo.findAllOrderByPriceDesc();
 
         assertThat(results).hasSize(3);
-        assertThat(results).usingRecursiveFieldByFieldElementComparatorIgnoringFields("id").containsExactly(
+        assertEntitiesMatchExactOrder(results, List.of(
                 new Product("SKU-2", "Product 2", 3000, 20),
                 new Product("SKU-3", "Product 3", 2000, 30),
                 new Product("SKU-1", "Product 1", 1000, 10)
-        );
+        ), "id");
     }
 
     @Test
@@ -132,10 +114,10 @@ class QueryAnnotationIntegrationTest {
 
         List<Product> results = repo.findAffordableOrSpecific(10, 3000, "SKU-3");
 
-        assertThat(results).usingRecursiveFieldByFieldElementComparatorIgnoringFields("id").containsExactlyInAnyOrder(
+        assertEntitiesMatchAnyOrder(results, List.of(
                 new Product("SKU-2", "Product 2", 2000, 50),
                 new Product("SKU-3", "Product 3", 5000, 100)
-        );
+        ), "id");
     }
 
     @Test
@@ -203,11 +185,11 @@ class QueryAnnotationIntegrationTest {
 
         List<Product> results = repo.findAllOrderByPriceDescStockAsc();
 
-        assertThat(results).usingRecursiveFieldByFieldElementComparatorIgnoringFields("id").containsExactly(
+        assertEntitiesMatchExactOrder(results, List.of(
                 new Product("SKU-3", "Product 3", 2000, 1),
                 new Product("SKU-2", "Product 2", 1000, 2),
                 new Product("SKU-1", "Product 1", 1000, 5)
-        );
+        ), "id");
     }
 
     @Test

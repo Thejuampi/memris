@@ -1,9 +1,7 @@
 package io.memris.runtime;
 
-import io.memris.core.MemrisArena;
 import io.memris.core.MemrisConfiguration;
-import io.memris.repository.MemrisRepositoryFactory;
-import org.junit.jupiter.api.AfterEach;
+import io.memris.testutil.TestArena;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -31,16 +29,6 @@ class RepositoryStressTest {
     private static final Duration POLL_TIMEOUT = Duration.ofSeconds(60);
     private static final Duration POLL_INTERVAL = Duration.ofMillis(200);
 
-    private MemrisRepositoryFactory factory;
-    private MemrisArena arena;
-
-    @AfterEach
-    void tearDown() throws Exception {
-        if (factory != null) {
-            factory.close();
-        }
-    }
-
     @Test
     @Tag("stress")
     @Timeout(value = 5, unit = TimeUnit.MINUTES)
@@ -51,45 +39,40 @@ class RepositoryStressTest {
                 .enablePrefixIndex(false)
                 .enableSuffixIndex(false)
                 .build();
-        factory = new MemrisRepositoryFactory(config);
-        arena = factory.createArena();
-        TestEntityRepository repo = arena.createRepository(TestEntityRepository.class);
+        var actual = TestArena.withArena(config, arena -> {
+            var repo = arena.createRepository(TestEntityRepository.class);
+            var threads = Math.max(8, Runtime.getRuntime().availableProcessors());
+            var executor = Executors.newFixedThreadPool(threads);
+            try {
+                var insertsCompleted = runConcurrentInserts(repo, executor, threads, totalRows);
+                var modificationsCompleted = runConcurrentUpdatesAndDeletes(repo, executor, threads, totalRows);
 
-        int threads = Math.max(8, Runtime.getRuntime().availableProcessors());
-        ExecutorService executor = Executors.newFixedThreadPool(threads);
+                executor.shutdown();
+                executor.awaitTermination(10, TimeUnit.MINUTES);
 
-        boolean insertsCompleted = runConcurrentInserts(repo, executor, threads, totalRows);
-        boolean modificationsCompleted = runConcurrentUpdatesAndDeletes(repo, executor, threads, totalRows);
+                var expectedDeleted = countDivisible(totalRows, DELETE_DIVISOR);
+                var expectedRemaining = totalRows - expectedDeleted;
+                var sampleIds = buildSampleIds(totalRows, SAMPLE_SIZE);
+                var pollResult = pollForConsistency(repo, expectedRemaining, sampleIds);
 
-        executor.shutdown();
-        executor.awaitTermination(10, TimeUnit.MINUTES);
+                return new StressSnapshot(
+                        insertsCompleted,
+                        modificationsCompleted,
+                        pollResult.actualCount,
+                        expectedRemaining,
+                        pollResult.sampleOk,
+                        pollResult.timedOut,
+                        pollResult.mismatch
+                );
+            } catch (InterruptedException exception) {
+                Thread.currentThread().interrupt();
+                throw new RuntimeException(exception);
+            }
+        });
 
-        long expectedDeleted = countDivisible(totalRows, DELETE_DIVISOR);
-        long expectedRemaining = totalRows - expectedDeleted;
-
-        long[] sampleIds = buildSampleIds(totalRows, SAMPLE_SIZE);
-        PollResult pollResult = pollForConsistency(repo, expectedRemaining, sampleIds);
-
-        StressSnapshot actual = new StressSnapshot(
-                insertsCompleted,
-                modificationsCompleted,
-                pollResult.actualCount,
-                expectedRemaining,
-                pollResult.sampleOk,
-                pollResult.timedOut,
-                pollResult.mismatch
-        );
-
-        StressSnapshot expected = new StressSnapshot(
-                true,
-                true,
-                expectedRemaining,
-                expectedRemaining,
-                true,
-                false,
-                null
-        );
-
+        var expectedDeleted = countDivisible(totalRows, DELETE_DIVISOR);
+        var expectedRemaining = totalRows - expectedDeleted;
+        var expected = new StressSnapshot(true, true, expectedRemaining, expectedRemaining, true, false, null);
         assertThat(actual).usingRecursiveComparison().isEqualTo(expected);
     }
 
