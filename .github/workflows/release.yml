@@ -115,7 +115,7 @@ jobs:
             exit 1
           fi
 
-          if ! gh pr merge "${pr_url}" --rebase --delete-branch; then
+          if ! gh pr merge "${pr_url}" --rebase --auto --delete-branch; then
             echo "Failed to merge release PR with --rebase." >&2
             exit 1
           fi
