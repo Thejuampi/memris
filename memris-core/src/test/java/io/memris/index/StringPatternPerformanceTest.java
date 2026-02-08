@@ -6,9 +6,11 @@ import io.memris.core.MemrisConfiguration;
 import io.memris.repository.MemrisRepositoryFactory;
 import io.memris.runtime.TestEntity;
 import io.memris.runtime.TestEntityRepository;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Tag;
 
+import java.util.Arrays;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -20,6 +22,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * Run with: mvn test -Dtest=StringPatternPerformanceTest -Dtag=benchmark
  */
 @Tag("benchmark")
+@Disabled("Manual benchmark only")
 class StringPatternPerformanceTest {
 
     @Test
@@ -32,37 +35,7 @@ class StringPatternPerformanceTest {
                 .enablePrefixIndex(true)
                 .build();
 
-        MemrisRepositoryFactory factory = new MemrisRepositoryFactory(config);
-        MemrisArena arena = factory.createArena();
-        TestEntityRepository repository = arena.createRepository(TestEntityRepository.class);
-
-        // Populate with 50k rows
-        int rowCount = 50000;
-        String[] prefixes = {"Alice", "Bob", "Charlie", "David", "Emma"};
-        for (int i = 0; i < rowCount; i++) {
-            String name = prefixes[i % prefixes.length] + "Name" + i;
-            repository.save(new TestEntity(null, name, i % 100));
-        }
-
-        // Warmup
-        for (int i = 0; i < 10; i++) {
-            repository.findByNameStartingWith("Ali");
-        }
-
-        // Measure
-        long startTime = System.nanoTime();
-        int iterations = 100;
-        for (int i = 0; i < iterations; i++) {
-            List<TestEntity> results = repository.findByNameStartingWith("Ali");
-            assertThat(results).isNotNull();
-        }
-        long endTime = System.nanoTime();
-
-        long avgTimeMicros = (endTime - startTime) / iterations / 1000;
-        System.out.println("STARTING_WITH with Index (50k rows): " + avgTimeMicros + " μs/op");
-
-        arena.close();
-        factory.close();
+        var avgTimeMicros = runStartsWithBenchmark(config);
 
         // Assert it's reasonably fast (should be under 1000μs)
         assertThat(avgTimeMicros).isLessThan(1000);
@@ -78,37 +51,7 @@ class StringPatternPerformanceTest {
                 .enablePrefixIndex(false)
                 .build();
 
-        MemrisRepositoryFactory factory = new MemrisRepositoryFactory(config);
-        MemrisArena arena = factory.createArena();
-        TestEntityRepository repository = arena.createRepository(TestEntityRepository.class);
-
-        // Populate with 50k rows
-        int rowCount = 50000;
-        String[] prefixes = {"Alice", "Bob", "Charlie", "David", "Emma"};
-        for (int i = 0; i < rowCount; i++) {
-            String name = prefixes[i % prefixes.length] + "Name" + i;
-            repository.save(new TestEntity(null, name, i % 100));
-        }
-
-        // Warmup
-        for (int i = 0; i < 10; i++) {
-            repository.findByNameStartingWith("Ali");
-        }
-
-        // Measure
-        long startTime = System.nanoTime();
-        int iterations = 100;
-        for (int i = 0; i < iterations; i++) {
-            List<TestEntity> results = repository.findByNameStartingWith("Ali");
-            assertThat(results).isNotNull();
-        }
-        long endTime = System.nanoTime();
-
-        long avgTimeMicros = (endTime - startTime) / iterations / 1000;
-        System.out.println("STARTING_WITH without Index (50k rows): " + avgTimeMicros + " μs/op");
-
-        arena.close();
-        factory.close();
+        assertThat(runStartsWithBenchmark(config)).isPositive();
     }
 
     @Test
@@ -121,37 +64,7 @@ class StringPatternPerformanceTest {
                 .enableSuffixIndex(true)
                 .build();
 
-        MemrisRepositoryFactory factory = new MemrisRepositoryFactory(config);
-        MemrisArena arena = factory.createArena();
-        TestEntityRepository repository = arena.createRepository(TestEntityRepository.class);
-
-        // Populate with 50k rows
-        int rowCount = 50000;
-        String[] suffixes = {"Smith", "Jones", "Brown", "Davis", "Wilson"};
-        for (int i = 0; i < rowCount; i++) {
-            String name = "Name" + i + suffixes[i % suffixes.length];
-            repository.save(new TestEntity(null, name, i % 100));
-        }
-
-        // Warmup
-        for (int i = 0; i < 10; i++) {
-            repository.findByNameEndingWith("ith");
-        }
-
-        // Measure
-        long startTime = System.nanoTime();
-        int iterations = 100;
-        for (int i = 0; i < iterations; i++) {
-            List<TestEntity> results = repository.findByNameEndingWith("ith");
-            assertThat(results).isNotNull();
-        }
-        long endTime = System.nanoTime();
-
-        long avgTimeMicros = (endTime - startTime) / iterations / 1000;
-        System.out.println("ENDING_WITH with Index (50k rows): " + avgTimeMicros + " μs/op");
-
-        arena.close();
-        factory.close();
+        var avgTimeMicros = runEndsWithBenchmark(config);
 
         // Assert it's reasonably fast
         assertThat(avgTimeMicros).isLessThan(1000);
@@ -167,50 +80,64 @@ class StringPatternPerformanceTest {
                 .enableSuffixIndex(false)
                 .build();
 
-        MemrisRepositoryFactory factory = new MemrisRepositoryFactory(config);
-        MemrisArena arena = factory.createArena();
-        TestEntityRepository repository = arena.createRepository(TestEntityRepository.class);
-
-        // Populate with 50k rows
-        int rowCount = 50000;
-        String[] suffixes = {"Smith", "Jones", "Brown", "Davis", "Wilson"};
-        for (int i = 0; i < rowCount; i++) {
-            String name = "Name" + i + suffixes[i % suffixes.length];
-            repository.save(new TestEntity(null, name, i % 100));
-        }
-
-        // Warmup
-        for (int i = 0; i < 10; i++) {
-            repository.findByNameEndingWith("ith");
-        }
-
-        // Measure
-        long startTime = System.nanoTime();
-        int iterations = 100;
-        for (int i = 0; i < iterations; i++) {
-            List<TestEntity> results = repository.findByNameEndingWith("ith");
-            assertThat(results).isNotNull();
-        }
-        long endTime = System.nanoTime();
-
-        long avgTimeMicros = (endTime - startTime) / iterations / 1000;
-        System.out.println("ENDING_WITH without Index (50k rows): " + avgTimeMicros + " μs/op");
-
-        arena.close();
-        factory.close();
+        assertThat(runEndsWithBenchmark(config)).isPositive();
     }
 
     @Test
     void calculateSpeedupFactor() {
-        System.out.println("\n=== String Pattern Matching Performance Summary ===\n");
+        assertThat(Arrays.stream(new long[]{
+                runStartsWithBenchmark(MemrisConfiguration.builder().enablePrefixIndex(true).build()),
+                runStartsWithBenchmark(MemrisConfiguration.builder().enablePrefixIndex(false).build()),
+                runEndsWithBenchmark(MemrisConfiguration.builder().enableSuffixIndex(true).build()),
+                runEndsWithBenchmark(MemrisConfiguration.builder().enableSuffixIndex(false).build())
+        }).allMatch(value -> value > 0)).isTrue();
+    }
 
-        // Run with index tests first to get measurements
-        measureStartingWithPerformance_withIndex();
-        measureStartingWithPerformance_withoutIndex();
-        measureEndingWithPerformance_withIndex();
-        measureEndingWithPerformance_withoutIndex();
+    private long runStartsWithBenchmark(MemrisConfiguration config) {
+        try (var factory = new MemrisRepositoryFactory(config);
+             var arena = factory.createArena()) {
+            var repository = arena.createRepository(TestEntityRepository.class);
+            var rowCount = 50_000;
+            var prefixes = new String[]{"Alice", "Bob", "Charlie", "David", "Emma"};
+            for (var index = 0; index < rowCount; index++) {
+                var name = prefixes[index % prefixes.length] + "Name" + index;
+                repository.save(new TestEntity(null, name, index % 100));
+            }
+            for (var index = 0; index < 10; index++) {
+                repository.findByNameStartingWith("Ali");
+            }
+            var startTime = System.nanoTime();
+            var iterations = 100;
+            for (var index = 0; index < iterations; index++) {
+                var results = repository.findByNameStartingWith("Ali");
+                assertThat(results).isNotNull();
+            }
+            var endTime = System.nanoTime();
+            return (endTime - startTime) / iterations / 1000;
+        }
+    }
 
-        System.out.println("\nExpected speedup: 10-100x faster with indexes");
-        System.out.println("Index type: Trie (prefix tree) for O(k) lookup vs O(n) scan");
+    private long runEndsWithBenchmark(MemrisConfiguration config) {
+        try (var factory = new MemrisRepositoryFactory(config);
+             var arena = factory.createArena()) {
+            var repository = arena.createRepository(TestEntityRepository.class);
+            var rowCount = 50_000;
+            var suffixes = new String[]{"Smith", "Jones", "Brown", "Davis", "Wilson"};
+            for (var index = 0; index < rowCount; index++) {
+                var name = "Name" + index + suffixes[index % suffixes.length];
+                repository.save(new TestEntity(null, name, index % 100));
+            }
+            for (var index = 0; index < 10; index++) {
+                repository.findByNameEndingWith("ith");
+            }
+            var startTime = System.nanoTime();
+            var iterations = 100;
+            for (var index = 0; index < iterations; index++) {
+                var results = repository.findByNameEndingWith("ith");
+                assertThat(results).isNotNull();
+            }
+            var endTime = System.nanoTime();
+            return (endTime - startTime) / iterations / 1000;
+        }
     }
 }
