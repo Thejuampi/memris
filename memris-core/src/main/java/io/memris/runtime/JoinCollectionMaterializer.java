@@ -48,7 +48,7 @@ public final class JoinCollectionMaterializer implements JoinMaterializer {
 
         Collection<Object> collection = createCollection(matches.length);
         for (int targetRow : matches) {
-            Object related = targetMaterializer.materialize(targetKernel, targetRow);
+            Object related = targetMaterializer.materialize(targetTable, targetRow);
             invokePostLoad(related);
             collection.add(related);
         }

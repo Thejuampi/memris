@@ -54,7 +54,7 @@ public class EntityMaterializerImpl<T> implements EntityMaterializer<T> {
     }
 
     @Override
-    public T materialize(HeapRuntimeKernel kernel, int rowIndex) {
+    public T materialize(GeneratedTable table, int rowIndex) {
         try {
             // Create entity instance
             T entity;
@@ -64,8 +64,6 @@ public class EntityMaterializerImpl<T> implements EntityMaterializer<T> {
                 // Fallback to reflection if no constructor handle available
                 entity = metadata.entityConstructor().newInstance();
             }
-
-            GeneratedTable table = kernel.table();
 
             // Read and set each field
             for (FieldMapping field : fields) {

@@ -37,7 +37,7 @@ public final class JoinMaterializerImpl implements JoinMaterializer {
         if (targetRow < 0) {
             return;
         }
-        Object related = targetMaterializer.materialize(targetKernel, targetRow);
+        Object related = targetMaterializer.materialize(targetTable, targetRow);
         invokePostLoad(related);
         try {
             setter.invoke(sourceEntity, related);
