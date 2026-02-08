@@ -999,7 +999,7 @@ public final class RepositoryRuntime<T> {
         }
 
         var rowIndex = io.memris.storage.Selection.index(packedRef);
-        var entity = table.readWithSeqLock(rowIndex, () -> materializer.materialize(plan.kernel(), rowIndex));
+        var entity = table.readWithSeqLock(rowIndex, () -> materializer.materialize(table, rowIndex));
         applyPostLoad(entity);
         hydrateCollections(entity, rowIndex);
         return Optional.of(entity);
@@ -1011,7 +1011,7 @@ public final class RepositoryRuntime<T> {
 
         var results = new ArrayList<T>(rowIndices.length);
         for (var rowIndex : rowIndices) {
-            var entity = materializer.materialize(plan.kernel(), rowIndex);
+            var entity = materializer.materialize(table, rowIndex);
             applyPostLoad(entity);
             hydrateCollections(entity, rowIndex);
             results.add(entity);
@@ -1080,9 +1080,10 @@ public final class RepositoryRuntime<T> {
         java.util.Set<DistinctKey> distinctKeys = query.distinct()
                 ? new java.util.HashSet<>(Math.max(16, max))
                 : null;
+        var table = plan.table();
         for (var i = 0; i < max; i++) {
             var rowIndex = rows[i];
-            var entity = materializer.materialize(plan.kernel(), rowIndex);
+            var entity = materializer.materialize(table, rowIndex);
             applyPostLoad(entity);
             hydrateJoins(entity, rowIndex, query);
             hydrateCollections(entity, rowIndex);
@@ -1187,9 +1188,10 @@ public final class RepositoryRuntime<T> {
     private Map<Object, List<T>> buildGroupList(CompiledQuery query, int[] rows, int max, int[] groupColumnIndices,
             byte[] groupTypeCodes) {
         Map<Object, List<T>> resultMap = new java.util.LinkedHashMap<>();
+        var table = plan.table();
         for (int i = 0; i < max; i++) {
             int rowIndex = rows[i];
-            T entity = materializer.materialize(plan.kernel(), rowIndex);
+            T entity = materializer.materialize(table, rowIndex);
             applyPostLoad(entity);
             hydrateJoins(entity, rowIndex, query);
             hydrateCollections(entity, rowIndex);
@@ -1203,9 +1205,10 @@ public final class RepositoryRuntime<T> {
             int[] groupColumnIndices,
             byte[] groupTypeCodes) {
         Map<Object, java.util.Set<T>> resultMap = new java.util.LinkedHashMap<>();
+        var table = plan.table();
         for (int i = 0; i < max; i++) {
             int rowIndex = rows[i];
-            T entity = materializer.materialize(plan.kernel(), rowIndex);
+            T entity = materializer.materialize(table, rowIndex);
             applyPostLoad(entity);
             hydrateJoins(entity, rowIndex, query);
             hydrateCollections(entity, rowIndex);
@@ -3795,8 +3798,9 @@ public final class RepositoryRuntime<T> {
         };
 
         var collection = createCollection(relationPlan.collectionType(), matches.length);
+        var targetTable = relationPlan.targetTable();
         for (var targetRow : matches) {
-            var related = relationPlan.targetMaterializer().materialize(relationPlan.targetKernel(), targetRow);
+            var related = relationPlan.targetMaterializer().materialize(targetTable, targetRow);
             invokeLifecycle(relationPlan.targetPostLoadHandle(), related);
             collection.add(related);
         }
@@ -3852,8 +3856,9 @@ public final class RepositoryRuntime<T> {
             }
 
             int[] matches = scanTargetById(relationPlan.joinInfo().targetTable(), relationPlan.targetIdField(), targetIdValue);
+            var targetTable = relationPlan.joinInfo().targetTable();
             for (int targetRow : matches) {
-                Object related = relationPlan.targetMaterializer().materialize(relationPlan.targetKernel(), targetRow);
+                Object related = relationPlan.targetMaterializer().materialize(targetTable, targetRow);
                 invokeLifecycle(relationPlan.targetPostLoadHandle(), related);
                 collection.add(related);
             }

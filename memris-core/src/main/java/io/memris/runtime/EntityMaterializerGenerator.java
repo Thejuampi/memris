@@ -37,8 +37,7 @@ public final class EntityMaterializerGenerator {
      *
      * <pre>{@code
      * final class Customer$MemrisMaterializer$123 implements EntityMaterializer<Customer> {
-     *     public Customer materialize(HeapRuntimeKernel kernel, int rowIndex) {
-     *         var table = kernel.table();
+     *     public Customer materialize(GeneratedTable table, int rowIndex) {
      *         var entity = new Customer();
      *         // read typed column values, convert if configured, then assign fields
      *         return entity;
@@ -92,7 +91,7 @@ public final class EntityMaterializerGenerator {
         }
 
         builder = builder.defineMethod("materialize", entityClass, Visibility.PUBLIC)
-                .withParameters(HeapRuntimeKernel.class, int.class)
+                .withParameters(GeneratedTable.class, int.class)
                 .intercept(new Implementation.Simple(new MaterializeAppender(entityClass, fields)));
 
         try (DynamicType.Unloaded<?> unloaded = builder.make()) {
@@ -155,13 +154,12 @@ public final class EntityMaterializerGenerator {
     }
 
     /**
-     * ASM appender that emits the body of `materialize(kernel, rowIndex)`.
+     * ASM appender that emits the body of `materialize(table, rowIndex)`.
      *
      * Equivalent generated Java (simplified):
      *
      * <pre>{@code
      * Customer entity = new Customer();
-     * GeneratedTable table = kernel.table();
      * entity.id = table.readLong(0, rowIndex);
      * entity.name = table.readString(1, rowIndex);
      * // converter fields are applied where configured
@@ -175,9 +173,8 @@ public final class EntityMaterializerGenerator {
             String entityInternal = Type.getInternalName(entityClass);
             String materializerInternal = context.getInstrumentedType().getInternalName();
             String tableInternal = Type.getInternalName(GeneratedTable.class);
-            String kernelInternal = Type.getInternalName(HeapRuntimeKernel.class);
             int entityVar = 3;
-            int tableVar = 4;
+            int tableVar = 1;
             int intVar = 5;
             int longVar = 6;
             int doubleVar = 8;
@@ -188,11 +185,6 @@ public final class EntityMaterializerGenerator {
             mv.visitInsn(Opcodes.DUP);
             mv.visitMethodInsn(Opcodes.INVOKESPECIAL, entityInternal, "<init>", "()V", false);
             mv.visitVarInsn(Opcodes.ASTORE, entityVar);
-
-            mv.visitVarInsn(Opcodes.ALOAD, 1);
-            mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, kernelInternal, "table", "()Lio/memris/storage/GeneratedTable;",
-                    false);
-            mv.visitVarInsn(Opcodes.ASTORE, tableVar);
 
             for (FieldInfo info : fields) {
                 emitFieldWrite(mv, info, entityInternal, materializerInternal, tableInternal, entityVar, tableVar,
