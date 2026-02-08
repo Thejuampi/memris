@@ -18,15 +18,23 @@ class TypeConverterRegistryTest {
     @Test
     void timeConvertersUseEpochLongs() {
         var registry = TypeConverterRegistry.getInstance();
+        var instantConverter = registry.getConverter(Instant.class);
+        var localDateConverter = registry.getConverter(LocalDate.class);
+        var localDateTimeConverter = registry.getConverter(LocalDateTime.class);
+        var dateConverter = registry.getConverter(Date.class);
+        assertThat(instantConverter).isNotNull();
+        assertThat(localDateConverter).isNotNull();
+        assertThat(localDateTimeConverter).isNotNull();
+        assertThat(dateConverter).isNotNull();
         var actual = new TimeSnapshot(
-                registry.getConverter(Instant.class).toStorage(Instant.ofEpochMilli(1234L)),
-                fromStorage(registry.getConverter(Instant.class), 1234L),
-                registry.getConverter(LocalDate.class).toStorage(LocalDate.ofEpochDay(5)),
-                fromStorage(registry.getConverter(LocalDate.class), 5L),
-                registry.getConverter(LocalDateTime.class).toStorage(LocalDateTime.of(1970, 1, 1, 0, 0, 1)),
-                fromStorage(registry.getConverter(LocalDateTime.class), 1000L),
-                registry.getConverter(Date.class).toStorage(new Date(9876L)),
-                fromStorage(registry.getConverter(Date.class), 9876L)
+                instantConverter.toStorage(Instant.ofEpochMilli(1234L)),
+                fromStorage(instantConverter, 1234L),
+                localDateConverter.toStorage(LocalDate.ofEpochDay(5)),
+                fromStorage(localDateConverter, 5L),
+                localDateTimeConverter.toStorage(LocalDateTime.of(1970, 1, 1, 0, 0, 1)),
+                fromStorage(localDateTimeConverter, 1000L),
+                dateConverter.toStorage(new Date(9876L)),
+                fromStorage(dateConverter, 9876L)
         );
         var expected = new TimeSnapshot(
                 1234L,
@@ -44,11 +52,15 @@ class TypeConverterRegistryTest {
     @Test
     void bigConvertersUseStrings() {
         var registry = TypeConverterRegistry.getInstance();
+        var bigDecimalConverter = registry.getConverter(BigDecimal.class);
+        var bigIntegerConverter = registry.getConverter(BigInteger.class);
+        assertThat(bigDecimalConverter).isNotNull();
+        assertThat(bigIntegerConverter).isNotNull();
         var actual = new BigSnapshot(
-                registry.getConverter(BigDecimal.class).toStorage(new BigDecimal("123.45")),
-                fromStorage(registry.getConverter(BigDecimal.class), "123.45"),
-                registry.getConverter(BigInteger.class).toStorage(new BigInteger("987654321")),
-                fromStorage(registry.getConverter(BigInteger.class), "987654321")
+                bigDecimalConverter.toStorage(new BigDecimal("123.45")),
+                fromStorage(bigDecimalConverter, "123.45"),
+                bigIntegerConverter.toStorage(new BigInteger("987654321")),
+                fromStorage(bigIntegerConverter, "987654321")
         );
         var expected = new BigSnapshot(
                 "123.45",
