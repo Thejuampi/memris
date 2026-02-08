@@ -53,8 +53,9 @@ class RepositoryRuntimeTest {
         TestEntity saved = repo.save(entity);
 
         // Then
-        assertThat(saved.id).isNotNull();
-        assertEntityMatches(saved, entity, "id");
+        var actual = new SaveSnapshot(saved.id != null, view(saved));
+        var expected = new SaveSnapshot(true, view(new TestEntity(null, "Test Name", 25)));
+        assertThat(actual).usingRecursiveComparison().isEqualTo(expected);
     }
 
     @Test
@@ -70,13 +71,19 @@ class RepositoryRuntimeTest {
         List<TestEntity> saved = repo.saveAll(Arrays.asList(entity1, entity2, entity3));
 
         // Then
-        assertThat(saved).hasSize(3);
-        assertThat(saved).extracting(e -> e.id).doesNotContainNull();
-        assertEntitiesMatchExactOrder(saved, List.of(
-                new TestEntity(null, "Entity 1", 20),
-                new TestEntity(null, "Entity 2", 30),
-                new TestEntity(null, "Entity 3", 40)
-        ), "id");
+        var actual = new SaveAllSnapshot(
+                saved.stream().allMatch(entity -> entity.id != null),
+                views(saved)
+        );
+        var expected = new SaveAllSnapshot(
+                true,
+                List.of(
+                        view(new TestEntity(null, "Entity 1", 20)),
+                        view(new TestEntity(null, "Entity 2", 30)),
+                        view(new TestEntity(null, "Entity 3", 40))
+                )
+        );
+        assertThat(actual).usingRecursiveComparison().isEqualTo(expected);
     }
 
     @Test
@@ -90,8 +97,9 @@ class RepositoryRuntimeTest {
         Optional<TestEntity> found = repo.findById(saved.id);
 
         // Then
-        assertThat(found).isPresent();
-        assertEntityMatches(found.orElseThrow(), saved, "id");
+        var actual = new FindByIdSnapshot(found.isPresent(), found.map(RepositoryRuntimeTest::view).orElse(null));
+        var expected = new FindByIdSnapshot(true, view(saved));
+        assertThat(actual).usingRecursiveComparison().isEqualTo(expected);
     }
 
     @Test
@@ -131,8 +139,8 @@ class RepositoryRuntimeTest {
         TestEntity saved = repo.save(new TestEntity(null, "Test", 25));
 
         // When & Then
-        assertThat(repo.existsById(saved.id)).isTrue();
-        assertThat(repo.existsById(999L)).isFalse();
+        assertThat(new ExistsSnapshot(repo.existsById(saved.id), repo.existsById(999L))).usingRecursiveComparison()
+                .isEqualTo(new ExistsSnapshot(true, false));
     }
 
     @Test
@@ -161,8 +169,8 @@ class RepositoryRuntimeTest {
         repo.deleteById(saved.id);
 
         // Then
-        assertThat(repo.existsById(saved.id)).isFalse();
-        assertThat(repo.findAll()).isEmpty();
+        assertThat(new DeleteByIdSnapshot(repo.existsById(saved.id), repo.findAll().size())).usingRecursiveComparison()
+                .isEqualTo(new DeleteByIdSnapshot(false, 0));
     }
 
     @Test
@@ -192,8 +200,8 @@ class RepositoryRuntimeTest {
         repo.deleteAll();
 
         // Then
-        assertThat(repo.count()).isEqualTo(0);
-        assertThat(repo.findAll()).isEmpty();
+        assertThat(new DeleteAllSnapshot(repo.count(), repo.findAll().size())).usingRecursiveComparison()
+                .isEqualTo(new DeleteAllSnapshot(0L, 0));
     }
 
     @Test
@@ -209,8 +217,8 @@ class RepositoryRuntimeTest {
         repo.deleteAllById(Arrays.asList(e1.id, e3.id));
 
         // Then
-        assertThat(repo.count()).isEqualTo(1);
-        assertThat(repo.existsById(e2.id)).isTrue();
+        assertThat(new DeleteManySnapshot(repo.count(), repo.existsById(e2.id))).usingRecursiveComparison()
+                .isEqualTo(new DeleteManySnapshot(1L, true));
     }
 
     @Test
@@ -226,8 +234,9 @@ class RepositoryRuntimeTest {
         List<TestEntity> results = repo.findByName("Alice");
 
         // Then
-        assertThat(results).hasSize(2);
-        assertThat(results).allMatch(e -> e.name.equals("Alice"));
+        assertThat(new NameQuerySnapshot(results.size(), results.stream().allMatch(entity -> entity.name.equals("Alice"))))
+                .usingRecursiveComparison()
+                .isEqualTo(new NameQuerySnapshot(2, true));
     }
 
     @Test
@@ -256,8 +265,9 @@ class RepositoryRuntimeTest {
 
         List<TestEntity> results = repo.findByNameIn(new String[] { "Bob" });
 
-        assertThat(results).hasSize(1);
-        assertEntityMatches(results.get(0), new TestEntity(null, "Bob", 30), "id");
+        var actual = new NameInArraySnapshot(results.size(), results.isEmpty() ? null : view(results.get(0)));
+        var expected = new NameInArraySnapshot(1, view(new TestEntity(null, "Bob", 30)));
+        assertThat(actual).usingRecursiveComparison().isEqualTo(expected);
     }
 
     @Test
@@ -273,7 +283,6 @@ class RepositoryRuntimeTest {
         List<TestEntity> results = repo.findByAgeGreaterThan(25);
 
         // Then
-        assertThat(results).hasSize(2);
         assertEntitiesMatchExactOrder(results, List.of(
                 new TestEntity(null, "B", 30),
                 new TestEntity(null, "C", 40)
@@ -324,8 +333,8 @@ class RepositoryRuntimeTest {
         repo.save(new TestEntity(null, "Alice", 25));
 
         // When & Then
-        assertThat(repo.existsByName("Alice")).isTrue();
-        assertThat(repo.existsByName("Bob")).isFalse();
+        assertThat(new ExistsSnapshot(repo.existsByName("Alice"), repo.existsByName("Bob"))).usingRecursiveComparison()
+                .isEqualTo(new ExistsSnapshot(true, false));
     }
 
     @Test
@@ -341,8 +350,9 @@ class RepositoryRuntimeTest {
         List<TestEntity> results = repo.findByNameAndAge("Alice", 25);
 
         // Then
-        assertThat(results).hasSize(1);
-        assertEntityMatches(results.get(0), new TestEntity(null, "Alice", 25), "id");
+        var actual = new NameInArraySnapshot(results.size(), results.isEmpty() ? null : view(results.get(0)));
+        var expected = new NameInArraySnapshot(1, view(new TestEntity(null, "Alice", 25)));
+        assertThat(actual).usingRecursiveComparison().isEqualTo(expected);
     }
 
     @Test
@@ -399,7 +409,6 @@ class RepositoryRuntimeTest {
         List<TestEntity> results = repo.findTop2ByOrderByAgeAsc();
 
         // Then
-        assertThat(results).hasSize(2);
         assertEntitiesMatchExactOrder(results, List.of(
                 new TestEntity(null, "C", 10),
                 new TestEntity(null, "B", 20)
@@ -418,9 +427,8 @@ class RepositoryRuntimeTest {
         boolean exists = repo.existsByName("NonExistent");
 
         // Then
-        assertThat(results).isEmpty();
-        assertThat(count).isEqualTo(0);
-        assertThat(exists).isFalse();
+        assertThat(new EmptyResultSnapshot(results.size(), count, exists)).usingRecursiveComparison()
+                .isEqualTo(new EmptyResultSnapshot(0, 0L, false));
     }
 
     @Test
@@ -433,8 +441,7 @@ class RepositoryRuntimeTest {
 
         Set<TestEntity> results = repo.findByIdIn(Set.of(first.id, second.id));
 
-        assertThat(results).hasSize(2);
-        assertThat(results).extracting(e -> e.id).containsExactlyInAnyOrder(first.id, second.id);
+        assertThat(results.stream().map(entity -> entity.id).toList()).containsExactlyInAnyOrder(first.id, second.id);
     }
 
     @Test
@@ -447,8 +454,7 @@ class RepositoryRuntimeTest {
 
         Set<TestEntity> results = repo.findByIdIn(first.id, second.id);
 
-        assertThat(results).hasSize(2);
-        assertThat(results).extracting(e -> e.id).containsExactlyInAnyOrder(first.id, second.id);
+        assertThat(results.stream().map(entity -> entity.id).toList()).containsExactlyInAnyOrder(first.id, second.id);
     }
 
     @Test
@@ -465,13 +471,16 @@ class RepositoryRuntimeTest {
         TestEntity updated = repo.save(saved);
 
         // Then
-        assertThat(updated.id).isEqualTo(id);
-        assertEntityMatches(updated, new TestEntity(null, "Updated", 30), "id");
-
-        // Verify it was actually updated
         Optional<TestEntity> found = repo.findById(id);
-        assertThat(found).isPresent();
-        assertEntityMatches(found.orElseThrow(), new TestEntity(null, "Updated", 30), "id");
+        var actual = new UpdateSnapshot(
+                updated.id,
+                view(updated),
+                found.isPresent(),
+                found.map(RepositoryRuntimeTest::view).orElse(null)
+        );
+        var expected = new UpdateSnapshot(id, view(new TestEntity(null, "Updated", 30)), true,
+                view(new TestEntity(null, "Updated", 30)));
+        assertThat(actual).usingRecursiveComparison().isEqualTo(expected);
     }
 
     @Test
@@ -487,8 +496,8 @@ class RepositoryRuntimeTest {
         TestEntity saved = repo.save(entity);
 
         // Then
-        assertThat(saved.id).isNotNull();
-        assertThat(saved.name).isNull();
+        assertThat(new SaveNullSnapshot(saved.id != null, saved.name)).usingRecursiveComparison()
+                .isEqualTo(new SaveNullSnapshot(true, null));
     }
 
     @Test
@@ -498,18 +507,21 @@ class RepositoryRuntimeTest {
         IndexedEntity first = repo.save(new IndexedEntity(null, "alpha", 10));
         IndexedEntity second = repo.save(new IndexedEntity(null, "beta", 20));
 
-        assertThat(repo.countByCategory("alpha")).isEqualTo(1);
-        assertThat(repo.findByCategory("beta")).hasSize(1);
+        var alphaBefore = repo.countByCategory("alpha");
+        var betaBefore = repo.findByCategory("beta").size();
 
         first.category = "beta";
         repo.save(first);
 
-        assertThat(repo.countByCategory("alpha")).isEqualTo(0);
-        assertThat(repo.countByCategory("beta")).isEqualTo(2);
+        var alphaAfterUpdate = repo.countByCategory("alpha");
+        var betaAfterUpdate = repo.countByCategory("beta");
 
         repo.delete(second);
 
-        assertThat(repo.countByCategory("beta")).isEqualTo(1);
+        var betaAfterDelete = repo.countByCategory("beta");
+        assertThat(new IndexMaintenanceSnapshot(alphaBefore, betaBefore, alphaAfterUpdate, betaAfterUpdate, betaAfterDelete))
+                .usingRecursiveComparison()
+                .isEqualTo(new IndexMaintenanceSnapshot(1L, 1, 0L, 2L, 1L));
     }
 
     @Test
@@ -524,13 +536,11 @@ class RepositoryRuntimeTest {
 
         Map<String, List<TestEntity>> grouped = repo.findAllGroupingByDepartment();
 
-        assertThat(grouped).hasSize(3);
-        assertThat(grouped.get("Engineering")).hasSize(2);
-        assertThat(grouped.get("Sales")).hasSize(2);
-        assertThat(grouped.get("HR")).hasSize(1);
-        assertThat(grouped.get("Engineering")).extracting(e -> e.name).containsExactlyInAnyOrder("Alice", "Bob");
-        assertThat(grouped.get("Sales")).extracting(e -> e.name).containsExactlyInAnyOrder("Charlie", "David");
-        assertThat(grouped.get("HR")).extracting(e -> e.name).containsExactlyInAnyOrder("Eve");
+        assertThat(groupedNames(grouped)).isEqualTo(Map.of(
+                "Engineering", Set.of("Alice", "Bob"),
+                "Sales", Set.of("Charlie", "David"),
+                "HR", Set.of("Eve")
+        ));
     }
 
     @Test
@@ -545,10 +555,7 @@ class RepositoryRuntimeTest {
 
         Map<String, Long> counts = repo.countByDepartment();
 
-        assertThat(counts).hasSize(3);
-        assertThat(counts.get("Engineering")).isEqualTo(2L);
-        assertThat(counts.get("Sales")).isEqualTo(2L);
-        assertThat(counts.get("HR")).isEqualTo(1L);
+        assertThat(counts).isEqualTo(Map.of("Engineering", 2L, "Sales", 2L, "HR", 1L));
     }
 
     @Test
@@ -563,13 +570,11 @@ class RepositoryRuntimeTest {
 
         Map<String, Set<TestEntity>> grouped = repo.findAllGroupingByDepartmentAsSet();
 
-        assertThat(grouped).hasSize(3);
-        assertThat(grouped.get("Engineering")).hasSize(2);
-        assertThat(grouped.get("Sales")).hasSize(2);
-        assertThat(grouped.get("HR")).hasSize(1);
-        assertThat(grouped.get("Engineering")).extracting(e -> e.name).containsExactlyInAnyOrder("Alice", "Bob");
-        assertThat(grouped.get("Sales")).extracting(e -> e.name).containsExactlyInAnyOrder("Charlie", "David");
-        assertThat(grouped.get("HR")).extracting(e -> e.name).containsExactlyInAnyOrder("Eve");
+        assertThat(groupedNamesFromSet(grouped)).isEqualTo(Map.of(
+                "Engineering", Set.of("Alice", "Bob"),
+                "Sales", Set.of("Charlie", "David"),
+                "HR", Set.of("Eve")
+        ));
     }
 
     @Test
@@ -584,16 +589,11 @@ class RepositoryRuntimeTest {
 
         Map<DepartmentAgeKey, List<TestEntity>> grouped = repo.findAllGroupingByDepartmentAndAge();
 
-        assertThat(grouped).hasSize(3);
-        assertThat(grouped.get(new DepartmentAgeKey("Engineering", 25))).hasSize(2);
-        assertThat(grouped.get(new DepartmentAgeKey("Sales", 35))).hasSize(2);
-        assertThat(grouped.get(new DepartmentAgeKey("HR", 45))).hasSize(1);
-        assertThat(grouped.get(new DepartmentAgeKey("Engineering", 25))).extracting(e -> e.name)
-                .containsExactlyInAnyOrder("Alice", "Bob");
-        assertThat(grouped.get(new DepartmentAgeKey("Sales", 35))).extracting(e -> e.name)
-                .containsExactlyInAnyOrder("Charlie", "David");
-        assertThat(grouped.get(new DepartmentAgeKey("HR", 45))).extracting(e -> e.name)
-                .containsExactlyInAnyOrder("Eve");
+        assertThat(groupedNamesByDepartmentAge(grouped)).isEqualTo(Map.of(
+                new DepartmentAgeKey("Engineering", 25), Set.of("Alice", "Bob"),
+                new DepartmentAgeKey("Sales", 35), Set.of("Charlie", "David"),
+                new DepartmentAgeKey("HR", 45), Set.of("Eve")
+        ));
     }
 
     @Test
@@ -608,10 +608,11 @@ class RepositoryRuntimeTest {
 
         Map<DepartmentAgeKey, Long> counts = repo.countByDepartmentAndAge();
 
-        assertThat(counts).hasSize(3);
-        assertThat(counts.get(new DepartmentAgeKey("Engineering", 25))).isEqualTo(2L);
-        assertThat(counts.get(new DepartmentAgeKey("Sales", 35))).isEqualTo(2L);
-        assertThat(counts.get(new DepartmentAgeKey("HR", 45))).isEqualTo(1L);
+        assertThat(counts).isEqualTo(Map.of(
+                new DepartmentAgeKey("Engineering", 25), 2L,
+                new DepartmentAgeKey("Sales", 35), 2L,
+                new DepartmentAgeKey("HR", 45), 1L
+        ));
     }
 
     @Test
@@ -626,10 +627,11 @@ class RepositoryRuntimeTest {
 
         Map<DepartmentAgeKey, Long> counts = repo.countByNameGroupingByDepartmentAndAge("Alice");
 
-        assertThat(counts).hasSize(3);
-        assertThat(counts.get(new DepartmentAgeKey("Engineering", 25))).isEqualTo(1L);
-        assertThat(counts.get(new DepartmentAgeKey("Engineering", 30))).isEqualTo(1L);
-        assertThat(counts.get(new DepartmentAgeKey("Sales", 35))).isEqualTo(1L);
+        assertThat(counts).isEqualTo(Map.of(
+                new DepartmentAgeKey("Engineering", 25), 1L,
+                new DepartmentAgeKey("Engineering", 30), 1L,
+                new DepartmentAgeKey("Sales", 35), 1L
+        ));
     }
 
     @Test
@@ -644,10 +646,13 @@ class RepositoryRuntimeTest {
 
         Map<DepartmentAgeKey, List<TestEntity>> grouped = repo.findAllGroupedByDepartmentAndAgeJpql();
 
-        assertThat(grouped).hasSize(3);
-        assertThat(grouped.get(new DepartmentAgeKey("Engineering", 25))).hasSize(2);
-        assertThat(grouped.get(new DepartmentAgeKey("Sales", 35))).hasSize(2);
-        assertThat(grouped.get(new DepartmentAgeKey("HR", 45))).hasSize(1);
+        assertThat(grouped.entrySet().stream().collect(
+                java.util.stream.Collectors.toMap(Map.Entry::getKey, entry -> entry.getValue().size())))
+                .isEqualTo(Map.of(
+                        new DepartmentAgeKey("Engineering", 25), 2,
+                        new DepartmentAgeKey("Sales", 35), 2,
+                        new DepartmentAgeKey("HR", 45), 1
+                ));
     }
 
     @Test
@@ -662,8 +667,78 @@ class RepositoryRuntimeTest {
 
         Map<DepartmentAgeKey, Long> counts = repo.countByDepartmentAndAgeHavingMin(1);
 
-        assertThat(counts).hasSize(2);
-        assertThat(counts.get(new DepartmentAgeKey("Engineering", 25))).isEqualTo(2L);
-        assertThat(counts.get(new DepartmentAgeKey("Sales", 35))).isEqualTo(2L);
+        assertThat(counts).isEqualTo(Map.of(
+                new DepartmentAgeKey("Engineering", 25), 2L,
+                new DepartmentAgeKey("Sales", 35), 2L
+        ));
+    }
+
+    private static TestEntityView view(TestEntity entity) {
+        return new TestEntityView(entity.name, entity.age, entity.department);
+    }
+
+    private static List<TestEntityView> views(List<TestEntity> entities) {
+        return entities.stream().map(RepositoryRuntimeTest::view).toList();
+    }
+
+    private static Map<String, Set<String>> groupedNames(Map<String, List<TestEntity>> grouped) {
+        return grouped.entrySet().stream().collect(
+                java.util.stream.Collectors.toMap(Map.Entry::getKey,
+                        entry -> entry.getValue().stream().map(entity -> entity.name).collect(java.util.stream.Collectors.toSet())));
+    }
+
+    private static Map<String, Set<String>> groupedNamesFromSet(Map<String, Set<TestEntity>> grouped) {
+        return grouped.entrySet().stream().collect(
+                java.util.stream.Collectors.toMap(Map.Entry::getKey,
+                        entry -> entry.getValue().stream().map(entity -> entity.name).collect(java.util.stream.Collectors.toSet())));
+    }
+
+    private static Map<DepartmentAgeKey, Set<String>> groupedNamesByDepartmentAge(Map<DepartmentAgeKey, List<TestEntity>> grouped) {
+        return grouped.entrySet().stream().collect(
+                java.util.stream.Collectors.toMap(Map.Entry::getKey,
+                        entry -> entry.getValue().stream().map(entity -> entity.name).collect(java.util.stream.Collectors.toSet())));
+    }
+
+    private record SaveSnapshot(boolean idAssigned, TestEntityView entity) {
+    }
+
+    private record SaveAllSnapshot(boolean allIdsAssigned, List<TestEntityView> entities) {
+    }
+
+    private record FindByIdSnapshot(boolean present, TestEntityView entity) {
+    }
+
+    private record ExistsSnapshot(boolean first, boolean second) {
+    }
+
+    private record DeleteByIdSnapshot(boolean exists, int count) {
+    }
+
+    private record DeleteAllSnapshot(long count, int listSize) {
+    }
+
+    private record DeleteManySnapshot(long count, boolean survivorExists) {
+    }
+
+    private record NameQuerySnapshot(int size, boolean allMatch) {
+    }
+
+    private record NameInArraySnapshot(int size, TestEntityView entity) {
+    }
+
+    private record EmptyResultSnapshot(int size, long count, boolean exists) {
+    }
+
+    private record UpdateSnapshot(Long id, TestEntityView updated, boolean found, TestEntityView reloaded) {
+    }
+
+    private record SaveNullSnapshot(boolean idAssigned, String name) {
+    }
+
+    private record IndexMaintenanceSnapshot(long alphaBefore, int betaBefore, long alphaAfterUpdate,
+                                            long betaAfterUpdate, long betaAfterDelete) {
+    }
+
+    private record TestEntityView(String name, int age, String department) {
     }
 }

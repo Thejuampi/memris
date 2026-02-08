@@ -16,6 +16,7 @@ import java.time.LocalDateTime;
 import java.util.Date;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.*;
 
@@ -57,10 +58,11 @@ class ECommerceRealWorldTest {
         Optional<Customer> found = customerRepo.findByEmail("john.doe@example.com");
 
         // Then
-        assertThat(saved.id).isNotNull();
-        assertThat(found).isPresent();
-        Customer foundCustomer = found.orElseThrow();
-        assertThat(foundCustomer).usingRecursiveComparison().ignoringFields("id", "phone").isEqualTo(customer);
+        var actual = new CustomerLookupSnapshot(saved.id != null, found.isPresent(),
+                found.map(value -> new CustomerView(value.email, value.name, value.phone)).orElse(null));
+        var expected = new CustomerLookupSnapshot(true, true,
+                new CustomerView(customer.email, customer.name, customer.phone));
+        assertThat(actual).usingRecursiveComparison().isEqualTo(expected);
     }
 
     @Test
@@ -71,8 +73,9 @@ class ECommerceRealWorldTest {
         customerRepo.save(customer);
 
         // When & Then
-        assertThat(customerRepo.existsByEmail("jane.smith@example.com")).isTrue();
-        assertThat(customerRepo.existsByEmail("nonexistent@example.com")).isFalse();
+        assertThat(new ExistenceSnapshot(customerRepo.existsByEmail("jane.smith@example.com"),
+                customerRepo.existsByEmail("nonexistent@example.com"))).usingRecursiveComparison()
+                .isEqualTo(new ExistenceSnapshot(true, false));
     }
 
     @Test
@@ -87,9 +90,8 @@ class ECommerceRealWorldTest {
         List<Customer> results = customerRepo.findByNameContainingIgnoreCase("ali");
 
         // Then
-        assertThat(results).hasSize(2);
-        assertThat(results).extracting(c -> c.name)
-                .containsExactlyInAnyOrder("Alice Johnson", "Alicia Brown");
+        assertThat(results.stream().map(customer -> customer.name).collect(java.util.stream.Collectors.toSet()))
+                .isEqualTo(Set.of("Alice Johnson", "Alicia Brown"));
     }
 
     @Test
@@ -103,10 +105,19 @@ class ECommerceRealWorldTest {
         Optional<Product> found = productRepo.findBySku("LAPTOP-001");
 
         // Then
-        assertThat(saved.id).isNotNull();
-        assertThat(found).isPresent();
-        assertThat(found.orElseThrow()).usingRecursiveComparison().ignoringFields("id").isEqualTo(product);
-        assertThat(found.orElseThrow().getPriceDollars()).isEqualTo(1299.99);
+        var actual = new ProductLookupSnapshot(
+                saved.id != null,
+                found.isPresent(),
+                found.map(value -> new ProductView(value.sku, value.name, value.price, value.stock)).orElse(null),
+                found.map(Product::getPriceDollars).orElse(0.0)
+        );
+        var expected = new ProductLookupSnapshot(
+                true,
+                true,
+                new ProductView(product.sku, product.name, product.price, product.stock),
+                1299.99
+        );
+        assertThat(actual).usingRecursiveComparison().isEqualTo(expected);
     }
 
     @Test
@@ -172,9 +183,11 @@ class ECommerceRealWorldTest {
         List<OrderItem> orderItems = orderItemRepo.findByOrder(savedOrder.id);
 
         // Then
-        assertThat(foundOrder).isPresent();
-        assertThat(foundOrder.orElseThrow()).usingRecursiveComparison().ignoringFields("id").isEqualTo(order);
-        assertThat(orderItems).hasSize(2);
+        var actual = new OrderLookupSnapshot(foundOrder.isPresent(),
+                foundOrder.map(value -> new OrderView(value.customerId, value.status, value.total)).orElse(null),
+                orderItems.size());
+        var expected = new OrderLookupSnapshot(true, new OrderView(order.customerId, order.status, order.total), 2);
+        assertThat(actual).usingRecursiveComparison().isEqualTo(expected);
     }
 
     @Test
@@ -223,8 +236,10 @@ class ECommerceRealWorldTest {
         List<Order> customer1Pending = orderRepo.findByCustomerIdAndStatus(customer1.id, "PENDING");
 
         // Then
-        assertThat(customer1Pending).hasSize(2);
-        assertThat(customer1Pending).allMatch(o -> o.customerId.equals(customer1.id) && o.status.equals("PENDING"));
+        assertThat(new PendingOrderSnapshot(customer1Pending.size(), customer1Pending.stream()
+                .allMatch(order -> order.customerId.equals(customer1.id) && order.status.equals("PENDING"))))
+                .usingRecursiveComparison()
+                .isEqualTo(new PendingOrderSnapshot(2, true));
     }
 
     @Test
@@ -259,10 +274,13 @@ class ECommerceRealWorldTest {
         Customer saved = repo1.save(customer);
 
         // Then - arena2 should not see the data
-        assertThat(repo1.findByEmail("isolated@example.com")).isPresent();
-        assertThat(repo2.findByEmail("isolated@example.com")).isEmpty();
-        assertThat(repo1.findById(saved.id)).isPresent();
-        assertThat(repo2.findById(saved.id)).isEmpty();
+        assertThat(new ArenaIsolationSnapshot(
+                repo1.findByEmail("isolated@example.com").isPresent(),
+                repo2.findByEmail("isolated@example.com").isPresent(),
+                repo1.findById(saved.id).isPresent(),
+                repo2.findById(saved.id).isPresent()))
+                .usingRecursiveComparison()
+                .isEqualTo(new ArenaIsolationSnapshot(true, false, true, false));
     }
 
     @Test
@@ -347,9 +365,9 @@ class ECommerceRealWorldTest {
         List<Customer> whitespaceResults = customerRepo.findByNameContainingIgnoreCase("   ");
 
         // Then - empty string typically matches all non-null values
-        assertThat(emptyResults).hasSize(3);
-        // Whitespace typically matches nothing unless fields contain whitespace
-        assertThat(whitespaceResults).isEmpty();
+        assertThat(new EmptyAndWhitespaceSnapshot(emptyResults.size(), whitespaceResults.size()))
+                .usingRecursiveComparison()
+                .isEqualTo(new EmptyAndWhitespaceSnapshot(3, 0));
     }
 
     @Disabled("Test expectations don't match current implementation behavior")
@@ -407,11 +425,15 @@ class ECommerceRealWorldTest {
         Customer updated = customerRepo.save(saved);
 
         // Then
-        assertThat(customerRepo.findByEmail(oldEmail)).isEmpty();
-        assertThat(customerRepo.findByEmail(newEmail)).isPresent();
-        assertThat(customerRepo.findByEmail(newEmail).orElseThrow()).usingRecursiveComparison().ignoringFields("id", "phone", "created").isEqualTo(
-                new Customer(newEmail, "New Name", "555-1111")
+        var foundNew = customerRepo.findByEmail(newEmail);
+        var actual = new UpdateSemanticsSnapshot(
+                customerRepo.findByEmail(oldEmail).isPresent(),
+                foundNew.isPresent(),
+                foundNew.map(value -> new CustomerView(value.email, value.name, value.phone)).orElse(null)
         );
+        var expected = new UpdateSemanticsSnapshot(false, true,
+                new CustomerView(newEmail, "New Name", "555-1111"));
+        assertThat(actual).usingRecursiveComparison().isEqualTo(expected);
     }
 
     @Test
@@ -427,8 +449,8 @@ class ECommerceRealWorldTest {
         Customer savedWithoutId = customerRepo.save(customerWithoutId);
 
         // Then - pre-set ID should be preserved or replaced based on implementation
-        assertThat(savedWithId.id).isNotNull();
-        assertThat(savedWithoutId.id).isNotNull();
+        assertThat(new PresetIdSnapshot(savedWithId.id != null, savedWithoutId.id != null)).usingRecursiveComparison()
+                .isEqualTo(new PresetIdSnapshot(true, true));
     }
 
     @Test
@@ -444,11 +466,14 @@ class ECommerceRealWorldTest {
         Customer c4 = customerRepo.save(new Customer("c4@example.com", "Customer 4", "555-4444"));
 
         // Then
-        assertThat(customerRepo.findById(c1.id)).isPresent();
-        assertThat(customerRepo.findById(c2.id)).isEmpty();
-        assertThat(customerRepo.findById(c3.id)).isPresent();
-        assertThat(customerRepo.findById(c4.id)).isPresent();
-        assertThat(customerRepo.findAll()).hasSize(3);
+        assertThat(new DeleteBehaviorSnapshot(
+                customerRepo.findById(c1.id).isPresent(),
+                customerRepo.findById(c2.id).isPresent(),
+                customerRepo.findById(c3.id).isPresent(),
+                customerRepo.findById(c4.id).isPresent(),
+                customerRepo.findAll().size()))
+                .usingRecursiveComparison()
+                .isEqualTo(new DeleteBehaviorSnapshot(true, false, true, true, 3));
     }
 
     @Test
@@ -481,8 +506,8 @@ class ECommerceRealWorldTest {
         List<Product> results = productRepo.findByStockGreaterThan(25);
 
         // Then - boundary should be exclusive
-        assertThat(results).hasSize(1);
-        assertThat(results.get(0).stock).isEqualTo(26);
+        assertThat(new GreaterThanSnapshot(results.size(), results.get(0).stock)).usingRecursiveComparison()
+                .isEqualTo(new GreaterThanSnapshot(1, 26));
     }
 
     @Test
@@ -558,7 +583,6 @@ class ECommerceRealWorldTest {
         List<Order> results = orderRepo.findByStatusOrderByTotalDesc("PENDING");
 
         // Then - results should be sorted by total descending
-        assertThat(results).hasSize(3);
         assertThat(results).usingRecursiveFieldByFieldElementComparatorIgnoringFields("id").containsExactly(
                 new Order(1L, "PENDING", 30000),
                 new Order(1L, "PENDING", 20000),
@@ -579,7 +603,6 @@ class ECommerceRealWorldTest {
         List<Order> top3 = orderRepo.findTop3ByStatusOrderByIdAsc("PENDING");
 
         // Then - only 3 results returned, sorted by ID ascending
-        assertThat(top3).hasSize(3);
         assertThat(top3).usingRecursiveFieldByFieldElementComparatorIgnoringFields("id").containsExactly(
                 o1, o2, o3
         );
@@ -598,7 +621,6 @@ class ECommerceRealWorldTest {
         List<Order> results = orderRepo.findByStatusIn(List.of("PENDING", "SHIPPED"));
 
         // Then
-        assertThat(results).hasSize(3);
         assertThat(results).usingRecursiveFieldByFieldElementComparatorIgnoringFields("id").containsExactlyInAnyOrder(
                 o1, o2, o4
         );
@@ -630,8 +652,8 @@ class ECommerceRealWorldTest {
         List<Order> results = orderRepo.findByStatusAndTotalGreaterThanEqual("PENDING", 20000);
 
         // Then
-        assertThat(results).hasSize(1);
-        assertThat(results.get(0).total).isEqualTo(25000);
+        assertThat(new AndPrecedenceSnapshot(results.size(), results.get(0).total)).usingRecursiveComparison()
+                .isEqualTo(new AndPrecedenceSnapshot(1, 25000));
     }
 
     @Disabled("Test expectations don't match current implementation behavior")
@@ -1263,12 +1285,63 @@ class ECommerceRealWorldTest {
         // Query students by course name
         var mathStudents = studentRepo.findByCoursesName("Math");
 
-        assertThat(mathStudents).hasSize(2);
-        assertThat(mathStudents).extracting(s -> s.name).containsExactlyInAnyOrder("Student One", "Student Two");
-
         var physicsStudents = studentRepo.findByCoursesName("Physics");
-        assertThat(physicsStudents).hasSize(1);
-        assertThat(physicsStudents.get(0).name).isEqualTo("Student One");
+        var actual = new ManyToManySnapshot(
+                mathStudents.stream().map(student -> student.name).collect(java.util.stream.Collectors.toSet()),
+                physicsStudents.size(),
+                physicsStudents.get(0).name
+        );
+        var expected = new ManyToManySnapshot(Set.of("Student One", "Student Two"), 1, "Student One");
+        assertThat(actual).usingRecursiveComparison().isEqualTo(expected);
+    }
+
+    private record CustomerLookupSnapshot(boolean idAssigned, boolean found, CustomerView customer) {
+    }
+
+    private record ExistenceSnapshot(boolean exists, boolean missing) {
+    }
+
+    private record ProductLookupSnapshot(boolean idAssigned, boolean found, ProductView product, double dollars) {
+    }
+
+    private record OrderLookupSnapshot(boolean found, OrderView order, int itemCount) {
+    }
+
+    private record PendingOrderSnapshot(int size, boolean allMatch) {
+    }
+
+    private record ArenaIsolationSnapshot(boolean arena1Email, boolean arena2Email, boolean arena1Id, boolean arena2Id) {
+    }
+
+    private record EmptyAndWhitespaceSnapshot(int emptySize, int whitespaceSize) {
+    }
+
+    private record UpdateSemanticsSnapshot(boolean oldEmailPresent, boolean newEmailPresent, CustomerView customer) {
+    }
+
+    private record PresetIdSnapshot(boolean presetAssigned, boolean generatedAssigned) {
+    }
+
+    private record DeleteBehaviorSnapshot(boolean c1Present, boolean c2Present, boolean c3Present, boolean c4Present,
+                                          int total) {
+    }
+
+    private record GreaterThanSnapshot(int size, int stock) {
+    }
+
+    private record AndPrecedenceSnapshot(int size, long total) {
+    }
+
+    private record ManyToManySnapshot(Set<String> mathStudents, int physicsCount, String physicsName) {
+    }
+
+    private record CustomerView(String email, String name, String phone) {
+    }
+
+    private record ProductView(String sku, String name, long price, int stock) {
+    }
+
+    private record OrderView(Long customerId, String status, long total) {
     }
 
     public static class ManyToManyStudent {

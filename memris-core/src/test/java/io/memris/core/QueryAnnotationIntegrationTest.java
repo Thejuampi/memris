@@ -9,11 +9,11 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static io.memris.testutil.EntityAssertions.assertEntitiesMatchAnyOrder;
 import static io.memris.testutil.EntityAssertions.assertEntitiesMatchExactOrder;
-import static io.memris.testutil.EntityAssertions.assertEntityMatches;
 
 class QueryAnnotationIntegrationTest {
 
@@ -41,8 +41,10 @@ class QueryAnnotationIntegrationTest {
 
         Optional<Product> found = repo.findBySkuQuery("SKU-2");
 
-        assertThat(found).isPresent();
-        assertEntityMatches(found.orElseThrow(), new Product("SKU-2", "Product 2", 2000, 20), "id");
+        var actual = new FoundProductSnapshot(found.isPresent(),
+                found.map(value -> new ProductView(value.sku, value.name, value.price, value.stock)).orElse(null));
+        var expected = new FoundProductSnapshot(true, new ProductView("SKU-2", "Product 2", 2000, 20));
+        assertThat(actual).usingRecursiveComparison().isEqualTo(expected);
     }
 
     @Test
@@ -84,8 +86,8 @@ class QueryAnnotationIntegrationTest {
 
         List<Customer> results = repo.findByNameIlike("%ali%");
 
-        assertThat(results).hasSize(2);
-        assertThat(results).allMatch(c -> c.name.equals("Alice Johnson") || c.name.equals("ALICIA Brown"));
+        assertThat(results.stream().map(customer -> customer.name).collect(java.util.stream.Collectors.toSet()))
+                .isEqualTo(Set.of("Alice Johnson", "ALICIA Brown"));
     }
 
     @Test
@@ -97,7 +99,6 @@ class QueryAnnotationIntegrationTest {
 
         List<Product> results = repo.findAllOrderByPriceDesc();
 
-        assertThat(results).hasSize(3);
         assertEntitiesMatchExactOrder(results, List.of(
                 new Product("SKU-2", "Product 2", 3000, 20),
                 new Product("SKU-3", "Product 3", 2000, 30),
@@ -132,9 +133,7 @@ class QueryAnnotationIntegrationTest {
 
         List<OrderSummary> results = repo.findSummaries(2000);
 
-        assertThat(results).hasSize(1);
-        assertThat(results.get(0).customerName()).isEqualTo("Bob");
-        assertThat(results.get(0).total()).isEqualTo(2500);
+        assertThat(results).containsExactly(new OrderSummary(2500, "Bob"));
     }
 
     @Test
@@ -172,8 +171,9 @@ class QueryAnnotationIntegrationTest {
         QueryProductRepository repo = arena.createRepository(QueryProductRepository.class);
         repo.save(new Product("SKU-1", "Product 1", 1000, 0));
 
-        assertThat(repo.existsBySkuQuery("SKU-1")).isTrue();
-        assertThat(repo.existsBySkuQuery("SKU-2")).isFalse();
+        assertThat(new ExistsSkuSnapshot(repo.existsBySkuQuery("SKU-1"), repo.existsBySkuQuery("SKU-2")))
+                .usingRecursiveComparison()
+                .isEqualTo(new ExistsSkuSnapshot(true, false));
     }
 
     @Test
@@ -199,10 +199,10 @@ class QueryAnnotationIntegrationTest {
 
         long updated = repo.updateStockBySku("SKU-1", 7);
 
-        assertThat(updated).isEqualTo(1);
         Optional<Product> found = repo.findBySkuQuery("SKU-1");
-        assertThat(found).isPresent();
-        assertThat(found.orElseThrow().stock).isEqualTo(7);
+        assertThat(new UpdateSkuSnapshot(updated, found.isPresent(), found.map(value -> value.stock).orElse(null)))
+                .usingRecursiveComparison()
+                .isEqualTo(new UpdateSkuSnapshot(1L, true, 7));
     }
 
     @Test
@@ -212,8 +212,8 @@ class QueryAnnotationIntegrationTest {
 
         long deleted = repo.deleteBySku("SKU-1");
 
-        assertThat(deleted).isEqualTo(1);
-        assertThat(repo.findBySkuQuery("SKU-1")).isEmpty();
+        assertThat(new DeleteSkuSnapshot(deleted, repo.findBySkuQuery("SKU-1").isPresent())).usingRecursiveComparison()
+                .isEqualTo(new DeleteSkuSnapshot(1L, false));
     }
 
     public interface QueryProductRepository extends MemrisRepository<Product> {
@@ -271,5 +271,20 @@ class QueryAnnotationIntegrationTest {
     }
 
     public record OrderSummary(long total, String customerName) {
+    }
+
+    private record FoundProductSnapshot(boolean found, ProductView product) {
+    }
+
+    private record ProductView(String sku, String name, long price, int stock) {
+    }
+
+    private record ExistsSkuSnapshot(boolean existing, boolean missing) {
+    }
+
+    private record UpdateSkuSnapshot(long updated, boolean found, Integer stock) {
+    }
+
+    private record DeleteSkuSnapshot(long deleted, boolean presentAfterDelete) {
     }
 }
