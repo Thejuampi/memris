@@ -38,3 +38,11 @@ dist/
 
 # ByteBuddy reference (for development)
 refs/
+
+# AI and Tools
+.claude/
+.opencode/
+
+# Performance
+*.jfr
+
