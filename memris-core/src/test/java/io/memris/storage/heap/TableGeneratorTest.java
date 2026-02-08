@@ -22,9 +22,9 @@ class TableGeneratorTest {
 
         assertThat(new ClassSummary(
                 tableClass != null,
-                tableClass.getSimpleName(),
-                AbstractTable.class.isAssignableFrom(tableClass),
-                GeneratedTable.class.isAssignableFrom(tableClass)))
+                tableClass != null ? tableClass.getSimpleName() : null,
+                tableClass != null && AbstractTable.class.isAssignableFrom(tableClass),
+                tableClass != null && GeneratedTable.class.isAssignableFrom(tableClass)))
                 .usingRecursiveComparison()
                 .isEqualTo(new ClassSummary(true, "PersonTable", true, true));
     }
@@ -86,7 +86,11 @@ class TableGeneratorTest {
 
         Class<? extends AbstractTable> tableClass = TableGenerator.generate(metadata);
 
-        assertThat(new ClassSummary(tableClass != null, tableClass.getSimpleName(), true, true))
+        assertThat(new ClassSummary(
+                tableClass != null,
+                tableClass != null ? tableClass.getSimpleName() : null,
+                tableClass != null && AbstractTable.class.isAssignableFrom(tableClass),
+                tableClass != null && GeneratedTable.class.isAssignableFrom(tableClass)))
                 .usingRecursiveComparison()
                 .isEqualTo(new ClassSummary(true, "AddressTable", true, true));
     }
