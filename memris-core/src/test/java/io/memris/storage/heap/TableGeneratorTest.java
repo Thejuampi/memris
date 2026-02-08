@@ -6,7 +6,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * TDD tests for TableGenerator.
@@ -20,10 +20,13 @@ class TableGeneratorTest {
 
         Class<? extends AbstractTable> tableClass = TableGenerator.generate(metadata);
 
-        assertNotNull(tableClass);
-        assertEquals("PersonTable", tableClass.getSimpleName());
-        assertTrue(AbstractTable.class.isAssignableFrom(tableClass));
-        assertTrue(GeneratedTable.class.isAssignableFrom(tableClass));
+        assertThat(new ClassSummary(
+                tableClass != null,
+                tableClass.getSimpleName(),
+                AbstractTable.class.isAssignableFrom(tableClass),
+                GeneratedTable.class.isAssignableFrom(tableClass)))
+                .usingRecursiveComparison()
+                .isEqualTo(new ClassSummary(true, "PersonTable", true, true));
     }
 
     @Test
@@ -37,11 +40,9 @@ class TableGeneratorTest {
         GeneratedTable genTable = (GeneratedTable) abstractTable;
 
         // Verify table exists and has correct name
-        assertNotNull(abstractTable);
-        assertEquals("Person", abstractTable.name());
-        
-        // Verify GeneratedTable interface methods work
-        assertEquals(3, genTable.columnCount()); // id, name, addressId
+        assertThat(new TableSummary(abstractTable != null, abstractTable.name(), genTable.columnCount()))
+                .usingRecursiveComparison()
+                .isEqualTo(new TableSummary(true, "Person", 3));
     }
 
     @Test
@@ -57,9 +58,8 @@ class TableGeneratorTest {
         // Insert using GeneratedTable.insertFrom(Object[])
         long ref = table.insertFrom(new Object[]{1L, "Alice", 100});
 
-        assertNotNull(ref);
-        assertTrue(ref >= 0);
-        assertEquals(1L, table.liveCount());
+        assertThat(new InsertSummary(ref >= 0, table.liveCount())).usingRecursiveComparison()
+                .isEqualTo(new InsertSummary(true, 1L));
     }
 
     @Test
@@ -77,7 +77,7 @@ class TableGeneratorTest {
         
         // Find by ID using lookupById
         long foundRef = table.lookupById(1L);
-        assertEquals(ref, foundRef);
+        assertThat(foundRef).isEqualTo(ref);
     }
 
     @Test
@@ -86,8 +86,9 @@ class TableGeneratorTest {
 
         Class<? extends AbstractTable> tableClass = TableGenerator.generate(metadata);
 
-        assertNotNull(tableClass);
-        assertEquals("AddressTable", tableClass.getSimpleName());
+        assertThat(new ClassSummary(tableClass != null, tableClass.getSimpleName(), true, true))
+                .usingRecursiveComparison()
+                .isEqualTo(new ClassSummary(true, "AddressTable", true, true));
     }
 
     @Test
@@ -103,12 +104,9 @@ class TableGeneratorTest {
         // Insert with String ID using insertFrom
         long ref = table.insertFrom(new Object[]{"12345", "Main St", 100});
 
-        assertNotNull(ref);
-        assertTrue(ref >= 0);
-
-        // Find by String ID using lookupByIdString
         long foundRef = table.lookupByIdString("12345");
-        assertEquals(ref, foundRef);
+        assertThat(new LookupSummary(ref >= 0, foundRef)).usingRecursiveComparison()
+                .isEqualTo(new LookupSummary(true, ref));
     }
 
     @Test
@@ -129,7 +127,7 @@ class TableGeneratorTest {
         // Scan for rows with name = "Alice" (column index 1 is name)
         int[] results = table.scanEqualsString(1, "Alice");
 
-        assertEquals(2, results.length);
+        assertThat(results).hasSize(2);
     }
 
     // Helper methods to create EntityMetadata
@@ -167,4 +165,17 @@ class TableGeneratorTest {
     }
 
     // Helper classes for metadata are now in TableMetadata and FieldMetadata
+
+    private record ClassSummary(boolean exists, String simpleName, boolean abstractTableAssignable,
+                                boolean generatedTableAssignable) {
+    }
+
+    private record TableSummary(boolean exists, String name, int columnCount) {
+    }
+
+    private record InsertSummary(boolean nonNegativeRef, long liveCount) {
+    }
+
+    private record LookupSummary(boolean nonNegativeRef, long foundRef) {
+    }
 }

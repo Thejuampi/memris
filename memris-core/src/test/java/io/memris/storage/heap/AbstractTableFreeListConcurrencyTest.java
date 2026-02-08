@@ -10,7 +10,7 @@ import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Tests for AbstractTable free-list thread-safety.
@@ -68,11 +68,12 @@ class AbstractTableFreeListConcurrencyTest {
         }
 
         startLatch.countDown();
-        assertTrue(completeLatch.await(30, TimeUnit.SECONDS), "Threads should complete within timeout");
+        var completed = completeLatch.await(30, TimeUnit.SECONDS);
         executor.shutdown();
 
-        assertEquals(0, duplicateCount.get(),
-            "Found " + duplicateCount.get() + " duplicate RowIds. First duplicate: " + firstDuplicate.get());
+        assertThat(new AllocationSummary(completed, duplicateCount.get(), firstDuplicate.get()))
+                .usingRecursiveComparison()
+                .isEqualTo(new AllocationSummary(true, 0, null));
     }
 
     @Test
@@ -121,10 +122,11 @@ class AbstractTableFreeListConcurrencyTest {
         }
 
         startLatch.countDown();
-        assertTrue(completeLatch.await(30, TimeUnit.SECONDS));
+        var completed = completeLatch.await(30, TimeUnit.SECONDS);
         executor.shutdown();
 
-        assertEquals(0, errorCount.get(), "Errors occurred during concurrent operations");
+        assertThat(new OperationSummary(completed, errorCount.get())).usingRecursiveComparison()
+                .isEqualTo(new OperationSummary(true, 0));
     }
 
     /**
@@ -147,5 +149,11 @@ class AbstractTableFreeListConcurrencyTest {
             int index = (int) (rowId.page() * PAGE_SIZE + rowId.offset());
             deallocateRowId(index);
         }
+    }
+
+    private record AllocationSummary(boolean completed, int duplicateCount, RowId firstDuplicate) {
+    }
+
+    private record OperationSummary(boolean completed, int errorCount) {
     }
 }

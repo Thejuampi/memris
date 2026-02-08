@@ -9,7 +9,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * TDD tests for PageColumn* concurrency issues.
@@ -33,8 +33,8 @@ class PageColumnConcurrencyTest {
         column.publish(1);
         
         // Read should see consistent state
-        assertTrue(column.isPresent(0), "Value should be present after set and publish");
-        assertEquals(42, column.get(0), "Value should match what was written");
+        assertThat(new ReadSnapshot(column.isPresent(0), column.get(0))).usingRecursiveComparison()
+                .isEqualTo(new ReadSnapshot(true, 42));
     }
 
     @Test
@@ -47,19 +47,19 @@ class PageColumnConcurrencyTest {
         column.set(2, 300);
         // Note: get() checks present[] array, not published watermark
         // So values ARE immediately visible via get()
-        assertEquals(100, column.get(0), "Values are immediately visible via get()");
+        assertThat(column.get(0)).isEqualTo(100);
         
         // But scan operations respect the published watermark
         // Without publishing, scanEquals sees nothing
         int[] matchesBefore = column.scanEquals(100, 3);
-        assertEquals(0, matchesBefore.length, "Unpublished values not visible to scans");
+        assertThat(matchesBefore).isEmpty();
         
         // Publish the values
         column.publish(3);
         
         // Now scan operations can see them
         int[] matchesAfter = column.scanEquals(100, 3);
-        assertArrayEquals(new int[]{0}, matchesAfter, "Published values visible to scans");
+        assertThat(matchesAfter).containsExactly(0);
     }
 
     @Test
@@ -105,8 +105,7 @@ class PageColumnConcurrencyTest {
         completeLatch.await(30, TimeUnit.SECONDS);
         readers.shutdown();
         
-        assertEquals(0, errorCount.get(), 
-            "Concurrent reads of published data should be safe");
+        assertThat(errorCount.get()).isEqualTo(0);
     }
 
     @Test
@@ -150,7 +149,9 @@ class PageColumnConcurrencyTest {
         completeLatch.await(30, TimeUnit.SECONDS);
         readers.shutdown();
         
-        assertEquals(0, inconsistencyCount.get(),
-            "Concurrent scans of published data should be consistent");
+        assertThat(inconsistencyCount.get()).isEqualTo(0);
+    }
+
+    private record ReadSnapshot(boolean present, int value) {
     }
 }

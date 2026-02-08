@@ -4,7 +4,8 @@ import io.memris.core.MemrisConfiguration;
 import io.memris.storage.GeneratedTable;
 import org.junit.jupiter.api.Test;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.fail;
 
 /**
  * TDD Tests for TableGenerator strategy selection using MemrisConfiguration.
@@ -28,8 +29,7 @@ class TableGeneratorStrategyTest {
         Class<? extends AbstractTable> tableClass = TableGenerator.generate(metadata, config);
         
         // Verify it's the bytecode implementation (not MethodHandleImplementation)
-        assertFalse(tableClass.getName().contains("MethodHandle"), 
-                "Default should be bytecode implementation, not MethodHandle");
+        assertThat(tableClass.getName().contains("MethodHandle")).isFalse();
         
         // Verify generated class has no MethodHandle fields
         java.lang.reflect.Field[] fields = tableClass.getDeclaredFields();
@@ -45,7 +45,7 @@ class TableGeneratorStrategyTest {
                 .newInstance(32, 4, 1);
         
         long ref = table.insertFrom(new Object[]{1L, "Alice"});
-        assertTrue(ref >= 0);
+        assertThat(ref).isGreaterThanOrEqualTo(0L);
     }
 
     @Test
@@ -97,10 +97,10 @@ class TableGeneratorStrategyTest {
                 .newInstance(32, 4, 1);
         
         long ref = table.insertFrom(new Object[]{1L, "Alice"});
-        assertTrue(ref >= 0, "MethodHandle implementation should work correctly");
+        assertThat(ref).isGreaterThanOrEqualTo(0L);
         
         // Verify we can read back
         String name = table.readString(1, 0);
-        assertEquals("Alice", name);
+        assertThat(name).isEqualTo("Alice");
     }
 }
