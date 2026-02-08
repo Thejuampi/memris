@@ -4,14 +4,18 @@ import io.memris.core.EntityMetadata;
 import io.memris.core.Id;
 import io.memris.repository.EntitySaverGenerator;
 import io.memris.core.MetadataExtractor;
+import io.memris.core.converter.TypeConverter;
+import io.memris.core.converter.TypeConverterRegistry;
 import io.memris.runtime.EntitySaver;
 import io.memris.storage.GeneratedTable;
+import io.memris.storage.Selection;
 import io.memris.storage.heap.AbstractTable;
 import io.memris.storage.heap.TableGenerator;
 import io.memris.storage.heap.TableMetadata;
 import io.memris.storage.heap.FieldMetadata;
 import org.junit.jupiter.api.Test;
 
+import java.util.Arrays;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -21,6 +25,48 @@ import static org.assertj.core.api.Assertions.fail;
  * TDD Tests for EntitySaverGenerator - zero-reflection entity save operations.
  */
 class EntitySaverGeneratorTest {
+
+    @Test
+    void generatedSaverShouldSkipNoOpConvertersForDefaultTypes() throws Exception {
+        var metadata = MetadataExtractor.extractEntityMetadata(Customer.class);
+        var saver = EntitySaverGenerator.generate(Customer.class, metadata);
+
+        var converterFieldCount = Arrays.stream(saver.getClass().getDeclaredFields())
+                .filter(field -> TypeConverter.class.isAssignableFrom(field.getType()))
+                .count();
+
+        assertThat(converterFieldCount).isZero();
+    }
+
+    @Test
+    void generatedSaverShouldApplyCustomSameTypeConverter() throws Exception {
+        TypeConverterRegistry.getInstance().registerFieldConverter(InventoryItem.class, "stock",
+                new OffsetStockConverter());
+
+        var metadata = MetadataExtractor.extractEntityMetadata(InventoryItem.class);
+        var saver = EntitySaverGenerator.generate(InventoryItem.class, metadata);
+
+        var tableMetadata = new TableMetadata(
+                "InventoryItem",
+                "io.memris.test.InventoryItem",
+                List.of(
+                        new FieldMetadata("id", io.memris.core.TypeCodes.TYPE_LONG, true, true),
+                        new FieldMetadata("stock", io.memris.core.TypeCodes.TYPE_INT, false, false)));
+        var tableClass = TableGenerator.generate(tableMetadata);
+        var table = (GeneratedTable) tableClass.getConstructor(int.class, int.class, int.class).newInstance(32, 4, 1);
+
+        var item = new InventoryItem();
+        item.stock = 10;
+
+        @SuppressWarnings("rawtypes")
+        EntitySaver rawSaver = saver;
+        rawSaver.save(item, table, 7L);
+
+        var rowIndex = Selection.index(table.lookupById(7L));
+        var storedStock = table.readInt(1, rowIndex);
+
+        assertThat(storedStock).isEqualTo(15);
+    }
 
     @Test
     void generatedSaverShouldSaveEntityWithDirectFieldAccess() throws Exception {
@@ -163,5 +209,33 @@ class EntitySaverGeneratorTest {
         public Long id;
         public Long amount;
         public Customer customer;
+    }
+
+    public static class InventoryItem {
+        @Id
+        public Long id;
+        public Integer stock;
+    }
+
+    private static final class OffsetStockConverter implements TypeConverter<Integer, Integer> {
+        @Override
+        public Class<Integer> javaType() {
+            return Integer.class;
+        }
+
+        @Override
+        public Class<Integer> storageType() {
+            return Integer.class;
+        }
+
+        @Override
+        public Integer toStorage(Integer javaValue) {
+            return javaValue == null ? null : javaValue + 5;
+        }
+
+        @Override
+        public Integer fromStorage(Integer storageValue) {
+            return storageValue == null ? null : storageValue - 5;
+        }
     }
 }

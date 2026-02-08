@@ -150,13 +150,21 @@ public final class TypeConverterRegistry {
         return getConverter(javaType) != null;
     }
 
+    public static boolean isNoOpConverter(TypeConverter<?, ?> converter) {
+        return converter instanceof NoOpConverter;
+    }
+
     private static String fieldKey(Class<?> entityClass, String fieldName) {
         return entityClass.getName() + "#" + fieldName;
     }
 
     // Default converters
 
-    private record IdentityConverter<J, S>(Class<J> javaType, Class<S> storageType) implements TypeConverter<J, S> {
+    private interface NoOpConverter {
+    }
+
+    private record IdentityConverter<J, S>(Class<J> javaType, Class<S> storageType)
+            implements TypeConverter<J, S>, NoOpConverter {
 
         @Override
             @SuppressWarnings("unchecked")
@@ -172,7 +180,7 @@ public final class TypeConverterRegistry {
         }
 
     private record BoxedToPrimitiveConverter<J, S>(Class<J> javaType,
-                                                   Class<S> storageType) implements TypeConverter<J, S> {
+            Class<S> storageType) implements TypeConverter<J, S>, NoOpConverter {
 
         @Override
             @SuppressWarnings("unchecked")

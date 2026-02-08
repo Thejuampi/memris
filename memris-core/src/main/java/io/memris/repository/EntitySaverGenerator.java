@@ -50,7 +50,7 @@ public final class EntitySaverGenerator {
      *
      * <pre>{@code
      * final class Customer$MemrisSaver$123 implements EntitySaver<Customer, Object> {
-     *     private final TypeConverter<?, ?> c0;
+     *     private final TypeConverter<?, ?> emailConverter;
      *     private final MethodHandle relId0;
      *
      *     public Object save(Object entity, GeneratedTable table, Object id) {
@@ -71,6 +71,8 @@ public final class EntitySaverGenerator {
         var relationshipFields = fields.stream().filter(FieldInfo::isRelationship).toList();
         var relationships = resolveRelationships(entityClass, metadata);
 
+        assignConverterFieldNames(converterFields);
+
         // Assign indices to relationship fields for MethodHandle field access
         for (int i = 0; i < relationshipFields.size(); i++) {
             relationshipFields.get(i).idHandleIndex = i;
@@ -84,8 +86,8 @@ public final class EntitySaverGenerator {
                 .modifiers(Visibility.PUBLIC, TypeManifestation.FINAL);
 
         // Define converter fields
-        for (int i = 0; i < converterFields.size(); i++) {
-            builder = builder.defineField(converterFieldName(i), TypeConverter.class, Visibility.PRIVATE,
+        for (var converterField : converterFields) {
+            builder = builder.defineField(converterField.converterFieldName, TypeConverter.class, Visibility.PRIVATE,
                     FieldManifestation.FINAL);
         }
 
@@ -102,7 +104,6 @@ public final class EntitySaverGenerator {
             var paramTypes = new Class<?>[totalParams];
             for (int i = 0; i < converterFields.size(); i++) {
                 paramTypes[i] = TypeConverter.class;
-                converterFields.get(i).converterIndex = i;
             }
             for (int i = 0; i < relationshipFields.size(); i++) {
                 paramTypes[converterFields.size() + i] = MethodHandle.class;
@@ -116,7 +117,8 @@ public final class EntitySaverGenerator {
             }
             // Set converter fields
             for (int i = 0; i < converterFields.size(); i++) {
-                ctorCall = ctorCall.andThen(FieldAccessor.ofField(converterFieldName(i)).setsArgumentAt(i));
+                var converterFieldName = converterFields.get(i).converterFieldName;
+                ctorCall = ctorCall.andThen(FieldAccessor.ofField(converterFieldName).setsArgumentAt(i));
             }
             // Set MethodHandle fields
             for (int i = 0; i < relationshipFields.size(); i++) {
@@ -127,15 +129,6 @@ public final class EntitySaverGenerator {
             builder = builder.defineConstructor(Visibility.PUBLIC)
                     .withParameters(paramTypes)
                     .intercept(ctorCall);
-        } else {
-            // Default no-arg constructor
-            try {
-                builder = builder.defineConstructor(Visibility.PUBLIC)
-                        .withParameters(new Class<?>[0])
-                        .intercept(MethodCall.invoke(Object.class.getConstructor()));
-            } catch (NoSuchMethodException e) {
-                throw new RuntimeException("Failed to resolve Object constructor", e);
-            }
         }
 
         // Define save() method - uses Object for ID to support any ID type
@@ -228,6 +221,9 @@ public final class EntitySaverGenerator {
                         .getFieldConverter(entityClass, mapping.name());
                 if (converter == null) {
                     converter = metadata.converters().get(mapping.name());
+                }
+                if (TypeConverterRegistry.isNoOpConverter(converter)) {
+                    converter = null;
                 }
 
                 // For relationship fields, resolve the target entity class
@@ -345,8 +341,34 @@ public final class EntitySaverGenerator {
         return field.isAnnotationPresent(Id.class);
     }
 
-    private static String converterFieldName(int index) {
-        return "c" + index;
+    private static void assignConverterFieldNames(List<FieldInfo> converterFields) {
+        var names = new HashMap<String, Integer>();
+        for (var converterField : converterFields) {
+            var baseName = converterFieldNameForField(converterField.field.getName());
+            var index = names.getOrDefault(baseName, 0);
+            var resolvedName = index == 0 ? baseName : baseName + index;
+            names.put(baseName, index + 1);
+            converterField.converterFieldName = resolvedName;
+        }
+    }
+
+    private static String converterFieldNameForField(String fieldName) {
+        if (fieldName == null || fieldName.isBlank()) {
+            return "fieldConverter";
+        }
+        var first = fieldName.charAt(0);
+        var builder = new StringBuilder(fieldName.length() + 10);
+        if (Character.isJavaIdentifierStart(first)) {
+            builder.append(first);
+        } else {
+            builder.append('_');
+        }
+        for (var i = 1; i < fieldName.length(); i++) {
+            var current = fieldName.charAt(i);
+            builder.append(Character.isJavaIdentifierPart(current) ? current : '_');
+        }
+        builder.append("Converter");
+        return builder.toString();
     }
 
     private static String idHandleFieldName(int index) {
@@ -358,7 +380,7 @@ public final class EntitySaverGenerator {
         final Field field;
         final TypeConverter<?, ?> converter;
         final Class<?> targetEntityClass; // For relationship fields, the related entity's class
-        int converterIndex = -1;
+        String converterFieldName;
         int idHandleIndex = -1; // For relationship fields, index of the MethodHandle field for id extraction
 
         FieldInfo(FieldMapping mapping, Field field, TypeConverter<?, ?> converter) {
@@ -503,7 +525,7 @@ public final class EntitySaverGenerator {
                 }
                 // Call converter.toStorage()
                 mv.visitVarInsn(Opcodes.ALOAD, 0);
-                mv.visitFieldInsn(Opcodes.GETFIELD, saverInternal, converterFieldName(info.converterIndex),
+                mv.visitFieldInsn(Opcodes.GETFIELD, saverInternal, info.converterFieldName,
                         "Lio/memris/core/converter/TypeConverter;");
                 mv.visitInsn(Opcodes.SWAP);
                 mv.visitMethodInsn(Opcodes.INVOKESTATIC,
