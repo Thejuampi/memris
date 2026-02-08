@@ -42,6 +42,13 @@ import java.util.List;
 public final class BytecodeTableGenerator {
 
     private static final int DEFAULT_ID_INDEX_CAPACITY = 16;
+    private static final ClassValue<GeneratedFieldCache> GENERATED_FIELD_CACHE = new ClassValue<>() {
+        @Override
+        protected GeneratedFieldCache computeValue(Class<?> type) {
+            return new GeneratedFieldCache(resolveAccessibleField(type, "CACHED_COLUMN_FIELDS"),
+                    resolveAccessibleField(type, "ID_INDEX_FIELD"));
+        }
+    };
 
     private BytecodeTableGenerator() {
     }
@@ -292,6 +299,9 @@ public final class BytecodeTableGenerator {
                         .withParameter(int.class, "value")
                         .intercept(new PerColumnScanImplementation(field, ScanMethodImplementation.SCAN_EQUALS_INT));
             }
+            // Note: BIG_DECIMAL and BIG_INTEGER are stored as strings but not yet included
+            // here.
+            // They would require generating scanEquals...String methods.
             if (typeCode == TypeCodes.TYPE_STRING) {
                 builder = builder
                         .defineMethod("scanEquals" + capitalizedName + "String", int[].class, Visibility.PUBLIC)
@@ -412,18 +422,33 @@ public final class BytecodeTableGenerator {
         }
     }
 
+    private static GeneratedFieldCache getGeneratedFieldCache(Object obj) {
+        return GENERATED_FIELD_CACHE.get(obj.getClass());
+    }
+
+    private static Field resolveAccessibleField(Class<?> type, String fieldName) {
+        try {
+            var field = type.getDeclaredField(fieldName);
+            field.setAccessible(true);
+            return field;
+        } catch (NoSuchFieldException e) {
+            throw new IllegalStateException("Generated table field missing: " + fieldName + " on " + type.getName(), e);
+        }
+    }
+
     // Helper method to get cached column fields (reduces per-operation reflection)
     private static Field[] getCachedColumnFields(Object obj) throws Exception {
-        Field cacheField = obj.getClass().getDeclaredField("CACHED_COLUMN_FIELDS");
-        cacheField.setAccessible(true);
-        return (Field[]) cacheField.get(obj);
+        var cache = getGeneratedFieldCache(obj);
+        return (Field[]) cache.cachedColumnFieldsField().get(obj);
     }
 
     // Helper method to get cached ID index field
     private static Field getCachedIdIndexField(Object obj) throws Exception {
-        Field cacheField = obj.getClass().getDeclaredField("ID_INDEX_FIELD");
-        cacheField.setAccessible(true);
-        return (Field) cacheField.get(obj);
+        var cache = getGeneratedFieldCache(obj);
+        return (Field) cache.idIndexFieldField().get(obj);
+    }
+
+    private record GeneratedFieldCache(Field cachedColumnFieldsField, Field idIndexFieldField) {
     }
 
     public static class PresentInterceptor {
