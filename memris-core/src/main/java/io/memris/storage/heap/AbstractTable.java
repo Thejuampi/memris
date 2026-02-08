@@ -14,17 +14,17 @@ import java.util.concurrent.locks.LockSupport;
  * <p>
  * Provides common functionality:
  * <ul>
- *   <li>RowId allocation (monotonic append-only)</li>
- *   <li>Page management (column capacity tracking)</li>
- *   <li>Tombstone tracking for deletes</li>
- *   <li>Row count management</li>
+ * <li>RowId allocation (monotonic append-only)</li>
+ * <li>Page management (column capacity tracking)</li>
+ * <li>Tombstone tracking for deletes</li>
+ * <li>Row count management</li>
  * </ul>
  * <p>
  * Generated tables (e.g., PersonTable) extend this and add:
  * <ul>
- *   <li>Typed columns (PageColumnLong, PageColumnInt, PageColumnString)</li>
- *   <li>Typed ID index (LongIdIndex, etc.)</li>
- *   <li>Domain-specific insert/find methods</li>
+ * <li>Typed columns (PageColumnLong, PageColumnInt, PageColumnString)</li>
+ * <li>Typed ID index (LongIdIndex, etc.)</li>
+ * <li>Domain-specific insert/find methods</li>
  * </ul>
  */
 public abstract class AbstractTable {
@@ -91,10 +91,11 @@ public abstract class AbstractTable {
     /**
      * Create an AbstractTable with an initial page allocation.
      *
-     * @param name          table name
-     * @param pageSize      page size (must be positive)
-     * @param maxPages      maximum pages (must be positive)
-     * @param initialPages  initial pages to allocate (must be positive and <= maxPages)
+     * @param name         table name
+     * @param pageSize     page size (must be positive)
+     * @param maxPages     maximum pages (must be positive)
+     * @param initialPages initial pages to allocate (must be positive and <=
+     *                     maxPages)
      */
     protected AbstractTable(String name, int pageSize, int maxPages, int initialPages) {
         this(name, pageSize, maxPages);
@@ -252,14 +253,14 @@ public abstract class AbstractTable {
     protected void deallocateRowId(int rowId) {
         freeList.push(rowId);
     }
-    
+
     /**
      * Get current global generation.
      */
     public long currentGeneration() {
         return globalGeneration.get();
     }
-    
+
     /**
      * Get generation for a specific row.
      */
@@ -324,8 +325,8 @@ public abstract class AbstractTable {
      * Retries if the seqlock changes during the read (indicating concurrent write).
      *
      * @param rowIndex the row index
-     * @param reader the function to read the value
-     * @param <T> the value type
+     * @param reader   the function to read the value
+     * @param <T>      the value type
      * @return the consistently read value
      */
     public <T> T readWithSeqLock(int rowIndex, java.util.function.Supplier<T> reader) {
@@ -347,7 +348,7 @@ public abstract class AbstractTable {
         }
     }
 
-    private static void backoff(int spins) {
+    protected static void backoff(int spins) {
         if (spins < 10) {
             Thread.onSpinWait();
             return;
@@ -368,7 +369,7 @@ public abstract class AbstractTable {
     /**
      * Mark a row as deleted (tombstone) with generation validation.
      *
-     * @param rowId the row to delete
+     * @param rowId      the row to delete
      * @param generation the expected generation (stale refs rejected)
      * @return true if tombstoned, false if stale generation
      */
@@ -498,5 +499,36 @@ public abstract class AbstractTable {
         var pageId = (int) (allocated / pageSize);
         var offset = (int) (allocated % pageSize);
         return "page=" + pageId + ", offset=" + offset;
+    }
+
+    /**
+     * Filter tombstoned rows from a scan result.
+     *
+     * @param rows matched rows
+     * @return filtered rows
+     */
+    public int[] filterTombstoned(int[] rows) {
+        if (rows.length == 0) {
+            return rows;
+        }
+
+        int[] filtered = new int[rows.length];
+        int count = 0;
+        for (int rowIndex : rows) {
+            int pageId = rowIndex / pageSize;
+            int offset = rowIndex % pageSize;
+            RowId rowId = new RowId(pageId, offset);
+            if (!isTombstone(rowId)) {
+                filtered[count++] = rowIndex;
+            }
+        }
+
+        if (count == rows.length) {
+            return rows;
+        }
+
+        int[] result = new int[count];
+        System.arraycopy(filtered, 0, result, 0, count);
+        return result;
     }
 }
