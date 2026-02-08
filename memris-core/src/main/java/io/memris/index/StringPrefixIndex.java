@@ -43,17 +43,27 @@ public final class StringPrefixIndex {
         if (key == null || rowId == null) {
             return;
         }
-        
+
         String normalizedKey = normalize(key);
-        
-        // Add rowId for every prefix of the key
+
+        // Add rowId for every prefix of the key using lock-free pattern:
+        // 1. Try get() first (no lock)
+        // 2. If missing, create new set and try putIfAbsent
+        // 3. Use whichever set won the race
         for (int i = 1; i <= normalizedKey.length(); i++) {
             var prefix = normalizedKey.substring(0, i);
-            prefixMap.compute(prefix, (ignored, existing) -> {
-                var set = existing == null ? setFactory.create(4) : existing;
-                set.add(rowId);
-                return setFactory.maybeUpgrade(set);
-            });
+            var set = prefixMap.get(prefix);
+            if (set == null) {
+                var newSet = setFactory.create(4);
+                var existing = prefixMap.putIfAbsent(prefix, newSet);
+                set = existing != null ? existing : newSet;
+            }
+            set.add(rowId);
+            // Check if upgrade needed (best effort, may race)
+            var upgraded = setFactory.maybeUpgrade(set);
+            if (upgraded != set) {
+                prefixMap.replace(prefix, set, upgraded);
+            }
         }
     }
     
@@ -61,16 +71,20 @@ public final class StringPrefixIndex {
         if (key == null || rowId == null) {
             return;
         }
-        
+
         String normalizedKey = normalize(key);
-        
-        // Remove rowId from every prefix of the key
+
+        // Remove rowId from every prefix of the key using lock-free get-then-remove
         for (int i = 1; i <= normalizedKey.length(); i++) {
             var prefix = normalizedKey.substring(0, i);
-            prefixMap.computeIfPresent(prefix, (ignored, set) -> {
+            var set = prefixMap.get(prefix);
+            if (set != null) {
                 set.remove(rowId);
-                return set.size() == 0 ? null : set;
-            });
+                // Best effort cleanup of empty sets (may race with adds)
+                if (set.size() == 0) {
+                    prefixMap.remove(prefix, set);
+                }
+            }
         }
     }
     
