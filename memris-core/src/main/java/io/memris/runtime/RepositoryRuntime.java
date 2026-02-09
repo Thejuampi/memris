@@ -33,6 +33,7 @@ import io.memris.runtime.codegen.RuntimeExecutorGenerator;
 import io.memris.runtime.dispatch.ConditionProgramCompiler;
 import io.memris.runtime.dispatch.ConditionSelectionOrchestrator;
 import io.memris.runtime.dispatch.CompositeIndexSelector;
+import io.memris.runtime.dispatch.CompositeIndexProbeCompiler;
 import io.memris.runtime.dispatch.DirectConditionExecutor;
 import io.memris.runtime.dispatch.IndexProbeCompiler;
 import io.memris.runtime.dispatch.IndexSelectionDispatcher;
@@ -96,6 +97,7 @@ public final class RepositoryRuntime<T> {
     private final java.util.concurrent.ConcurrentHashMap<CompiledQuery.CompiledJoinPredicate, DirectConditionExecutor> joinDirectConditionExecutors;
     private final java.util.function.Predicate<RowId> rowValidator;
     private final java.util.concurrent.ConcurrentHashMap<Object, IndexProbeCompiler.IndexProbe> indexProbes;
+    private final Map<CompiledQuery, CompositeIndexProbeCompiler.CompositeIndexProbe> compositeIndexProbesByQuery;
     private final boolean hasCompositeIndexPlans;
     private static final ThreadLocal<SortBuffers> SORT_BUFFERS = ThreadLocal.withInitial(SortBuffers::new);
 
@@ -165,6 +167,7 @@ public final class RepositoryRuntime<T> {
         this.hasCompositeIndexPlans = hasCompositeIndexPlans(indexPlans);
         this.rowValidator = createRowValidator(plan.table());
         this.indexProbes = new java.util.concurrent.ConcurrentHashMap<>();
+        this.compositeIndexProbesByQuery = buildCompositeIndexProbesByQuery(plan.queries());
         this.idLookup = plan.idLookup();
         var queries = plan.queries();
         if (queries != null) {
@@ -264,13 +267,12 @@ public final class RepositoryRuntime<T> {
                 if (condition.argumentIndex() < 0 || condition.argumentIndex() >= args.length) {
                     return fallbackSelector.execute(runtime, args);
                 }
-                MemrisRepositoryFactory indexFactory = runtime.indexFactory();
-                if (indexFactory == null) {
+                if (runtime.indexFactory() == null) {
                     return fallbackSelector.execute(runtime, args);
                 }
                 Selection selection = InIndexSelector.select(
                         args[condition.argumentIndex()],
-                        value -> indexFactory.queryIndex(entityClass, fieldName, Predicate.Operator.EQ, value),
+                        value -> runtime.queryIndex(entityClass, fieldName, Predicate.Operator.EQ, value),
                         runtime::selectionFromRows);
                 return selection != null ? selection : fallbackSelector.execute(runtime, args);
             });
@@ -344,6 +346,32 @@ public final class RepositoryRuntime<T> {
                     plan.columnPositions());
         }
         return compositePlans;
+    }
+
+    private Map<CompiledQuery, CompositeIndexProbeCompiler.CompositeIndexProbe> buildCompositeIndexProbesByQuery(
+            CompiledQuery[] queries) {
+        if (queries == null || queries.length == 0 || compositeIndexPlans.length == 0 || arena == null) {
+            return Map.of();
+        }
+        var indexes = entityIndexes();
+        if (indexes == null || indexes.isEmpty()) {
+            return Map.of();
+        }
+
+        var compiled = new HashMap<CompiledQuery, CompositeIndexProbeCompiler.CompositeIndexProbe>(queries.length * 2);
+        for (var query : queries) {
+            var conditions = query.conditions();
+            if (conditions == null || conditions.length == 0) {
+                continue;
+            }
+            var probe = CompositeIndexProbeCompiler.compile(compositeIndexPlans,
+                    indexes,
+                    conditions,
+                    this::queryIndexFromObject,
+                    this::selectionFromRows);
+            compiled.put(query, probe);
+        }
+        return compiled.isEmpty() ? Map.of() : Map.copyOf(compiled);
     }
 
     private static OrderExecutor buildOrderExecutor(CompiledQuery query, GeneratedTable table,
@@ -2086,10 +2114,12 @@ public final class RepositoryRuntime<T> {
             return applyJoins(query, args, selectionFromRows(allRows));
         }
         var executors = plan.conditionExecutorsFor(query);
+        var compositeProbe = compositeIndexProbesByQuery.get(query);
         var combined = ConditionSelectionOrchestrator.execute(conditions,
                 executors,
                 args,
-                this::selectWithCompositeIndex,
+                (groupConditions, start, end, runtimeArgs, consumed) ->
+                    selectWithCompositeIndex(compositeProbe, groupConditions, start, end, runtimeArgs, consumed),
                 (compiled, compiledExecutors, index, runtimeArgs) -> compiledExecutors != null
                         && index < compiledExecutors.length
                                 ? compiledExecutors[index].execute(this, runtimeArgs)
@@ -2098,25 +2128,20 @@ public final class RepositoryRuntime<T> {
         return applyJoins(query, args, combined);
     }
 
-    private Selection selectWithCompositeIndex(CompiledQuery.CompiledCondition[] conditions, int start, int end,
+    private Selection selectWithCompositeIndex(CompositeIndexProbeCompiler.CompositeIndexProbe probe,
+            CompiledQuery.CompiledCondition[] conditions,
+            int start,
+            int end,
             Object[] args,
             boolean[] consumed) {
-        if (compositeIndexPlans.length == 0 || arena == null) {
+        if (compositeIndexPlans.length == 0 || arena == null || probe == null) {
             return null;
         }
         var indexes = entityIndexes();
         if (indexes == null) {
             return null;
         }
-        return CompositeIndexSelector.select(compositeIndexPlans,
-                indexes,
-                conditions,
-                start,
-                end,
-                args,
-                consumed,
-                this::queryIndexFromObject,
-                this::selectionFromRows);
+        return probe.select(indexes, conditions, start, end, args, consumed);
     }
 
     private Selection selectWithIndex(CompiledQuery.CompiledCondition condition, Object[] args) {
