@@ -167,3 +167,33 @@ mvn exec:java \
 - Results should be treated as indicative rather than absolute
 - Production deployments should use proper JMH forking for statistically rigorous results
 - Variance higher for scan operations due to GC and materialization costs
+
+---
+
+## Dispatch Benchmarks
+
+The dispatch-focused benchmark suite targets query dispatch paths introduced by the runtime/dispatch extraction work.
+
+### Classes
+- `io.memris.benchmarks.DispatchSelectionBenchmark`
+- `io.memris.benchmarks.DispatchAllocationBenchmark`
+
+### Run Commands
+
+```bash
+mvn.cmd -q -e -pl memris-core test-compile
+
+mvn.cmd -pl memris-core exec:java \
+  -Dexec.mainClass="org.openjdk.jmh.Main" \
+  -Dexec.classpathScope=test \
+  -Dexec.args="io.memris.benchmarks.DispatchSelectionBenchmark io.memris.benchmarks.DispatchAllocationBenchmark -wi 3 -i 5 -f 1 -bm avgt -tu ns -prof gc -rf json -rff target/jmh-results/dispatch-avgt.json"
+
+mvn.cmd -pl memris-core exec:java \
+  -Dexec.mainClass="org.openjdk.jmh.Main" \
+  -Dexec.classpathScope=test \
+  -Dexec.args="io.memris.benchmarks.DispatchSelectionBenchmark io.memris.benchmarks.DispatchAllocationBenchmark -wi 2 -i 3 -f 1 -bm thrpt -tu ops/s -rf csv -rff target/jmh-results/dispatch-thrpt.csv"
+```
+
+### Artifacts
+- `memris-core/target/jmh-results/dispatch-avgt.json`
+- `memris-core/target/jmh-results/dispatch-thrpt.csv`
