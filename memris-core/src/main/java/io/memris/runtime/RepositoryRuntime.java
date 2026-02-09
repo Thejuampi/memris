@@ -89,6 +89,7 @@ public final class RepositoryRuntime<T> {
     private final java.util.concurrent.ConcurrentHashMap<CompiledQuery.CompiledJoinPredicate, DirectConditionExecutor> joinDirectConditionExecutors;
     private final java.util.function.Predicate<RowId> rowValidator;
     private final java.util.concurrent.ConcurrentHashMap<Object, IndexProbe> indexProbes;
+    private final boolean hasCompositeIndexPlans;
     private static final ThreadLocal<SortBuffers> SORT_BUFFERS = ThreadLocal.withInitial(SortBuffers::new);
 
     /**
@@ -153,6 +154,7 @@ public final class RepositoryRuntime<T> {
         this.indexPlans = buildIndexPlans(metadata);
         this.indexFieldReaders = buildIndexFieldReaders(metadata, indexPlans);
         this.indexPlansByField = buildIndexPlansByField(indexPlans);
+        this.hasCompositeIndexPlans = hasCompositeIndexPlans(indexPlans);
         this.rowValidator = createRowValidator(plan.table());
         this.indexProbes = new java.util.concurrent.ConcurrentHashMap<>();
         this.idLookup = plan.idLookup();
@@ -291,6 +293,18 @@ public final class RepositoryRuntime<T> {
                 && columnIndex >= 0
                 && columnIndex < primitiveNonNullColumns.length
                 && primitiveNonNullColumns[columnIndex];
+    }
+
+    private static boolean hasCompositeIndexPlans(IndexPlan[] plans) {
+        if (plans == null) {
+            return false;
+        }
+        for (var plan : plans) {
+            if (plan != null && plan.columnPositions().length > 1) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static Selection selectWithIndexForIn(RepositoryRuntime<?> runtime, Class<?> entityClass, String fieldName,
@@ -1415,6 +1429,10 @@ public final class RepositoryRuntime<T> {
             return plan.table().liveCount() > 0;
         }
 
+        if (hasCompositeIndexPlans) {
+            return executeConditions(query, args).size() > 0;
+        }
+
         // For single condition, just check if it matches anything
         if (conditions.length == 1) {
             Selection selection = executors != null && executors.length == 1
@@ -1491,6 +1509,9 @@ public final class RepositoryRuntime<T> {
      */
     private long executeCountFast(CompiledQuery query, Object[] args) {
         if (query.distinct()) {
+            return executeCount(query, args);
+        }
+        if (hasCompositeIndexPlans) {
             return executeCount(query, args);
         }
         CompiledQuery.CompiledCondition[] conditions = query.conditions();
@@ -2145,28 +2166,6 @@ public final class RepositoryRuntime<T> {
             return applyJoins(query, args, selectionFromRows(allRows));
         }
 
-        if (executors != null && executors.length > 0) {
-            Selection combined = null;
-            Selection currentGroup = null;
-
-            for (int i = 0; i < executors.length; i++) {
-                ConditionExecutor executor = executors[i];
-                Selection next = executor.execute(this, args);
-                currentGroup = (currentGroup == null) ? next : currentGroup.intersect(next);
-
-                LogicalQuery.Combinator combinator = executor.nextCombinator();
-                if (combinator == LogicalQuery.Combinator.OR) {
-                    combined = (combined == null) ? currentGroup : combined.union(currentGroup);
-                    currentGroup = null;
-                }
-            }
-
-            if (currentGroup != null) {
-                combined = (combined == null) ? currentGroup : combined.union(currentGroup);
-            }
-            return applyJoins(query, args, combined);
-        }
-
         Selection combined = null;
         for (var groupStart = 0; groupStart < conditions.length;) {
             var groupEnd = groupStart;
@@ -2174,14 +2173,17 @@ public final class RepositoryRuntime<T> {
                     && conditions[groupEnd].nextCombinator() != LogicalQuery.Combinator.OR) {
                 groupEnd++;
             }
-            var groupSelection = executeConditionGroup(conditions, groupStart, groupEnd, args);
+            var groupSelection = executeConditionGroup(conditions, executors, groupStart, groupEnd, args);
             combined = (combined == null) ? groupSelection : combined.union(groupSelection);
             groupStart = groupEnd + 1;
         }
         return applyJoins(query, args, combined);
     }
 
-    private Selection executeConditionGroup(CompiledQuery.CompiledCondition[] conditions, int start, int end,
+    private Selection executeConditionGroup(CompiledQuery.CompiledCondition[] conditions,
+            ConditionExecutor[] executors,
+            int start,
+            int end,
             Object[] args) {
         var consumed = new boolean[end - start + 1];
         Selection current = selectWithCompositeIndex(conditions, start, end, args, consumed);
@@ -2189,7 +2191,9 @@ public final class RepositoryRuntime<T> {
             if (consumed[i - start]) {
                 continue;
             }
-            var next = selectWithIndex(conditions[i], args);
+            var next = executors != null && i < executors.length
+                    ? executors[i].execute(this, args)
+                    : selectWithIndex(conditions[i], args);
             current = current == null ? next : current.intersect(next);
         }
         if (current == null) {
