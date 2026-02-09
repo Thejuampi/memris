@@ -18,44 +18,60 @@ public final class InIndexSelector {
     }
 
     public static Selection select(Object value, EqIndexLookup lookup, SelectionBuilder selectionBuilder) {
-        Iterable<?> iterable = null;
-        if (value instanceof Iterable<?> it) {
-            iterable = it;
-        } else if (value instanceof Object[] arr) {
-            iterable = java.util.Arrays.asList(arr);
-        }
+        return switch (value) {
+            case int[] ints -> unionIntValues(ints, lookup, selectionBuilder);
+            case long[] longs -> unionLongValues(longs, lookup, selectionBuilder);
+            case Object[] objects -> unionObjectValues(objects, lookup, selectionBuilder);
+            case Iterable<?> iterable -> unionIterableValues(iterable, lookup, selectionBuilder);
+            default -> null;
+        };
+    }
 
-        if (iterable == null) {
-            if (value instanceof int[] ints) {
-                Selection combined = null;
-                for (var item : ints) {
-                    var rows = lookup.query(item);
-                    if (rows == null) {
-                        return null;
-                    }
-                    var next = selectionBuilder.fromRows(rows);
-                    combined = combined == null ? next : combined.union(next);
-                }
-                return combined;
-            }
-            if (value instanceof long[] longs) {
-                Selection combined = null;
-                for (var item : longs) {
-                    var rows = lookup.query(item);
-                    if (rows == null) {
-                        return null;
-                    }
-                    var next = selectionBuilder.fromRows(rows);
-                    combined = combined == null ? next : combined.union(next);
-                }
-                return combined;
-            }
-            return null;
-        }
-
+    private static Selection unionIntValues(int[] values, EqIndexLookup lookup, SelectionBuilder selectionBuilder) {
         Selection combined = null;
-        for (var item : iterable) {
-            var rows = lookup.query(item);
+        for (var value : values) {
+            var rows = lookup.query(value);
+            if (rows == null) {
+                return null;
+            }
+            var next = selectionBuilder.fromRows(rows);
+            combined = combined == null ? next : combined.union(next);
+        }
+        return combined;
+    }
+
+    private static Selection unionLongValues(long[] values, EqIndexLookup lookup, SelectionBuilder selectionBuilder) {
+        Selection combined = null;
+        for (var value : values) {
+            var rows = lookup.query(value);
+            if (rows == null) {
+                return null;
+            }
+            var next = selectionBuilder.fromRows(rows);
+            combined = combined == null ? next : combined.union(next);
+        }
+        return combined;
+    }
+
+    private static Selection unionObjectValues(Object[] values, EqIndexLookup lookup, SelectionBuilder selectionBuilder) {
+        Selection combined = null;
+        for (var value : values) {
+            var rows = lookup.query(value);
+            if (rows == null) {
+                return null;
+            }
+            var next = selectionBuilder.fromRows(rows);
+            combined = combined == null ? next : combined.union(next);
+        }
+        return combined;
+    }
+
+    private static Selection unionIterableValues(Iterable<?> values,
+            EqIndexLookup lookup,
+            SelectionBuilder selectionBuilder) {
+        Selection combined = null;
+        for (var value : values) {
+            var rows = lookup.query(value);
             if (rows == null) {
                 return null;
             }
