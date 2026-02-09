@@ -87,6 +87,8 @@ public final class RepositoryRuntime<T> {
     private final boolean[] primitiveNonNullByColumn;
     private final java.util.concurrent.ConcurrentHashMap<CompiledQuery.CompiledCondition, DirectConditionExecutor> directConditionExecutors;
     private final java.util.concurrent.ConcurrentHashMap<CompiledQuery.CompiledJoinPredicate, DirectConditionExecutor> joinDirectConditionExecutors;
+    private final java.util.function.Predicate<RowId> rowValidator;
+    private final java.util.concurrent.ConcurrentHashMap<Object, IndexProbe> indexProbes;
     private static final ThreadLocal<SortBuffers> SORT_BUFFERS = ThreadLocal.withInitial(SortBuffers::new);
 
     /**
@@ -151,6 +153,8 @@ public final class RepositoryRuntime<T> {
         this.indexPlans = buildIndexPlans(metadata);
         this.indexFieldReaders = buildIndexFieldReaders(metadata, indexPlans);
         this.indexPlansByField = buildIndexPlansByField(indexPlans);
+        this.rowValidator = createRowValidator(plan.table());
+        this.indexProbes = new java.util.concurrent.ConcurrentHashMap<>();
         this.idLookup = plan.idLookup();
         var queries = plan.queries();
         if (queries != null) {
@@ -204,10 +208,11 @@ public final class RepositoryRuntime<T> {
         return executors;
     }
 
-    public static OrderExecutor[] buildOrderExecutors(CompiledQuery[] queries, GeneratedTable table) {
+    public static OrderExecutor[] buildOrderExecutors(CompiledQuery[] queries, GeneratedTable table,
+            boolean[] primitiveNonNullColumns) {
         OrderExecutor[] executors = new OrderExecutor[queries.length];
         for (int i = 0; i < queries.length; i++) {
-            executors[i] = buildOrderExecutor(queries[i], table);
+            executors[i] = buildOrderExecutor(queries[i], table, primitiveNonNullColumns);
         }
         return executors;
     }
@@ -341,16 +346,18 @@ public final class RepositoryRuntime<T> {
         return combined;
     }
 
-    private static OrderExecutor buildOrderExecutor(CompiledQuery query, GeneratedTable table) {
+    private static OrderExecutor buildOrderExecutor(CompiledQuery query, GeneratedTable table,
+            boolean[] primitiveNonNullColumns) {
         CompiledQuery.CompiledOrderBy[] orderBy = query.orderBy();
         if (orderBy == null || orderBy.length == 0) {
-            return null;
+            return (runtime, rows) -> rows;
         }
         var limit = query.limit();
         if (orderBy.length == 1) {
             int columnIndex = orderBy[0].columnIndex();
             boolean ascending = orderBy[0].ascending();
             byte typeCode = table.typeCodeAt(columnIndex);
+            var primitiveNonNull = isPrimitiveNonNullColumn(primitiveNonNullColumns, columnIndex);
             return switch (typeCode) {
                 case TypeCodes.TYPE_INT,
                         TypeCodes.TYPE_BOOLEAN,
@@ -359,9 +366,13 @@ public final class RepositoryRuntime<T> {
                         TypeCodes.TYPE_CHAR ->
                     (runtime, rows) -> {
                         if (limit > 0 && limit < rows.length) {
-                            return runtime.topKInt(rows, columnIndex, ascending, limit);
+                            return primitiveNonNull
+                                    ? runtime.topKIntNonNull(rows, columnIndex, ascending, limit)
+                                    : runtime.topKIntNullable(rows, columnIndex, ascending, limit);
                         }
-                        return runtime.sortByIntColumn(rows, columnIndex, ascending);
+                        return primitiveNonNull
+                                ? runtime.sortByIntColumnNonNull(rows, columnIndex, ascending)
+                                : runtime.sortByIntColumnNullable(rows, columnIndex, ascending);
                     };
                 case TypeCodes.TYPE_LONG,
                         TypeCodes.TYPE_INSTANT,
@@ -370,9 +381,13 @@ public final class RepositoryRuntime<T> {
                         TypeCodes.TYPE_DATE ->
                     (runtime, rows) -> {
                         if (limit > 0 && limit < rows.length) {
-                            return runtime.topKLong(rows, columnIndex, ascending, limit);
+                            return primitiveNonNull
+                                    ? runtime.topKLongNonNull(rows, columnIndex, ascending, limit)
+                                    : runtime.topKLongNullable(rows, columnIndex, ascending, limit);
                         }
-                        return runtime.sortByLongColumn(rows, columnIndex, ascending);
+                        return primitiveNonNull
+                                ? runtime.sortByLongColumnNonNull(rows, columnIndex, ascending)
+                                : runtime.sortByLongColumnNullable(rows, columnIndex, ascending);
                     };
                 case TypeCodes.TYPE_STRING,
                         TypeCodes.TYPE_BIG_DECIMAL,
@@ -391,7 +406,10 @@ public final class RepositoryRuntime<T> {
                     int[] sorted = runtime.sortByDoubleColumn(rows, columnIndex, ascending);
                     return limit > 0 && limit < sorted.length ? runtime.limitRows(sorted, limit) : sorted;
                 };
-                default -> null;
+                default -> (runtime, rows) -> {
+                    int[] sorted = runtime.sortBySingleColumn(rows, orderBy[0]);
+                    return limit > 0 && limit < sorted.length ? runtime.limitRows(sorted, limit) : sorted;
+                };
             };
         }
 
@@ -400,7 +418,8 @@ public final class RepositoryRuntime<T> {
             int columnIndex = orderBy[i].columnIndex();
             boolean ascending = orderBy[i].ascending();
             byte typeCode = table.typeCodeAt(columnIndex);
-            builders[i] = buildOrderKeyBuilder(columnIndex, ascending, typeCode);
+            builders[i] = buildOrderKeyBuilder(columnIndex, ascending, typeCode,
+                    isPrimitiveNonNullColumn(primitiveNonNullColumns, columnIndex));
         }
         return (runtime, rows) -> runtime.sortByMultipleColumns(rows, builders);
     }
@@ -1121,13 +1140,6 @@ public final class RepositoryRuntime<T> {
         var orderExecutor = plan.orderExecutorFor(query);
         if (orderExecutor != null) {
             rows = orderExecutor.apply(this, rows);
-        } else {
-            // Use top-k optimization when limit is small relative to result set
-            if (limit > 0 && limit < rows.length && query.orderBy() != null && query.orderBy().length > 0) {
-                rows = applyTopKOrderBy(query, rows, limit);
-            } else {
-                rows = applyOrderBy(query, rows);
-            }
         }
 
         var max = (limit > 0 && limit < rows.length) ? limit : rows.length;
@@ -2459,68 +2471,90 @@ public final class RepositoryRuntime<T> {
      * Query a specific index object based on its type.
      */
     private int[] queryIndexFromObject(Object index, Predicate.Operator operator, Object value) {
-        // Hash indexes are equality-only; non-EQ operators must not probe hash
-        // because they produce incorrect matches and bypass operator semantics.
-        if (index instanceof HashIndex hashIndex
-                && operator == Predicate.Operator.EQ
-                && value != null) {
-            return rowIdSetToIntArray(hashIndex.lookup(value, createRowValidator()));
-        } else if (index instanceof RangeIndex rangeIndex && value instanceof Comparable comp) {
-            return switch (operator) {
-                case EQ -> rowIdSetToIntArray(rangeIndex.lookup(comp, createRowValidator()));
-                case GT -> rowIdSetToIntArray(rangeIndex.greaterThan(comp, createRowValidator()));
-                case GTE -> rowIdSetToIntArray(rangeIndex.greaterThanOrEqual(comp, createRowValidator()));
-                case LT -> rowIdSetToIntArray(rangeIndex.lessThan(comp, createRowValidator()));
-                case LTE -> rowIdSetToIntArray(rangeIndex.lessThanOrEqual(comp, createRowValidator()));
-                default -> null;
-            };
-        } else if (index instanceof RangeIndex rangeIndex
-                && operator == Predicate.Operator.BETWEEN
-                && value instanceof Object[] range
-                && range.length >= 2
-                && range[0] instanceof Comparable lower
-                && range[1] instanceof Comparable upper) {
-            return rowIdSetToIntArray(rangeIndex.between(lower, upper, createRowValidator()));
-        } else if (index instanceof StringPrefixIndex prefixIndex && value instanceof String s) {
-            if (operator == Predicate.Operator.STARTING_WITH) {
-                return rowIdSetToIntArray(prefixIndex.startsWith(s));
-            }
-        } else if (index instanceof StringSuffixIndex suffixIndex && value instanceof String s) {
-            if (operator == Predicate.Operator.ENDING_WITH) {
-                return rowIdSetToIntArray(suffixIndex.endsWith(s));
-            }
-        } else if (index instanceof CompositeHashIndex hashIndex
-                && operator == Predicate.Operator.EQ
-                && value instanceof CompositeKey key) {
-            return rowIdSetToIntArray(hashIndex.lookup(key, createRowValidator()));
-        } else if (index instanceof CompositeRangeIndex rangeIndex && value instanceof CompositeKey key) {
-            return switch (operator) {
-                case EQ -> rowIdSetToIntArray(rangeIndex.lookup(key, createRowValidator()));
-                case GT -> rowIdSetToIntArray(rangeIndex.greaterThan(key, createRowValidator()));
-                case GTE -> rowIdSetToIntArray(rangeIndex.greaterThanOrEqual(key, createRowValidator()));
-                case LT -> rowIdSetToIntArray(rangeIndex.lessThan(key, createRowValidator()));
-                case LTE -> rowIdSetToIntArray(rangeIndex.lessThanOrEqual(key, createRowValidator()));
-                default -> null;
-            };
-        } else if (index instanceof CompositeRangeIndex rangeIndex
-                && operator == Predicate.Operator.BETWEEN
-                && value instanceof Object[] range
-                && range.length >= 2
-                && range[0] instanceof CompositeKey lower
-                && range[1] instanceof CompositeKey upper) {
-            return rowIdSetToIntArray(rangeIndex.between(lower, upper, createRowValidator()));
-        }
-        return null;
+        var probe = indexProbes.computeIfAbsent(index, this::compileIndexProbe);
+        return probe.query(operator, value, rowValidator);
     }
 
-    private java.util.function.Predicate<RowId> createRowValidator() {
-        GeneratedTable table = plan.table();
+    private static java.util.function.Predicate<RowId> createRowValidator(GeneratedTable table) {
         return rowId -> {
             int rowIndex = (int) rowId.value();
             long generation = table.rowGeneration(rowIndex);
             long ref = Selection.pack(rowIndex, generation);
             return table.isLive(ref);
         };
+    }
+
+    private IndexProbe compileIndexProbe(Object index) {
+        return switch (index) {
+            case HashIndex hashIndex -> (operator, value, validator) ->
+                operator == Predicate.Operator.EQ && value != null
+                        ? rowIdSetToIntArray(hashIndex.lookup(value, validator))
+                        : null;
+            case RangeIndex rangeIndex -> (operator, value, validator) -> {
+                if (value instanceof Comparable<?> comparable) {
+                    @SuppressWarnings("rawtypes")
+                    var comp = (Comparable) comparable;
+                    return switch (operator) {
+                        case EQ -> rowIdSetToIntArray(rangeIndex.lookup(comp, validator));
+                        case GT -> rowIdSetToIntArray(rangeIndex.greaterThan(comp, validator));
+                        case GTE -> rowIdSetToIntArray(rangeIndex.greaterThanOrEqual(comp, validator));
+                        case LT -> rowIdSetToIntArray(rangeIndex.lessThan(comp, validator));
+                        case LTE -> rowIdSetToIntArray(rangeIndex.lessThanOrEqual(comp, validator));
+                        default -> null;
+                    };
+                }
+                if (operator == Predicate.Operator.BETWEEN
+                        && value instanceof Object[] range
+                        && range.length >= 2
+                        && range[0] instanceof Comparable<?> lowerComparable
+                        && range[1] instanceof Comparable<?> upperComparable) {
+                    @SuppressWarnings("rawtypes")
+                    var lower = (Comparable) lowerComparable;
+                    @SuppressWarnings("rawtypes")
+                    var upper = (Comparable) upperComparable;
+                    return rowIdSetToIntArray(rangeIndex.between(lower, upper, validator));
+                }
+                return null;
+            };
+            case StringPrefixIndex prefixIndex -> (operator, value, validator) ->
+                operator == Predicate.Operator.STARTING_WITH && value instanceof String s
+                        ? rowIdSetToIntArray(prefixIndex.startsWith(s))
+                        : null;
+            case StringSuffixIndex suffixIndex -> (operator, value, validator) ->
+                operator == Predicate.Operator.ENDING_WITH && value instanceof String s
+                        ? rowIdSetToIntArray(suffixIndex.endsWith(s))
+                        : null;
+            case CompositeHashIndex hashIndex -> (operator, value, validator) ->
+                operator == Predicate.Operator.EQ && value instanceof CompositeKey key
+                        ? rowIdSetToIntArray(hashIndex.lookup(key, validator))
+                        : null;
+            case CompositeRangeIndex rangeIndex -> (operator, value, validator) -> {
+                if (value instanceof CompositeKey key) {
+                    return switch (operator) {
+                        case EQ -> rowIdSetToIntArray(rangeIndex.lookup(key, validator));
+                        case GT -> rowIdSetToIntArray(rangeIndex.greaterThan(key, validator));
+                        case GTE -> rowIdSetToIntArray(rangeIndex.greaterThanOrEqual(key, validator));
+                        case LT -> rowIdSetToIntArray(rangeIndex.lessThan(key, validator));
+                        case LTE -> rowIdSetToIntArray(rangeIndex.lessThanOrEqual(key, validator));
+                        default -> null;
+                    };
+                }
+                if (operator == Predicate.Operator.BETWEEN
+                        && value instanceof Object[] range
+                        && range.length >= 2
+                        && range[0] instanceof CompositeKey lower
+                        && range[1] instanceof CompositeKey upper) {
+                    return rowIdSetToIntArray(rangeIndex.between(lower, upper, validator));
+                }
+                return null;
+            };
+            default -> (operator, value, validator) -> null;
+        };
+    }
+
+    @FunctionalInterface
+    private interface IndexProbe {
+        int[] query(Predicate.Operator operator, Object value, java.util.function.Predicate<RowId> validator);
     }
 
     private static int[] rowIdSetToIntArray(RowIdSet rowIdSet) {
@@ -2614,99 +2648,6 @@ public final class RepositoryRuntime<T> {
         return new SelectionImpl(trimmed);
     }
 
-    private int[] applyOrderBy(CompiledQuery query, int[] rows) {
-        CompiledQuery.CompiledOrderBy[] orderBy = query.orderBy();
-        if (orderBy == null || orderBy.length == 0 || rows.length < 2) {
-            return rows;
-        }
-
-        if (orderBy.length == 1) {
-            return applySingleOrderBy(rows, orderBy[0]);
-        }
-
-        return sortByMultipleColumns(rows, orderBy);
-    }
-
-    private int[] applySingleOrderBy(int[] rows, CompiledQuery.CompiledOrderBy orderBy) {
-
-        int columnIndex = orderBy.columnIndex();
-        boolean ascending = orderBy.ascending();
-        byte typeCode = plan.table().typeCodeAt(columnIndex);
-
-        return switch (typeCode) {
-            case TypeCodes.TYPE_INT,
-                    TypeCodes.TYPE_BOOLEAN,
-                    TypeCodes.TYPE_BYTE,
-                    TypeCodes.TYPE_SHORT,
-                    TypeCodes.TYPE_CHAR ->
-                sortByIntColumn(rows, columnIndex, ascending);
-            case TypeCodes.TYPE_FLOAT -> sortByFloatColumn(rows, columnIndex, ascending);
-            case TypeCodes.TYPE_LONG,
-                    TypeCodes.TYPE_INSTANT,
-                    TypeCodes.TYPE_LOCAL_DATE,
-                    TypeCodes.TYPE_LOCAL_DATE_TIME,
-                    TypeCodes.TYPE_DATE ->
-                sortByLongColumn(rows, columnIndex, ascending);
-            case TypeCodes.TYPE_DOUBLE -> sortByDoubleColumn(rows, columnIndex, ascending);
-            case TypeCodes.TYPE_STRING,
-                    TypeCodes.TYPE_BIG_DECIMAL,
-                    TypeCodes.TYPE_BIG_INTEGER ->
-                sortByStringColumn(rows, columnIndex, ascending);
-            default -> throw new UnsupportedOperationException("Unsupported sort type code: " + typeCode);
-        };
-    }
-
-    private int[] applyTopKOrderBy(CompiledQuery query, int[] rows, int k) {
-        CompiledQuery.CompiledOrderBy[] orderBy = query.orderBy();
-        if (orderBy.length == 1) {
-            return topKSingleColumn(rows, orderBy[0], k);
-        }
-        // For multi-column, fall back to full sort then limit (optimization: could use
-        // bounded heap)
-        var sortedRows = sortByMultipleColumns(rows, orderBy);
-        if (k < sortedRows.length) {
-            int[] limited = new int[k];
-            System.arraycopy(sortedRows, 0, limited, 0, k);
-            return limited;
-        }
-        return sortedRows;
-    }
-
-    private int[] topKSingleColumn(int[] rows, CompiledQuery.CompiledOrderBy orderBy, int k) {
-        int columnIndex = orderBy.columnIndex();
-        boolean ascending = orderBy.ascending();
-        byte typeCode = plan.table().typeCodeAt(columnIndex);
-
-        return switch (typeCode) {
-            case TypeCodes.TYPE_INT,
-                    TypeCodes.TYPE_BOOLEAN,
-                    TypeCodes.TYPE_BYTE,
-                    TypeCodes.TYPE_SHORT,
-                    TypeCodes.TYPE_CHAR ->
-                topKInt(rows, columnIndex, ascending, k);
-            case TypeCodes.TYPE_LONG,
-                    TypeCodes.TYPE_INSTANT,
-                    TypeCodes.TYPE_LOCAL_DATE,
-                    TypeCodes.TYPE_LOCAL_DATE_TIME,
-                    TypeCodes.TYPE_DATE ->
-                topKLong(rows, columnIndex, ascending, k);
-            case TypeCodes.TYPE_STRING,
-                    TypeCodes.TYPE_BIG_DECIMAL,
-                    TypeCodes.TYPE_BIG_INTEGER ->
-                topKString(rows, columnIndex, ascending, k);
-            default -> {
-                // Fall back to full sort for unsupported types
-                int[] sorted = sortBySingleColumn(rows, orderBy);
-                if (k < sorted.length) {
-                    int[] limited = new int[k];
-                    System.arraycopy(sorted, 0, limited, 0, k);
-                    yield limited;
-                }
-                yield sorted;
-            }
-        };
-    }
-
     private int[] limitRows(int[] rows, int limit) {
         if (limit >= rows.length) {
             return rows;
@@ -2717,20 +2658,31 @@ public final class RepositoryRuntime<T> {
     }
 
     private int[] topKInt(int[] rows, int columnIndex, boolean ascending, int k) {
+        return isPrimitiveNonNullColumn(columnIndex)
+                ? topKIntNonNull(rows, columnIndex, ascending, k)
+                : topKIntNullable(rows, columnIndex, ascending, k);
+    }
+
+    private int[] topKIntNonNull(int[] rows, int columnIndex, boolean ascending, int k) {
         GeneratedTable table = plan.table();
         int[] result = rows.clone();
         SortBuffers buffers = SORT_BUFFERS.get();
         int[] keys = buffers.intKeys(result.length);
-        if (isPrimitiveNonNullColumn(columnIndex)) {
-            for (int i = 0; i < result.length; i++) {
-                keys[i] = table.readInt(columnIndex, result[i]);
-            }
-            topKHeapIntNonNull(result, keys, k, ascending);
-            quickSortIntNonNull(result, keys, 0, k - 1, ascending);
-            int[] trimmed = new int[k];
-            System.arraycopy(result, 0, trimmed, 0, k);
-            return trimmed;
+        for (int i = 0; i < result.length; i++) {
+            keys[i] = table.readInt(columnIndex, result[i]);
         }
+        topKHeapIntNonNull(result, keys, k, ascending);
+        quickSortIntNonNull(result, keys, 0, k - 1, ascending);
+        int[] trimmed = new int[k];
+        System.arraycopy(result, 0, trimmed, 0, k);
+        return trimmed;
+    }
+
+    private int[] topKIntNullable(int[] rows, int columnIndex, boolean ascending, int k) {
+        GeneratedTable table = plan.table();
+        int[] result = rows.clone();
+        SortBuffers buffers = SORT_BUFFERS.get();
+        int[] keys = buffers.intKeys(result.length);
         boolean[] present = buffers.present(result.length);
         for (int i = 0; i < result.length; i++) {
             int row = result[i];
@@ -2835,20 +2787,31 @@ public final class RepositoryRuntime<T> {
     }
 
     private int[] topKLong(int[] rows, int columnIndex, boolean ascending, int k) {
+        return isPrimitiveNonNullColumn(columnIndex)
+                ? topKLongNonNull(rows, columnIndex, ascending, k)
+                : topKLongNullable(rows, columnIndex, ascending, k);
+    }
+
+    private int[] topKLongNonNull(int[] rows, int columnIndex, boolean ascending, int k) {
         GeneratedTable table = plan.table();
         int[] result = rows.clone();
         SortBuffers buffers = SORT_BUFFERS.get();
         long[] keys = buffers.longKeys(result.length);
-        if (isPrimitiveNonNullColumn(columnIndex)) {
-            for (int i = 0; i < result.length; i++) {
-                keys[i] = table.readLong(columnIndex, result[i]);
-            }
-            topKHeapLongNonNull(result, keys, k, ascending);
-            quickSortLongNonNull(result, keys, 0, k - 1, ascending);
-            int[] trimmed = new int[k];
-            System.arraycopy(result, 0, trimmed, 0, k);
-            return trimmed;
+        for (int i = 0; i < result.length; i++) {
+            keys[i] = table.readLong(columnIndex, result[i]);
         }
+        topKHeapLongNonNull(result, keys, k, ascending);
+        quickSortLongNonNull(result, keys, 0, k - 1, ascending);
+        int[] trimmed = new int[k];
+        System.arraycopy(result, 0, trimmed, 0, k);
+        return trimmed;
+    }
+
+    private int[] topKLongNullable(int[] rows, int columnIndex, boolean ascending, int k) {
+        GeneratedTable table = plan.table();
+        int[] result = rows.clone();
+        SortBuffers buffers = SORT_BUFFERS.get();
+        long[] keys = buffers.longKeys(result.length);
         boolean[] present = buffers.present(result.length);
         for (int i = 0; i < result.length; i++) {
             int row = result[i];
@@ -3042,26 +3005,33 @@ public final class RepositoryRuntime<T> {
             int columnIndex = orderBy[i].columnIndex();
             boolean ascending = orderBy[i].ascending();
             byte typeCode = table.typeCodeAt(columnIndex);
-            builders[i] = buildOrderKeyBuilder(columnIndex, ascending, typeCode);
+            builders[i] = buildOrderKeyBuilder(columnIndex, ascending, typeCode, isPrimitiveNonNullColumn(columnIndex));
         }
         return builders;
     }
 
-    private static OrderKeyBuilder buildOrderKeyBuilder(int columnIndex, boolean ascending, byte typeCode) {
+    private static OrderKeyBuilder buildOrderKeyBuilder(int columnIndex,
+            boolean ascending,
+            byte typeCode,
+            boolean primitiveNonNull) {
         return switch (typeCode) {
             case TypeCodes.TYPE_INT,
                     TypeCodes.TYPE_BOOLEAN,
                     TypeCodes.TYPE_BYTE,
                     TypeCodes.TYPE_SHORT,
                     TypeCodes.TYPE_CHAR ->
-                new IntOrderKeyBuilder(columnIndex, ascending);
+                primitiveNonNull
+                        ? new IntOrderKeyBuilderNonNull(columnIndex, ascending)
+                        : new IntOrderKeyBuilder(columnIndex, ascending);
             case TypeCodes.TYPE_FLOAT -> new FloatOrderKeyBuilder(columnIndex, ascending);
             case TypeCodes.TYPE_LONG,
                     TypeCodes.TYPE_INSTANT,
                     TypeCodes.TYPE_LOCAL_DATE,
                     TypeCodes.TYPE_LOCAL_DATE_TIME,
                     TypeCodes.TYPE_DATE ->
-                new LongOrderKeyBuilder(columnIndex, ascending);
+                primitiveNonNull
+                        ? new LongOrderKeyBuilderNonNull(columnIndex, ascending)
+                        : new LongOrderKeyBuilder(columnIndex, ascending);
             case TypeCodes.TYPE_DOUBLE -> new DoubleOrderKeyBuilder(columnIndex, ascending);
             case TypeCodes.TYPE_STRING,
                     TypeCodes.TYPE_BIG_DECIMAL,
@@ -3144,6 +3114,25 @@ public final class RepositoryRuntime<T> {
         }
     }
 
+    private static final class IntOrderKeyBuilderNonNull implements OrderKeyBuilder {
+        private final int columnIndex;
+        private final boolean ascending;
+
+        IntOrderKeyBuilderNonNull(int columnIndex, boolean ascending) {
+            this.columnIndex = columnIndex;
+            this.ascending = ascending;
+        }
+
+        @Override
+        public OrderKey build(GeneratedTable table, int[] rows) {
+            int[] values = new int[rows.length];
+            for (int i = 0; i < rows.length; i++) {
+                values[i] = table.readInt(columnIndex, rows[i]);
+            }
+            return new IntOrderKeyNonNull(ascending, values);
+        }
+    }
+
     private static final class FloatOrderKeyBuilder implements OrderKeyBuilder {
         private final int columnIndex;
         private final boolean ascending;
@@ -3185,6 +3174,25 @@ public final class RepositoryRuntime<T> {
                 values[i] = table.readLong(columnIndex, row);
             }
             return new LongOrderKey(ascending, present, values);
+        }
+    }
+
+    private static final class LongOrderKeyBuilderNonNull implements OrderKeyBuilder {
+        private final int columnIndex;
+        private final boolean ascending;
+
+        LongOrderKeyBuilderNonNull(int columnIndex, boolean ascending) {
+            this.columnIndex = columnIndex;
+            this.ascending = ascending;
+        }
+
+        @Override
+        public OrderKey build(GeneratedTable table, int[] rows) {
+            long[] values = new long[rows.length];
+            for (int i = 0; i < rows.length; i++) {
+                values[i] = table.readLong(columnIndex, rows[i]);
+            }
+            return new LongOrderKeyNonNull(ascending, values);
         }
     }
 
@@ -3259,6 +3267,27 @@ public final class RepositoryRuntime<T> {
         }
     }
 
+    private static final class IntOrderKeyNonNull implements OrderKey {
+        private final boolean ascending;
+        private final int[] keys;
+
+        IntOrderKeyNonNull(boolean ascending, int[] keys) {
+            this.ascending = ascending;
+            this.keys = keys;
+        }
+
+        @Override
+        public int compare(int left, int right) {
+            int cmp = Integer.compare(keys[left], keys[right]);
+            return ascending ? cmp : -cmp;
+        }
+
+        @Override
+        public void swap(int i, int j) {
+            RepositoryRuntime.swap(keys, i, j);
+        }
+    }
+
     private static final class LongOrderKey implements OrderKey {
         private final boolean ascending;
         private final boolean[] present;
@@ -3282,6 +3311,27 @@ public final class RepositoryRuntime<T> {
         @Override
         public void swap(int i, int j) {
             RepositoryRuntime.swap(present, i, j);
+            RepositoryRuntime.swap(keys, i, j);
+        }
+    }
+
+    private static final class LongOrderKeyNonNull implements OrderKey {
+        private final boolean ascending;
+        private final long[] keys;
+
+        LongOrderKeyNonNull(boolean ascending, long[] keys) {
+            this.ascending = ascending;
+            this.keys = keys;
+        }
+
+        @Override
+        public int compare(int left, int right) {
+            int cmp = Long.compare(keys[left], keys[right]);
+            return ascending ? cmp : -cmp;
+        }
+
+        @Override
+        public void swap(int i, int j) {
             RepositoryRuntime.swap(keys, i, j);
         }
     }
@@ -3409,17 +3459,27 @@ public final class RepositoryRuntime<T> {
     }
 
     private int[] sortByIntColumn(int[] rows, int columnIndex, boolean ascending) {
+        return isPrimitiveNonNullColumn(columnIndex)
+                ? sortByIntColumnNonNull(rows, columnIndex, ascending)
+                : sortByIntColumnNullable(rows, columnIndex, ascending);
+    }
+
+    private int[] sortByIntColumnNonNull(int[] rows, int columnIndex, boolean ascending) {
         int[] result = rows.clone();
         SortBuffers buffers = SORT_BUFFERS.get();
         int[] keys = buffers.intKeys(result.length);
-        if (isPrimitiveNonNullColumn(columnIndex)) {
-            GeneratedTable table = plan.table();
-            for (int i = 0; i < result.length; i++) {
-                keys[i] = table.readInt(columnIndex, result[i]);
-            }
-            quickSortIntNonNull(result, keys, 0, result.length - 1, ascending);
-            return result;
+        GeneratedTable table = plan.table();
+        for (int i = 0; i < result.length; i++) {
+            keys[i] = table.readInt(columnIndex, result[i]);
         }
+        quickSortIntNonNull(result, keys, 0, result.length - 1, ascending);
+        return result;
+    }
+
+    private int[] sortByIntColumnNullable(int[] rows, int columnIndex, boolean ascending) {
+        int[] result = rows.clone();
+        SortBuffers buffers = SORT_BUFFERS.get();
+        int[] keys = buffers.intKeys(result.length);
         boolean[] present = buffers.present(result.length);
         GeneratedTable table = plan.table();
         for (int i = 0; i < result.length; i++) {
@@ -3447,17 +3507,27 @@ public final class RepositoryRuntime<T> {
     }
 
     private int[] sortByLongColumn(int[] rows, int columnIndex, boolean ascending) {
+        return isPrimitiveNonNullColumn(columnIndex)
+                ? sortByLongColumnNonNull(rows, columnIndex, ascending)
+                : sortByLongColumnNullable(rows, columnIndex, ascending);
+    }
+
+    private int[] sortByLongColumnNonNull(int[] rows, int columnIndex, boolean ascending) {
         int[] result = rows.clone();
         SortBuffers buffers = SORT_BUFFERS.get();
         long[] keys = buffers.longKeys(result.length);
-        if (isPrimitiveNonNullColumn(columnIndex)) {
-            GeneratedTable table = plan.table();
-            for (int i = 0; i < result.length; i++) {
-                keys[i] = table.readLong(columnIndex, result[i]);
-            }
-            quickSortLongNonNull(result, keys, 0, result.length - 1, ascending);
-            return result;
+        GeneratedTable table = plan.table();
+        for (int i = 0; i < result.length; i++) {
+            keys[i] = table.readLong(columnIndex, result[i]);
         }
+        quickSortLongNonNull(result, keys, 0, result.length - 1, ascending);
+        return result;
+    }
+
+    private int[] sortByLongColumnNullable(int[] rows, int columnIndex, boolean ascending) {
+        int[] result = rows.clone();
+        SortBuffers buffers = SORT_BUFFERS.get();
+        long[] keys = buffers.longKeys(result.length);
         boolean[] present = buffers.present(result.length);
         GeneratedTable table = plan.table();
         for (int i = 0; i < result.length; i++) {
