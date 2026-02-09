@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Memris - Heap-based, Zero-Reflection In-Memory Storage for Java 21</title>
+    <meta name="description" content="Memris is a heap-based, columnar in-memory storage engine for Java 21 with zero-reflection hot paths, generated tables, and Spring Data-style query methods.">
+    <meta name="theme-color" content="#07111f">
+
+    <meta property="og:title" content="Memris">
+    <meta property="og:description" content="Heap-based, zero-reflection, columnar in-memory storage for Java 21.">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://thejuampi.github.io/memris/">
+    <meta property="og:image" content="https://thejuampi.github.io/memris/assets/og.png">
+
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Memris">
+    <meta name="twitter:description" content="Heap-based, zero-reflection, columnar in-memory storage for Java 21.">
+    <meta name="twitter:image" content="https://thejuampi.github.io/memris/assets/og.png">
+
+    <link rel="canonical" href="https://thejuampi.github.io/memris/">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Spectral:wght@500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="assets/styles.css">
+    <script defer src="assets/main.js"></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+
+    <header class="site-header">
+      <div class="container nav-wrap">
+        <a class="brand" href="#top" aria-label="Memris home">Memris</a>
+        <nav aria-label="Main">
+          <ul class="nav-list">
+            <li><a href="#why">Why</a></li>
+            <li><a href="#architecture">Architecture</a></li>
+            <li><a href="#query">Query</a></li>
+            <li><a href="#concurrency">Concurrency</a></li>
+            <li><a href="#roadmap">Roadmap</a></li>
+          </ul>
+        </nav>
+      </div>
+    </header>
+
+    <main id="main">
+      <section id="top" class="hero section reveal">
+        <div class="container hero-grid">
+          <div>
+            <p class="eyebrow">Java 21 In-Memory Engine</p>
+            <h1>Build low-latency data paths without leaving the JVM heap.</h1>
+            <p class="hero-copy">
+              Memris combines primitive-backed columnar storage, ByteBuddy-generated tables,
+              and a Spring Data-style query surface to keep hot paths reflection-free and predictable.
+            </p>
+            <div class="hero-actions">
+              <a class="btn btn-primary" href="https://github.com/Thejuampi/memris#readme">Read the README</a>
+              <a class="btn btn-secondary" href="#architecture">See architecture</a>
+            </div>
+          </div>
+          <aside class="hero-panel" aria-label="Memris architecture flow">
+            <p class="panel-title">Runtime shape</p>
+            <ol>
+              <li>Repository method tokenized by <code>QueryMethodLexer</code></li>
+              <li><code>QueryPlanner</code> resolves to <code>CompiledQuery</code></li>
+              <li><code>HeapRuntimeKernel</code> dispatches by <code>TypeCodes</code></li>
+              <li>Generated table scans primitive page columns directly</li>
+            </ol>
+          </aside>
+        </div>
+      </section>
+
+      <section id="why" class="section reveal">
+        <div class="container">
+          <h2>Why Memris</h2>
+          <div class="cards cards-4">
+            <article class="card">
+              <h3>Heap-first by design</h3>
+              <p>100% heap-based primitive columns keep setup simple and predictable.</p>
+            </article>
+            <article class="card">
+              <h3>Zero-reflection hot paths</h3>
+              <p>Build-time metadata + generated tables avoid reflective dispatch at runtime.</p>
+            </article>
+            <article class="card">
+              <h3>Familiar query surface</h3>
+              <p>Use Spring Data-style method naming like <code>findBy*</code>, <code>countBy*</code>, and <code>existsBy*</code>.</p>
+            </article>
+            <article class="card">
+              <h3>Practical indexing</h3>
+              <p>Hash indexes for O(1) lookups and range indexes for O(log n) traversals.</p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section id="architecture" class="section reveal">
+        <div class="container">
+          <h2>How it works</h2>
+          <div class="timeline">
+            <article>
+              <p class="stage">Build-time</p>
+              <h3>Entity metadata -> generated table</h3>
+              <p>Memris scans entities once, builds table metadata, and emits optimized table classes with ByteBuddy.</p>
+            </article>
+            <article>
+              <p class="stage">Runtime</p>
+              <h3>Compiled query -> direct scans</h3>
+              <p>The runtime kernel executes pre-resolved operations and scans typed columns with index and type-code dispatch.</p>
+            </article>
+          </div>
+          <ul class="pills" aria-label="Design principles">
+            <li>O(1) first</li>
+            <li>Primitive-only APIs</li>
+            <li>Static TypeCodes</li>
+            <li>Dense arrays over maps</li>
+          </ul>
+        </div>
+      </section>
+
+      <section id="query" class="section reveal">
+        <div class="container split">
+          <div>
+            <h2>Query capabilities</h2>
+            <p>
+              Memris supports broad query-method operator coverage, including comparisons,
+              string matching, null checks, ranges, ordering, and limits.
+            </p>
+            <ul class="list">
+              <li>Comparison operators: EQ, NE, GT, GTE, LT, LTE, BETWEEN</li>
+              <li>String operators: LIKE, STARTING_WITH, ENDING_WITH, CONTAINING, IGNORE_CASE</li>
+              <li>Collection and logical operators: IN, NOT_IN, AND, OR</li>
+              <li>JPQL-like <code>@Query</code> subset for explicit query text</li>
+            </ul>
+            <a class="text-link" href="docs/QUERY.md">View full query reference</a>
+          </div>
+          <pre class="code-sample"><code>public interface UserRepository extends MemrisRepository&lt;User&gt; {
+  Optional&lt;User&gt; findByEmail(String email);
+
+  List&lt;User&gt; findByAgeBetween(int min, int max);
+
+  long countByAgeGreaterThan(int age);
+
+  boolean existsByEmail(String email);
+}</code></pre>
+        </div>
+      </section>
+
+      <section id="concurrency" class="section reveal">
+        <div class="container">
+          <h2>Concurrency guarantees</h2>
+          <div class="cards cards-3">
+            <article class="card">
+              <h3>Multi-reader safe</h3>
+              <p>Queries can run concurrently using lock-free lookups and safe published row visibility.</p>
+            </article>
+            <article class="card">
+              <h3>Multi-writer support</h3>
+              <p>Row writes coordinate with CAS + SeqLock semantics for consistent typed reads.</p>
+            </article>
+            <article class="card">
+              <h3>Clear consistency model</h3>
+              <p>Best-effort isolation with row-level coordination and eventual index consistency.</p>
+            </article>
+          </div>
+          <a class="text-link" href="docs/CONCURRENCY.md">Read concurrency model details</a>
+        </div>
+      </section>
+
+      <section class="section reveal" aria-labelledby="benchmark-title">
+        <div class="container">
+          <h2 id="benchmark-title">Performance posture</h2>
+          <div class="stats">
+            <article>
+              <p class="num">O(1)</p>
+              <p>Hash index lookup complexity</p>
+            </article>
+            <article>
+              <p class="num">O(log n)</p>
+              <p>Range index lookup complexity</p>
+            </article>
+            <article>
+              <p class="num">~1ns</p>
+              <p>Bytecode generation overhead target</p>
+            </article>
+          </div>
+          <p class="fine-print">Complexity and overhead references are documented in project docs and README benchmarks.</p>
+        </div>
+      </section>
+
+      <section id="roadmap" class="section reveal">
+        <div class="container split">
+          <div>
+            <h2>Roadmap</h2>
+            <p>
+              Critical concurrency fixes and query optimization phases are implemented.
+              Upcoming work focuses on advanced concurrency strategies and longer-term storage evolution.
+            </p>
+            <a class="text-link" href="docs/ROADMAP.md">Explore the full roadmap</a>
+          </div>
+          <div class="roadmap-panel">
+            <h3>Planned direction</h3>
+            <ul class="list">
+              <li>Stripe-based index updates</li>
+              <li>Snapshot isolation and transaction primitives</li>
+              <li>FFM off-heap storage (planned, long-term)</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <section class="section reveal">
+        <div class="container cta-band">
+          <h2>Get started in minutes</h2>
+          <p>Add Memris from Maven Central, define an entity, and create a repository interface with familiar query methods.</p>
+          <div class="hero-actions">
+            <a class="btn btn-primary" href="https://github.com/Thejuampi/memris#readme">Open README</a>
+            <a class="btn btn-secondary" href="docs/DEVELOPMENT.md">Development guide</a>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <div class="container footer-grid">
+        <p><strong>Memris</strong><br>Heap-based, zero-reflection in-memory storage for Java 21.</p>
+        <ul>
+          <li><a href="https://github.com/Thejuampi/memris">Repository</a></li>
+          <li><a href="docs/ARCHITECTURE.md">Architecture</a></li>
+          <li><a href="docs/QUERY.md">Query docs</a></li>
+          <li><a href="docs/CONCURRENCY.md">Concurrency docs</a></li>
+        </ul>
+      </div>
+    </footer>
+  </body>
+</html>
