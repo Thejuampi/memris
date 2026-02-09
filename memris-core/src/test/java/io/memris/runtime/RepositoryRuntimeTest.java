@@ -310,6 +310,22 @@ class RepositoryRuntimeTest {
     }
 
     @Test
+    @DisplayName("Should find by age in int array")
+    void shouldFindByAgeInIntArray() {
+        TestEntityRepository repo = arena.createRepository(TestEntityRepository.class);
+        repo.save(new TestEntity(null, "A", 20));
+        repo.save(new TestEntity(null, "B", 30));
+        repo.save(new TestEntity(null, "C", 40));
+
+        List<TestEntity> results = repo.findByAgeIn(new int[] { 20, 40 });
+
+        assertEntitiesMatchAnyOrder(results, List.of(
+                new TestEntity(null, "A", 20),
+                new TestEntity(null, "C", 40)
+        ), "id");
+    }
+
+    @Test
     @DisplayName("Should count by name")
     void shouldCountByName() {
         // Given
