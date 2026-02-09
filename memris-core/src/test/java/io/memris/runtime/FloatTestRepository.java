@@ -7,4 +7,8 @@ public interface FloatTestRepository extends MemrisRepository<FloatTestEntity> {
     FloatTestEntity save(FloatTestEntity entity);
 
     List<FloatTestEntity> findByValueBetween(float min, float max);
+
+    List<FloatTestEntity> findByOrderByValueAsc();
+
+    List<FloatTestEntity> findTop2ByOrderByValueAsc();
 }
