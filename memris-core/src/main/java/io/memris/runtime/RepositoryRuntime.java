@@ -31,8 +31,11 @@ import io.memris.storage.Selection;
 import io.memris.storage.SelectionImpl;
 import io.memris.runtime.codegen.RuntimeExecutorGenerator;
 import io.memris.runtime.dispatch.ConditionProgramCompiler;
+import io.memris.runtime.dispatch.ConditionSelectionOrchestrator;
+import io.memris.runtime.dispatch.CompositeIndexSelector;
 import io.memris.runtime.dispatch.DirectConditionExecutor;
 import io.memris.runtime.dispatch.IndexProbeCompiler;
+import io.memris.runtime.dispatch.IndexSelectionDispatcher;
 import io.memris.runtime.dispatch.InIndexSelector;
 import io.memris.runtime.dispatch.MultiColumnOrderCompiler;
 import io.memris.runtime.dispatch.SingleOrderProgramCompiler;
@@ -84,6 +87,7 @@ public final class RepositoryRuntime<T> {
     private final ManyToManyPlan[] manyToManyPlans;
     private final IndexFieldReader[] indexFieldReaders;
     private final IndexPlan[] indexPlans;
+    private final CompositeIndexSelector.CompositeIndexPlan[] compositeIndexPlans;
     private final Map<String, IndexPlan> indexPlansByField;
     private final AtomicLong idCounter;
     private final IdLookup idLookup;
@@ -155,6 +159,7 @@ public final class RepositoryRuntime<T> {
         this.oneToManyPlans = buildOneToManyPlans();
         this.manyToManyPlans = buildManyToManyPlans();
         this.indexPlans = buildIndexPlans(metadata);
+        this.compositeIndexPlans = toCompositeIndexPlans(indexPlans);
         this.indexFieldReaders = buildIndexFieldReaders(metadata, indexPlans);
         this.indexPlansByField = buildIndexPlansByField(indexPlans);
         this.hasCompositeIndexPlans = hasCompositeIndexPlans(indexPlans);
@@ -314,6 +319,31 @@ public final class RepositoryRuntime<T> {
             }
         }
         return false;
+    }
+
+    private static CompositeIndexSelector.CompositeIndexPlan[] toCompositeIndexPlans(IndexPlan[] plans) {
+        if (plans == null || plans.length == 0) {
+            return new CompositeIndexSelector.CompositeIndexPlan[0];
+        }
+        var count = 0;
+        for (var plan : plans) {
+            if (plan != null && plan.columnPositions().length > 1) {
+                count++;
+            }
+        }
+        if (count == 0) {
+            return new CompositeIndexSelector.CompositeIndexPlan[0];
+        }
+        var compositePlans = new CompositeIndexSelector.CompositeIndexPlan[count];
+        var index = 0;
+        for (var plan : plans) {
+            if (plan == null || plan.columnPositions().length <= 1) {
+                continue;
+            }
+            compositePlans[index++] = new CompositeIndexSelector.CompositeIndexPlan(plan.indexName(),
+                    plan.columnPositions());
+        }
+        return compositePlans;
     }
 
     private static OrderExecutor buildOrderExecutor(CompiledQuery query, GeneratedTable table,
@@ -2050,230 +2080,43 @@ public final class RepositoryRuntime<T> {
     }
 
     private Selection executeConditions(CompiledQuery query, Object[] args) {
-        CompiledQuery.CompiledCondition[] conditions = query.conditions();
-        ConditionExecutor[] executors = plan.conditionExecutorsFor(query);
-
+        var conditions = query.conditions();
         if (conditions.length == 0) {
-            int[] allRows = plan.table().scanAll();
+            var allRows = plan.table().scanAll();
             return applyJoins(query, args, selectionFromRows(allRows));
         }
-
-        Selection combined = null;
-        for (var groupStart = 0; groupStart < conditions.length;) {
-            var groupEnd = groupStart;
-            while (groupEnd < conditions.length - 1
-                    && conditions[groupEnd].nextCombinator() != LogicalQuery.Combinator.OR) {
-                groupEnd++;
-            }
-            var groupSelection = executeConditionGroup(conditions, executors, groupStart, groupEnd, args);
-            combined = (combined == null) ? groupSelection : combined.union(groupSelection);
-            groupStart = groupEnd + 1;
-        }
+        var executors = plan.conditionExecutorsFor(query);
+        var combined = ConditionSelectionOrchestrator.execute(conditions,
+                executors,
+                args,
+                this::selectWithCompositeIndex,
+                (compiled, compiledExecutors, index, runtimeArgs) -> compiledExecutors != null
+                        && index < compiledExecutors.length
+                                ? compiledExecutors[index].execute(this, runtimeArgs)
+                                : selectWithIndex(compiled[index], runtimeArgs),
+                () -> selectionFromRows(plan.table().scanAll()));
         return applyJoins(query, args, combined);
-    }
-
-    private Selection executeConditionGroup(CompiledQuery.CompiledCondition[] conditions,
-            ConditionExecutor[] executors,
-            int start,
-            int end,
-            Object[] args) {
-        var consumed = new boolean[end - start + 1];
-        Selection current = selectWithCompositeIndex(conditions, start, end, args, consumed);
-        for (var i = start; i <= end; i++) {
-            if (consumed[i - start]) {
-                continue;
-            }
-            var next = executors != null && i < executors.length
-                    ? executors[i].execute(this, args)
-                    : selectWithIndex(conditions[i], args);
-            current = current == null ? next : current.intersect(next);
-        }
-        if (current == null) {
-            return selectionFromRows(plan.table().scanAll());
-        }
-        return current;
     }
 
     private Selection selectWithCompositeIndex(CompiledQuery.CompiledCondition[] conditions, int start, int end,
             Object[] args,
             boolean[] consumed) {
-        if (indexPlans.length == 0 || arena == null) {
+        if (compositeIndexPlans.length == 0 || arena == null) {
             return null;
         }
         var indexes = entityIndexes();
         if (indexes == null) {
             return null;
         }
-        for (var plan : indexPlans) {
-            if (plan.columnPositions().length < 2) {
-                continue;
-            }
-            var index = indexes.get(plan.indexName());
-            if (index == null) {
-                continue;
-            }
-
-            if (index instanceof CompositeHashIndex) {
-                var keyParts = new Object[plan.columnPositions().length];
-                var localConsumed = new boolean[consumed.length];
-                var match = true;
-                for (var i = 0; i < plan.columnPositions().length; i++) {
-                    var conditionIndex = findConditionIndex(conditions, start, end, plan.columnPositions()[i],
-                            LogicalQuery.Operator.EQ);
-                    if (conditionIndex < 0) {
-                        match = false;
-                        break;
-                    }
-                    var condition = conditions[conditionIndex];
-                    keyParts[i] = args[condition.argumentIndex()];
-                    localConsumed[conditionIndex - start] = true;
-                }
-                if (!match) {
-                    continue;
-                }
-                var key = CompositeKey.of(keyParts);
-                var rows = queryIndexFromObject(index, Predicate.Operator.EQ, key);
-                if (rows != null) {
-                    System.arraycopy(localConsumed, 0, consumed, 0, consumed.length);
-                    return selectionFromRows(rows);
-                }
-                continue;
-            }
-
-            if (index instanceof CompositeRangeIndex) {
-                var probe = buildRangeProbe(conditions, start, end, plan.columnPositions(), args);
-                if (probe == null) {
-                    continue;
-                }
-                var value = probe.upper() == null
-                        ? probe.lower()
-                        : new Object[] { probe.lower(), probe.upper() };
-                var rows = queryIndexFromObject(index, probe.operator(), value);
-                if (rows != null) {
-                    System.arraycopy(probe.consumed(), 0, consumed, 0, consumed.length);
-                    return selectionFromRows(rows);
-                }
-            }
-        }
-        return null;
-    }
-
-    private RangeProbe buildRangeProbe(CompiledQuery.CompiledCondition[] conditions,
-            int start,
-            int end,
-            int[] columnPositions,
-            Object[] args) {
-        var consumed = new boolean[end - start + 1];
-        var lower = new Object[columnPositions.length];
-        var upper = new Object[columnPositions.length];
-        var prefix = 0;
-        while (prefix < columnPositions.length) {
-            var conditionIndex = findConditionIndex(conditions, start, end, columnPositions[prefix],
-                    LogicalQuery.Operator.EQ);
-            if (conditionIndex < 0) {
-                break;
-            }
-            var condition = conditions[conditionIndex];
-            var value = args[condition.argumentIndex()];
-            lower[prefix] = value;
-            upper[prefix] = value;
-            consumed[conditionIndex - start] = true;
-            prefix++;
-        }
-        if (prefix == 0) {
-            return null;
-        }
-        if (prefix == columnPositions.length) {
-            return new RangeProbe(Predicate.Operator.EQ,
-                    CompositeKey.of(lower),
-                    null,
-                    consumed);
-        }
-
-        var rangeConditionIndex = findConditionIndexAny(conditions, start, end, columnPositions[prefix]);
-        if (rangeConditionIndex >= 0) {
-            var range = conditions[rangeConditionIndex];
-            var op = range.operator();
-            var value = args[range.argumentIndex()];
-            for (var i = prefix + 1; i < columnPositions.length; i++) {
-                lower[i] = CompositeKey.minSentinel();
-                upper[i] = CompositeKey.maxSentinel();
-            }
-            consumed[rangeConditionIndex - start] = true;
-            switch (op) {
-                case EQ -> {
-                    lower[prefix] = value;
-                    upper[prefix] = value;
-                    return new RangeProbe(Predicate.Operator.BETWEEN, CompositeKey.of(lower), CompositeKey.of(upper),
-                            consumed);
-                }
-                case GT -> {
-                    lower[prefix] = value;
-                    upper[prefix] = CompositeKey.maxSentinel();
-                    return new RangeProbe(Predicate.Operator.GT, CompositeKey.of(lower), null, consumed);
-                }
-                case GTE -> {
-                    lower[prefix] = value;
-                    return new RangeProbe(Predicate.Operator.GTE, CompositeKey.of(lower), null, consumed);
-                }
-                case LT -> {
-                    upper[prefix] = value;
-                    return new RangeProbe(Predicate.Operator.LT, CompositeKey.of(upper), null, consumed);
-                }
-                case LTE -> {
-                    upper[prefix] = value;
-                    return new RangeProbe(Predicate.Operator.LTE, CompositeKey.of(upper), null, consumed);
-                }
-                case BETWEEN -> {
-                    var second = args[range.argumentIndex() + 1];
-                    lower[prefix] = value;
-                    upper[prefix] = second;
-                    return new RangeProbe(Predicate.Operator.BETWEEN, CompositeKey.of(lower), CompositeKey.of(upper),
-                            consumed);
-                }
-                default -> {
-                    return null;
-                }
-            }
-        }
-
-        for (var i = prefix; i < columnPositions.length; i++) {
-            lower[i] = CompositeKey.minSentinel();
-            upper[i] = CompositeKey.maxSentinel();
-        }
-        return new RangeProbe(Predicate.Operator.BETWEEN, CompositeKey.of(lower), CompositeKey.of(upper), consumed);
-    }
-
-    private int findConditionIndex(CompiledQuery.CompiledCondition[] conditions,
-            int start,
-            int end,
-            int columnIndex,
-            LogicalQuery.Operator operator) {
-        for (var i = start; i <= end; i++) {
-            var condition = conditions[i];
-            if (condition.columnIndex() == columnIndex && condition.operator() == operator && !condition.ignoreCase()) {
-                return i;
-            }
-        }
-        return -1;
-    }
-
-    private int findConditionIndexAny(CompiledQuery.CompiledCondition[] conditions, int start, int end,
-            int columnIndex) {
-        for (var i = start; i <= end; i++) {
-            var condition = conditions[i];
-            if (condition.columnIndex() != columnIndex || condition.ignoreCase()) {
-                continue;
-            }
-            switch (condition.operator()) {
-                case EQ, GT, GTE, LT, LTE, BETWEEN -> {
-                    return i;
-                }
-                default -> {
-                }
-            }
-        }
-        return -1;
+        return CompositeIndexSelector.select(compositeIndexPlans,
+                indexes,
+                conditions,
+                start,
+                end,
+                args,
+                consumed,
+                this::queryIndexFromObject,
+                this::selectionFromRows);
     }
 
     private Selection selectWithIndex(CompiledQuery.CompiledCondition condition, Object[] args) {
@@ -2282,55 +2125,25 @@ public final class RepositoryRuntime<T> {
             return fallbackExecutor.execute(plan.table(), plan.kernel(), args);
         }
 
-        String fieldName = resolveFieldName(condition.columnIndex());
+        var fieldName = resolveFieldName(condition.columnIndex());
         if (fieldName == null) {
             return fallbackExecutor.execute(plan.table(), plan.kernel(), args);
         }
 
-        LogicalQuery.Operator operator = condition.operator();
-        Object value = null;
-        if (operator != LogicalQuery.Operator.IS_NULL && operator != LogicalQuery.Operator.NOT_NULL) {
-            if (condition.argumentIndex() < 0 || condition.argumentIndex() >= args.length) {
-                return fallbackExecutor.execute(plan.table(), plan.kernel(), args);
-            }
-            value = args[condition.argumentIndex()];
-        }
+        var rows = IndexSelectionDispatcher.selectRows(condition,
+                args,
+                (operator, value) -> queryIndex(metadata.entityClass(),
+                        fieldName,
+                        operator.toPredicateOperator(),
+                        value),
+                value -> {
+                    var selection = selectWithIndexForIn(fieldName, value);
+                    return selection == null ? null : selection.toIntArray();
+                });
 
-        if (operator == LogicalQuery.Operator.IN) {
-            Selection selection = selectWithIndexForIn(fieldName, value);
-            return selection != null ? selection : fallbackExecutor.execute(plan.table(), plan.kernel(), args);
-        }
-
-        if (operator == LogicalQuery.Operator.BETWEEN) {
-            if (condition.argumentIndex() + 1 >= args.length) {
-                return fallbackExecutor.execute(plan.table(), plan.kernel(), args);
-            }
-            Object[] range = new Object[] { args[condition.argumentIndex()], args[condition.argumentIndex() + 1] };
-            int[] rows = queryIndex(metadata.entityClass(), fieldName, operator.toPredicateOperator(), range);
-            return rows != null ? selectionFromRows(rows) : fallbackExecutor.execute(plan.table(), plan.kernel(), args);
-        }
-
-        switch (operator) {
-            case EQ, GT, GTE, LT, LTE -> {
-                int[] rows = queryIndex(metadata.entityClass(), fieldName, operator.toPredicateOperator(),
-                        value);
-                if (rows != null) {
-                    return selectionFromRows(rows);
-                }
-            }
-            case STARTING_WITH, ENDING_WITH -> {
-                // Check if prefix/suffix index is available for pattern matching
-                int[] rows = queryIndex(metadata.entityClass(), fieldName, operator.toPredicateOperator(),
-                        value);
-                if (rows != null) {
-                    return selectionFromRows(rows);
-                }
-            }
-            default -> {
-            }
-        }
-
-        return fallbackExecutor.execute(plan.table(), plan.kernel(), args);
+        return rows != null
+                ? selectionFromRows(rows)
+                : fallbackExecutor.execute(plan.table(), plan.kernel(), args);
     }
 
     private DirectConditionExecutor directExecutorFor(CompiledQuery.CompiledCondition condition) {
@@ -3889,13 +3702,6 @@ public final class RepositoryRuntime<T> {
             String[] fieldNames,
             int[] columnPositions,
             io.memris.core.Index.IndexType indexType) {
-    }
-
-    private record RangeProbe(
-            Predicate.Operator operator,
-            CompositeKey lower,
-            CompositeKey upper,
-            boolean[] consumed) {
     }
 
     private record EntityRuntimeLayout(
