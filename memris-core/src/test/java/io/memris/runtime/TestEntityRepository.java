@@ -48,6 +48,8 @@ public interface TestEntityRepository extends MemrisRepository<TestEntity> {
     List<TestEntity> findByAgeGreaterThan(int age);
     
     List<TestEntity> findByAgeBetween(int min, int max);
+
+    List<TestEntity> findByAgeIn(int[] ages);
     
     long countByName(String name);
     
