@@ -10,48 +10,105 @@ public final class CompositeRangeProbeBuilder {
     private CompositeRangeProbeBuilder() {
     }
 
-    public static CompositeRangeProbe build(CompiledQuery.CompiledCondition[] conditions,
+    static CompiledRangeShape compileShape(CompiledQuery.CompiledCondition[] conditions,
             int start,
             int end,
-            int[] columnPositions,
-            Object[] args) {
-        var consumed = new boolean[end - start + 1];
-        var lower = new Object[columnPositions.length];
-        var upper = new Object[columnPositions.length];
+            int[] columnPositions) {
+        if (columnPositions == null || columnPositions.length == 0) {
+            return null;
+        }
+
+        var prefixConditionIndexes = new int[columnPositions.length];
+        var prefixArgumentIndexes = new int[columnPositions.length];
         var prefix = 0;
         while (prefix < columnPositions.length) {
-            var conditionIndex = findConditionIndex(conditions, start, end, columnPositions[prefix],
-                    LogicalQuery.Operator.EQ);
+            var conditionIndex = findConditionIndex(conditions, start, end, columnPositions[prefix], LogicalQuery.Operator.EQ);
             if (conditionIndex < 0) {
                 break;
             }
             var condition = conditions[conditionIndex];
-            var value = args[condition.argumentIndex()];
-            lower[prefix] = value;
-            upper[prefix] = value;
-            consumed[conditionIndex - start] = true;
+            prefixConditionIndexes[prefix] = conditionIndex;
+            prefixArgumentIndexes[prefix] = condition.argumentIndex();
             prefix++;
         }
         if (prefix == 0) {
             return null;
         }
+
+        var trimmedPrefixConditionIndexes = new int[prefix];
+        var trimmedPrefixArgumentIndexes = new int[prefix];
+        System.arraycopy(prefixConditionIndexes, 0, trimmedPrefixConditionIndexes, 0, prefix);
+        System.arraycopy(prefixArgumentIndexes, 0, trimmedPrefixArgumentIndexes, 0, prefix);
+
         if (prefix == columnPositions.length) {
+            return new CompiledRangeShape(columnPositions.length,
+                    trimmedPrefixConditionIndexes,
+                    trimmedPrefixArgumentIndexes,
+                    -1,
+                    -1,
+                    null,
+                    true);
+        }
+
+        var rangeConditionIndex = findConditionIndexAny(conditions, start, end, columnPositions[prefix]);
+        if (rangeConditionIndex < 0) {
+            return new CompiledRangeShape(columnPositions.length,
+                    trimmedPrefixConditionIndexes,
+                    trimmedPrefixArgumentIndexes,
+                    -1,
+                    -1,
+                    null,
+                    false);
+        }
+
+        var range = conditions[rangeConditionIndex];
+        return new CompiledRangeShape(columnPositions.length,
+                trimmedPrefixConditionIndexes,
+                trimmedPrefixArgumentIndexes,
+                rangeConditionIndex,
+                range.argumentIndex(),
+                range.operator(),
+                false);
+    }
+
+    public static CompositeRangeProbe build(CompiledQuery.CompiledCondition[] conditions,
+            int start,
+            int end,
+            int[] columnPositions,
+            Object[] args) {
+        var shape = compileShape(conditions, start, end, columnPositions);
+        if (shape == null) {
+            return null;
+        }
+        var consumed = new boolean[end - start + 1];
+        for (var conditionIndex : shape.prefixConditionIndexes()) {
+            consumed[conditionIndex - start] = true;
+        }
+
+        var lower = new Object[columnPositions.length];
+        var upper = new Object[columnPositions.length];
+        for (var i = 0; i < shape.prefixArgumentIndexes().length; i++) {
+            var value = args[shape.prefixArgumentIndexes()[i]];
+            lower[i] = value;
+            upper[i] = value;
+        }
+
+        var prefix = shape.prefixArgumentIndexes().length;
+        if (shape.fullEquality()) {
             return new CompositeRangeProbe(Predicate.Operator.EQ,
                     CompositeKey.of(lower),
                     null,
                     consumed);
         }
 
-        var rangeConditionIndex = findConditionIndexAny(conditions, start, end, columnPositions[prefix]);
-        if (rangeConditionIndex >= 0) {
-            var range = conditions[rangeConditionIndex];
-            var operator = range.operator();
-            var value = args[range.argumentIndex()];
+        var operator = shape.rangeOperator();
+        if (operator != null) {
+            var value = args[shape.rangeArgumentIndex()];
             for (var i = prefix + 1; i < columnPositions.length; i++) {
                 lower[i] = CompositeKey.minSentinel();
                 upper[i] = CompositeKey.maxSentinel();
             }
-            consumed[rangeConditionIndex - start] = true;
+            consumed[shape.rangeConditionIndex() - start] = true;
             return switch (operator) {
                 case EQ -> {
                     lower[prefix] = value;
@@ -79,7 +136,7 @@ public final class CompositeRangeProbeBuilder {
                     yield new CompositeRangeProbe(Predicate.Operator.LTE, CompositeKey.of(upper), null, consumed);
                 }
                 case BETWEEN -> {
-                    var second = args[range.argumentIndex() + 1];
+                    var second = args[shape.rangeArgumentIndex() + 1];
                     lower[prefix] = value;
                     upper[prefix] = second;
                     yield new CompositeRangeProbe(Predicate.Operator.BETWEEN,
@@ -99,6 +156,29 @@ public final class CompositeRangeProbeBuilder {
                 CompositeKey.of(lower),
                 CompositeKey.of(upper),
                 consumed);
+    }
+
+    record CompiledRangeShape(int width,
+            int[] prefixConditionIndexes,
+            int[] prefixArgumentIndexes,
+            int rangeConditionIndex,
+            int rangeArgumentIndex,
+            LogicalQuery.Operator rangeOperator,
+            boolean fullEquality) {
+
+        int[] consumedOffsets(int start) {
+            var consumed = rangeConditionIndex >= 0
+                    ? new int[prefixConditionIndexes.length + 1]
+                    : new int[prefixConditionIndexes.length];
+            var index = 0;
+            for (var conditionIndex : prefixConditionIndexes) {
+                consumed[index++] = conditionIndex - start;
+            }
+            if (rangeConditionIndex >= 0) {
+                consumed[index] = rangeConditionIndex - start;
+            }
+            return consumed;
+        }
     }
 
     private static int findConditionIndex(CompiledQuery.CompiledCondition[] conditions,
