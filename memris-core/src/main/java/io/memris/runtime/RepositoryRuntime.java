@@ -13,7 +13,6 @@ import io.memris.repository.MemrisRepositoryFactory;
 import io.memris.core.TypeCodes;
 import io.memris.kernel.Predicate;
 import io.memris.kernel.RowId;
-import io.memris.kernel.RowIdSet;
 import io.memris.core.converter.TypeConverter;
 import io.memris.core.converter.TypeConverterRegistry;
 import io.memris.index.CompositeHashIndex;
@@ -33,6 +32,8 @@ import io.memris.storage.SelectionImpl;
 import io.memris.runtime.codegen.RuntimeExecutorGenerator;
 import io.memris.runtime.dispatch.ConditionProgramCompiler;
 import io.memris.runtime.dispatch.DirectConditionExecutor;
+import io.memris.runtime.dispatch.IndexProbeCompiler;
+import io.memris.runtime.dispatch.SingleOrderProgramCompiler;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
@@ -88,7 +89,7 @@ public final class RepositoryRuntime<T> {
     private final java.util.concurrent.ConcurrentHashMap<CompiledQuery.CompiledCondition, DirectConditionExecutor> directConditionExecutors;
     private final java.util.concurrent.ConcurrentHashMap<CompiledQuery.CompiledJoinPredicate, DirectConditionExecutor> joinDirectConditionExecutors;
     private final java.util.function.Predicate<RowId> rowValidator;
-    private final java.util.concurrent.ConcurrentHashMap<Object, IndexProbe> indexProbes;
+    private final java.util.concurrent.ConcurrentHashMap<Object, IndexProbeCompiler.IndexProbe> indexProbes;
     private final boolean hasCompositeIndexPlans;
     private static final ThreadLocal<SortBuffers> SORT_BUFFERS = ThreadLocal.withInitial(SortBuffers::new);
 
@@ -368,67 +369,10 @@ public final class RepositoryRuntime<T> {
         }
         var limit = query.limit();
         if (orderBy.length == 1) {
-            int columnIndex = orderBy[0].columnIndex();
-            boolean ascending = orderBy[0].ascending();
-            byte typeCode = table.typeCodeAt(columnIndex);
-            var primitiveNonNull = isPrimitiveNonNullColumn(primitiveNonNullColumns, columnIndex);
-            return switch (typeCode) {
-                case TypeCodes.TYPE_INT,
-                        TypeCodes.TYPE_BOOLEAN,
-                        TypeCodes.TYPE_BYTE,
-                        TypeCodes.TYPE_SHORT,
-                        TypeCodes.TYPE_CHAR ->
-                    (runtime, rows) -> {
-                        if (limit > 0 && limit < rows.length) {
-                            return primitiveNonNull
-                                    ? runtime.topKIntNonNull(rows, columnIndex, ascending, limit)
-                                    : runtime.topKIntNullable(rows, columnIndex, ascending, limit);
-                        }
-                        return primitiveNonNull
-                                ? runtime.sortByIntColumnNonNull(rows, columnIndex, ascending)
-                                : runtime.sortByIntColumnNullable(rows, columnIndex, ascending);
-                    };
-                case TypeCodes.TYPE_LONG,
-                        TypeCodes.TYPE_INSTANT,
-                        TypeCodes.TYPE_LOCAL_DATE,
-                        TypeCodes.TYPE_LOCAL_DATE_TIME,
-                        TypeCodes.TYPE_DATE ->
-                    (runtime, rows) -> {
-                        if (limit > 0 && limit < rows.length) {
-                            return primitiveNonNull
-                                    ? runtime.topKLongNonNull(rows, columnIndex, ascending, limit)
-                                    : runtime.topKLongNullable(rows, columnIndex, ascending, limit);
-                        }
-                        return primitiveNonNull
-                                ? runtime.sortByLongColumnNonNull(rows, columnIndex, ascending)
-                                : runtime.sortByLongColumnNullable(rows, columnIndex, ascending);
-                    };
-                case TypeCodes.TYPE_STRING,
-                        TypeCodes.TYPE_BIG_DECIMAL,
-                        TypeCodes.TYPE_BIG_INTEGER ->
-                    (runtime, rows) -> {
-                        if (limit > 0 && limit < rows.length) {
-                            return runtime.topKString(rows, columnIndex, ascending, limit);
-                        }
-                        return runtime.sortByStringColumn(rows, columnIndex, ascending);
-                    };
-                case TypeCodes.TYPE_FLOAT -> (runtime, rows) -> {
-                    int[] sorted = primitiveNonNull
-                            ? runtime.sortByFloatColumnNonNull(rows, columnIndex, ascending)
-                            : runtime.sortByFloatColumnNullable(rows, columnIndex, ascending);
-                    return limit > 0 && limit < sorted.length ? runtime.limitRows(sorted, limit) : sorted;
-                };
-                case TypeCodes.TYPE_DOUBLE -> (runtime, rows) -> {
-                    int[] sorted = primitiveNonNull
-                            ? runtime.sortByDoubleColumnNonNull(rows, columnIndex, ascending)
-                            : runtime.sortByDoubleColumnNullable(rows, columnIndex, ascending);
-                    return limit > 0 && limit < sorted.length ? runtime.limitRows(sorted, limit) : sorted;
-                };
-                default -> (runtime, rows) -> {
-                    int[] sorted = runtime.sortBySingleColumn(rows, orderBy[0]);
-                    return limit > 0 && limit < sorted.length ? runtime.limitRows(sorted, limit) : sorted;
-                };
-            };
+            var single = orderBy[0];
+            var typeCode = table.typeCodeAt(single.columnIndex());
+            var primitiveNonNull = isPrimitiveNonNullColumn(primitiveNonNullColumns, single.columnIndex());
+            return SingleOrderProgramCompiler.compile(single, limit, typeCode, primitiveNonNull);
         }
 
         OrderKeyBuilder[] builders = new OrderKeyBuilder[orderBy.length];
@@ -2479,7 +2423,7 @@ public final class RepositoryRuntime<T> {
      * Query a specific index object based on its type.
      */
     private int[] queryIndexFromObject(Object index, Predicate.Operator operator, Object value) {
-        var probe = indexProbes.computeIfAbsent(index, this::compileIndexProbe);
+        var probe = indexProbes.computeIfAbsent(index, IndexProbeCompiler::compile);
         return probe.query(operator, value, rowValidator);
     }
 
@@ -2490,91 +2434,6 @@ public final class RepositoryRuntime<T> {
             long ref = Selection.pack(rowIndex, generation);
             return table.isLive(ref);
         };
-    }
-
-    private IndexProbe compileIndexProbe(Object index) {
-        return switch (index) {
-            case HashIndex hashIndex -> (operator, value, validator) ->
-                operator == Predicate.Operator.EQ && value != null
-                        ? rowIdSetToIntArray(hashIndex.lookup(value, validator))
-                        : null;
-            case RangeIndex rangeIndex -> (operator, value, validator) -> {
-                if (value instanceof Comparable<?> comparable) {
-                    @SuppressWarnings("rawtypes")
-                    var comp = (Comparable) comparable;
-                    return switch (operator) {
-                        case EQ -> rowIdSetToIntArray(rangeIndex.lookup(comp, validator));
-                        case GT -> rowIdSetToIntArray(rangeIndex.greaterThan(comp, validator));
-                        case GTE -> rowIdSetToIntArray(rangeIndex.greaterThanOrEqual(comp, validator));
-                        case LT -> rowIdSetToIntArray(rangeIndex.lessThan(comp, validator));
-                        case LTE -> rowIdSetToIntArray(rangeIndex.lessThanOrEqual(comp, validator));
-                        default -> null;
-                    };
-                }
-                if (operator == Predicate.Operator.BETWEEN
-                        && value instanceof Object[] range
-                        && range.length >= 2
-                        && range[0] instanceof Comparable<?> lowerComparable
-                        && range[1] instanceof Comparable<?> upperComparable) {
-                    @SuppressWarnings("rawtypes")
-                    var lower = (Comparable) lowerComparable;
-                    @SuppressWarnings("rawtypes")
-                    var upper = (Comparable) upperComparable;
-                    return rowIdSetToIntArray(rangeIndex.between(lower, upper, validator));
-                }
-                return null;
-            };
-            case StringPrefixIndex prefixIndex -> (operator, value, validator) ->
-                operator == Predicate.Operator.STARTING_WITH && value instanceof String s
-                        ? rowIdSetToIntArray(prefixIndex.startsWith(s))
-                        : null;
-            case StringSuffixIndex suffixIndex -> (operator, value, validator) ->
-                operator == Predicate.Operator.ENDING_WITH && value instanceof String s
-                        ? rowIdSetToIntArray(suffixIndex.endsWith(s))
-                        : null;
-            case CompositeHashIndex hashIndex -> (operator, value, validator) ->
-                operator == Predicate.Operator.EQ && value instanceof CompositeKey key
-                        ? rowIdSetToIntArray(hashIndex.lookup(key, validator))
-                        : null;
-            case CompositeRangeIndex rangeIndex -> (operator, value, validator) -> {
-                if (value instanceof CompositeKey key) {
-                    return switch (operator) {
-                        case EQ -> rowIdSetToIntArray(rangeIndex.lookup(key, validator));
-                        case GT -> rowIdSetToIntArray(rangeIndex.greaterThan(key, validator));
-                        case GTE -> rowIdSetToIntArray(rangeIndex.greaterThanOrEqual(key, validator));
-                        case LT -> rowIdSetToIntArray(rangeIndex.lessThan(key, validator));
-                        case LTE -> rowIdSetToIntArray(rangeIndex.lessThanOrEqual(key, validator));
-                        default -> null;
-                    };
-                }
-                if (operator == Predicate.Operator.BETWEEN
-                        && value instanceof Object[] range
-                        && range.length >= 2
-                        && range[0] instanceof CompositeKey lower
-                        && range[1] instanceof CompositeKey upper) {
-                    return rowIdSetToIntArray(rangeIndex.between(lower, upper, validator));
-                }
-                return null;
-            };
-            default -> (operator, value, validator) -> null;
-        };
-    }
-
-    @FunctionalInterface
-    private interface IndexProbe {
-        int[] query(Predicate.Operator operator, Object value, java.util.function.Predicate<RowId> validator);
-    }
-
-    private static int[] rowIdSetToIntArray(RowIdSet rowIdSet) {
-        if (rowIdSet == null || rowIdSet.size() == 0) {
-            return new int[0];
-        }
-        long[] longArray = rowIdSet.toLongArray();
-        int[] intArray = new int[longArray.length];
-        for (int i = 0; i < longArray.length; i++) {
-            intArray[i] = (int) longArray[i];
-        }
-        return intArray;
     }
 
     private Selection selectWithIndexForIn(String fieldName, Object value) {
@@ -2663,6 +2522,70 @@ public final class RepositoryRuntime<T> {
         int[] limited = new int[limit];
         System.arraycopy(rows, 0, limited, 0, limit);
         return limited;
+    }
+
+    public int[] applyIntOrderCompiled(int[] rows,
+            int columnIndex,
+            boolean ascending,
+            int limit,
+            boolean primitiveNonNull) {
+        if (limit > 0 && limit < rows.length) {
+            return primitiveNonNull
+                    ? topKIntNonNull(rows, columnIndex, ascending, limit)
+                    : topKIntNullable(rows, columnIndex, ascending, limit);
+        }
+        return primitiveNonNull
+                ? sortByIntColumnNonNull(rows, columnIndex, ascending)
+                : sortByIntColumnNullable(rows, columnIndex, ascending);
+    }
+
+    public int[] applyLongOrderCompiled(int[] rows,
+            int columnIndex,
+            boolean ascending,
+            int limit,
+            boolean primitiveNonNull) {
+        if (limit > 0 && limit < rows.length) {
+            return primitiveNonNull
+                    ? topKLongNonNull(rows, columnIndex, ascending, limit)
+                    : topKLongNullable(rows, columnIndex, ascending, limit);
+        }
+        return primitiveNonNull
+                ? sortByLongColumnNonNull(rows, columnIndex, ascending)
+                : sortByLongColumnNullable(rows, columnIndex, ascending);
+    }
+
+    public int[] applyStringOrderCompiled(int[] rows, int columnIndex, boolean ascending, int limit) {
+        if (limit > 0 && limit < rows.length) {
+            return topKString(rows, columnIndex, ascending, limit);
+        }
+        return sortByStringColumn(rows, columnIndex, ascending);
+    }
+
+    public int[] applyFloatOrderCompiled(int[] rows,
+            int columnIndex,
+            boolean ascending,
+            int limit,
+            boolean primitiveNonNull) {
+        var sorted = primitiveNonNull
+                ? sortByFloatColumnNonNull(rows, columnIndex, ascending)
+                : sortByFloatColumnNullable(rows, columnIndex, ascending);
+        return limit > 0 && limit < sorted.length ? limitRows(sorted, limit) : sorted;
+    }
+
+    public int[] applyDoubleOrderCompiled(int[] rows,
+            int columnIndex,
+            boolean ascending,
+            int limit,
+            boolean primitiveNonNull) {
+        var sorted = primitiveNonNull
+                ? sortByDoubleColumnNonNull(rows, columnIndex, ascending)
+                : sortByDoubleColumnNullable(rows, columnIndex, ascending);
+        return limit > 0 && limit < sorted.length ? limitRows(sorted, limit) : sorted;
+    }
+
+    public int[] applySingleOrderFallback(int[] rows, CompiledQuery.CompiledOrderBy orderBy, int limit) {
+        var sorted = sortBySingleColumn(rows, orderBy);
+        return limit > 0 && limit < sorted.length ? limitRows(sorted, limit) : sorted;
     }
 
     private int[] topKIntNonNull(int[] rows, int columnIndex, boolean ascending, int k) {
