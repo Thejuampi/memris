@@ -31,10 +31,17 @@ import io.memris.storage.GeneratedTable;
 import io.memris.storage.Selection;
 import io.memris.storage.SelectionImpl;
 import io.memris.runtime.codegen.RuntimeExecutorGenerator;
-
+import io.memris.runtime.dispatch.ConditionProgramCompiler;
+import io.memris.runtime.dispatch.DirectConditionExecutor;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
+import java.util.Date;
+
 import java.lang.reflect.RecordComponent;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -77,6 +84,9 @@ public final class RepositoryRuntime<T> {
     private final Map<String, IndexPlan> indexPlansByField;
     private final AtomicLong idCounter;
     private final IdLookup idLookup;
+    private final boolean[] primitiveNonNullByColumn;
+    private final java.util.concurrent.ConcurrentHashMap<CompiledQuery.CompiledCondition, DirectConditionExecutor> directConditionExecutors;
+    private final java.util.concurrent.ConcurrentHashMap<CompiledQuery.CompiledJoinPredicate, DirectConditionExecutor> joinDirectConditionExecutors;
     private static final ThreadLocal<SortBuffers> SORT_BUFFERS = ThreadLocal.withInitial(SortBuffers::new);
 
     /**
@@ -132,18 +142,51 @@ public final class RepositoryRuntime<T> {
         var rootLayout = metadata != null ? runtimeLayoutsByEntity.get(metadata.entityClass()) : null;
         this.fieldByColumn = rootLayout != null ? rootLayout.fieldsByColumn() : new FieldMapping[0];
         this.converterByColumn = rootLayout != null ? rootLayout.convertersByColumn() : new TypeConverter<?, ?>[0];
+        this.primitiveNonNullByColumn = buildPrimitiveNonNullByColumn(rootLayout);
+        this.directConditionExecutors = new java.util.concurrent.ConcurrentHashMap<>();
+        this.joinDirectConditionExecutors = new java.util.concurrent.ConcurrentHashMap<>();
         this.idColumnIndex = rootLayout != null ? rootLayout.idColumnIndex() : -1;
         this.oneToManyPlans = buildOneToManyPlans();
         this.manyToManyPlans = buildManyToManyPlans();
         this.indexPlans = buildIndexPlans(metadata);
         this.indexFieldReaders = buildIndexFieldReaders(metadata, indexPlans);
         this.indexPlansByField = buildIndexPlansByField(indexPlans);
-        // IdLookup is always provided by RepositoryPlan - no null check needed
         this.idLookup = plan.idLookup();
+        var queries = plan.queries();
+        if (queries != null) {
+            for (var query : queries) {
+                var conditions = query.conditions();
+                if (conditions == null) {
+                    continue;
+                }
+                for (var condition : conditions) {
+                    var primitiveNonNull = isPrimitiveNonNullColumn(condition.columnIndex());
+                    directConditionExecutors.put(condition, ConditionProgramCompiler.compile(condition, primitiveNonNull));
+                }
+                var joins = query.joins();
+                if (joins == null) {
+                    continue;
+                }
+                for (var join : joins) {
+                    var predicates = join.predicates();
+                    if (predicates == null) {
+                        continue;
+                    }
+                    for (var predicate : predicates) {
+                        var compiled = CompiledQuery.CompiledCondition.of(predicate.columnIndex(),
+                                predicate.typeCode(),
+                                predicate.operator(),
+                                predicate.argumentIndex(),
+                                predicate.ignoreCase());
+                        joinDirectConditionExecutors.put(predicate, ConditionProgramCompiler.compile(compiled, false));
+                    }
+                }
+            }
+        }
     }
 
     public static ConditionExecutor[][] buildConditionExecutors(CompiledQuery[] queries, String[] columnNames,
-            Class<?> entityClass, boolean useIndex) {
+            boolean[] primitiveNonNullColumns, Class<?> entityClass, boolean useIndex) {
         ConditionExecutor[][] executors = new ConditionExecutor[queries.length][];
         for (int i = 0; i < queries.length; i++) {
             CompiledQuery.CompiledCondition[] conditions = queries[i].conditions();
@@ -153,7 +196,8 @@ public final class RepositoryRuntime<T> {
             }
             ConditionExecutor[] queryExecutors = new ConditionExecutor[conditions.length];
             for (int j = 0; j < conditions.length; j++) {
-                queryExecutors[j] = buildConditionExecutor(conditions[j], columnNames, entityClass, useIndex);
+                queryExecutors[j] = buildConditionExecutor(conditions[j], columnNames, primitiveNonNullColumns,
+                        entityClass, useIndex);
             }
             executors[i] = queryExecutors;
         }
@@ -183,49 +227,65 @@ public final class RepositoryRuntime<T> {
 
     private static ConditionExecutor buildConditionExecutor(CompiledQuery.CompiledCondition condition,
             String[] columnNames,
+            boolean[] primitiveNonNullColumns,
             Class<?> entityClass,
             boolean useIndex) {
+        var primitiveNonNull = isPrimitiveNonNullColumn(primitiveNonNullColumns, condition.columnIndex());
+        var directExecutor = ConditionProgramCompiler.compile(condition, primitiveNonNull);
+        var fallbackSelector = (ConditionExecutor.Selector) (runtime, args) ->
+                directExecutor.execute(runtime.plan().table(), runtime.plan().kernel(), args);
         if (!useIndex || condition.ignoreCase()) {
-            return new ConditionExecutor(condition.nextCombinator(),
-                    (runtime, args) -> runtime.plan().kernel().executeCondition(condition, args));
+            return new ConditionExecutor(condition.nextCombinator(), fallbackSelector);
         }
         var fieldName = (condition.columnIndex() >= 0 && condition.columnIndex() < columnNames.length)
                 ? columnNames[condition.columnIndex()]
                 : null;
         if (fieldName == null) {
-            return new ConditionExecutor(condition.nextCombinator(),
-                    (runtime, args) -> runtime.plan().kernel().executeCondition(condition, args));
+            return new ConditionExecutor(condition.nextCombinator(), fallbackSelector);
         }
         var operator = condition.operator();
         return switch (operator) {
             case IN -> new ConditionExecutor(condition.nextCombinator(), (runtime, args) -> {
+                if (condition.argumentIndex() < 0 || condition.argumentIndex() >= args.length) {
+                    return fallbackSelector.execute(runtime, args);
+                }
                 Selection selection = selectWithIndexForIn(runtime, entityClass, fieldName,
                         args[condition.argumentIndex()]);
-                return selection != null ? selection : runtime.plan().kernel().executeCondition(condition, args);
+                return selection != null ? selection : fallbackSelector.execute(runtime, args);
             });
             case BETWEEN -> new ConditionExecutor(condition.nextCombinator(), (runtime, args) -> {
+                if (condition.argumentIndex() + 1 >= args.length) {
+                    return fallbackSelector.execute(runtime, args);
+                }
                 Object[] range = new Object[] { args[condition.argumentIndex()], args[condition.argumentIndex() + 1] };
                 MemrisRepositoryFactory indexFactory = runtime.indexFactory();
                 if (indexFactory == null) {
-                    return runtime.plan().kernel().executeCondition(condition, args);
+                    return fallbackSelector.execute(runtime, args);
                 }
                 int[] rows = indexFactory.queryIndex(entityClass, fieldName, operator.toPredicateOperator(), range);
-                return rows != null ? runtime.selectionFromRows(rows)
-                        : runtime.plan().kernel().executeCondition(condition, args);
+                return rows != null ? runtime.selectionFromRows(rows) : fallbackSelector.execute(runtime, args);
             });
             case EQ, GT, GTE, LT, LTE -> new ConditionExecutor(condition.nextCombinator(), (runtime, args) -> {
+                if (condition.argumentIndex() < 0 || condition.argumentIndex() >= args.length) {
+                    return fallbackSelector.execute(runtime, args);
+                }
                 MemrisRepositoryFactory indexFactory = runtime.indexFactory();
                 if (indexFactory == null) {
-                    return runtime.plan().kernel().executeCondition(condition, args);
+                    return fallbackSelector.execute(runtime, args);
                 }
                 var value = args[condition.argumentIndex()];
                 int[] rows = indexFactory.queryIndex(entityClass, fieldName, operator.toPredicateOperator(), value);
-                return rows != null ? runtime.selectionFromRows(rows)
-                        : runtime.plan().kernel().executeCondition(condition, args);
+                return rows != null ? runtime.selectionFromRows(rows) : fallbackSelector.execute(runtime, args);
             });
-            default -> new ConditionExecutor(condition.nextCombinator(),
-                    (runtime, args) -> runtime.plan().kernel().executeCondition(condition, args));
+            default -> new ConditionExecutor(condition.nextCombinator(), fallbackSelector);
         };
+    }
+
+    private static boolean isPrimitiveNonNullColumn(boolean[] primitiveNonNullColumns, int columnIndex) {
+        return primitiveNonNullColumns != null
+                && columnIndex >= 0
+                && columnIndex < primitiveNonNullColumns.length
+                && primitiveNonNullColumns[columnIndex];
     }
 
     private static Selection selectWithIndexForIn(RepositoryRuntime<?> runtime, Class<?> entityClass, String fieldName,
@@ -662,6 +722,38 @@ public final class RepositoryRuntime<T> {
         return entityMetadata.converters().get(fieldName);
     }
 
+    private boolean[] buildPrimitiveNonNullByColumn(EntityRuntimeLayout rootLayout) {
+        if (rootLayout == null) {
+            return new boolean[0];
+        }
+        var fields = rootLayout.fieldsByColumn();
+        var flags = new boolean[fields.length];
+        for (var i = 0; i < fields.length; i++) {
+            var field = fields[i];
+            if (field != null && field.javaType().isPrimitive()) {
+                flags[i] = true;
+            }
+        }
+        return flags;
+    }
+
+    private boolean isPrimitiveNonNullColumn(int columnIndex) {
+        return columnIndex >= 0
+                && columnIndex < primitiveNonNullByColumn.length
+                && primitiveNonNullByColumn[columnIndex];
+    }
+
+    private static boolean isPrimitiveNonNullColumn(EntityRuntimeLayout layout, int columnIndex) {
+        if (layout == null) {
+            return false;
+        }
+        var fields = layout.fieldsByColumn();
+        return columnIndex >= 0
+                && columnIndex < fields.length
+                && fields[columnIndex] != null
+                && fields[columnIndex].javaType().isPrimitive();
+    }
+
     private EntityMetadata<?> resolveEntityMetadata(Class<?> entityClass) {
         if (metadata != null && metadata.entityClass().equals(entityClass)) {
             return metadata;
@@ -989,8 +1081,8 @@ public final class RepositoryRuntime<T> {
         var id = args[0];
         var table = plan.table();
 
-        // Uses pre-compiled IdLookup to eliminate runtime type branching
-        long packedRef = idLookup.lookup(table, id);
+        // Direct call to table methods - zero virtual dispatch
+        long packedRef = resolvePackedRefById(table, id);
 
         if (packedRef < 0) {
             return Optional.empty();
@@ -1576,8 +1668,8 @@ public final class RepositoryRuntime<T> {
         Object id = args[0];
         GeneratedTable table = plan.table();
 
-        // Uses pre-compiled IdLookup to eliminate runtime type branching
-        long packedRef = idLookup.lookup(table, id);
+        // Direct call to table methods - zero virtual dispatch
+        long packedRef = resolvePackedRefById(table, id);
 
         return packedRef >= 0;
     }
@@ -1604,8 +1696,8 @@ public final class RepositoryRuntime<T> {
         }
 
         GeneratedTable table = plan.table();
-        // Uses pre-compiled IdLookup to eliminate runtime type branching
-        long packedRef = idLookup.lookup(table, id);
+        // Direct call to table methods - zero virtual dispatch
+        long packedRef = resolvePackedRefById(table, id);
 
         if (packedRef >= 0) {
             int rowIndex = io.memris.storage.Selection.index(packedRef);
@@ -1631,8 +1723,8 @@ public final class RepositoryRuntime<T> {
         Object id = args[0];
         GeneratedTable table = plan.table();
 
-        // Uses pre-compiled IdLookup to eliminate runtime type branching
-        long packedRef = idLookup.lookup(table, id);
+        // Direct call to table methods - zero virtual dispatch
+        long packedRef = resolvePackedRefById(table, id);
 
         if (packedRef >= 0) {
             int rowIndex = io.memris.storage.Selection.index(packedRef);
@@ -1648,8 +1740,8 @@ public final class RepositoryRuntime<T> {
 
         long count = 0;
         for (Object id : ids) {
-            // Uses pre-compiled IdLookup to eliminate runtime type branching
-            long packedRef = idLookup.lookup(table, id);
+            // Direct call to table methods - zero virtual dispatch
+            long packedRef = resolvePackedRefById(table, id);
 
             if (packedRef >= 0) {
                 int rowIndex = io.memris.storage.Selection.index(packedRef);
@@ -1720,11 +1812,15 @@ public final class RepositoryRuntime<T> {
         int columnCount = table.columnCount();
         Object[] values = new Object[columnCount];
         for (int i = 0; i < columnCount; i++) {
+            byte typeCode = plan.typeCodes()[i];
+            if (isPrimitiveNonNullColumn(i)) {
+                values[i] = readStorageValue(table, i, typeCode, rowIndex);
+                continue;
+            }
             if (!table.isPresent(i, rowIndex)) {
                 values[i] = null;
                 continue;
             }
-            byte typeCode = plan.typeCodes()[i];
             values[i] = readStorageValue(table, i, typeCode, rowIndex);
         }
         return values;
@@ -1742,6 +1838,9 @@ public final class RepositoryRuntime<T> {
                     var typed = (TypeConverter<Object, Object>) converter;
                     value = typed.toStorage(value);
                 }
+            }
+            if (isPrimitiveNonNullColumn(columnIndex) && value == null) {
+                throw new IllegalArgumentException("Null assigned to primitive column index: " + columnIndex);
             }
             values[columnIndex] = value;
         }
@@ -1776,7 +1875,6 @@ public final class RepositoryRuntime<T> {
         if (idValue == null) {
             return -1;
         }
-        // Uses pre-compiled IdLookup to eliminate runtime type branching
         return idLookup.lookup(table, idValue);
     }
 
@@ -2267,36 +2365,37 @@ public final class RepositoryRuntime<T> {
     }
 
     private Selection selectWithIndex(CompiledQuery.CompiledCondition condition, Object[] args) {
+        var fallbackExecutor = directExecutorFor(condition);
         if (metadata == null || factory == null || condition.ignoreCase()) {
-            return plan.kernel().executeCondition(condition, args);
+            return fallbackExecutor.execute(plan.table(), plan.kernel(), args);
         }
 
         String fieldName = resolveFieldName(condition.columnIndex());
         if (fieldName == null) {
-            return plan.kernel().executeCondition(condition, args);
+            return fallbackExecutor.execute(plan.table(), plan.kernel(), args);
         }
 
         LogicalQuery.Operator operator = condition.operator();
         Object value = null;
         if (operator != LogicalQuery.Operator.IS_NULL && operator != LogicalQuery.Operator.NOT_NULL) {
             if (condition.argumentIndex() < 0 || condition.argumentIndex() >= args.length) {
-                return plan.kernel().executeCondition(condition, args);
+                return fallbackExecutor.execute(plan.table(), plan.kernel(), args);
             }
             value = args[condition.argumentIndex()];
         }
 
         if (operator == LogicalQuery.Operator.IN) {
             Selection selection = selectWithIndexForIn(fieldName, value);
-            return selection != null ? selection : plan.kernel().executeCondition(condition, args);
+            return selection != null ? selection : fallbackExecutor.execute(plan.table(), plan.kernel(), args);
         }
 
         if (operator == LogicalQuery.Operator.BETWEEN) {
             if (condition.argumentIndex() + 1 >= args.length) {
-                return plan.kernel().executeCondition(condition, args);
+                return fallbackExecutor.execute(plan.table(), plan.kernel(), args);
             }
             Object[] range = new Object[] { args[condition.argumentIndex()], args[condition.argumentIndex() + 1] };
             int[] rows = queryIndex(metadata.entityClass(), fieldName, operator.toPredicateOperator(), range);
-            return rows != null ? selectionFromRows(rows) : plan.kernel().executeCondition(condition, args);
+            return rows != null ? selectionFromRows(rows) : fallbackExecutor.execute(plan.table(), plan.kernel(), args);
         }
 
         switch (operator) {
@@ -2319,7 +2418,23 @@ public final class RepositoryRuntime<T> {
             }
         }
 
-        return plan.kernel().executeCondition(condition, args);
+        return fallbackExecutor.execute(plan.table(), plan.kernel(), args);
+    }
+
+    private DirectConditionExecutor directExecutorFor(CompiledQuery.CompiledCondition condition) {
+        return directConditionExecutors.computeIfAbsent(condition,
+                cc -> ConditionProgramCompiler.compile(cc, isPrimitiveNonNullColumn(cc.columnIndex())));
+    }
+
+    private DirectConditionExecutor joinDirectExecutorFor(CompiledQuery.CompiledJoinPredicate predicate) {
+        return joinDirectConditionExecutors.computeIfAbsent(predicate, p -> {
+            var compiled = CompiledQuery.CompiledCondition.of(p.columnIndex(),
+                    p.typeCode(),
+                    p.operator(),
+                    p.argumentIndex(),
+                    p.ignoreCase());
+            return ConditionProgramCompiler.compile(compiled, false);
+        });
     }
 
     /**
@@ -2478,7 +2593,10 @@ public final class RepositoryRuntime<T> {
     }
 
     Selection selectionFromRows(int[] rows) {
-        GeneratedTable table = plan.table();
+        return selectionFromRows(plan.table(), rows);
+    }
+
+    private static Selection selectionFromRows(GeneratedTable table, int[] rows) {
         long[] packed = new long[rows.length];
         int count = 0;
         for (int rowIndex : rows) {
@@ -2600,21 +2718,27 @@ public final class RepositoryRuntime<T> {
 
     private int[] topKInt(int[] rows, int columnIndex, boolean ascending, int k) {
         GeneratedTable table = plan.table();
-        // Use quickselect-like approach: partial sort to find top k
         int[] result = rows.clone();
         SortBuffers buffers = SORT_BUFFERS.get();
         int[] keys = buffers.intKeys(result.length);
+        if (isPrimitiveNonNullColumn(columnIndex)) {
+            for (int i = 0; i < result.length; i++) {
+                keys[i] = table.readInt(columnIndex, result[i]);
+            }
+            topKHeapIntNonNull(result, keys, k, ascending);
+            quickSortIntNonNull(result, keys, 0, k - 1, ascending);
+            int[] trimmed = new int[k];
+            System.arraycopy(result, 0, trimmed, 0, k);
+            return trimmed;
+        }
         boolean[] present = buffers.present(result.length);
         for (int i = 0; i < result.length; i++) {
             int row = result[i];
             present[i] = table.isPresent(columnIndex, row);
             keys[i] = table.readInt(columnIndex, row);
         }
-        // Use heap-based selection for top-k
         topKHeapInt(result, keys, present, k, ascending);
-        // Sort the top k results
         quickSortInt(result, keys, present, 0, k - 1, ascending);
-        // Trim to k elements
         int[] trimmed = new int[k];
         System.arraycopy(result, 0, trimmed, 0, k);
         return trimmed;
@@ -2671,11 +2795,60 @@ public final class RepositoryRuntime<T> {
         return ascending ? cmp : -cmp;
     }
 
+    private void topKHeapIntNonNull(int[] rows, int[] keys, int k, boolean ascending) {
+        int n = rows.length;
+        for (int i = k / 2 - 1; i >= 0; i--) {
+            heapifyIntNonNull(rows, keys, i, k, ascending);
+        }
+        for (int i = k; i < n; i++) {
+            int rootCompare = compareIntForTopKNonNull(keys[i], keys[0], ascending);
+            if (rootCompare < 0) {
+                rows[0] = rows[i];
+                keys[0] = keys[i];
+                heapifyIntNonNull(rows, keys, 0, k, ascending);
+            }
+        }
+    }
+
+    private void heapifyIntNonNull(int[] rows, int[] keys, int i, int size, boolean maxHeap) {
+        int largest = i;
+        int left = 2 * i + 1;
+        int right = 2 * i + 2;
+
+        if (left < size && compareIntForTopKNonNull(keys[left], keys[largest], maxHeap) > 0) {
+            largest = left;
+        }
+        if (right < size && compareIntForTopKNonNull(keys[right], keys[largest], maxHeap) > 0) {
+            largest = right;
+        }
+
+        if (largest != i) {
+            swap(rows, i, largest);
+            swap(keys, i, largest);
+            heapifyIntNonNull(rows, keys, largest, size, maxHeap);
+        }
+    }
+
+    private int compareIntForTopKNonNull(int keyA, int keyB, boolean ascending) {
+        int cmp = Integer.compare(keyA, keyB);
+        return ascending ? cmp : -cmp;
+    }
+
     private int[] topKLong(int[] rows, int columnIndex, boolean ascending, int k) {
         GeneratedTable table = plan.table();
         int[] result = rows.clone();
         SortBuffers buffers = SORT_BUFFERS.get();
         long[] keys = buffers.longKeys(result.length);
+        if (isPrimitiveNonNullColumn(columnIndex)) {
+            for (int i = 0; i < result.length; i++) {
+                keys[i] = table.readLong(columnIndex, result[i]);
+            }
+            topKHeapLongNonNull(result, keys, k, ascending);
+            quickSortLongNonNull(result, keys, 0, k - 1, ascending);
+            int[] trimmed = new int[k];
+            System.arraycopy(result, 0, trimmed, 0, k);
+            return trimmed;
+        }
         boolean[] present = buffers.present(result.length);
         for (int i = 0; i < result.length; i++) {
             int row = result[i];
@@ -2732,6 +2905,45 @@ public final class RepositoryRuntime<T> {
         if (cmp == 0) {
             cmp = Long.compare(keyA, keyB);
         }
+        return ascending ? cmp : -cmp;
+    }
+
+    private void topKHeapLongNonNull(int[] rows, long[] keys, int k, boolean ascending) {
+        int n = rows.length;
+        for (int i = k / 2 - 1; i >= 0; i--) {
+            heapifyLongNonNull(rows, keys, i, k, ascending);
+        }
+        for (int i = k; i < n; i++) {
+            int rootCompare = compareLongForTopKNonNull(keys[i], keys[0], ascending);
+            if (rootCompare < 0) {
+                rows[0] = rows[i];
+                keys[0] = keys[i];
+                heapifyLongNonNull(rows, keys, 0, k, ascending);
+            }
+        }
+    }
+
+    private void heapifyLongNonNull(int[] rows, long[] keys, int i, int size, boolean maxHeap) {
+        int largest = i;
+        int left = 2 * i + 1;
+        int right = 2 * i + 2;
+
+        if (left < size && compareLongForTopKNonNull(keys[left], keys[largest], maxHeap) > 0) {
+            largest = left;
+        }
+        if (right < size && compareLongForTopKNonNull(keys[right], keys[largest], maxHeap) > 0) {
+            largest = right;
+        }
+
+        if (largest != i) {
+            swap(rows, i, largest);
+            swap(keys, i, largest);
+            heapifyLongNonNull(rows, keys, largest, size, maxHeap);
+        }
+    }
+
+    private int compareLongForTopKNonNull(long keyA, long keyB, boolean ascending) {
+        int cmp = Long.compare(keyA, keyB);
         return ascending ? cmp : -cmp;
     }
 
@@ -3200,6 +3412,14 @@ public final class RepositoryRuntime<T> {
         int[] result = rows.clone();
         SortBuffers buffers = SORT_BUFFERS.get();
         int[] keys = buffers.intKeys(result.length);
+        if (isPrimitiveNonNullColumn(columnIndex)) {
+            GeneratedTable table = plan.table();
+            for (int i = 0; i < result.length; i++) {
+                keys[i] = table.readInt(columnIndex, result[i]);
+            }
+            quickSortIntNonNull(result, keys, 0, result.length - 1, ascending);
+            return result;
+        }
         boolean[] present = buffers.present(result.length);
         GeneratedTable table = plan.table();
         for (int i = 0; i < result.length; i++) {
@@ -3230,6 +3450,14 @@ public final class RepositoryRuntime<T> {
         int[] result = rows.clone();
         SortBuffers buffers = SORT_BUFFERS.get();
         long[] keys = buffers.longKeys(result.length);
+        if (isPrimitiveNonNullColumn(columnIndex)) {
+            GeneratedTable table = plan.table();
+            for (int i = 0; i < result.length; i++) {
+                keys[i] = table.readLong(columnIndex, result[i]);
+            }
+            quickSortLongNonNull(result, keys, 0, result.length - 1, ascending);
+            return result;
+        }
         boolean[] present = buffers.present(result.length);
         GeneratedTable table = plan.table();
         for (int i = 0; i < result.length; i++) {
@@ -3305,6 +3533,34 @@ public final class RepositoryRuntime<T> {
             quickSortInt(rows, keys, present, i, high, ascending);
     }
 
+    private static void quickSortIntNonNull(int[] rows, int[] keys, int low, int high, boolean ascending) {
+        int i = low;
+        int j = high;
+        int pivotIndex = low + ((high - low) >>> 1);
+        int pivot = keys[pivotIndex];
+        int pivotRow = rows[pivotIndex];
+
+        while (i <= j) {
+            while (compareIntNonNull(keys[i], rows[i], pivot, pivotRow, ascending) < 0) {
+                i++;
+            }
+            while (compareIntNonNull(keys[j], rows[j], pivot, pivotRow, ascending) > 0) {
+                j--;
+            }
+            if (i <= j) {
+                swap(rows, i, j);
+                swap(keys, i, j);
+                i++;
+                j--;
+            }
+        }
+
+        if (low < j)
+            quickSortIntNonNull(rows, keys, low, j, ascending);
+        if (i < high)
+            quickSortIntNonNull(rows, keys, i, high, ascending);
+    }
+
     private static void quickSortFloat(int[] rows, float[] keys, boolean[] present, int low, int high,
             boolean ascending) {
         int i = low;
@@ -3365,6 +3621,34 @@ public final class RepositoryRuntime<T> {
             quickSortLong(rows, keys, present, low, j, ascending);
         if (i < high)
             quickSortLong(rows, keys, present, i, high, ascending);
+    }
+
+    private static void quickSortLongNonNull(int[] rows, long[] keys, int low, int high, boolean ascending) {
+        int i = low;
+        int j = high;
+        int pivotIndex = low + ((high - low) >>> 1);
+        long pivot = keys[pivotIndex];
+        int pivotRow = rows[pivotIndex];
+
+        while (i <= j) {
+            while (compareLongNonNull(keys[i], rows[i], pivot, pivotRow, ascending) < 0) {
+                i++;
+            }
+            while (compareLongNonNull(keys[j], rows[j], pivot, pivotRow, ascending) > 0) {
+                j--;
+            }
+            if (i <= j) {
+                swap(rows, i, j);
+                swap(keys, i, j);
+                i++;
+                j--;
+            }
+        }
+
+        if (low < j)
+            quickSortLongNonNull(rows, keys, low, j, ascending);
+        if (i < high)
+            quickSortLongNonNull(rows, keys, i, high, ascending);
     }
 
     private static void quickSortDouble(int[] rows, double[] keys, boolean[] present, int low, int high,
@@ -3438,6 +3722,14 @@ public final class RepositoryRuntime<T> {
         return ascending ? cmp : -cmp;
     }
 
+    private static int compareIntNonNull(int value, int row, int pivot, int pivotRow, boolean ascending) {
+        int cmp = Integer.compare(value, pivot);
+        if (cmp == 0) {
+            cmp = Integer.compare(row, pivotRow);
+        }
+        return ascending ? cmp : -cmp;
+    }
+
     private static int compareFloat(float value, boolean present, int row,
             float pivot, boolean pivotPresent, int pivotRow,
             boolean ascending) {
@@ -3458,6 +3750,14 @@ public final class RepositoryRuntime<T> {
         if (cmp == 0) {
             cmp = Long.compare(value, pivot);
         }
+        if (cmp == 0) {
+            cmp = Integer.compare(row, pivotRow);
+        }
+        return ascending ? cmp : -cmp;
+    }
+
+    private static int compareLongNonNull(long value, int row, long pivot, int pivotRow, boolean ascending) {
+        int cmp = Long.compare(value, pivot);
         if (cmp == 0) {
             cmp = Integer.compare(row, pivotRow);
         }
@@ -3645,7 +3945,7 @@ public final class RepositoryRuntime<T> {
             int columnIndex,
             byte typeCode,
             int rowIndex) {
-        if (!table.isPresent(columnIndex, rowIndex)) {
+        if (!isPrimitiveNonNullColumn(layout, columnIndex) && !table.isPresent(columnIndex, rowIndex)) {
             return null;
         }
 
@@ -3723,14 +4023,16 @@ public final class RepositoryRuntime<T> {
             return null;
         }
 
+        var targetTable = join.targetTable();
+        var targetKernel = join.targetKernel();
+        if (targetTable == null || targetKernel == null) {
+            return null;
+        }
+
         Selection selection = null;
         for (CompiledQuery.CompiledJoinPredicate predicate : predicates) {
-            CompiledQuery.CompiledCondition compiled = CompiledQuery.CompiledCondition.of(
-                    predicate.columnIndex(),
-                    predicate.operator(),
-                    predicate.argumentIndex(),
-                    predicate.ignoreCase());
-            Selection next = join.targetKernel().executeCondition(compiled, args);
+            var directExecutor = joinDirectExecutorFor(predicate);
+            Selection next = directExecutor.execute(targetTable, targetKernel, args);
             selection = (selection == null) ? next : selection.intersect(next);
         }
 

@@ -359,7 +359,8 @@ public final class MemrisRepositoryFactory implements AutoCloseable {
                     fm.columnName(),
                     typeCode,
                     isId,
-                    isId));
+                    isId,
+                    fm.javaType().isPrimitive()));
 
         }
 

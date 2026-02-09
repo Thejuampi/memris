@@ -3,6 +3,9 @@ package io.memris.runtime;
 import io.memris.repository.MemrisRepositoryFactory;
 import io.memris.repository.MemrisRepository;
 import io.memris.core.MemrisArena;
+import io.memris.core.Modifying;
+import io.memris.core.Param;
+import io.memris.core.Query;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -11,6 +14,7 @@ import org.junit.jupiter.api.Test;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class RepositoryRuntimeEdgeTest {
 
@@ -25,6 +29,12 @@ class RepositoryRuntimeEdgeTest {
         boolean existsById(Object id);
 
         void deleteById(Object id);
+    }
+
+    public interface PrimitiveUpdateRepository extends MemrisRepository<TestEntity> {
+        @Modifying
+        @Query("update TestEntity t set t.age = :age where t.id = :id")
+        long updateAgeById(@Param("age") Integer age, @Param("id") Long id);
     }
 
     @BeforeEach
@@ -53,15 +63,15 @@ class RepositoryRuntimeEdgeTest {
     }
 
     @Test
-    @DisplayName("findById should return empty for mismatched ID type")
+    @DisplayName("findById should throw ClassCastException for mismatched ID type")
     void findByIdShouldHandleMismatchedType() {
         repo.save(new TestEntity(null, "Test", 25));
 
         MismatchedRepository laxRepo = arena.createRepository(MismatchedRepository.class);
 
-        // Passing String ID to Long ID entity repo
-        Optional<TestEntity> result = laxRepo.findById("some-string-id");
-        assertThat(result).isEmpty();
+        // Passing String ID to Long ID entity repo is a programmer error
+        assertThatThrownBy(() -> laxRepo.findById("some-string-id"))
+                .isInstanceOf(ClassCastException.class);
     }
 
     @Test
@@ -73,25 +83,27 @@ class RepositoryRuntimeEdgeTest {
     }
 
     @Test
-    @DisplayName("existsById should return false for mismatched ID type")
+    @DisplayName("existsById should throw ClassCastException for mismatched ID type")
     void existsByIdShouldHandleMismatchedType() {
         repo.save(new TestEntity(null, "Test", 25));
 
         MismatchedRepository laxRepo = arena.createRepository(MismatchedRepository.class);
 
-        boolean exists = laxRepo.existsById("some-string-id");
-        assertThat(exists).isFalse();
+        // Passing String ID to Long ID entity repo is a programmer error
+        assertThatThrownBy(() -> laxRepo.existsById("some-string-id"))
+                .isInstanceOf(ClassCastException.class);
     }
 
     @Test
-    @DisplayName("deleteById should ignore mismatched ID type")
+    @DisplayName("deleteById should throw ClassCastException for mismatched ID type")
     void deleteByIdShouldHandleMismatchedType() {
         TestEntity saved = repo.save(new TestEntity(null, "Test", 25));
 
         MismatchedRepository laxRepo = arena.createRepository(MismatchedRepository.class);
 
-        // Should not throw and not delete anything
-        laxRepo.deleteById("some-string-id");
+        // Passing String ID to Long ID entity repo is a programmer error
+        assertThatThrownBy(() -> laxRepo.deleteById("some-string-id"))
+                .isInstanceOf(ClassCastException.class);
 
         assertThat(repo.existsById(saved.id)).isTrue();
     }
@@ -107,5 +119,15 @@ class RepositoryRuntimeEdgeTest {
         laxRepo.deleteById(null);
 
         assertThat(repo.count()).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("update query should reject null for primitive column")
+    void updateQueryShouldRejectNullPrimitiveValue() {
+        TestEntity saved = repo.save(new TestEntity(null, "Test", 25));
+        PrimitiveUpdateRepository primitiveRepo = arena.createRepository(PrimitiveUpdateRepository.class);
+
+        assertThatThrownBy(() -> primitiveRepo.updateAgeById(null, saved.id))
+                .isInstanceOf(IllegalArgumentException.class);
     }
 }

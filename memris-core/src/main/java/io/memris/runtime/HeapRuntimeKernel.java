@@ -88,7 +88,7 @@ public record HeapRuntimeKernel(GeneratedTable table, TypeHandlerRegistry handle
         }
 
         if (operator == LogicalQuery.Operator.IN || operator == LogicalQuery.Operator.NOT_IN) {
-            var inSelection = executeInList(columnIndex, value);
+            var inSelection = executeInList(columnIndex, cc.typeCode(), value);
             if (operator == LogicalQuery.Operator.NOT_IN) {
                 var all = table.scanAll();
                 return subtractSelections(all, inSelection);
@@ -97,12 +97,12 @@ public record HeapRuntimeKernel(GeneratedTable table, TypeHandlerRegistry handle
         }
 
         if (operator == LogicalQuery.Operator.BETWEEN) {
-            var typeCode = table.typeCodeAt(columnIndex);
+            var typeCode = cc.typeCode();
             return RuntimeExecutorGenerator.generateBetweenExecutor(columnIndex, typeCode)
                     .execute(table, cc.argumentIndex(), args);
         }
 
-        var typeCode = table.typeCodeAt(columnIndex);
+        var typeCode = cc.typeCode();
         var handler = handlerRegistry.getHandler(typeCode);
 
         if (handler == null) {
@@ -117,8 +117,7 @@ public record HeapRuntimeKernel(GeneratedTable table, TypeHandlerRegistry handle
         return handler.executeCondition(table, columnIndex, operator, convertedValue, cc.ignoreCase());
     }
 
-    private Selection executeInList(int columnIndex, Object value) {
-        var typeCode = table.typeCodeAt(columnIndex);
+    private Selection executeInList(int columnIndex, byte typeCode, Object value) {
         return RuntimeExecutorGenerator.generateInListExecutor(columnIndex, typeCode)
                 .execute(table, value);
     }

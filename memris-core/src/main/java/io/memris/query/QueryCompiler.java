@@ -61,8 +61,10 @@ public class QueryCompiler {
         for (LogicalQuery.Condition condition : conditions) {
             if (LogicalQuery.Condition.ID_PROPERTY.equals(condition.propertyPath())) {
                 int columnIndex = resolveColumnIndex(condition.propertyPath(), metadata);
+                byte typeCode = resolveTypeCode(columnIndex, metadata);
                 baseConditions.add(CompiledQuery.CompiledCondition.of(
                     columnIndex,
+                    typeCode,
                     condition.operator(),
                     condition.argumentIndex(),
                     condition.ignoreCase(),
@@ -74,8 +76,10 @@ public class QueryCompiler {
             String propertyPath = condition.propertyPath();
             if (!propertyPath.contains(".")) {
                 int columnIndex = resolveColumnIndex(propertyPath, metadata);
+                byte typeCode = resolveTypeCode(columnIndex, metadata);
                 baseConditions.add(CompiledQuery.CompiledCondition.of(
                     columnIndex,
+                    typeCode,
                     condition.operator(),
                     condition.argumentIndex(),
                     condition.ignoreCase(),
@@ -87,8 +91,10 @@ public class QueryCompiler {
             boolean handled = compileJoinPath(condition, propertyPath, joinsByPath, joinPredicates, joinTypes);
             if (!handled) {
                 int columnIndex = resolveColumnIndex(propertyPath, metadata);
+                byte typeCode = resolveTypeCode(columnIndex, metadata);
                 baseConditions.add(CompiledQuery.CompiledCondition.of(
                     columnIndex,
+                    typeCode,
                     condition.operator(),
                     condition.argumentIndex(),
                     condition.ignoreCase(),
@@ -177,13 +183,17 @@ public class QueryCompiler {
         for (int i = 0; i < conditions.length; i++) {
             LogicalQuery.Condition condition = conditions[i];
             int columnIndex;
+            byte typeCode;
             if ("$COUNT".equals(condition.propertyPath())) {
                 columnIndex = -1;
+                typeCode = TypeCodes.TYPE_LONG;
             } else {
                 columnIndex = resolveColumnIndex(condition.propertyPath(), metadata);
+                typeCode = resolveTypeCode(columnIndex, metadata);
             }
             compiled[i] = CompiledQuery.CompiledCondition.of(
                     columnIndex,
+                    typeCode,
                     condition.operator(),
                     condition.argumentIndex(),
                     condition.ignoreCase(),
@@ -205,6 +215,14 @@ public class QueryCompiler {
             return entityMetadata.resolveColumnPosition(entityMetadata.idColumnName());
         }
         return entityMetadata.resolvePropertyPosition(propertyPath);
+    }
+
+    private byte resolveTypeCode(int columnIndex, EntityMetadata<?> entityMetadata) {
+        EntityMetadata.FieldMapping field = findFieldByColumnIndex(columnIndex, entityMetadata);
+        if (field == null) {
+            throw new IllegalArgumentException("Unknown column index: " + columnIndex);
+        }
+        return field.typeCode();
     }
 
     private MethodHandle resolveRecordConstructor(Class<?> recordType, String[] keyProperties,
@@ -357,9 +375,11 @@ public class QueryCompiler {
         }
 
         int targetColumnIndex = resolveColumnIndex(remaining, currentMetadata);
+        byte targetTypeCode = resolveTypeCode(targetColumnIndex, currentMetadata);
         joinPredicates.add(new CompiledQuery.CompiledJoinPredicate(
             joinPath,
             targetColumnIndex,
+            targetTypeCode,
             condition.operator(),
             condition.argumentIndex(),
             condition.ignoreCase()
