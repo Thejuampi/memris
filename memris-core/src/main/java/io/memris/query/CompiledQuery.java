@@ -169,29 +169,36 @@ public record CompiledQuery(
      */
     public static final class CompiledCondition {
         private final int columnIndex;       // resolved from propertyPath (build-time)
+        private final byte typeCode;
         private final Operator operator;     // from LogicalQuery
         private final int argumentIndex;     // which method parameter
         private final boolean ignoreCase;
         private final LogicalQuery.Combinator nextCombinator; // how to combine with next condition
 
-        private CompiledCondition(int columnIndex, Operator operator, int argumentIndex, boolean ignoreCase, LogicalQuery.Combinator nextCombinator) {
+        private CompiledCondition(int columnIndex, byte typeCode, Operator operator, int argumentIndex, boolean ignoreCase,
+                LogicalQuery.Combinator nextCombinator) {
             this.columnIndex = columnIndex;
+            this.typeCode = typeCode;
             this.operator = operator;
             this.argumentIndex = argumentIndex;
             this.ignoreCase = ignoreCase;
             this.nextCombinator = nextCombinator;
         }
 
-        public static CompiledCondition of(int columnIndex, Operator operator, int argumentIndex) {
-            return new CompiledCondition(columnIndex, operator, argumentIndex, false, LogicalQuery.Combinator.AND);
+        public static CompiledCondition of(int columnIndex, byte typeCode, Operator operator, int argumentIndex) {
+            return new CompiledCondition(columnIndex, typeCode, operator, argumentIndex, false,
+                    LogicalQuery.Combinator.AND);
         }
 
-        public static CompiledCondition of(int columnIndex, Operator operator, int argumentIndex, boolean ignoreCase) {
-            return new CompiledCondition(columnIndex, operator, argumentIndex, ignoreCase, LogicalQuery.Combinator.AND);
+        public static CompiledCondition of(int columnIndex, byte typeCode, Operator operator, int argumentIndex,
+                boolean ignoreCase) {
+            return new CompiledCondition(columnIndex, typeCode, operator, argumentIndex, ignoreCase,
+                    LogicalQuery.Combinator.AND);
         }
 
-        public static CompiledCondition of(int columnIndex, Operator operator, int argumentIndex, boolean ignoreCase, LogicalQuery.Combinator nextCombinator) {
-            return new CompiledCondition(columnIndex, operator, argumentIndex, ignoreCase, nextCombinator);
+        public static CompiledCondition of(int columnIndex, byte typeCode, Operator operator, int argumentIndex,
+                boolean ignoreCase, LogicalQuery.Combinator nextCombinator) {
+            return new CompiledCondition(columnIndex, typeCode, operator, argumentIndex, ignoreCase, nextCombinator);
         }
 
         public int columnIndex() {
@@ -200,6 +207,10 @@ public record CompiledQuery(
 
         public Operator operator() {
             return operator;
+        }
+
+        public byte typeCode() {
+            return typeCode;
         }
 
         public int argumentIndex() {
@@ -257,6 +268,7 @@ public record CompiledQuery(
     public record CompiledJoinPredicate(
             String joinPath,
             int columnIndex,
+            byte typeCode,
             LogicalQuery.Operator operator,
             int argumentIndex,
             boolean ignoreCase

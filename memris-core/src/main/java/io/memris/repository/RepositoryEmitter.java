@@ -31,7 +31,6 @@ import io.memris.runtime.RepositoryMethodExecutor;
 import io.memris.runtime.RepositoryPlan;
 import io.memris.runtime.RepositoryRuntime;
 import io.memris.runtime.IdLookup;
-import io.memris.runtime.codegen.RuntimeExecutorGenerator;
 
 import io.memris.storage.GeneratedTable;
 import io.memris.storage.SimpleTable;
@@ -123,12 +122,14 @@ public final class RepositoryEmitter {
         // Extract column metadata for RepositoryPlan
         var columnNames = extractColumnNames(metadata);
         var typeCodes = extractTypeCodes(metadata);
+        var primitiveNonNullColumns = extractPrimitiveNonNullColumns(metadata);
         var converters = extractConverters(metadata);
         var setters = extractSetters(metadata);
 
         var conditionExecutors = RepositoryRuntime.buildConditionExecutors(
                 compiledQueries,
                 columnNames,
+                primitiveNonNullColumns,
                 metadata.entityClass(),
                 true);
         var orderExecutors = RepositoryRuntime.buildOrderExecutors(compiledQueries, table);
@@ -466,6 +467,18 @@ public final class RepositoryEmitter {
         return typeCodes;
     }
 
+    private static boolean[] extractPrimitiveNonNullColumns(EntityMetadata<?> metadata) {
+        var fields = metadata.fields().stream()
+                .filter(fm -> fm.columnPosition() >= 0)
+                .sorted(Comparator.comparingInt(FieldMapping::columnPosition))
+                .toList();
+        var primitiveNonNull = new boolean[fields.size()];
+        for (var i = 0; i < fields.size(); i++) {
+            primitiveNonNull[i] = fields.get(i).javaType().isPrimitive();
+        }
+        return primitiveNonNull;
+    }
+
     private static TypeConverter<?, ?>[] extractConverters(EntityMetadata<?> metadata) {
         return metadata.fields().stream()
                 .filter(fm -> fm.columnPosition() >= 0)
@@ -487,7 +500,7 @@ public final class RepositoryEmitter {
         byte idTypeCode = (typeCodes != null && idColumnIndex >= 0 && idColumnIndex < typeCodes.length)
                 ? typeCodes[idColumnIndex]
                 : TypeCodes.TYPE_LONG;
-        return RuntimeExecutorGenerator.generateIdLookup(idTypeCode);
+        return IdLookup.forTypeCode(idTypeCode);
     }
 
     @SuppressWarnings("unchecked")

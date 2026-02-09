@@ -104,7 +104,7 @@ public final class BytecodeTableGenerator {
                     Visibility.PRIVATE,
                     FieldManifestation.FINAL);
 
-            columnFields.add(new ColumnFieldInfo(columnFieldName, columnType, typeCode, idx++));
+            columnFields.add(new ColumnFieldInfo(columnFieldName, columnType, typeCode, idx++, field.primitiveNonNull()));
         }
 
         // Add ID index field
@@ -702,6 +702,10 @@ public final class BytecodeTableGenerator {
                             || typeCode == TypeCodes.TYPE_DOUBLE) {
                         PageColumnLong col = (PageColumnLong) column;
                         if (value == null) {
+                            if (fieldInfo.primitiveNonNull()) {
+                                throw new IllegalArgumentException(
+                                        "Null assigned to primitive column: " + fieldInfo.fieldName());
+                            }
                             col.setNull(rowIndex);
                             continue;
                         }
@@ -732,6 +736,10 @@ public final class BytecodeTableGenerator {
                             || typeCode == TypeCodes.TYPE_CHAR) {
                         PageColumnInt col = (PageColumnInt) column;
                         if (value == null) {
+                            if (fieldInfo.primitiveNonNull()) {
+                                throw new IllegalArgumentException(
+                                        "Null assigned to primitive column: " + fieldInfo.fieldName());
+                            }
                             col.setNull(rowIndex);
                             continue;
                         }
