@@ -399,11 +399,15 @@ public final class RepositoryRuntime<T> {
                         return runtime.sortByStringColumn(rows, columnIndex, ascending);
                     };
                 case TypeCodes.TYPE_FLOAT -> (runtime, rows) -> {
-                    int[] sorted = runtime.sortByFloatColumn(rows, columnIndex, ascending);
+                    int[] sorted = primitiveNonNull
+                            ? runtime.sortByFloatColumnNonNull(rows, columnIndex, ascending)
+                            : runtime.sortByFloatColumnNullable(rows, columnIndex, ascending);
                     return limit > 0 && limit < sorted.length ? runtime.limitRows(sorted, limit) : sorted;
                 };
                 case TypeCodes.TYPE_DOUBLE -> (runtime, rows) -> {
-                    int[] sorted = runtime.sortByDoubleColumn(rows, columnIndex, ascending);
+                    int[] sorted = primitiveNonNull
+                            ? runtime.sortByDoubleColumnNonNull(rows, columnIndex, ascending)
+                            : runtime.sortByDoubleColumnNullable(rows, columnIndex, ascending);
                     return limit > 0 && limit < sorted.length ? runtime.limitRows(sorted, limit) : sorted;
                 };
                 default -> (runtime, rows) -> {
@@ -2657,12 +2661,6 @@ public final class RepositoryRuntime<T> {
         return limited;
     }
 
-    private int[] topKInt(int[] rows, int columnIndex, boolean ascending, int k) {
-        return isPrimitiveNonNullColumn(columnIndex)
-                ? topKIntNonNull(rows, columnIndex, ascending, k)
-                : topKIntNullable(rows, columnIndex, ascending, k);
-    }
-
     private int[] topKIntNonNull(int[] rows, int columnIndex, boolean ascending, int k) {
         GeneratedTable table = plan.table();
         int[] result = rows.clone();
@@ -2784,12 +2782,6 @@ public final class RepositoryRuntime<T> {
     private int compareIntForTopKNonNull(int keyA, int keyB, boolean ascending) {
         int cmp = Integer.compare(keyA, keyB);
         return ascending ? cmp : -cmp;
-    }
-
-    private int[] topKLong(int[] rows, int columnIndex, boolean ascending, int k) {
-        return isPrimitiveNonNullColumn(columnIndex)
-                ? topKLongNonNull(rows, columnIndex, ascending, k)
-                : topKLongNullable(rows, columnIndex, ascending, k);
     }
 
     private int[] topKLongNonNull(int[] rows, int columnIndex, boolean ascending, int k) {
@@ -3023,7 +3015,9 @@ public final class RepositoryRuntime<T> {
                 primitiveNonNull
                         ? new IntOrderKeyBuilderNonNull(columnIndex, ascending)
                         : new IntOrderKeyBuilder(columnIndex, ascending);
-            case TypeCodes.TYPE_FLOAT -> new FloatOrderKeyBuilder(columnIndex, ascending);
+            case TypeCodes.TYPE_FLOAT -> primitiveNonNull
+                    ? new FloatOrderKeyBuilderNonNull(columnIndex, ascending)
+                    : new FloatOrderKeyBuilder(columnIndex, ascending);
             case TypeCodes.TYPE_LONG,
                     TypeCodes.TYPE_INSTANT,
                     TypeCodes.TYPE_LOCAL_DATE,
@@ -3032,7 +3026,9 @@ public final class RepositoryRuntime<T> {
                 primitiveNonNull
                         ? new LongOrderKeyBuilderNonNull(columnIndex, ascending)
                         : new LongOrderKeyBuilder(columnIndex, ascending);
-            case TypeCodes.TYPE_DOUBLE -> new DoubleOrderKeyBuilder(columnIndex, ascending);
+            case TypeCodes.TYPE_DOUBLE -> primitiveNonNull
+                    ? new DoubleOrderKeyBuilderNonNull(columnIndex, ascending)
+                    : new DoubleOrderKeyBuilder(columnIndex, ascending);
             case TypeCodes.TYPE_STRING,
                     TypeCodes.TYPE_BIG_DECIMAL,
                     TypeCodes.TYPE_BIG_INTEGER ->
@@ -3155,6 +3151,25 @@ public final class RepositoryRuntime<T> {
         }
     }
 
+    private static final class FloatOrderKeyBuilderNonNull implements OrderKeyBuilder {
+        private final int columnIndex;
+        private final boolean ascending;
+
+        FloatOrderKeyBuilderNonNull(int columnIndex, boolean ascending) {
+            this.columnIndex = columnIndex;
+            this.ascending = ascending;
+        }
+
+        @Override
+        public OrderKey build(GeneratedTable table, int[] rows) {
+            float[] values = new float[rows.length];
+            for (int i = 0; i < rows.length; i++) {
+                values[i] = FloatEncoding.sortableIntToFloat(table.readInt(columnIndex, rows[i]));
+            }
+            return new FloatOrderKeyNonNull(ascending, values);
+        }
+    }
+
     private static final class LongOrderKeyBuilder implements OrderKeyBuilder {
         private final int columnIndex;
         private final boolean ascending;
@@ -3215,6 +3230,25 @@ public final class RepositoryRuntime<T> {
                 values[i] = Double.longBitsToDouble(table.readLong(columnIndex, row));
             }
             return new DoubleOrderKey(ascending, present, values);
+        }
+    }
+
+    private static final class DoubleOrderKeyBuilderNonNull implements OrderKeyBuilder {
+        private final int columnIndex;
+        private final boolean ascending;
+
+        DoubleOrderKeyBuilderNonNull(int columnIndex, boolean ascending) {
+            this.columnIndex = columnIndex;
+            this.ascending = ascending;
+        }
+
+        @Override
+        public OrderKey build(GeneratedTable table, int[] rows) {
+            double[] values = new double[rows.length];
+            for (int i = 0; i < rows.length; i++) {
+                values[i] = Double.longBitsToDouble(table.readLong(columnIndex, rows[i]));
+            }
+            return new DoubleOrderKeyNonNull(ascending, values);
         }
     }
 
@@ -3363,6 +3397,27 @@ public final class RepositoryRuntime<T> {
         }
     }
 
+    private static final class FloatOrderKeyNonNull implements OrderKey {
+        private final boolean ascending;
+        private final float[] keys;
+
+        FloatOrderKeyNonNull(boolean ascending, float[] keys) {
+            this.ascending = ascending;
+            this.keys = keys;
+        }
+
+        @Override
+        public int compare(int left, int right) {
+            int cmp = Float.compare(keys[left], keys[right]);
+            return ascending ? cmp : -cmp;
+        }
+
+        @Override
+        public void swap(int i, int j) {
+            RepositoryRuntime.swap(keys, i, j);
+        }
+    }
+
     private static final class DoubleOrderKey implements OrderKey {
         private final boolean ascending;
         private final boolean[] present;
@@ -3386,6 +3441,27 @@ public final class RepositoryRuntime<T> {
         @Override
         public void swap(int i, int j) {
             RepositoryRuntime.swap(present, i, j);
+            RepositoryRuntime.swap(keys, i, j);
+        }
+    }
+
+    private static final class DoubleOrderKeyNonNull implements OrderKey {
+        private final boolean ascending;
+        private final double[] keys;
+
+        DoubleOrderKeyNonNull(boolean ascending, double[] keys) {
+            this.ascending = ascending;
+            this.keys = keys;
+        }
+
+        @Override
+        public int compare(int left, int right) {
+            int cmp = Double.compare(keys[left], keys[right]);
+            return ascending ? cmp : -cmp;
+        }
+
+        @Override
+        public void swap(int i, int j) {
             RepositoryRuntime.swap(keys, i, j);
         }
     }
@@ -3492,6 +3568,24 @@ public final class RepositoryRuntime<T> {
     }
 
     private int[] sortByFloatColumn(int[] rows, int columnIndex, boolean ascending) {
+        return isPrimitiveNonNullColumn(columnIndex)
+                ? sortByFloatColumnNonNull(rows, columnIndex, ascending)
+                : sortByFloatColumnNullable(rows, columnIndex, ascending);
+    }
+
+    private int[] sortByFloatColumnNonNull(int[] rows, int columnIndex, boolean ascending) {
+        int[] result = rows.clone();
+        SortBuffers buffers = SORT_BUFFERS.get();
+        float[] keys = buffers.floatKeys(result.length);
+        GeneratedTable table = plan.table();
+        for (int i = 0; i < result.length; i++) {
+            keys[i] = FloatEncoding.sortableIntToFloat(table.readInt(columnIndex, result[i]));
+        }
+        quickSortFloatNonNull(result, keys, 0, result.length - 1, ascending);
+        return result;
+    }
+
+    private int[] sortByFloatColumnNullable(int[] rows, int columnIndex, boolean ascending) {
         int[] result = rows.clone();
         SortBuffers buffers = SORT_BUFFERS.get();
         float[] keys = buffers.floatKeys(result.length);
@@ -3540,6 +3634,24 @@ public final class RepositoryRuntime<T> {
     }
 
     private int[] sortByDoubleColumn(int[] rows, int columnIndex, boolean ascending) {
+        return isPrimitiveNonNullColumn(columnIndex)
+                ? sortByDoubleColumnNonNull(rows, columnIndex, ascending)
+                : sortByDoubleColumnNullable(rows, columnIndex, ascending);
+    }
+
+    private int[] sortByDoubleColumnNonNull(int[] rows, int columnIndex, boolean ascending) {
+        int[] result = rows.clone();
+        SortBuffers buffers = SORT_BUFFERS.get();
+        double[] keys = buffers.doubleKeys(result.length);
+        GeneratedTable table = plan.table();
+        for (int i = 0; i < result.length; i++) {
+            keys[i] = Double.longBitsToDouble(table.readLong(columnIndex, result[i]));
+        }
+        quickSortDoubleNonNull(result, keys, 0, result.length - 1, ascending);
+        return result;
+    }
+
+    private int[] sortByDoubleColumnNullable(int[] rows, int columnIndex, boolean ascending) {
         int[] result = rows.clone();
         SortBuffers buffers = SORT_BUFFERS.get();
         double[] keys = buffers.doubleKeys(result.length);
@@ -3662,6 +3774,34 @@ public final class RepositoryRuntime<T> {
             quickSortFloat(rows, keys, present, i, high, ascending);
     }
 
+    private static void quickSortFloatNonNull(int[] rows, float[] keys, int low, int high, boolean ascending) {
+        int i = low;
+        int j = high;
+        int pivotIndex = low + ((high - low) >>> 1);
+        float pivot = keys[pivotIndex];
+        int pivotRow = rows[pivotIndex];
+
+        while (i <= j) {
+            while (compareFloatNonNull(keys[i], rows[i], pivot, pivotRow, ascending) < 0) {
+                i++;
+            }
+            while (compareFloatNonNull(keys[j], rows[j], pivot, pivotRow, ascending) > 0) {
+                j--;
+            }
+            if (i <= j) {
+                swap(rows, i, j);
+                swap(keys, i, j);
+                i++;
+                j--;
+            }
+        }
+
+        if (low < j)
+            quickSortFloatNonNull(rows, keys, low, j, ascending);
+        if (i < high)
+            quickSortFloatNonNull(rows, keys, i, high, ascending);
+    }
+
     private static void quickSortLong(int[] rows, long[] keys, boolean[] present, int low, int high,
             boolean ascending) {
         int i = low;
@@ -3752,6 +3892,34 @@ public final class RepositoryRuntime<T> {
             quickSortDouble(rows, keys, present, i, high, ascending);
     }
 
+    private static void quickSortDoubleNonNull(int[] rows, double[] keys, int low, int high, boolean ascending) {
+        int i = low;
+        int j = high;
+        int pivotIndex = low + ((high - low) >>> 1);
+        double pivot = keys[pivotIndex];
+        int pivotRow = rows[pivotIndex];
+
+        while (i <= j) {
+            while (compareDoubleNonNull(keys[i], rows[i], pivot, pivotRow, ascending) < 0) {
+                i++;
+            }
+            while (compareDoubleNonNull(keys[j], rows[j], pivot, pivotRow, ascending) > 0) {
+                j--;
+            }
+            if (i <= j) {
+                swap(rows, i, j);
+                swap(keys, i, j);
+                i++;
+                j--;
+            }
+        }
+
+        if (low < j)
+            quickSortDoubleNonNull(rows, keys, low, j, ascending);
+        if (i < high)
+            quickSortDoubleNonNull(rows, keys, i, high, ascending);
+    }
+
     private static void quickSortString(int[] rows, String[] keys, int low, int high, boolean ascending) {
         int i = low;
         int j = high;
@@ -3813,6 +3981,16 @@ public final class RepositoryRuntime<T> {
         return ascending ? cmp : -cmp;
     }
 
+    private static int compareFloatNonNull(float value, int row,
+            float pivot, int pivotRow,
+            boolean ascending) {
+        int cmp = Float.compare(value, pivot);
+        if (cmp == 0) {
+            cmp = Integer.compare(row, pivotRow);
+        }
+        return ascending ? cmp : -cmp;
+    }
+
     private static int compareLong(long value, boolean present, int row,
             long pivot, boolean pivotPresent, int pivotRow,
             boolean ascending) {
@@ -3841,6 +4019,16 @@ public final class RepositoryRuntime<T> {
         if (cmp == 0) {
             cmp = Double.compare(value, pivot);
         }
+        if (cmp == 0) {
+            cmp = Integer.compare(row, pivotRow);
+        }
+        return ascending ? cmp : -cmp;
+    }
+
+    private static int compareDoubleNonNull(double value, int row,
+            double pivot, int pivotRow,
+            boolean ascending) {
+        int cmp = Double.compare(value, pivot);
         if (cmp == 0) {
             cmp = Integer.compare(row, pivotRow);
         }
