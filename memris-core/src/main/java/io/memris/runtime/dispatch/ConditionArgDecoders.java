@@ -9,6 +9,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.Collection;
 import java.util.Date;
+import java.util.Iterator;
 
 final class ConditionArgDecoders {
 
@@ -201,11 +202,16 @@ final class ConditionArgDecoders {
     }
 
     private static int iterableSize(Iterable<?> iterable) {
-        if (iterable instanceof Collection<?> collection) {
-            return collection.size();
-        }
+        return switch (iterable) {
+            case Collection<?> collection -> collection.size();
+            default -> sizeFromIterator(iterable.iterator());
+        };
+    }
+
+    private static int sizeFromIterator(Iterator<?> iterator) {
         var size = 0;
-        for (var ignored : iterable) {
+        while (iterator.hasNext()) {
+            iterator.next();
             size++;
         }
         return size;
