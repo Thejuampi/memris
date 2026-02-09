@@ -132,7 +132,7 @@ public final class RepositoryEmitter {
                 primitiveNonNullColumns,
                 metadata.entityClass(),
                 true);
-        var orderExecutors = RepositoryRuntime.buildOrderExecutors(compiledQueries, table);
+        var orderExecutors = RepositoryRuntime.buildOrderExecutors(compiledQueries, table, primitiveNonNullColumns);
         var projectionExecutors = RepositoryRuntime.buildProjectionExecutors(compiledQueries, provider);
 
         // Create entity constructor handle
