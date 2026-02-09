@@ -58,6 +58,33 @@ class CompositeIndexRuntimeTest {
         assertThat(rows).extracting(row -> row.code).containsExactlyInAnyOrder(11, 12);
     }
 
+    @Test
+    void shouldEvaluateExistsWithCompositeHashConditions() {
+        var repository = arena.createRepository(CompositeIndexedRepository.class);
+        repository.save(new CompositeIndexedRecord("us", 10, 11));
+        repository.save(new CompositeIndexedRecord("us", 20, 22));
+
+        var actual = new ExistsPair(
+                repository.existsByRegionAndCode("us", 20),
+                repository.existsByRegionAndCode("eu", 20));
+
+        assertThat(actual).usingRecursiveComparison().isEqualTo(new ExistsPair(true, false));
+    }
+
+    @Test
+    void shouldEvaluateCountWithCompositeHashConditions() {
+        var repository = arena.createRepository(CompositeIndexedRepository.class);
+        repository.save(new CompositeIndexedRecord("us", 20, 11));
+        repository.save(new CompositeIndexedRecord("us", 20, 22));
+        repository.save(new CompositeIndexedRecord("eu", 20, 33));
+
+        var actual = new CountPair(
+                repository.countByRegionAndCode("us", 20),
+                repository.countByRegionAndCode("apac", 20));
+
+        assertThat(actual).usingRecursiveComparison().isEqualTo(new CountPair(2L, 0L));
+    }
+
     @Entity
     @Indexes({
             @Index(name = "idx_region_code", fields = { "region", "code" }, type = Index.IndexType.HASH),
@@ -87,5 +114,15 @@ class CompositeIndexRuntimeTest {
         List<CompositeIndexedRecord> findByRegionAndCode(String region, int code);
 
         List<CompositeIndexedRecord> findByRegionAndScoreGreaterThan(String region, int score);
+
+        boolean existsByRegionAndCode(String region, int code);
+
+        long countByRegionAndCode(String region, int code);
+    }
+
+    private record ExistsPair(boolean presentMatch, boolean missingMatch) {
+    }
+
+    private record CountPair(long matched, long missing) {
     }
 }
