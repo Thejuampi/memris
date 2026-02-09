@@ -33,6 +33,7 @@ import io.memris.runtime.codegen.RuntimeExecutorGenerator;
 import io.memris.runtime.dispatch.ConditionProgramCompiler;
 import io.memris.runtime.dispatch.DirectConditionExecutor;
 import io.memris.runtime.dispatch.IndexProbeCompiler;
+import io.memris.runtime.dispatch.InIndexSelector;
 import io.memris.runtime.dispatch.MultiColumnOrderCompiler;
 import io.memris.runtime.dispatch.SingleOrderProgramCompiler;
 import java.lang.invoke.MethodHandle;
@@ -258,8 +259,14 @@ public final class RepositoryRuntime<T> {
                 if (condition.argumentIndex() < 0 || condition.argumentIndex() >= args.length) {
                     return fallbackSelector.execute(runtime, args);
                 }
-                Selection selection = selectWithIndexForIn(runtime, entityClass, fieldName,
-                        args[condition.argumentIndex()]);
+                MemrisRepositoryFactory indexFactory = runtime.indexFactory();
+                if (indexFactory == null) {
+                    return fallbackSelector.execute(runtime, args);
+                }
+                Selection selection = InIndexSelector.select(
+                        args[condition.argumentIndex()],
+                        value -> indexFactory.queryIndex(entityClass, fieldName, Predicate.Operator.EQ, value),
+                        runtime::selectionFromRows);
                 return selection != null ? selection : fallbackSelector.execute(runtime, args);
             });
             case BETWEEN -> new ConditionExecutor(condition.nextCombinator(), (runtime, args) -> {
@@ -307,59 +314,6 @@ public final class RepositoryRuntime<T> {
             }
         }
         return false;
-    }
-
-    private static Selection selectWithIndexForIn(RepositoryRuntime<?> runtime, Class<?> entityClass, String fieldName,
-            Object value) {
-        MemrisRepositoryFactory indexFactory = runtime.indexFactory();
-        if (indexFactory == null) {
-            return null;
-        }
-        Iterable<?> iterable = null;
-        if (value instanceof Iterable<?> it) {
-            iterable = it;
-        } else if (value instanceof Object[] arr) {
-            iterable = java.util.Arrays.asList(arr);
-        }
-
-        if (iterable == null) {
-            if (value instanceof int[] ints) {
-                Selection combined = null;
-                for (int v : ints) {
-                    int[] rows = indexFactory.queryIndex(entityClass, fieldName, Predicate.Operator.EQ, v);
-                    if (rows == null) {
-                        return null;
-                    }
-                    Selection next = runtime.selectionFromRows(rows);
-                    combined = combined == null ? next : combined.union(next);
-                }
-                return combined;
-            }
-            if (value instanceof long[] longs) {
-                Selection combined = null;
-                for (long v : longs) {
-                    int[] rows = indexFactory.queryIndex(entityClass, fieldName, Predicate.Operator.EQ, v);
-                    if (rows == null) {
-                        return null;
-                    }
-                    Selection next = runtime.selectionFromRows(rows);
-                    combined = combined == null ? next : combined.union(next);
-                }
-                return combined;
-            }
-            return null;
-        }
-
-        Selection combined = null;
-        for (Object item : iterable) {
-            int[] rows = indexFactory.queryIndex(entityClass, fieldName, Predicate.Operator.EQ, item);
-            if (rows == null) {
-                return null;
-            }
-            Selection next = runtime.selectionFromRows(rows);
-            combined = combined == null ? next : combined.union(next);
-        }
-        return combined;
     }
 
     private static OrderExecutor buildOrderExecutor(CompiledQuery query, GeneratedTable table,
@@ -2431,51 +2385,10 @@ public final class RepositoryRuntime<T> {
     }
 
     private Selection selectWithIndexForIn(String fieldName, Object value) {
-        Iterable<?> iterable = null;
-        if (value instanceof Iterable<?> it) {
-            iterable = it;
-        } else if (value instanceof Object[] arr) {
-            iterable = java.util.Arrays.asList(arr);
-        }
-
-        if (iterable == null) {
-            if (value instanceof int[] ints) {
-                Selection combined = null;
-                for (int v : ints) {
-                    int[] rows = queryIndex(metadata.entityClass(), fieldName, Predicate.Operator.EQ, v);
-                    if (rows == null) {
-                        return null;
-                    }
-                    Selection next = selectionFromRows(rows);
-                    combined = combined == null ? next : combined.union(next);
-                }
-                return combined;
-            }
-            if (value instanceof long[] longs) {
-                Selection combined = null;
-                for (long v : longs) {
-                    int[] rows = queryIndex(metadata.entityClass(), fieldName, Predicate.Operator.EQ, v);
-                    if (rows == null) {
-                        return null;
-                    }
-                    Selection next = selectionFromRows(rows);
-                    combined = combined == null ? next : combined.union(next);
-                }
-                return combined;
-            }
-            return null;
-        }
-
-        Selection combined = null;
-        for (Object item : iterable) {
-            int[] rows = queryIndex(metadata.entityClass(), fieldName, Predicate.Operator.EQ, item);
-            if (rows == null) {
-                return null;
-            }
-            Selection next = selectionFromRows(rows);
-            combined = combined == null ? next : combined.union(next);
-        }
-        return combined;
+        return InIndexSelector.select(
+                value,
+                item -> queryIndex(metadata.entityClass(), fieldName, Predicate.Operator.EQ, item),
+                this::selectionFromRows);
     }
 
     private String resolveFieldName(int columnIndex) {
