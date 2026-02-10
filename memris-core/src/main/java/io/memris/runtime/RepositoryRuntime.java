@@ -2141,7 +2141,7 @@ public final class RepositoryRuntime<T> {
         if (indexes == null) {
             return null;
         }
-        return probe.select(indexes, conditions, start, end, args, consumed);
+        return probe.select(conditions, start, end, args, consumed);
     }
 
     private Selection selectWithIndex(CompiledQuery.CompiledCondition condition, Object[] args) {

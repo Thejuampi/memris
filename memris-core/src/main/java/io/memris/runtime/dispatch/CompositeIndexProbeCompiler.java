@@ -18,15 +18,14 @@ public final class CompositeIndexProbeCompiler {
 
     @FunctionalInterface
     public interface CompositeIndexProbe {
-        Selection select(Map<String, Object> indexes,
-                CompiledQuery.CompiledCondition[] conditions,
+        Selection select(CompiledQuery.CompiledCondition[] conditions,
                 int start,
                 int end,
                 Object[] args,
                 boolean[] consumed);
     }
 
-    private static final CompositeIndexProbe NOOP = (indexes, conditions, start, end, args, consumed) -> null;
+    private static final CompositeIndexProbe NOOP = (conditions, start, end, args, consumed) -> null;
 
     public static CompositeIndexProbe compile(CompositeIndexSelector.CompositeIndexPlan[] plans,
             Map<String, Object> indexes,
@@ -55,7 +54,7 @@ public final class CompositeIndexProbeCompiler {
             return NOOP;
         }
 
-        return (runtimeIndexes, runtimeConditions, start, end, args, consumed) -> {
+        return (runtimeConditions, start, end, args, consumed) -> {
             if (runtimeConditions != conditions) {
                 return null;
             }
@@ -116,14 +115,14 @@ public final class CompositeIndexProbeCompiler {
             CompositeIndexSelector.IndexLookup indexLookup,
             CompositeIndexSelector.SelectionBuilder selectionBuilder) {
         return switch (index) {
-            case CompositeHashIndex ignored -> compileHashPlan(index,
+            case CompositeHashIndex hashIndex -> compileHashPlan(hashIndex,
                     columnPositions,
                     conditions,
                     start,
                     end,
                     indexLookup,
                     selectionBuilder);
-            case CompositeRangeIndex ignored -> compileRangePlan(index,
+            case CompositeRangeIndex rangeIndex -> compileRangePlan(rangeIndex,
                     columnPositions,
                     conditions,
                     start,
