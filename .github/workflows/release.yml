@@ -3,6 +3,10 @@ name: Release to Maven Central
 on:
   workflow_dispatch:
 
+concurrency:
+  group: release-main
+  cancel-in-progress: false
+
 jobs:
   release:
     if: github.ref == 'refs/heads/main'
