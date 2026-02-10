@@ -2,15 +2,6 @@ name: Release to Maven Central
 
 on:
   workflow_dispatch:
-    inputs:
-      releaseVersion:
-        description: "Release version to publish (e.g., 0.1.11)"
-        required: true
-        type: string
-      developmentVersion:
-        description: "Next development version (e.g., 0.1.12-SNAPSHOT)"
-        required: true
-        type: string
 
 jobs:
   release:
@@ -74,14 +65,76 @@ jobs:
           printf '%s\n' "  </servers>" >> ~/.m2/settings.xml
           printf '%s\n' "</settings>" >> ~/.m2/settings.xml
 
+      - name: Compute next release versions
+        id: versions
+        run: |
+          python - << 'PY'
+          import json
+          import os
+          import urllib.parse
+          import urllib.request
+          import xml.etree.ElementTree as ET
+
+          def increment_patch(version: str) -> str:
+              parts = version.split('.')
+              if not parts or not parts[-1].isdigit():
+                  raise ValueError(f"Cannot increment non-numeric patch segment in version: {version}")
+              parts[-1] = str(int(parts[-1]) + 1)
+              return '.'.join(parts)
+
+          def exists_on_central(version: str) -> bool:
+              query = f'g:"io.github.thejuampi" AND a:"memris" AND v:"{version}"'
+              params = urllib.parse.urlencode({
+                  'q': query,
+                  'rows': 1,
+                  'wt': 'json',
+              })
+              url = f"https://search.maven.org/solrsearch/select?{params}"
+              with urllib.request.urlopen(url, timeout=20) as response:
+                  payload = json.loads(response.read().decode('utf-8'))
+              return payload.get('response', {}).get('numFound', 0) > 0
+
+          ns = {'m': 'http://maven.apache.org/POM/4.0.0'}
+          root = ET.parse('pom.xml').getroot()
+          version_node = root.find('m:version', ns)
+          if version_node is None or not (version_node.text or '').strip():
+              raise RuntimeError('Unable to determine project version from pom.xml')
+
+          current_version = version_node.text.strip()
+          base_release = current_version.removesuffix('-SNAPSHOT')
+
+          release_version = base_release
+          checks = 0
+          while exists_on_central(release_version):
+              release_version = increment_patch(release_version)
+              checks += 1
+              if checks > 50:
+                  raise RuntimeError('Exceeded 50 attempts finding an unpublished release version')
+
+          development_version = increment_patch(release_version) + '-SNAPSHOT'
+
+          output_path = os.environ.get('GITHUB_OUTPUT')
+          if not output_path:
+              raise RuntimeError('GITHUB_OUTPUT environment variable is not available')
+
+          with open(output_path, "a", encoding="utf-8") as output:
+              output.write(f"current_version={current_version}\n")
+              output.write(f"release_version={release_version}\n")
+              output.write(f"development_version={development_version}\n")
+
+          print(f"Current version: {current_version}")
+          print(f"Release version: {release_version}")
+          print(f"Next development version: {development_version}")
+          PY
+
       - name: Release with Maven
         env:
           GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
         run: |
           mvn -B release:prepare release:perform \
-            -DreleaseVersion=${{ inputs.releaseVersion }} \
-            -DdevelopmentVersion=${{ inputs.developmentVersion }} \
-            -Dtag=v${{ inputs.releaseVersion }} \
+            -DreleaseVersion=${{ steps.versions.outputs.release_version }} \
+            -DdevelopmentVersion=${{ steps.versions.outputs.development_version }} \
+            -Dtag=v${{ steps.versions.outputs.release_version }} \
             -Darguments="-DskipTests -Dcheckstyle.skip=true -Dmodernizer.skip=true -Dpmd.skip=true -Dspotbugs.skip=true -Denforcer.skip=true -Dgpg.passphrase=$GPG_PASSPHRASE -Dgpg.executable=gpg -Dgpg.useagent=false" \
             -DskipTests \
             -Dcheckstyle.skip=true \
@@ -99,4 +152,4 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           git push origin main
-          git push origin --tags
+          git push origin v${{ steps.versions.outputs.release_version }}
