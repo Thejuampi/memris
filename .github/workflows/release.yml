@@ -2,6 +2,15 @@ name: Release to Maven Central
 
 on:
   workflow_dispatch:
+    inputs:
+      releaseVersion:
+        description: "Release version to publish (e.g., 0.1.11)"
+        required: true
+        type: string
+      developmentVersion:
+        description: "Next development version (e.g., 0.1.12-SNAPSHOT)"
+        required: true
+        type: string
 
 jobs:
   release:
@@ -70,6 +79,9 @@ jobs:
           GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
         run: |
           mvn -B release:prepare release:perform \
+            -DreleaseVersion=${{ inputs.releaseVersion }} \
+            -DdevelopmentVersion=${{ inputs.developmentVersion }} \
+            -Dtag=v${{ inputs.releaseVersion }} \
             -Darguments="-DskipTests -Dcheckstyle.skip=true -Dmodernizer.skip=true -Dpmd.skip=true -Dspotbugs.skip=true -Denforcer.skip=true -Dgpg.passphrase=$GPG_PASSPHRASE -Dgpg.executable=gpg -Dgpg.useagent=false" \
             -DskipTests \
             -Dcheckstyle.skip=true \
