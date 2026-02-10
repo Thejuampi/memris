@@ -33,6 +33,6 @@ public final class CompositeIndexSelector {
             IndexLookup indexLookup,
             SelectionBuilder selectionBuilder) {
         var probe = CompositeIndexProbeCompiler.compile(plans, indexes, conditions, indexLookup, selectionBuilder);
-        return probe.select(indexes, conditions, start, end, args, consumed);
+        return probe.select(conditions, start, end, args, consumed);
     }
 }
