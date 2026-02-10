@@ -4,7 +4,7 @@
 
     <groupId>io.github.thejuampi</groupId>
     <artifactId>memris-parent</artifactId>
-    <version>0.1.10-SNAPSHOT</version>
+    <version>0.1.10</version>
     <packaging>pom</packaging>
 
     <name>Memris - Blazing Fast In-Memory Storage</name>
@@ -34,7 +34,7 @@
         <connection>scm:git:https://github.com/Thejuampi/memris.git</connection>
         <developerConnection>scm:git:https://github.com/Thejuampi/memris.git</developerConnection>
         <url>https://github.com/Thejuampi/memris</url>
-        <tag>HEAD</tag>
+        <tag>v0.1.10</tag>
     </scm>
 
     <properties>
