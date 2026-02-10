@@ -1,0 +1,130 @@
+site_name: Memris Documentation
+site_description: High-performance in-memory data storage for Java with Spring Boot support
+site_author: thejuampi
+site_url: https://thejuampi.github.io/memris/
+
+docs_dir: docs
+site_dir: site
+
+# Repository information
+repo_name: thejuampi/memris
+repo_url: https://github.com/thejuampi/memris
+edit_uri: edit/main/docs/
+
+# Copyright
+copyright: Copyright &copy; 2025 Memris Contributors
+
+# Theme configuration
+theme:
+  name: material
+  
+  # Color scheme - dark mode matching current aesthetic
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: teal
+      accent: teal
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: teal
+      accent: teal
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  
+  # Font configuration
+  font:
+    text: Roboto
+    code: Roboto Mono
+  
+  # Features
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.code.annotate
+    - content.action.edit
+    - content.action.view
+  
+  # Customization
+  icon:
+    repo: fontawesome/brands/github
+    edit: material/pencil
+    view: material/eye
+
+# Extensions
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.tabbed:
+      alternate_style: true
+  - tables
+  - fenced_code
+  - toc:
+      permalink: true
+
+# Plugins
+plugins:
+  - search:
+      lang: en
+  - minify:
+      minify_html: true
+
+# Extra CSS
+extra_css:
+  - stylesheets/extra.css
+
+# Navigation structure
+nav:
+  - Home: index.md
+  - Getting Started:
+    - Installation: getting-started/installation.md
+    - Quick Start: getting-started/quick-start.md
+    - Configuration: getting-started/configuration.md
+    - Spring Boot Setup: getting-started/spring-boot-setup.md
+  - Spring Boot Integration:
+    - Overview: spring-boot/overview.md
+    - Auto-Configuration: spring-boot/auto-configuration.md
+    - Configuration Properties: spring-boot/configuration-properties.md
+    - Simple Examples: spring-boot/examples-simple.md
+    - Advanced Examples: spring-boot/examples-advanced.md
+  - Reference:
+    - Architecture: ARCHITECTURE.md
+    - Query Reference: QUERY.md
+    - Concurrency: CONCURRENCY.md
+    - Spring Data: SPRING_DATA.md
+    - Benchmark Baselines: BENCHMARK_BASELINES.md
+    - Entity Annotations: entity-annotations.md
+  - Examples:
+    - Overview: examples/README.md
+    - Basic CRUD: examples/basic-crud.md
+  - Development:
+    - Development Guide: DEVELOPMENT.md
+    - Roadmap: ROADMAP.md
+
+# Extra social links
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/thejuampi/memris
+      name: Memris on GitHub
+  version:
+    provider: mike
+
+# Validation
+validation:
+  omitted_files: warn
+  absolute_links: warn
+  unrecognized_links: warn

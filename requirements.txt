@@ -1,0 +1,7 @@
+# MkDocs dependencies for Memris documentation
+# Install with: pip install -r requirements.txt
+
+mkdocs>=1.5.3
+mkdocs-material>=9.5.0
+mkdocs-minify-plugin>=0.7.1
+pymdown-extensions>=10.5

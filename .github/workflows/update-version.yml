@@ -1,0 +1,79 @@
+name: Update Documentation Version
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to update to (e.g., 0.1.5)'
+        required: true
+        type: string
+
+jobs:
+  update-version:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ inputs.version }}"
+          else
+            VERSION=${GITHUB_REF_NAME#v}
+          fi
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          echo "Updating to version: $VERSION"
+
+      - name: Update README.md
+        run: |
+          VERSION="${{ steps.version.outputs.VERSION }}"
+          
+          # Update Maven dependency
+          sed -i "s/<version>.*<\/version>/<version>$VERSION<\/version>/g" README.md
+          
+          # Update Gradle dependencies
+          sed -i "s/io.github.thejuampi:memris:[^']*/io.github.thejuampi:memris:$VERSION/g" README.md
+          
+          # Show changes
+          git diff README.md
+
+      - name: Update Documentation Files
+        run: |
+          VERSION="${{ steps.version.outputs.VERSION }}"
+          
+          # Update all documentation files that contain version numbers
+          find docs -name "*.md" -type f -exec sed -i "s/<version>.*<\/version>/<version>$VERSION<\/version>/g" {} \;
+          find docs -name "*.md" -type f -exec sed -i "s/io.github.thejuampi:memris:[^']*/io.github.thejuampi:memris:$VERSION/g" {} \;
+          find docs -name "*.md" -type f -exec sed -i "s/io.github.thejuampi:memris-spring-boot-starter-3:[^']*/io.github.thejuampi:memris-spring-boot-starter-3:$VERSION/g" {} \;
+          find docs -name "*.md" -type f -exec sed -i "s/io.github.thejuampi:memris-spring-boot-starter-2:[^']*/io.github.thejuampi:memris-spring-boot-starter-2:$VERSION/g" {} \;
+          
+          # Show all changes
+          git diff --stat
+
+      - name: Commit changes
+        run: |
+          VERSION="${{ steps.version.outputs.VERSION }}"
+          
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          
+          # Check if there are changes to commit
+          if git diff --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+          
+          git add README.md docs/
+          git commit -m "chore: update version to $VERSION in documentation"
+          
+          # Push to main branch
+          git push origin HEAD:main

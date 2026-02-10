@@ -32,20 +32,20 @@ Add the library from Maven Central:
 <dependency>
   <groupId>io.github.thejuampi</groupId>
   <artifactId>memris</artifactId>
-  <version>0.1.4</version>
+  <version>0.1.10</version>
 </dependency>
 ```
 
 ### Gradle (Groovy)
 
 ```groovy
-implementation 'io.github.thejuampi:memris:0.1.4'
+implementation 'io.github.thejuampi:memris:0.1.10'
 ```
 
 ### Gradle (Kotlin)
 
 ```kotlin
-implementation("io.github.thejuampi:memris:0.1.4")
+implementation("io.github.thejuampi:memris:0.1.10")
 ```
 
 ---

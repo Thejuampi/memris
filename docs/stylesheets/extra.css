@@ -1,0 +1,103 @@
+:root {
+  --md-primary-fg-color: #23c8c2;
+  --md-primary-fg-color--light: #5ce0db;
+  --md-primary-fg-color--dark: #1a9d98;
+  --md-accent-fg-color: #23c8c2;
+}
+
+.md-header {
+  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+}
+
+.md-tabs {
+  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+}
+
+.md-typeset h1 {
+  color: #23c8c2;
+  font-weight: 600;
+}
+
+.md-typeset h2 {
+  color: #f0b35f;
+  font-weight: 500;
+}
+
+.md-typeset h3 {
+  color: #e0e0e0;
+  font-weight: 500;
+}
+
+.md-typeset code {
+  background-color: rgba(35, 200, 194, 0.1);
+  border-radius: 4px;
+  padding: 0.2em 0.4em;
+}
+
+.md-typeset pre > code {
+  background-color: #1a1a2e;
+  border-radius: 8px;
+}
+
+.highlight .md-typeset code {
+  background-color: transparent;
+}
+
+.md-button {
+  border-radius: 6px;
+  transition: all 0.3s ease;
+}
+
+.md-button--primary {
+  background: linear-gradient(135deg, #23c8c2 0%, #1a9d98 100%);
+  border: none;
+}
+
+.md-button--primary:hover {
+  background: linear-gradient(135deg, #5ce0db 0%, #23c8c2 100%);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(35, 200, 194, 0.3);
+}
+
+.md-typeset .admonition {
+  border-radius: 8px;
+  border-left-width: 4px;
+}
+
+.md-typeset .admonition.note {
+  border-left-color: #23c8c2;
+}
+
+.md-typeset .admonition.warning {
+  border-left-color: #f0b35f;
+}
+
+.md-typeset .admonition.danger {
+  border-left-color: #ff6b6b;
+}
+
+.md-typeset .admonition-title {
+  font-weight: 600;
+}
+
+.md-typeset table:not([class]) {
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.md-typeset table:not([class]) th {
+  background-color: #1a1a2e;
+  color: #23c8c2;
+  font-weight: 600;
+}
+
+.md-typeset table:not([class]) tr:nth-child(2n) {
+  background-color: rgba(35, 200, 194, 0.05);
+}
+
+@media screen and (max-width: 76.234375em) {
+  .md-nav--primary .md-nav__title {
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+  }
+}
