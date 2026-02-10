@@ -20,6 +20,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          token: ${{ github.token }}
 
       - name: Setup JDK
         uses: actions/setup-java@v4
@@ -131,8 +132,8 @@ jobs:
 
       - name: Push release commits and tags
         if: success()
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
         run: |
+          git checkout main
+          git pull --ff-only origin main
           git push origin main
           git push origin v${{ steps.versions.outputs.release_version }}
