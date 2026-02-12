@@ -339,27 +339,24 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
                         Object column = resolveColumn(obj, fieldInfo, columnIndex, columnFieldRefs, columnGetters, lookup);
 
                         byte typeCode = fieldInfo.typeCode();
-                        if (typeCode == TypeCodes.TYPE_LONG
-                                || typeCode == TypeCodes.TYPE_DOUBLE
-                                || typeCode == TypeCodes.TYPE_INSTANT
-                                || typeCode == TypeCodes.TYPE_LOCAL_DATE
-                                || typeCode == TypeCodes.TYPE_LOCAL_DATE_TIME
-                                || typeCode == TypeCodes.TYPE_DATE) {
-                            return ((PageColumnLong) column).get(rowIndex);
-                        } else if (typeCode == TypeCodes.TYPE_INT
-                                || typeCode == TypeCodes.TYPE_FLOAT
-                                || typeCode == TypeCodes.TYPE_BOOLEAN
-                                || typeCode == TypeCodes.TYPE_BYTE
-                                || typeCode == TypeCodes.TYPE_SHORT
-                                || typeCode == TypeCodes.TYPE_CHAR) {
-                            return ((PageColumnInt) column).get(rowIndex);
-                        } else if (typeCode == TypeCodes.TYPE_STRING
-                                || typeCode == TypeCodes.TYPE_BIG_DECIMAL
-                                || typeCode == TypeCodes.TYPE_BIG_INTEGER) {
-                            return ((PageColumnString) column).get(rowIndex);
-                        } else {
-                            throw new IllegalStateException("Unknown type code: " + typeCode);
-                        }
+                        return switch (typeCode) {
+                            case TypeCodes.TYPE_LONG,
+                                    TypeCodes.TYPE_DOUBLE,
+                                    TypeCodes.TYPE_INSTANT,
+                                    TypeCodes.TYPE_LOCAL_DATE,
+                                    TypeCodes.TYPE_LOCAL_DATE_TIME,
+                                    TypeCodes.TYPE_DATE -> ((PageColumnLong) column).get(rowIndex);
+                            case TypeCodes.TYPE_INT,
+                                    TypeCodes.TYPE_FLOAT,
+                                    TypeCodes.TYPE_BOOLEAN,
+                                    TypeCodes.TYPE_BYTE,
+                                    TypeCodes.TYPE_SHORT,
+                                    TypeCodes.TYPE_CHAR -> ((PageColumnInt) column).get(rowIndex);
+                            case TypeCodes.TYPE_STRING,
+                                    TypeCodes.TYPE_BIG_DECIMAL,
+                                    TypeCodes.TYPE_BIG_INTEGER -> ((PageColumnString) column).get(rowIndex);
+                            default -> throw new IllegalStateException("Unknown type code: " + typeCode);
+                        };
                     } catch (Throwable e) {
                         throw new RuntimeException(e);
                     }
@@ -400,27 +397,24 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
                         Object column = resolveColumn(obj, fieldInfo, columnIndex, columnFieldRefs, columnGetters, lookup);
 
                         byte typeCode = fieldInfo.typeCode();
-                        if (typeCode == TypeCodes.TYPE_LONG
-                                || typeCode == TypeCodes.TYPE_DOUBLE
-                                || typeCode == TypeCodes.TYPE_INSTANT
-                                || typeCode == TypeCodes.TYPE_LOCAL_DATE
-                                || typeCode == TypeCodes.TYPE_LOCAL_DATE_TIME
-                                || typeCode == TypeCodes.TYPE_DATE) {
-                            return ((PageColumnLong) column).isPresent(rowIndex);
-                        } else if (typeCode == TypeCodes.TYPE_INT
-                                || typeCode == TypeCodes.TYPE_FLOAT
-                                || typeCode == TypeCodes.TYPE_BOOLEAN
-                                || typeCode == TypeCodes.TYPE_BYTE
-                                || typeCode == TypeCodes.TYPE_SHORT
-                                || typeCode == TypeCodes.TYPE_CHAR) {
-                            return ((PageColumnInt) column).isPresent(rowIndex);
-                        } else if (typeCode == TypeCodes.TYPE_STRING
-                                || typeCode == TypeCodes.TYPE_BIG_DECIMAL
-                                || typeCode == TypeCodes.TYPE_BIG_INTEGER) {
-                            return ((PageColumnString) column).isPresent(rowIndex);
-                        } else {
-                            throw new IllegalStateException("Unknown type code: " + typeCode);
-                        }
+                        return switch (typeCode) {
+                            case TypeCodes.TYPE_LONG,
+                                    TypeCodes.TYPE_DOUBLE,
+                                    TypeCodes.TYPE_INSTANT,
+                                    TypeCodes.TYPE_LOCAL_DATE,
+                                    TypeCodes.TYPE_LOCAL_DATE_TIME,
+                                    TypeCodes.TYPE_DATE -> ((PageColumnLong) column).isPresent(rowIndex);
+                            case TypeCodes.TYPE_INT,
+                                    TypeCodes.TYPE_FLOAT,
+                                    TypeCodes.TYPE_BOOLEAN,
+                                    TypeCodes.TYPE_BYTE,
+                                    TypeCodes.TYPE_SHORT,
+                                    TypeCodes.TYPE_CHAR -> ((PageColumnInt) column).isPresent(rowIndex);
+                            case TypeCodes.TYPE_STRING,
+                                    TypeCodes.TYPE_BIG_DECIMAL,
+                                    TypeCodes.TYPE_BIG_INTEGER -> ((PageColumnString) column).isPresent(rowIndex);
+                            default -> throw new IllegalStateException("Unknown type code: " + typeCode);
+                        };
                     } catch (Throwable e) {
                         throw new RuntimeException(e);
                     }
@@ -895,91 +889,72 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
                     Object value = values[i];
 
                     byte typeCode = fieldInfo.typeCode();
-                    if (typeCode == TypeCodes.TYPE_LONG
-                            || typeCode == TypeCodes.TYPE_INSTANT
-                            || typeCode == TypeCodes.TYPE_LOCAL_DATE
-                            || typeCode == TypeCodes.TYPE_LOCAL_DATE_TIME
-                            || typeCode == TypeCodes.TYPE_DATE
-                            || typeCode == TypeCodes.TYPE_DOUBLE) {
-                        PageColumnLong col = (PageColumnLong) column;
-                        if (value == null) {
-                            col.setNull(rowIndex);
-                            continue;
-                        }
-                        long longValue;
-                        if (typeCode == TypeCodes.TYPE_DOUBLE) {
-                            if (value instanceof Double) {
-                                longValue = FloatEncoding.doubleToSortableLong((Double) value);
-                            } else if (value instanceof Number) {
-                                longValue = FloatEncoding
-                                        .doubleToSortableLong(((Number) value).doubleValue());
-                            } else {
-                                throw new IllegalArgumentException("Expected Double for column " + i);
+                    switch (typeCode) {
+                        case TypeCodes.TYPE_LONG,
+                                TypeCodes.TYPE_INSTANT,
+                                TypeCodes.TYPE_LOCAL_DATE,
+                                TypeCodes.TYPE_LOCAL_DATE_TIME,
+                                TypeCodes.TYPE_DATE -> {
+                            PageColumnLong col = (PageColumnLong) column;
+                            if (value == null) {
+                                col.setNull(rowIndex);
+                                continue;
                             }
-                        } else if (value instanceof Long) {
-                            longValue = (Long) value;
-                        } else if (value instanceof Integer) {
-                            longValue = ((Integer) value).longValue();
-                        } else if (value instanceof Number) {
-                            longValue = ((Number) value).longValue();
-                        } else {
-                            throw new IllegalArgumentException("Expected Long for column " + i);
+                            col.set(rowIndex, ((Number) value).longValue());
                         }
-                        col.set(rowIndex, longValue);
-                    } else if (typeCode == TypeCodes.TYPE_INT
-                            || typeCode == TypeCodes.TYPE_FLOAT
-                            || typeCode == TypeCodes.TYPE_BOOLEAN
-                            || typeCode == TypeCodes.TYPE_BYTE
-                            || typeCode == TypeCodes.TYPE_SHORT
-                            || typeCode == TypeCodes.TYPE_CHAR) {
-                        PageColumnInt col = (PageColumnInt) column;
-                        if (value == null) {
-                            col.setNull(rowIndex);
-                            continue;
-                        }
-                        int intValue;
-                        if (typeCode == TypeCodes.TYPE_FLOAT) {
-                            if (value instanceof Float) {
-                                intValue = FloatEncoding.floatToSortableInt((Float) value);
-                            } else if (value instanceof Number) {
-                                intValue = FloatEncoding
-                                        .floatToSortableInt(((Number) value).floatValue());
-                            } else {
-                                throw new IllegalArgumentException("Expected Float for column " + i);
+                        case TypeCodes.TYPE_DOUBLE -> {
+                            PageColumnLong col = (PageColumnLong) column;
+                            if (value == null) {
+                                col.setNull(rowIndex);
+                                continue;
                             }
-                        } else if (typeCode == TypeCodes.TYPE_BOOLEAN) {
-                            if (value instanceof Boolean) {
-                                intValue = (Boolean) value ? 1 : 0;
-                            } else {
-                                throw new IllegalArgumentException("Expected Boolean for column " + i);
-                            }
-                        } else if (typeCode == TypeCodes.TYPE_CHAR) {
-                            if (value instanceof Character) {
-                                intValue = (Character) value;
-                            } else {
-                                throw new IllegalArgumentException("Expected Character for column " + i);
-                            }
-                        } else if (value instanceof Integer) {
-                            intValue = (Integer) value;
-                        } else if (value instanceof Long) {
-                            intValue = ((Long) value).intValue();
-                        } else if (value instanceof Number) {
-                            intValue = ((Number) value).intValue();
-                        } else {
-                            throw new IllegalArgumentException("Expected Integer for column " + i);
+                            col.set(rowIndex, FloatEncoding.doubleToSortableLong(((Number) value).doubleValue()));
                         }
-                        col.set(rowIndex, intValue);
-                    } else if (typeCode == TypeCodes.TYPE_STRING
-                            || typeCode == TypeCodes.TYPE_BIG_DECIMAL
-                            || typeCode == TypeCodes.TYPE_BIG_INTEGER) {
-                        PageColumnString col = (PageColumnString) column;
-                        if (value == null) {
-                            col.setNull(rowIndex);
-                        } else {
-                            col.set(rowIndex, value.toString());
+                        case TypeCodes.TYPE_INT,
+                                TypeCodes.TYPE_BYTE,
+                                TypeCodes.TYPE_SHORT -> {
+                            PageColumnInt col = (PageColumnInt) column;
+                            if (value == null) {
+                                col.setNull(rowIndex);
+                                continue;
+                            }
+                            col.set(rowIndex, ((Number) value).intValue());
                         }
-                    } else {
-                        throw new IllegalArgumentException("Unsupported type code: " + typeCode);
+                        case TypeCodes.TYPE_FLOAT -> {
+                            PageColumnInt col = (PageColumnInt) column;
+                            if (value == null) {
+                                col.setNull(rowIndex);
+                                continue;
+                            }
+                            col.set(rowIndex, FloatEncoding.floatToSortableInt(((Number) value).floatValue()));
+                        }
+                        case TypeCodes.TYPE_BOOLEAN -> {
+                            PageColumnInt col = (PageColumnInt) column;
+                            if (value == null) {
+                                col.setNull(rowIndex);
+                                continue;
+                            }
+                            col.set(rowIndex, (Boolean) value ? 1 : 0);
+                        }
+                        case TypeCodes.TYPE_CHAR -> {
+                            PageColumnInt col = (PageColumnInt) column;
+                            if (value == null) {
+                                col.setNull(rowIndex);
+                                continue;
+                            }
+                            col.set(rowIndex, (Character) value);
+                        }
+                        case TypeCodes.TYPE_STRING,
+                                TypeCodes.TYPE_BIG_DECIMAL,
+                                TypeCodes.TYPE_BIG_INTEGER -> {
+                            PageColumnString col = (PageColumnString) column;
+                            if (value == null) {
+                                col.setNull(rowIndex);
+                            } else {
+                                col.set(rowIndex, value.toString());
+                            }
+                        }
+                        default -> throw new IllegalArgumentException("Unsupported type code: " + typeCode);
                     }
                 }
 
@@ -989,27 +964,25 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
                     Object column = resolveColumn(obj, fieldInfo, i, columnFieldRefs, columnGetters, lookup);
 
                     byte typeCode = fieldInfo.typeCode();
-                    if (typeCode == TypeCodes.TYPE_LONG
-                            || typeCode == TypeCodes.TYPE_DOUBLE
-                            || typeCode == TypeCodes.TYPE_INSTANT
-                            || typeCode == TypeCodes.TYPE_LOCAL_DATE
-                            || typeCode == TypeCodes.TYPE_LOCAL_DATE_TIME
-                            || typeCode == TypeCodes.TYPE_DATE) {
-                        PageColumnLong col = (PageColumnLong) column;
-                        col.publish(rowIndex + 1);
-                    } else if (typeCode == TypeCodes.TYPE_INT
-                            || typeCode == TypeCodes.TYPE_FLOAT
-                            || typeCode == TypeCodes.TYPE_BOOLEAN
-                            || typeCode == TypeCodes.TYPE_BYTE
-                            || typeCode == TypeCodes.TYPE_SHORT
-                            || typeCode == TypeCodes.TYPE_CHAR) {
-                        PageColumnInt col = (PageColumnInt) column;
-                        col.publish(rowIndex + 1);
-                    } else if (typeCode == TypeCodes.TYPE_STRING
-                            || typeCode == TypeCodes.TYPE_BIG_DECIMAL
-                            || typeCode == TypeCodes.TYPE_BIG_INTEGER) {
-                        PageColumnString col = (PageColumnString) column;
-                        col.publish(rowIndex + 1);
+                    switch (typeCode) {
+                        case TypeCodes.TYPE_LONG,
+                                TypeCodes.TYPE_DOUBLE,
+                                TypeCodes.TYPE_INSTANT,
+                                TypeCodes.TYPE_LOCAL_DATE,
+                                TypeCodes.TYPE_LOCAL_DATE_TIME,
+                                TypeCodes.TYPE_DATE -> ((PageColumnLong) column).publish(rowIndex + 1);
+                        case TypeCodes.TYPE_INT,
+                                TypeCodes.TYPE_FLOAT,
+                                TypeCodes.TYPE_BOOLEAN,
+                                TypeCodes.TYPE_BYTE,
+                                TypeCodes.TYPE_SHORT,
+                                TypeCodes.TYPE_CHAR -> ((PageColumnInt) column).publish(rowIndex + 1);
+                        case TypeCodes.TYPE_STRING,
+                                TypeCodes.TYPE_BIG_DECIMAL,
+                                TypeCodes.TYPE_BIG_INTEGER -> ((PageColumnString) column).publish(rowIndex + 1);
+                        default -> {
+                            // no-op for unknown code, consistent with previous behavior
+                        }
                     }
                 }
             } finally {
@@ -1063,25 +1036,24 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
                     Object idColumn = resolveColumn(obj, idFieldInfo, 0, columnFieldRefs, columnGetters, lookup);
 
                     byte typeCode = idFieldInfo.typeCode();
-                    if (typeCode == TypeCodes.TYPE_LONG
-                            || typeCode == TypeCodes.TYPE_DOUBLE
-                            || typeCode == TypeCodes.TYPE_INSTANT
-                            || typeCode == TypeCodes.TYPE_LOCAL_DATE
-                            || typeCode == TypeCodes.TYPE_LOCAL_DATE_TIME
-                            || typeCode == TypeCodes.TYPE_DATE) {
-                        idValue = ((PageColumnLong) idColumn).get(rowIndex);
-                    } else if (typeCode == TypeCodes.TYPE_INT
-                            || typeCode == TypeCodes.TYPE_FLOAT
-                            || typeCode == TypeCodes.TYPE_BOOLEAN
-                            || typeCode == TypeCodes.TYPE_BYTE
-                            || typeCode == TypeCodes.TYPE_SHORT
-                            || typeCode == TypeCodes.TYPE_CHAR) {
-                        idValue = ((PageColumnInt) idColumn).get(rowIndex);
-                    } else if (typeCode == TypeCodes.TYPE_STRING
-                            || typeCode == TypeCodes.TYPE_BIG_DECIMAL
-                            || typeCode == TypeCodes.TYPE_BIG_INTEGER) {
-                        idValue = ((PageColumnString) idColumn).get(rowIndex);
-                    }
+                    idValue = switch (typeCode) {
+                        case TypeCodes.TYPE_LONG,
+                                TypeCodes.TYPE_DOUBLE,
+                                TypeCodes.TYPE_INSTANT,
+                                TypeCodes.TYPE_LOCAL_DATE,
+                                TypeCodes.TYPE_LOCAL_DATE_TIME,
+                                TypeCodes.TYPE_DATE -> ((PageColumnLong) idColumn).get(rowIndex);
+                        case TypeCodes.TYPE_INT,
+                                TypeCodes.TYPE_FLOAT,
+                                TypeCodes.TYPE_BOOLEAN,
+                                TypeCodes.TYPE_BYTE,
+                                TypeCodes.TYPE_SHORT,
+                                TypeCodes.TYPE_CHAR -> ((PageColumnInt) idColumn).get(rowIndex);
+                        case TypeCodes.TYPE_STRING,
+                                TypeCodes.TYPE_BIG_DECIMAL,
+                                TypeCodes.TYPE_BIG_INTEGER -> ((PageColumnString) idColumn).get(rowIndex);
+                        default -> null;
+                    };
                 }
 
                 // Use generation-validated tombstone
