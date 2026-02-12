@@ -2,6 +2,10 @@ package io.memris.kernel;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.LongStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -177,5 +181,47 @@ class RowIdArraySetTest {
         set.add(RowId.fromLong(1));
         set.remove(RowId.fromLong(1));
         assertThat(set.contains(RowId.fromLong(1))).isFalse();
+    }
+
+    @Test
+    void shouldPreserveRowIdZeroInSnapshot() {
+        var set = new RowIdArraySet();
+        set.add(RowId.fromLong(0));
+        set.add(RowId.fromLong(42));
+
+        assertThat(set.toLongArray()).containsExactlyInAnyOrder(0L, 42L);
+    }
+
+    @Test
+    void shouldRemainIdempotentUnderConcurrentDuplicateAdds() throws InterruptedException {
+        var set = new RowIdArraySet();
+        var threads = 8;
+        var iterations = 10_000;
+        ExecutorService pool = Executors.newFixedThreadPool(threads);
+        var start = new CountDownLatch(1);
+        var done = new CountDownLatch(threads);
+
+        for (var t = 0; t < threads; t++) {
+            pool.execute(() -> {
+                try {
+                    start.await();
+                    for (var i = 0; i < iterations; i++) {
+                        set.add(RowId.fromLong(7));
+                    }
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                } finally {
+                    done.countDown();
+                }
+            });
+        }
+
+        start.countDown();
+        if (!done.await(15, TimeUnit.SECONDS)) {
+            throw new IllegalStateException("Concurrent add test timed out");
+        }
+        pool.shutdownNow();
+
+        assertThat(set.toLongArray()).containsExactly(7L);
     }
 }

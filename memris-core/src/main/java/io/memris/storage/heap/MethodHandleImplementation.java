@@ -1,5 +1,9 @@
 package io.memris.storage.heap;
 
+import io.memris.core.FloatEncoding;
+import io.memris.core.TypeCodes;
+import io.memris.kernel.RowId;
+import io.memris.storage.Selection;
 import net.bytebuddy.dynamic.DynamicType;
 import net.bytebuddy.implementation.MethodDelegation;
 import net.bytebuddy.implementation.FixedValue;
@@ -10,7 +14,9 @@ import net.bytebuddy.implementation.bind.annotation.This;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicReferenceArray;
 
 /**
  * MethodHandle-based implementation of GeneratedTable methods.
@@ -29,27 +35,27 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
         }
     };
 
-    private static final java.lang.reflect.Method ALLOCATED_COUNT_METHOD = resolveAccessibleMethod(
+    private static final Method ALLOCATED_COUNT_METHOD = resolveAccessibleMethod(
             AbstractTable.class,
             "allocatedCount");
-    private static final java.lang.reflect.Method IS_TOMBSTONE_METHOD = resolveAccessibleMethod(
+    private static final Method IS_TOMBSTONE_METHOD = resolveAccessibleMethod(
             AbstractTable.class,
             "isTombstone",
-            io.memris.kernel.RowId.class);
-    private static final java.lang.reflect.Method ALLOCATE_ROW_ID_METHOD = resolveAccessibleMethod(
+            RowId.class);
+    private static final Method ALLOCATE_ROW_ID_METHOD = resolveAccessibleMethod(
             AbstractTable.class,
             "allocateRowId");
-    private static final java.lang.reflect.Method ROW_GENERATION_METHOD = resolveAccessibleMethod(
+    private static final Method ROW_GENERATION_METHOD = resolveAccessibleMethod(
             AbstractTable.class,
             "rowGeneration",
             int.class);
-    private static final java.lang.reflect.Method INCREMENT_ROW_COUNT_METHOD = resolveAccessibleMethod(
+    private static final Method INCREMENT_ROW_COUNT_METHOD = resolveAccessibleMethod(
             AbstractTable.class,
             "incrementRowCount");
-    private static final java.lang.reflect.Method TOMBSTONE_METHOD = resolveAccessibleMethod(
+    private static final Method TOMBSTONE_METHOD = resolveAccessibleMethod(
             AbstractTable.class,
             "tombstone",
-            io.memris.kernel.RowId.class,
+            RowId.class,
             long.class);
 
     private static GeneratedFieldCache getGeneratedFieldCache(Object obj) {
@@ -67,7 +73,7 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
         }
     }
 
-    private static java.lang.reflect.Method resolveAccessibleMethod(Class<?> type, String methodName,
+    private static Method resolveAccessibleMethod(Class<?> type, String methodName,
             Class<?>... params) {
         try {
             var method = type.getDeclaredMethod(methodName, params);
@@ -310,12 +316,12 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
         private final List<ColumnFieldInfo> columnFields;
         private final MethodHandles.Lookup lookup = MethodHandles.lookup();
         private final Field[] columnFieldRefs;
-        private final MethodHandle[] columnGetters;
+        private final AtomicReferenceArray<MethodHandle> columnGetters;
 
         public ReadInterceptor(List<ColumnFieldInfo> columnFields) {
             this.columnFields = columnFields;
             this.columnFieldRefs = new Field[columnFields.size()];
-            this.columnGetters = new MethodHandle[columnFields.size()];
+            this.columnGetters = new AtomicReferenceArray<>(columnFields.size());
         }
 
         @RuntimeType
@@ -333,23 +339,23 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
                         Object column = resolveColumn(obj, fieldInfo, columnIndex, columnFieldRefs, columnGetters, lookup);
 
                         byte typeCode = fieldInfo.typeCode();
-                        if (typeCode == io.memris.core.TypeCodes.TYPE_LONG
-                                || typeCode == io.memris.core.TypeCodes.TYPE_DOUBLE
-                                || typeCode == io.memris.core.TypeCodes.TYPE_INSTANT
-                                || typeCode == io.memris.core.TypeCodes.TYPE_LOCAL_DATE
-                                || typeCode == io.memris.core.TypeCodes.TYPE_LOCAL_DATE_TIME
-                                || typeCode == io.memris.core.TypeCodes.TYPE_DATE) {
+                        if (typeCode == TypeCodes.TYPE_LONG
+                                || typeCode == TypeCodes.TYPE_DOUBLE
+                                || typeCode == TypeCodes.TYPE_INSTANT
+                                || typeCode == TypeCodes.TYPE_LOCAL_DATE
+                                || typeCode == TypeCodes.TYPE_LOCAL_DATE_TIME
+                                || typeCode == TypeCodes.TYPE_DATE) {
                             return ((PageColumnLong) column).get(rowIndex);
-                        } else if (typeCode == io.memris.core.TypeCodes.TYPE_INT
-                                || typeCode == io.memris.core.TypeCodes.TYPE_FLOAT
-                                || typeCode == io.memris.core.TypeCodes.TYPE_BOOLEAN
-                                || typeCode == io.memris.core.TypeCodes.TYPE_BYTE
-                                || typeCode == io.memris.core.TypeCodes.TYPE_SHORT
-                                || typeCode == io.memris.core.TypeCodes.TYPE_CHAR) {
+                        } else if (typeCode == TypeCodes.TYPE_INT
+                                || typeCode == TypeCodes.TYPE_FLOAT
+                                || typeCode == TypeCodes.TYPE_BOOLEAN
+                                || typeCode == TypeCodes.TYPE_BYTE
+                                || typeCode == TypeCodes.TYPE_SHORT
+                                || typeCode == TypeCodes.TYPE_CHAR) {
                             return ((PageColumnInt) column).get(rowIndex);
-                        } else if (typeCode == io.memris.core.TypeCodes.TYPE_STRING
-                                || typeCode == io.memris.core.TypeCodes.TYPE_BIG_DECIMAL
-                                || typeCode == io.memris.core.TypeCodes.TYPE_BIG_INTEGER) {
+                        } else if (typeCode == TypeCodes.TYPE_STRING
+                                || typeCode == TypeCodes.TYPE_BIG_DECIMAL
+                                || typeCode == TypeCodes.TYPE_BIG_INTEGER) {
                             return ((PageColumnString) column).get(rowIndex);
                         } else {
                             throw new IllegalStateException("Unknown type code: " + typeCode);
@@ -371,12 +377,12 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
         private final List<ColumnFieldInfo> columnFields;
         private final MethodHandles.Lookup lookup = MethodHandles.lookup();
         private final Field[] columnFieldRefs;
-        private final MethodHandle[] columnGetters;
+        private final AtomicReferenceArray<MethodHandle> columnGetters;
 
         public PresentInterceptor(List<ColumnFieldInfo> columnFields) {
             this.columnFields = columnFields;
             this.columnFieldRefs = new Field[columnFields.size()];
-            this.columnGetters = new MethodHandle[columnFields.size()];
+            this.columnGetters = new AtomicReferenceArray<>(columnFields.size());
         }
 
         @RuntimeType
@@ -394,23 +400,23 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
                         Object column = resolveColumn(obj, fieldInfo, columnIndex, columnFieldRefs, columnGetters, lookup);
 
                         byte typeCode = fieldInfo.typeCode();
-                        if (typeCode == io.memris.core.TypeCodes.TYPE_LONG
-                                || typeCode == io.memris.core.TypeCodes.TYPE_DOUBLE
-                                || typeCode == io.memris.core.TypeCodes.TYPE_INSTANT
-                                || typeCode == io.memris.core.TypeCodes.TYPE_LOCAL_DATE
-                                || typeCode == io.memris.core.TypeCodes.TYPE_LOCAL_DATE_TIME
-                                || typeCode == io.memris.core.TypeCodes.TYPE_DATE) {
+                        if (typeCode == TypeCodes.TYPE_LONG
+                                || typeCode == TypeCodes.TYPE_DOUBLE
+                                || typeCode == TypeCodes.TYPE_INSTANT
+                                || typeCode == TypeCodes.TYPE_LOCAL_DATE
+                                || typeCode == TypeCodes.TYPE_LOCAL_DATE_TIME
+                                || typeCode == TypeCodes.TYPE_DATE) {
                             return ((PageColumnLong) column).isPresent(rowIndex);
-                        } else if (typeCode == io.memris.core.TypeCodes.TYPE_INT
-                                || typeCode == io.memris.core.TypeCodes.TYPE_FLOAT
-                                || typeCode == io.memris.core.TypeCodes.TYPE_BOOLEAN
-                                || typeCode == io.memris.core.TypeCodes.TYPE_BYTE
-                                || typeCode == io.memris.core.TypeCodes.TYPE_SHORT
-                                || typeCode == io.memris.core.TypeCodes.TYPE_CHAR) {
+                        } else if (typeCode == TypeCodes.TYPE_INT
+                                || typeCode == TypeCodes.TYPE_FLOAT
+                                || typeCode == TypeCodes.TYPE_BOOLEAN
+                                || typeCode == TypeCodes.TYPE_BYTE
+                                || typeCode == TypeCodes.TYPE_SHORT
+                                || typeCode == TypeCodes.TYPE_CHAR) {
                             return ((PageColumnInt) column).isPresent(rowIndex);
-                        } else if (typeCode == io.memris.core.TypeCodes.TYPE_STRING
-                                || typeCode == io.memris.core.TypeCodes.TYPE_BIG_DECIMAL
-                                || typeCode == io.memris.core.TypeCodes.TYPE_BIG_INTEGER) {
+                        } else if (typeCode == TypeCodes.TYPE_STRING
+                                || typeCode == TypeCodes.TYPE_BIG_DECIMAL
+                                || typeCode == TypeCodes.TYPE_BIG_INTEGER) {
                             return ((PageColumnString) column).isPresent(rowIndex);
                         } else {
                             throw new IllegalStateException("Unknown type code: " + typeCode);
@@ -435,12 +441,12 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
         private final List<ColumnFieldInfo> columnFields;
         private final MethodHandles.Lookup lookup = MethodHandles.lookup();
         private final Field[] columnFieldRefs;
-        private final MethodHandle[] columnGetters;
+        private final AtomicReferenceArray<MethodHandle> columnGetters;
 
         public ScanEqualsLongInterceptor(List<ColumnFieldInfo> columnFields) {
             this.columnFields = columnFields;
             this.columnFieldRefs = new Field[columnFields.size()];
-            this.columnGetters = new MethodHandle[columnFields.size()];
+            this.columnGetters = new AtomicReferenceArray<>(columnFields.size());
         }
 
         @RuntimeType
@@ -464,7 +470,7 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
             int count = 0;
             int pageSize = ((AbstractTable) obj).pageSize();
             for (int rowIndex : rows) {
-                io.memris.kernel.RowId rowId = new io.memris.kernel.RowId(rowIndex / pageSize, rowIndex % pageSize);
+                RowId rowId = new RowId(rowIndex / pageSize, rowIndex % pageSize);
                 if (!(boolean) IS_TOMBSTONE_METHOD.invoke(obj, rowId)) {
                     filtered[count++] = rowIndex;
                 }
@@ -479,12 +485,12 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
         private final List<ColumnFieldInfo> columnFields;
         private final MethodHandles.Lookup lookup = MethodHandles.lookup();
         private final Field[] columnFieldRefs;
-        private final MethodHandle[] columnGetters;
+        private final AtomicReferenceArray<MethodHandle> columnGetters;
 
         public ScanEqualsIntInterceptor(List<ColumnFieldInfo> columnFields) {
             this.columnFields = columnFields;
             this.columnFieldRefs = new Field[columnFields.size()];
-            this.columnGetters = new MethodHandle[columnFields.size()];
+            this.columnGetters = new AtomicReferenceArray<>(columnFields.size());
         }
 
         @RuntimeType
@@ -508,7 +514,7 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
             int count = 0;
             int pageSize = ((AbstractTable) obj).pageSize();
             for (int rowIndex : rows) {
-                io.memris.kernel.RowId rowId = new io.memris.kernel.RowId(rowIndex / pageSize, rowIndex % pageSize);
+                RowId rowId = new RowId(rowIndex / pageSize, rowIndex % pageSize);
                 if (!(boolean) IS_TOMBSTONE_METHOD.invoke(obj, rowId)) {
                     filtered[count++] = rowIndex;
                 }
@@ -523,12 +529,12 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
         private final List<ColumnFieldInfo> columnFields;
         private final MethodHandles.Lookup lookup = MethodHandles.lookup();
         private final Field[] columnFieldRefs;
-        private final MethodHandle[] columnGetters;
+        private final AtomicReferenceArray<MethodHandle> columnGetters;
 
         public ScanEqualsStringInterceptor(List<ColumnFieldInfo> columnFields) {
             this.columnFields = columnFields;
             this.columnFieldRefs = new Field[columnFields.size()];
-            this.columnGetters = new MethodHandle[columnFields.size()];
+            this.columnGetters = new AtomicReferenceArray<>(columnFields.size());
         }
 
         @RuntimeType
@@ -552,7 +558,7 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
             int count = 0;
             int pageSize = ((AbstractTable) obj).pageSize();
             for (int rowIndex : rows) {
-                io.memris.kernel.RowId rowId = new io.memris.kernel.RowId(rowIndex / pageSize, rowIndex % pageSize);
+                RowId rowId = new RowId(rowIndex / pageSize, rowIndex % pageSize);
                 if (!(boolean) IS_TOMBSTONE_METHOD.invoke(obj, rowId)) {
                     filtered[count++] = rowIndex;
                 }
@@ -567,12 +573,12 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
         private final List<ColumnFieldInfo> columnFields;
         private final MethodHandles.Lookup lookup = MethodHandles.lookup();
         private final Field[] columnFieldRefs;
-        private final MethodHandle[] columnGetters;
+        private final AtomicReferenceArray<MethodHandle> columnGetters;
 
         public ScanEqualsStringIgnoreCaseInterceptor(List<ColumnFieldInfo> columnFields) {
             this.columnFields = columnFields;
             this.columnFieldRefs = new Field[columnFields.size()];
-            this.columnGetters = new MethodHandle[columnFields.size()];
+            this.columnGetters = new AtomicReferenceArray<>(columnFields.size());
         }
 
         @RuntimeType
@@ -596,7 +602,7 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
             int count = 0;
             int pageSize = ((AbstractTable) obj).pageSize();
             for (int rowIndex : rows) {
-                io.memris.kernel.RowId rowId = new io.memris.kernel.RowId(rowIndex / pageSize, rowIndex % pageSize);
+                RowId rowId = new RowId(rowIndex / pageSize, rowIndex % pageSize);
                 if (!(boolean) IS_TOMBSTONE_METHOD.invoke(obj, rowId)) {
                     filtered[count++] = rowIndex;
                 }
@@ -611,12 +617,12 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
         private final List<ColumnFieldInfo> columnFields;
         private final MethodHandles.Lookup lookup = MethodHandles.lookup();
         private final Field[] columnFieldRefs;
-        private final MethodHandle[] columnGetters;
+        private final AtomicReferenceArray<MethodHandle> columnGetters;
 
         public ScanBetweenLongInterceptor(List<ColumnFieldInfo> columnFields) {
             this.columnFields = columnFields;
             this.columnFieldRefs = new Field[columnFields.size()];
-            this.columnGetters = new MethodHandle[columnFields.size()];
+            this.columnGetters = new AtomicReferenceArray<>(columnFields.size());
         }
 
         @RuntimeType
@@ -640,7 +646,7 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
             int count = 0;
             int pageSize = ((AbstractTable) obj).pageSize();
             for (int rowIndex : rows) {
-                io.memris.kernel.RowId rowId = new io.memris.kernel.RowId(rowIndex / pageSize, rowIndex % pageSize);
+                RowId rowId = new RowId(rowIndex / pageSize, rowIndex % pageSize);
                 if (!(boolean) IS_TOMBSTONE_METHOD.invoke(obj, rowId)) {
                     filtered[count++] = rowIndex;
                 }
@@ -655,12 +661,12 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
         private final List<ColumnFieldInfo> columnFields;
         private final MethodHandles.Lookup lookup = MethodHandles.lookup();
         private final Field[] columnFieldRefs;
-        private final MethodHandle[] columnGetters;
+        private final AtomicReferenceArray<MethodHandle> columnGetters;
 
         public ScanBetweenIntInterceptor(List<ColumnFieldInfo> columnFields) {
             this.columnFields = columnFields;
             this.columnFieldRefs = new Field[columnFields.size()];
-            this.columnGetters = new MethodHandle[columnFields.size()];
+            this.columnGetters = new AtomicReferenceArray<>(columnFields.size());
         }
 
         @RuntimeType
@@ -684,7 +690,7 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
             int count = 0;
             int pageSize = ((AbstractTable) obj).pageSize();
             for (int rowIndex : rows) {
-                io.memris.kernel.RowId rowId = new io.memris.kernel.RowId(rowIndex / pageSize, rowIndex % pageSize);
+                RowId rowId = new RowId(rowIndex / pageSize, rowIndex % pageSize);
                 if (!(boolean) IS_TOMBSTONE_METHOD.invoke(obj, rowId)) {
                     filtered[count++] = rowIndex;
                 }
@@ -699,12 +705,12 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
         private final List<ColumnFieldInfo> columnFields;
         private final MethodHandles.Lookup lookup = MethodHandles.lookup();
         private final Field[] columnFieldRefs;
-        private final MethodHandle[] columnGetters;
+        private final AtomicReferenceArray<MethodHandle> columnGetters;
 
         public ScanInLongInterceptor(List<ColumnFieldInfo> columnFields) {
             this.columnFields = columnFields;
             this.columnFieldRefs = new Field[columnFields.size()];
-            this.columnGetters = new MethodHandle[columnFields.size()];
+            this.columnGetters = new AtomicReferenceArray<>(columnFields.size());
         }
 
         @RuntimeType
@@ -728,7 +734,7 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
             int count = 0;
             int pageSize = ((AbstractTable) obj).pageSize();
             for (int rowIndex : rows) {
-                io.memris.kernel.RowId rowId = new io.memris.kernel.RowId(rowIndex / pageSize, rowIndex % pageSize);
+                RowId rowId = new RowId(rowIndex / pageSize, rowIndex % pageSize);
                 if (!(boolean) IS_TOMBSTONE_METHOD.invoke(obj, rowId)) {
                     filtered[count++] = rowIndex;
                 }
@@ -743,12 +749,12 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
         private final List<ColumnFieldInfo> columnFields;
         private final MethodHandles.Lookup lookup = MethodHandles.lookup();
         private final Field[] columnFieldRefs;
-        private final MethodHandle[] columnGetters;
+        private final AtomicReferenceArray<MethodHandle> columnGetters;
 
         public ScanInIntInterceptor(List<ColumnFieldInfo> columnFields) {
             this.columnFields = columnFields;
             this.columnFieldRefs = new Field[columnFields.size()];
-            this.columnGetters = new MethodHandle[columnFields.size()];
+            this.columnGetters = new AtomicReferenceArray<>(columnFields.size());
         }
 
         @RuntimeType
@@ -772,7 +778,7 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
             int count = 0;
             int pageSize = ((AbstractTable) obj).pageSize();
             for (int rowIndex : rows) {
-                io.memris.kernel.RowId rowId = new io.memris.kernel.RowId(rowIndex / pageSize, rowIndex % pageSize);
+                RowId rowId = new RowId(rowIndex / pageSize, rowIndex % pageSize);
                 if (!(boolean) IS_TOMBSTONE_METHOD.invoke(obj, rowId)) {
                     filtered[count++] = rowIndex;
                 }
@@ -787,12 +793,12 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
         private final List<ColumnFieldInfo> columnFields;
         private final MethodHandles.Lookup lookup = MethodHandles.lookup();
         private final Field[] columnFieldRefs;
-        private final MethodHandle[] columnGetters;
+        private final AtomicReferenceArray<MethodHandle> columnGetters;
 
         public ScanInStringInterceptor(List<ColumnFieldInfo> columnFields) {
             this.columnFields = columnFields;
             this.columnFieldRefs = new Field[columnFields.size()];
-            this.columnGetters = new MethodHandle[columnFields.size()];
+            this.columnGetters = new AtomicReferenceArray<>(columnFields.size());
         }
 
         @RuntimeType
@@ -816,7 +822,7 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
             int count = 0;
             int pageSize = ((AbstractTable) obj).pageSize();
             for (int rowIndex : rows) {
-                io.memris.kernel.RowId rowId = new io.memris.kernel.RowId(rowIndex / pageSize, rowIndex % pageSize);
+                RowId rowId = new RowId(rowIndex / pageSize, rowIndex % pageSize);
                 if (!(boolean) IS_TOMBSTONE_METHOD.invoke(obj, rowId)) {
                     filtered[count++] = rowIndex;
                 }
@@ -838,7 +844,7 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
             for (int i = 0; i < allocated; i++) {
                 int pageId = i / pageSize;
                 int offset = i % pageSize;
-                io.memris.kernel.RowId rowId = new io.memris.kernel.RowId(pageId, offset);
+                RowId rowId = new RowId(pageId, offset);
                 boolean isTombstoned = (boolean) IS_TOMBSTONE_METHOD.invoke(obj, rowId);
                 if (!isTombstoned) {
                     temp[count++] = i;
@@ -856,12 +862,12 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
         private final List<ColumnFieldInfo> columnFields;
         private final MethodHandles.Lookup lookup = MethodHandles.lookup();
         private final Field[] columnFieldRefs;
-        private final MethodHandle[] columnGetters;
+        private final AtomicReferenceArray<MethodHandle> columnGetters;
 
         public InsertInterceptor(List<ColumnFieldInfo> columnFields) {
             this.columnFields = columnFields;
             this.columnFieldRefs = new Field[columnFields.size()];
-            this.columnGetters = new MethodHandle[columnFields.size()];
+            this.columnGetters = new AtomicReferenceArray<>(columnFields.size());
         }
 
         @RuntimeType
@@ -872,7 +878,7 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
             }
 
             // Allocate row
-            io.memris.kernel.RowId rowId = (io.memris.kernel.RowId) ALLOCATE_ROW_ID_METHOD.invoke(obj);
+            RowId rowId = (RowId) ALLOCATE_ROW_ID_METHOD.invoke(obj);
             int pageSize = ((AbstractTable) obj).pageSize();
             int rowIndex = (int) (rowId.page() * pageSize + rowId.offset());
 
@@ -889,23 +895,23 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
                     Object value = values[i];
 
                     byte typeCode = fieldInfo.typeCode();
-                    if (typeCode == io.memris.core.TypeCodes.TYPE_LONG
-                            || typeCode == io.memris.core.TypeCodes.TYPE_INSTANT
-                            || typeCode == io.memris.core.TypeCodes.TYPE_LOCAL_DATE
-                            || typeCode == io.memris.core.TypeCodes.TYPE_LOCAL_DATE_TIME
-                            || typeCode == io.memris.core.TypeCodes.TYPE_DATE
-                            || typeCode == io.memris.core.TypeCodes.TYPE_DOUBLE) {
+                    if (typeCode == TypeCodes.TYPE_LONG
+                            || typeCode == TypeCodes.TYPE_INSTANT
+                            || typeCode == TypeCodes.TYPE_LOCAL_DATE
+                            || typeCode == TypeCodes.TYPE_LOCAL_DATE_TIME
+                            || typeCode == TypeCodes.TYPE_DATE
+                            || typeCode == TypeCodes.TYPE_DOUBLE) {
                         PageColumnLong col = (PageColumnLong) column;
                         if (value == null) {
                             col.setNull(rowIndex);
                             continue;
                         }
                         long longValue;
-                        if (typeCode == io.memris.core.TypeCodes.TYPE_DOUBLE) {
+                        if (typeCode == TypeCodes.TYPE_DOUBLE) {
                             if (value instanceof Double) {
-                                longValue = io.memris.core.FloatEncoding.doubleToSortableLong((Double) value);
+                                longValue = FloatEncoding.doubleToSortableLong((Double) value);
                             } else if (value instanceof Number) {
-                                longValue = io.memris.core.FloatEncoding
+                                longValue = FloatEncoding
                                         .doubleToSortableLong(((Number) value).doubleValue());
                             } else {
                                 throw new IllegalArgumentException("Expected Double for column " + i);
@@ -920,34 +926,34 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
                             throw new IllegalArgumentException("Expected Long for column " + i);
                         }
                         col.set(rowIndex, longValue);
-                    } else if (typeCode == io.memris.core.TypeCodes.TYPE_INT
-                            || typeCode == io.memris.core.TypeCodes.TYPE_FLOAT
-                            || typeCode == io.memris.core.TypeCodes.TYPE_BOOLEAN
-                            || typeCode == io.memris.core.TypeCodes.TYPE_BYTE
-                            || typeCode == io.memris.core.TypeCodes.TYPE_SHORT
-                            || typeCode == io.memris.core.TypeCodes.TYPE_CHAR) {
+                    } else if (typeCode == TypeCodes.TYPE_INT
+                            || typeCode == TypeCodes.TYPE_FLOAT
+                            || typeCode == TypeCodes.TYPE_BOOLEAN
+                            || typeCode == TypeCodes.TYPE_BYTE
+                            || typeCode == TypeCodes.TYPE_SHORT
+                            || typeCode == TypeCodes.TYPE_CHAR) {
                         PageColumnInt col = (PageColumnInt) column;
                         if (value == null) {
                             col.setNull(rowIndex);
                             continue;
                         }
                         int intValue;
-                        if (typeCode == io.memris.core.TypeCodes.TYPE_FLOAT) {
+                        if (typeCode == TypeCodes.TYPE_FLOAT) {
                             if (value instanceof Float) {
-                                intValue = io.memris.core.FloatEncoding.floatToSortableInt((Float) value);
+                                intValue = FloatEncoding.floatToSortableInt((Float) value);
                             } else if (value instanceof Number) {
-                                intValue = io.memris.core.FloatEncoding
+                                intValue = FloatEncoding
                                         .floatToSortableInt(((Number) value).floatValue());
                             } else {
                                 throw new IllegalArgumentException("Expected Float for column " + i);
                             }
-                        } else if (typeCode == io.memris.core.TypeCodes.TYPE_BOOLEAN) {
+                        } else if (typeCode == TypeCodes.TYPE_BOOLEAN) {
                             if (value instanceof Boolean) {
                                 intValue = (Boolean) value ? 1 : 0;
                             } else {
                                 throw new IllegalArgumentException("Expected Boolean for column " + i);
                             }
-                        } else if (typeCode == io.memris.core.TypeCodes.TYPE_CHAR) {
+                        } else if (typeCode == TypeCodes.TYPE_CHAR) {
                             if (value instanceof Character) {
                                 intValue = (Character) value;
                             } else {
@@ -963,9 +969,9 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
                             throw new IllegalArgumentException("Expected Integer for column " + i);
                         }
                         col.set(rowIndex, intValue);
-                    } else if (typeCode == io.memris.core.TypeCodes.TYPE_STRING
-                            || typeCode == io.memris.core.TypeCodes.TYPE_BIG_DECIMAL
-                            || typeCode == io.memris.core.TypeCodes.TYPE_BIG_INTEGER) {
+                    } else if (typeCode == TypeCodes.TYPE_STRING
+                            || typeCode == TypeCodes.TYPE_BIG_DECIMAL
+                            || typeCode == TypeCodes.TYPE_BIG_INTEGER) {
                         PageColumnString col = (PageColumnString) column;
                         if (value == null) {
                             col.setNull(rowIndex);
@@ -983,25 +989,25 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
                     Object column = resolveColumn(obj, fieldInfo, i, columnFieldRefs, columnGetters, lookup);
 
                     byte typeCode = fieldInfo.typeCode();
-                    if (typeCode == io.memris.core.TypeCodes.TYPE_LONG
-                            || typeCode == io.memris.core.TypeCodes.TYPE_DOUBLE
-                            || typeCode == io.memris.core.TypeCodes.TYPE_INSTANT
-                            || typeCode == io.memris.core.TypeCodes.TYPE_LOCAL_DATE
-                            || typeCode == io.memris.core.TypeCodes.TYPE_LOCAL_DATE_TIME
-                            || typeCode == io.memris.core.TypeCodes.TYPE_DATE) {
+                    if (typeCode == TypeCodes.TYPE_LONG
+                            || typeCode == TypeCodes.TYPE_DOUBLE
+                            || typeCode == TypeCodes.TYPE_INSTANT
+                            || typeCode == TypeCodes.TYPE_LOCAL_DATE
+                            || typeCode == TypeCodes.TYPE_LOCAL_DATE_TIME
+                            || typeCode == TypeCodes.TYPE_DATE) {
                         PageColumnLong col = (PageColumnLong) column;
                         col.publish(rowIndex + 1);
-                    } else if (typeCode == io.memris.core.TypeCodes.TYPE_INT
-                            || typeCode == io.memris.core.TypeCodes.TYPE_FLOAT
-                            || typeCode == io.memris.core.TypeCodes.TYPE_BOOLEAN
-                            || typeCode == io.memris.core.TypeCodes.TYPE_BYTE
-                            || typeCode == io.memris.core.TypeCodes.TYPE_SHORT
-                            || typeCode == io.memris.core.TypeCodes.TYPE_CHAR) {
+                    } else if (typeCode == TypeCodes.TYPE_INT
+                            || typeCode == TypeCodes.TYPE_FLOAT
+                            || typeCode == TypeCodes.TYPE_BOOLEAN
+                            || typeCode == TypeCodes.TYPE_BYTE
+                            || typeCode == TypeCodes.TYPE_SHORT
+                            || typeCode == TypeCodes.TYPE_CHAR) {
                         PageColumnInt col = (PageColumnInt) column;
                         col.publish(rowIndex + 1);
-                    } else if (typeCode == io.memris.core.TypeCodes.TYPE_STRING
-                            || typeCode == io.memris.core.TypeCodes.TYPE_BIG_DECIMAL
-                            || typeCode == io.memris.core.TypeCodes.TYPE_BIG_INTEGER) {
+                    } else if (typeCode == TypeCodes.TYPE_STRING
+                            || typeCode == TypeCodes.TYPE_BIG_DECIMAL
+                            || typeCode == TypeCodes.TYPE_BIG_INTEGER) {
                         PageColumnString col = (PageColumnString) column;
                         col.publish(rowIndex + 1);
                     }
@@ -1023,7 +1029,7 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
             // Increment row count
             INCREMENT_ROW_COUNT_METHOD.invoke(obj);
 
-            return io.memris.storage.Selection.pack(rowIndex, generation);
+            return Selection.pack(rowIndex, generation);
         }
     }
 
@@ -1031,23 +1037,23 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
         private final List<ColumnFieldInfo> columnFields;
         private final MethodHandles.Lookup lookup = MethodHandles.lookup();
         private final Field[] columnFieldRefs;
-        private final MethodHandle[] columnGetters;
+        private final AtomicReferenceArray<MethodHandle> columnGetters;
 
         public TombstoneInterceptor(List<ColumnFieldInfo> columnFields) {
             this.columnFields = columnFields;
             this.columnFieldRefs = new Field[columnFields.size()];
-            this.columnGetters = new MethodHandle[columnFields.size()];
+            this.columnGetters = new AtomicReferenceArray<>(columnFields.size());
         }
 
         @RuntimeType
         public void intercept(@Argument(0) long ref, @This Object obj) throws Throwable {
-            int rowIndex = io.memris.storage.Selection.index(ref);
-            long generation = io.memris.storage.Selection.generation(ref);
+            int rowIndex = Selection.index(ref);
+            long generation = Selection.generation(ref);
             AbstractTable table = (AbstractTable) obj;
             int pageSize = table.pageSize();
             int pageId = rowIndex / pageSize;
             int offset = rowIndex % pageSize;
-            io.memris.kernel.RowId rowId = new io.memris.kernel.RowId(pageId, offset);
+            RowId rowId = new RowId(pageId, offset);
             table.beginSeqLock(rowIndex);
             Object idValue = null;
             try {
@@ -1057,23 +1063,23 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
                     Object idColumn = resolveColumn(obj, idFieldInfo, 0, columnFieldRefs, columnGetters, lookup);
 
                     byte typeCode = idFieldInfo.typeCode();
-                    if (typeCode == io.memris.core.TypeCodes.TYPE_LONG
-                            || typeCode == io.memris.core.TypeCodes.TYPE_DOUBLE
-                            || typeCode == io.memris.core.TypeCodes.TYPE_INSTANT
-                            || typeCode == io.memris.core.TypeCodes.TYPE_LOCAL_DATE
-                            || typeCode == io.memris.core.TypeCodes.TYPE_LOCAL_DATE_TIME
-                            || typeCode == io.memris.core.TypeCodes.TYPE_DATE) {
+                    if (typeCode == TypeCodes.TYPE_LONG
+                            || typeCode == TypeCodes.TYPE_DOUBLE
+                            || typeCode == TypeCodes.TYPE_INSTANT
+                            || typeCode == TypeCodes.TYPE_LOCAL_DATE
+                            || typeCode == TypeCodes.TYPE_LOCAL_DATE_TIME
+                            || typeCode == TypeCodes.TYPE_DATE) {
                         idValue = ((PageColumnLong) idColumn).get(rowIndex);
-                    } else if (typeCode == io.memris.core.TypeCodes.TYPE_INT
-                            || typeCode == io.memris.core.TypeCodes.TYPE_FLOAT
-                            || typeCode == io.memris.core.TypeCodes.TYPE_BOOLEAN
-                            || typeCode == io.memris.core.TypeCodes.TYPE_BYTE
-                            || typeCode == io.memris.core.TypeCodes.TYPE_SHORT
-                            || typeCode == io.memris.core.TypeCodes.TYPE_CHAR) {
+                    } else if (typeCode == TypeCodes.TYPE_INT
+                            || typeCode == TypeCodes.TYPE_FLOAT
+                            || typeCode == TypeCodes.TYPE_BOOLEAN
+                            || typeCode == TypeCodes.TYPE_BYTE
+                            || typeCode == TypeCodes.TYPE_SHORT
+                            || typeCode == TypeCodes.TYPE_CHAR) {
                         idValue = ((PageColumnInt) idColumn).get(rowIndex);
-                    } else if (typeCode == io.memris.core.TypeCodes.TYPE_STRING
-                            || typeCode == io.memris.core.TypeCodes.TYPE_BIG_DECIMAL
-                            || typeCode == io.memris.core.TypeCodes.TYPE_BIG_INTEGER) {
+                    } else if (typeCode == TypeCodes.TYPE_STRING
+                            || typeCode == TypeCodes.TYPE_BIG_DECIMAL
+                            || typeCode == TypeCodes.TYPE_BIG_INTEGER) {
                         idValue = ((PageColumnString) idColumn).get(rowIndex);
                     }
                 }
@@ -1100,12 +1106,12 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
     public static class IsLiveInterceptor {
         @RuntimeType
         public boolean intercept(@Argument(0) long ref, @This AbstractTable table) {
-            int rowIndex = io.memris.storage.Selection.index(ref);
-            long generation = io.memris.storage.Selection.generation(ref);
+            int rowIndex = Selection.index(ref);
+            long generation = Selection.generation(ref);
             int pageSize = table.pageSize();
             int pageId = rowIndex / pageSize;
             int offset = rowIndex % pageSize;
-            io.memris.kernel.RowId rowId = new io.memris.kernel.RowId(pageId, offset);
+            RowId rowId = new RowId(pageId, offset);
 
             // Check tombstone
             if (table.isTombstone(rowId)) {
@@ -1135,7 +1141,7 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
                 if (rag == null)
                     return -1L;
 
-                io.memris.kernel.RowId rowId = rag.rowId();
+                RowId rowId = rag.rowId();
                 long generation = rag.generation();
                 int pageSize = ((AbstractTable) obj).pageSize();
                 int rowIndex = (int) (rowId.page() * pageSize + rowId.offset());
@@ -1150,14 +1156,14 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
                 if (storedGen != generation)
                     return -1L;
 
-                return io.memris.storage.Selection.pack(rowIndex, generation);
+                return Selection.pack(rowIndex, generation);
             } else if ("String".equals(operation)) {
                 StringIdIndex idx = (StringIdIndex) idIndex;
                 StringIdIndex.RowIdAndGeneration rag = idx.getWithGeneration((String) key);
                 if (rag == null)
                     return -1L;
 
-                io.memris.kernel.RowId rowId = rag.rowId();
+                RowId rowId = rag.rowId();
                 long generation = rag.generation();
                 int pageSize = ((AbstractTable) obj).pageSize();
                 int rowIndex = (int) (rowId.page() * pageSize + rowId.offset());
@@ -1172,7 +1178,7 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
                 if (storedGen != generation)
                     return -1L;
 
-                return io.memris.storage.Selection.pack(rowIndex, generation);
+                return Selection.pack(rowIndex, generation);
             } else if ("remove".equals(operation)) {
                 if (idIndex instanceof LongIdIndex longIdx) {
                     longIdx.remove(((Number) key).longValue());
@@ -1190,23 +1196,28 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
             ColumnFieldInfo fieldInfo,
             int columnIndex,
             Field[] columnFieldRefs,
-            MethodHandle[] columnGetters,
+            AtomicReferenceArray<MethodHandle> columnGetters,
             MethodHandles.Lookup lookup) throws Throwable {
-        var getter = columnGetters[columnIndex];
-        if (getter == null) {
-            synchronized (columnGetters) {
-                getter = columnGetters[columnIndex];
-                if (getter == null) {
-                    var field = columnFieldRefs[columnIndex];
-                    if (field == null) {
-                        field = resolveAccessibleField(obj.getClass(), fieldInfo.fieldName());
-                        columnFieldRefs[columnIndex] = field;
-                    }
-                    getter = lookup.unreflectGetter(field);
-                    columnGetters[columnIndex] = getter;
-                }
-            }
+        MethodHandle getter = columnGetters.get(columnIndex);
+        if (getter != null) {
+            return getter.invoke(obj);
         }
-        return getter.invoke(obj);
+        
+        // Lock-free lazy initialization using CAS
+        var field = columnFieldRefs[columnIndex];
+        if (field == null) {
+            field = resolveAccessibleField(obj.getClass(), fieldInfo.fieldName());
+            columnFieldRefs[columnIndex] = field;
+        }
+        
+        MethodHandle newGetter = lookup.unreflectGetter(field);
+        
+        // Try to CAS - if we win, we return our getter; if we lose, use the winner's getter
+        if (columnGetters.compareAndSet(columnIndex, null, newGetter)) {
+            return newGetter.invoke(obj);
+        } else {
+            // Another thread won the race, use their getter
+            return columnGetters.get(columnIndex).invoke(obj);
+        }
     }
 }
