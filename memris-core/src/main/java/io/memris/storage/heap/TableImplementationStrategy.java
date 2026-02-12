@@ -42,18 +42,9 @@ public interface TableImplementationStrategy {
     /**
      * Column field information needed for implementation.
      */
-    record ColumnFieldInfo(String fieldName,
-            Class<?> columnType,
-            byte typeCode,
-            int index,
-            boolean primitiveNonNull,
-            boolean idColumn) {
+    record ColumnFieldInfo(String fieldName, Class<?> columnType, byte typeCode, int index, boolean primitiveNonNull) {
         ColumnFieldInfo(String fieldName, Class<?> columnType, byte typeCode, int index) {
-            this(fieldName, columnType, typeCode, index, false, false);
-        }
-
-        ColumnFieldInfo(String fieldName, Class<?> columnType, byte typeCode, int index, boolean primitiveNonNull) {
-            this(fieldName, columnType, typeCode, index, primitiveNonNull, false);
+            this(fieldName, columnType, typeCode, index, false);
         }
     }
 }

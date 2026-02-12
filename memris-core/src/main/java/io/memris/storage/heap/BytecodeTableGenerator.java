@@ -104,13 +104,7 @@ public final class BytecodeTableGenerator {
                     Visibility.PRIVATE,
                     FieldManifestation.FINAL);
 
-            columnFields.add(new ColumnFieldInfo(
-                    columnFieldName,
-                    columnType,
-                    typeCode,
-                    idx++,
-                    field.primitiveNonNull(),
-                    field.isId()));
+            columnFields.add(new ColumnFieldInfo(columnFieldName, columnType, typeCode, idx++, field.primitiveNonNull()));
         }
 
         // Add ID index field
@@ -666,38 +660,10 @@ public final class BytecodeTableGenerator {
     }
 
     public static class InsertInterceptor {
-        @FunctionalInterface
-        private interface ColumnWriter {
-            void write(Object column, Object value, int rowIndex);
-        }
-
-        @FunctionalInterface
-        private interface ColumnPublisher {
-            void publish(Object column, int rowLimit);
-        }
-
-        @FunctionalInterface
-        private interface IdIndexUpdater {
-            void update(Object idIndex, Object idValue, RowId rowId, long generation);
-        }
-
         private final List<ColumnFieldInfo> columnFields;
-        private final ColumnWriter[] writers;
-        private final ColumnPublisher[] publishers;
-        private final int idColumnIndex;
-        private final IdIndexUpdater idIndexUpdater;
 
         public InsertInterceptor(List<ColumnFieldInfo> columnFields) {
             this.columnFields = columnFields;
-            this.writers = new ColumnWriter[columnFields.size()];
-            this.publishers = new ColumnPublisher[columnFields.size()];
-            this.idColumnIndex = resolveIdColumnIndex(columnFields);
-            for (var i = 0; i < columnFields.size(); i++) {
-                var fieldInfo = columnFields.get(i);
-                writers[i] = createWriter(fieldInfo, i);
-                publishers[i] = createPublisher(fieldInfo.typeCode());
-            }
-            this.idIndexUpdater = createIdIndexUpdater(columnFields.get(idColumnIndex).typeCode());
         }
 
         @RuntimeType
@@ -720,22 +686,144 @@ public final class BytecodeTableGenerator {
                 Field[] cachedFields = getCachedColumnFields(obj);
                 Field idIndexField = getCachedIdIndexField(obj);
 
-                var columns = new Object[columnFields.size()];
+                // Write values to columns
                 for (int i = 0; i < columnFields.size(); i++) {
+                    ColumnFieldInfo fieldInfo = columnFields.get(i);
                     Field field = cachedFields[i];
                     Object column = field.get(obj);
-                    columns[i] = column;
-                    writers[i].write(column, values[i], rowIndex);
+                    Object value = values[i];
+
+                    byte typeCode = fieldInfo.typeCode();
+                    if (typeCode == TypeCodes.TYPE_LONG
+                            || typeCode == TypeCodes.TYPE_INSTANT
+                            || typeCode == TypeCodes.TYPE_LOCAL_DATE
+                            || typeCode == TypeCodes.TYPE_LOCAL_DATE_TIME
+                            || typeCode == TypeCodes.TYPE_DATE
+                            || typeCode == TypeCodes.TYPE_DOUBLE) {
+                        PageColumnLong col = (PageColumnLong) column;
+                        if (value == null) {
+                            if (fieldInfo.primitiveNonNull()) {
+                                throw new IllegalArgumentException(
+                                        "Null assigned to primitive column: " + fieldInfo.fieldName());
+                            }
+                            col.setNull(rowIndex);
+                            continue;
+                        }
+                        long longValue;
+                        if (typeCode == TypeCodes.TYPE_DOUBLE) {
+                            if (value instanceof Double) {
+                                longValue = FloatEncoding.doubleToSortableLong((Double) value);
+                            } else if (value instanceof Number) {
+                                longValue = FloatEncoding.doubleToSortableLong(((Number) value).doubleValue());
+                            } else {
+                                throw new IllegalArgumentException("Expected Double for column " + i);
+                            }
+                        } else if (value instanceof Long) {
+                            longValue = (Long) value;
+                        } else if (value instanceof Integer) {
+                            longValue = ((Integer) value).longValue();
+                        } else if (value instanceof Number) {
+                            longValue = ((Number) value).longValue();
+                        } else {
+                            throw new IllegalArgumentException("Expected Long for column " + i);
+                        }
+                        col.set(rowIndex, longValue);
+                    } else if (typeCode == TypeCodes.TYPE_INT
+                            || typeCode == TypeCodes.TYPE_FLOAT
+                            || typeCode == TypeCodes.TYPE_BOOLEAN
+                            || typeCode == TypeCodes.TYPE_BYTE
+                            || typeCode == TypeCodes.TYPE_SHORT
+                            || typeCode == TypeCodes.TYPE_CHAR) {
+                        PageColumnInt col = (PageColumnInt) column;
+                        if (value == null) {
+                            if (fieldInfo.primitiveNonNull()) {
+                                throw new IllegalArgumentException(
+                                        "Null assigned to primitive column: " + fieldInfo.fieldName());
+                            }
+                            col.setNull(rowIndex);
+                            continue;
+                        }
+                        int intValue;
+                        if (typeCode == TypeCodes.TYPE_FLOAT) {
+                            if (value instanceof Float) {
+                                intValue = FloatEncoding.floatToSortableInt((Float) value);
+                            } else if (value instanceof Number) {
+                                intValue = FloatEncoding.floatToSortableInt(((Number) value).floatValue());
+                            } else {
+                                throw new IllegalArgumentException("Expected Float for column " + i);
+                            }
+                        } else if (typeCode == TypeCodes.TYPE_BOOLEAN) {
+                            if (value instanceof Boolean) {
+                                intValue = (Boolean) value ? 1 : 0;
+                            } else {
+                                throw new IllegalArgumentException("Expected Boolean for column " + i);
+                            }
+                        } else if (typeCode == TypeCodes.TYPE_CHAR) {
+                            if (value instanceof Character) {
+                                intValue = (Character) value;
+                            } else {
+                                throw new IllegalArgumentException("Expected Character for column " + i);
+                            }
+                        } else if (value instanceof Integer) {
+                            intValue = (Integer) value;
+                        } else if (value instanceof Long) {
+                            intValue = ((Long) value).intValue();
+                        } else if (value instanceof Number) {
+                            intValue = ((Number) value).intValue();
+                        } else {
+                            throw new IllegalArgumentException("Expected Integer for column " + i);
+                        }
+                        col.set(rowIndex, intValue);
+                    } else if (typeCode == TypeCodes.TYPE_STRING
+                            || typeCode == TypeCodes.TYPE_BIG_DECIMAL
+                            || typeCode == TypeCodes.TYPE_BIG_INTEGER) {
+                        PageColumnString col = (PageColumnString) column;
+                        if (value == null) {
+                            col.setNull(rowIndex);
+                        } else {
+                            col.set(rowIndex, value.toString());
+                        }
+                    } else {
+                        throw new IllegalArgumentException("Unsupported type code: " + typeCode);
+                    }
                 }
 
                 // Update ID index using cached field
                 Object idIndex = idIndexField.get(obj);
-                Object idValue = values[idColumnIndex];
-                idIndexUpdater.update(idIndex, idValue, rowId, generation);
+                Object idValue = values[0];
+
+                if (idIndex instanceof LongIdIndex longIdIndex && idValue instanceof Number) {
+                    longIdIndex.put(((Number) idValue).longValue(), rowId, generation);
+                } else if (idIndex instanceof StringIdIndex stringIdIndex && idValue instanceof String) {
+                    stringIdIndex.put((String) idValue, rowId, generation);
+                }
 
                 // Publish row to make data visible using cached fields
                 for (int i = 0; i < columnFields.size(); i++) {
-                    publishers[i].publish(columns[i], rowIndex + 1);
+                    ColumnFieldInfo fieldInfo = columnFields.get(i);
+                    Field field = cachedFields[i];
+                    Object column = field.get(obj);
+
+                    byte typeCode = fieldInfo.typeCode();
+                    if (typeCode == TypeCodes.TYPE_LONG
+                            || typeCode == TypeCodes.TYPE_DOUBLE
+                            || typeCode == TypeCodes.TYPE_INSTANT
+                            || typeCode == TypeCodes.TYPE_LOCAL_DATE
+                            || typeCode == TypeCodes.TYPE_LOCAL_DATE_TIME
+                            || typeCode == TypeCodes.TYPE_DATE) {
+                        ((PageColumnLong) column).publish(rowIndex + 1);
+                    } else if (typeCode == TypeCodes.TYPE_INT
+                            || typeCode == TypeCodes.TYPE_FLOAT
+                            || typeCode == TypeCodes.TYPE_BOOLEAN
+                            || typeCode == TypeCodes.TYPE_BYTE
+                            || typeCode == TypeCodes.TYPE_SHORT
+                            || typeCode == TypeCodes.TYPE_CHAR) {
+                        ((PageColumnInt) column).publish(rowIndex + 1);
+                    } else if (typeCode == TypeCodes.TYPE_STRING
+                            || typeCode == TypeCodes.TYPE_BIG_DECIMAL
+                            || typeCode == TypeCodes.TYPE_BIG_INTEGER) {
+                        ((PageColumnString) column).publish(rowIndex + 1);
+                    }
                 }
 
                 packed = Selection.pack(rowIndex, generation);
@@ -746,145 +834,6 @@ public final class BytecodeTableGenerator {
 
             table.incrementRowCount();
             return packed;
-        }
-
-        private static int resolveIdColumnIndex(List<ColumnFieldInfo> fields) {
-            for (var i = 0; i < fields.size(); i++) {
-                if (fields.get(i).idColumn()) {
-                    return i;
-                }
-            }
-            return 0;
-        }
-
-        private static ColumnWriter createWriter(ColumnFieldInfo fieldInfo, int columnIndex) {
-            var primitive = fieldInfo.primitiveNonNull();
-            return switch (fieldInfo.typeCode()) {
-                case TypeCodes.TYPE_LONG,
-                        TypeCodes.TYPE_INSTANT,
-                        TypeCodes.TYPE_LOCAL_DATE,
-                        TypeCodes.TYPE_LOCAL_DATE_TIME,
-                        TypeCodes.TYPE_DATE -> (column, value, rowIndex) -> {
-                            var col = (PageColumnLong) column;
-                            if (value == null) {
-                                if (primitive) {
-                                    throw new IllegalArgumentException("Null assigned to primitive column: " + fieldInfo.fieldName());
-                                }
-                                col.setNull(rowIndex);
-                                return;
-                            }
-                            col.set(rowIndex, ((Number) value).longValue());
-                        };
-                case TypeCodes.TYPE_DOUBLE -> (column, value, rowIndex) -> {
-                    var col = (PageColumnLong) column;
-                    if (value == null) {
-                        if (primitive) {
-                            throw new IllegalArgumentException("Null assigned to primitive column: " + fieldInfo.fieldName());
-                        }
-                        col.setNull(rowIndex);
-                        return;
-                    }
-                    col.set(rowIndex, FloatEncoding.doubleToSortableLong(((Number) value).doubleValue()));
-                };
-                case TypeCodes.TYPE_INT,
-                        TypeCodes.TYPE_BYTE,
-                        TypeCodes.TYPE_SHORT -> (column, value, rowIndex) -> {
-                            var col = (PageColumnInt) column;
-                            if (value == null) {
-                                if (primitive) {
-                                    throw new IllegalArgumentException("Null assigned to primitive column: " + fieldInfo.fieldName());
-                                }
-                                col.setNull(rowIndex);
-                                return;
-                            }
-                            col.set(rowIndex, ((Number) value).intValue());
-                        };
-                case TypeCodes.TYPE_FLOAT -> (column, value, rowIndex) -> {
-                    var col = (PageColumnInt) column;
-                    if (value == null) {
-                        if (primitive) {
-                            throw new IllegalArgumentException("Null assigned to primitive column: " + fieldInfo.fieldName());
-                        }
-                        col.setNull(rowIndex);
-                        return;
-                    }
-                    col.set(rowIndex, FloatEncoding.floatToSortableInt(((Number) value).floatValue()));
-                };
-                case TypeCodes.TYPE_BOOLEAN -> (column, value, rowIndex) -> {
-                    var col = (PageColumnInt) column;
-                    if (value == null) {
-                        if (primitive) {
-                            throw new IllegalArgumentException("Null assigned to primitive column: " + fieldInfo.fieldName());
-                        }
-                        col.setNull(rowIndex);
-                        return;
-                    }
-                    col.set(rowIndex, (Boolean) value ? 1 : 0);
-                };
-                case TypeCodes.TYPE_CHAR -> (column, value, rowIndex) -> {
-                    var col = (PageColumnInt) column;
-                    if (value == null) {
-                        if (primitive) {
-                            throw new IllegalArgumentException("Null assigned to primitive column: " + fieldInfo.fieldName());
-                        }
-                        col.setNull(rowIndex);
-                        return;
-                    }
-                    col.set(rowIndex, (Character) value);
-                };
-                case TypeCodes.TYPE_STRING,
-                        TypeCodes.TYPE_BIG_DECIMAL,
-                        TypeCodes.TYPE_BIG_INTEGER -> (column, value, rowIndex) -> {
-                            var col = (PageColumnString) column;
-                            if (value == null) {
-                                col.setNull(rowIndex);
-                            } else {
-                                col.set(rowIndex, value.toString());
-                            }
-                        };
-                default -> throw new IllegalArgumentException(
-                        "Unsupported type code: " + fieldInfo.typeCode() + " at column " + columnIndex);
-            };
-        }
-
-        private static ColumnPublisher createPublisher(byte typeCode) {
-            return switch (typeCode) {
-                case TypeCodes.TYPE_LONG,
-                        TypeCodes.TYPE_DOUBLE,
-                        TypeCodes.TYPE_INSTANT,
-                        TypeCodes.TYPE_LOCAL_DATE,
-                        TypeCodes.TYPE_LOCAL_DATE_TIME,
-                        TypeCodes.TYPE_DATE -> (column, rowLimit) -> ((PageColumnLong) column).publish(rowLimit);
-                case TypeCodes.TYPE_INT,
-                        TypeCodes.TYPE_FLOAT,
-                        TypeCodes.TYPE_BOOLEAN,
-                        TypeCodes.TYPE_BYTE,
-                        TypeCodes.TYPE_SHORT,
-                        TypeCodes.TYPE_CHAR -> (column, rowLimit) -> ((PageColumnInt) column).publish(rowLimit);
-                case TypeCodes.TYPE_STRING,
-                        TypeCodes.TYPE_BIG_DECIMAL,
-                        TypeCodes.TYPE_BIG_INTEGER -> (column, rowLimit) -> ((PageColumnString) column).publish(rowLimit);
-                default -> (column, rowLimit) -> {
-                };
-            };
-        }
-
-        private static IdIndexUpdater createIdIndexUpdater(byte idTypeCode) {
-            return switch (idTypeCode) {
-                case TypeCodes.TYPE_LONG,
-                        TypeCodes.TYPE_INT -> (idIndex, idValue, rowId, generation) -> {
-                            if (idIndex instanceof LongIdIndex longIdIndex && idValue instanceof Number number) {
-                                longIdIndex.put(number.longValue(), rowId, generation);
-                            }
-                        };
-                case TypeCodes.TYPE_STRING -> (idIndex, idValue, rowId, generation) -> {
-                    if (idIndex instanceof StringIdIndex stringIdIndex && idValue instanceof String stringValue) {
-                        stringIdIndex.put(stringValue, rowId, generation);
-                    }
-                };
-                default -> (idIndex, idValue, rowId, generation) -> {
-                };
-            };
         }
     }
 
