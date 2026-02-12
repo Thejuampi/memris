@@ -78,7 +78,7 @@ public final class TableGenerator {
                     FieldManifestation.FINAL);
 
             columnFields.add(new TableImplementationStrategy.ColumnFieldInfo(
-                columnFieldName, columnType, typeCode, idx++, field.primitiveNonNull()));
+                columnFieldName, columnType, typeCode, idx++, field.primitiveNonNull(), field.isId()));
         }
 
         // Add ID index field

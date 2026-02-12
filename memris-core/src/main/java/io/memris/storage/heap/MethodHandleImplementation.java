@@ -853,15 +853,45 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
     }
 
     public static class InsertInterceptor {
+        @FunctionalInterface
+        private interface ColumnWriter {
+            void write(Object column, Object value, int rowIndex);
+        }
+
+        @FunctionalInterface
+        private interface ColumnPublisher {
+            void publish(Object column, int rowLimit);
+        }
+
+        @FunctionalInterface
+        private interface IdIndexUpdater {
+            void update(Object idIndex, Object idValue, RowId rowId, long generation);
+        }
+
         private final List<ColumnFieldInfo> columnFields;
         private final MethodHandles.Lookup lookup = MethodHandles.lookup();
         private final Field[] columnFieldRefs;
         private final AtomicReferenceArray<MethodHandle> columnGetters;
+        private final ColumnWriter[] writers;
+        private final ColumnPublisher[] publishers;
+        private final int idColumnIndex;
+        private final IdIndexUpdater idIndexUpdater;
 
         public InsertInterceptor(List<ColumnFieldInfo> columnFields) {
             this.columnFields = columnFields;
             this.columnFieldRefs = new Field[columnFields.size()];
             this.columnGetters = new AtomicReferenceArray<>(columnFields.size());
+            this.writers = new ColumnWriter[columnFields.size()];
+            this.publishers = new ColumnPublisher[columnFields.size()];
+            this.idColumnIndex = resolveIdColumnIndex(columnFields);
+
+            for (var i = 0; i < columnFields.size(); i++) {
+                var fieldInfo = columnFields.get(i);
+                writers[i] = createWriter(fieldInfo, i);
+                publishers[i] = createPublisher(fieldInfo.typeCode());
+            }
+
+            this.idIndexUpdater = createIdIndexUpdater(columnFields.get(idColumnIndex).typeCode());
         }
 
         @RuntimeType
@@ -882,108 +912,16 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
             AbstractTable table = (AbstractTable) obj;
             table.beginSeqLock(rowIndex);
             try {
-                // Write values to columns using MethodHandles
+                var columns = new Object[columnFields.size()];
                 for (int i = 0; i < columnFields.size(); i++) {
                     ColumnFieldInfo fieldInfo = columnFields.get(i);
                     Object column = resolveColumn(obj, fieldInfo, i, columnFieldRefs, columnGetters, lookup);
-                    Object value = values[i];
-
-                    byte typeCode = fieldInfo.typeCode();
-                    switch (typeCode) {
-                        case TypeCodes.TYPE_LONG,
-                                TypeCodes.TYPE_INSTANT,
-                                TypeCodes.TYPE_LOCAL_DATE,
-                                TypeCodes.TYPE_LOCAL_DATE_TIME,
-                                TypeCodes.TYPE_DATE -> {
-                            PageColumnLong col = (PageColumnLong) column;
-                            if (value == null) {
-                                col.setNull(rowIndex);
-                                continue;
-                            }
-                            col.set(rowIndex, ((Number) value).longValue());
-                        }
-                        case TypeCodes.TYPE_DOUBLE -> {
-                            PageColumnLong col = (PageColumnLong) column;
-                            if (value == null) {
-                                col.setNull(rowIndex);
-                                continue;
-                            }
-                            col.set(rowIndex, FloatEncoding.doubleToSortableLong(((Number) value).doubleValue()));
-                        }
-                        case TypeCodes.TYPE_INT,
-                                TypeCodes.TYPE_BYTE,
-                                TypeCodes.TYPE_SHORT -> {
-                            PageColumnInt col = (PageColumnInt) column;
-                            if (value == null) {
-                                col.setNull(rowIndex);
-                                continue;
-                            }
-                            col.set(rowIndex, ((Number) value).intValue());
-                        }
-                        case TypeCodes.TYPE_FLOAT -> {
-                            PageColumnInt col = (PageColumnInt) column;
-                            if (value == null) {
-                                col.setNull(rowIndex);
-                                continue;
-                            }
-                            col.set(rowIndex, FloatEncoding.floatToSortableInt(((Number) value).floatValue()));
-                        }
-                        case TypeCodes.TYPE_BOOLEAN -> {
-                            PageColumnInt col = (PageColumnInt) column;
-                            if (value == null) {
-                                col.setNull(rowIndex);
-                                continue;
-                            }
-                            col.set(rowIndex, (Boolean) value ? 1 : 0);
-                        }
-                        case TypeCodes.TYPE_CHAR -> {
-                            PageColumnInt col = (PageColumnInt) column;
-                            if (value == null) {
-                                col.setNull(rowIndex);
-                                continue;
-                            }
-                            col.set(rowIndex, (Character) value);
-                        }
-                        case TypeCodes.TYPE_STRING,
-                                TypeCodes.TYPE_BIG_DECIMAL,
-                                TypeCodes.TYPE_BIG_INTEGER -> {
-                            PageColumnString col = (PageColumnString) column;
-                            if (value == null) {
-                                col.setNull(rowIndex);
-                            } else {
-                                col.set(rowIndex, value.toString());
-                            }
-                        }
-                        default -> throw new IllegalArgumentException("Unsupported type code: " + typeCode);
-                    }
+                    columns[i] = column;
+                    writers[i].write(column, values[i], rowIndex);
                 }
 
-                // Publish row to make data visible to scans
                 for (int i = 0; i < columnFields.size(); i++) {
-                    ColumnFieldInfo fieldInfo = columnFields.get(i);
-                    Object column = resolveColumn(obj, fieldInfo, i, columnFieldRefs, columnGetters, lookup);
-
-                    byte typeCode = fieldInfo.typeCode();
-                    switch (typeCode) {
-                        case TypeCodes.TYPE_LONG,
-                                TypeCodes.TYPE_DOUBLE,
-                                TypeCodes.TYPE_INSTANT,
-                                TypeCodes.TYPE_LOCAL_DATE,
-                                TypeCodes.TYPE_LOCAL_DATE_TIME,
-                                TypeCodes.TYPE_DATE -> ((PageColumnLong) column).publish(rowIndex + 1);
-                        case TypeCodes.TYPE_INT,
-                                TypeCodes.TYPE_FLOAT,
-                                TypeCodes.TYPE_BOOLEAN,
-                                TypeCodes.TYPE_BYTE,
-                                TypeCodes.TYPE_SHORT,
-                                TypeCodes.TYPE_CHAR -> ((PageColumnInt) column).publish(rowIndex + 1);
-                        case TypeCodes.TYPE_STRING,
-                                TypeCodes.TYPE_BIG_DECIMAL,
-                                TypeCodes.TYPE_BIG_INTEGER -> ((PageColumnString) column).publish(rowIndex + 1);
-                        default -> {
-                            // no-op for unknown code, consistent with previous behavior
-                        }
-                    }
+                    publishers[i].publish(columns[i], rowIndex + 1);
                 }
             } finally {
                 table.endSeqLock(rowIndex);
@@ -991,18 +929,152 @@ public class MethodHandleImplementation implements TableImplementationStrategy {
 
             // Update ID index
             Object idIndex = getGeneratedFieldCache(obj).idIndexField().get(obj);
-            Object idValue = values[0];
-
-            if (idIndex instanceof LongIdIndex longIdIndex && idValue instanceof Number) {
-                longIdIndex.put(((Number) idValue).longValue(), rowId, generation);
-            } else if (idIndex instanceof StringIdIndex stringIdIndex && idValue instanceof String) {
-                stringIdIndex.put((String) idValue, rowId, generation);
-            }
+            Object idValue = values[idColumnIndex];
+            idIndexUpdater.update(idIndex, idValue, rowId, generation);
 
             // Increment row count
             INCREMENT_ROW_COUNT_METHOD.invoke(obj);
 
             return Selection.pack(rowIndex, generation);
+        }
+
+        private static int resolveIdColumnIndex(List<ColumnFieldInfo> fields) {
+            for (var i = 0; i < fields.size(); i++) {
+                if (fields.get(i).idColumn()) {
+                    return i;
+                }
+            }
+            return 0;
+        }
+
+        private static ColumnWriter createWriter(ColumnFieldInfo fieldInfo, int columnIndex) {
+            var primitive = fieldInfo.primitiveNonNull();
+            return switch (fieldInfo.typeCode()) {
+                case TypeCodes.TYPE_LONG,
+                        TypeCodes.TYPE_INSTANT,
+                        TypeCodes.TYPE_LOCAL_DATE,
+                        TypeCodes.TYPE_LOCAL_DATE_TIME,
+                        TypeCodes.TYPE_DATE -> (column, value, rowIndex) -> {
+                            var col = (PageColumnLong) column;
+                            if (value == null) {
+                                if (primitive) {
+                                    throw new IllegalArgumentException("Null assigned to primitive column: " + fieldInfo.fieldName());
+                                }
+                                col.setNull(rowIndex);
+                                return;
+                            }
+                            col.set(rowIndex, ((Number) value).longValue());
+                        };
+                case TypeCodes.TYPE_DOUBLE -> (column, value, rowIndex) -> {
+                    var col = (PageColumnLong) column;
+                    if (value == null) {
+                        if (primitive) {
+                            throw new IllegalArgumentException("Null assigned to primitive column: " + fieldInfo.fieldName());
+                        }
+                        col.setNull(rowIndex);
+                        return;
+                    }
+                    col.set(rowIndex, FloatEncoding.doubleToSortableLong(((Number) value).doubleValue()));
+                };
+                case TypeCodes.TYPE_INT,
+                        TypeCodes.TYPE_BYTE,
+                        TypeCodes.TYPE_SHORT -> (column, value, rowIndex) -> {
+                            var col = (PageColumnInt) column;
+                            if (value == null) {
+                                if (primitive) {
+                                    throw new IllegalArgumentException("Null assigned to primitive column: " + fieldInfo.fieldName());
+                                }
+                                col.setNull(rowIndex);
+                                return;
+                            }
+                            col.set(rowIndex, ((Number) value).intValue());
+                        };
+                case TypeCodes.TYPE_FLOAT -> (column, value, rowIndex) -> {
+                    var col = (PageColumnInt) column;
+                    if (value == null) {
+                        if (primitive) {
+                            throw new IllegalArgumentException("Null assigned to primitive column: " + fieldInfo.fieldName());
+                        }
+                        col.setNull(rowIndex);
+                        return;
+                    }
+                    col.set(rowIndex, FloatEncoding.floatToSortableInt(((Number) value).floatValue()));
+                };
+                case TypeCodes.TYPE_BOOLEAN -> (column, value, rowIndex) -> {
+                    var col = (PageColumnInt) column;
+                    if (value == null) {
+                        if (primitive) {
+                            throw new IllegalArgumentException("Null assigned to primitive column: " + fieldInfo.fieldName());
+                        }
+                        col.setNull(rowIndex);
+                        return;
+                    }
+                    col.set(rowIndex, (Boolean) value ? 1 : 0);
+                };
+                case TypeCodes.TYPE_CHAR -> (column, value, rowIndex) -> {
+                    var col = (PageColumnInt) column;
+                    if (value == null) {
+                        if (primitive) {
+                            throw new IllegalArgumentException("Null assigned to primitive column: " + fieldInfo.fieldName());
+                        }
+                        col.setNull(rowIndex);
+                        return;
+                    }
+                    col.set(rowIndex, (Character) value);
+                };
+                case TypeCodes.TYPE_STRING,
+                        TypeCodes.TYPE_BIG_DECIMAL,
+                        TypeCodes.TYPE_BIG_INTEGER -> (column, value, rowIndex) -> {
+                            var col = (PageColumnString) column;
+                            if (value == null) {
+                                col.setNull(rowIndex);
+                            } else {
+                                col.set(rowIndex, value.toString());
+                            }
+                        };
+                default -> throw new IllegalArgumentException(
+                        "Unsupported type code: " + fieldInfo.typeCode() + " at column " + columnIndex);
+            };
+        }
+
+        private static ColumnPublisher createPublisher(byte typeCode) {
+            return switch (typeCode) {
+                case TypeCodes.TYPE_LONG,
+                        TypeCodes.TYPE_DOUBLE,
+                        TypeCodes.TYPE_INSTANT,
+                        TypeCodes.TYPE_LOCAL_DATE,
+                        TypeCodes.TYPE_LOCAL_DATE_TIME,
+                        TypeCodes.TYPE_DATE -> (column, rowLimit) -> ((PageColumnLong) column).publish(rowLimit);
+                case TypeCodes.TYPE_INT,
+                        TypeCodes.TYPE_FLOAT,
+                        TypeCodes.TYPE_BOOLEAN,
+                        TypeCodes.TYPE_BYTE,
+                        TypeCodes.TYPE_SHORT,
+                        TypeCodes.TYPE_CHAR -> (column, rowLimit) -> ((PageColumnInt) column).publish(rowLimit);
+                case TypeCodes.TYPE_STRING,
+                        TypeCodes.TYPE_BIG_DECIMAL,
+                        TypeCodes.TYPE_BIG_INTEGER -> (column, rowLimit) -> ((PageColumnString) column).publish(rowLimit);
+                default -> (column, rowLimit) -> {
+                };
+            };
+        }
+
+        private static IdIndexUpdater createIdIndexUpdater(byte idTypeCode) {
+            return switch (idTypeCode) {
+                case TypeCodes.TYPE_LONG,
+                        TypeCodes.TYPE_INT -> (idIndex, idValue, rowId, generation) -> {
+                            if (idIndex instanceof LongIdIndex longIdIndex && idValue instanceof Number number) {
+                                longIdIndex.put(number.longValue(), rowId, generation);
+                            }
+                        };
+                case TypeCodes.TYPE_STRING -> (idIndex, idValue, rowId, generation) -> {
+                    if (idIndex instanceof StringIdIndex stringIdIndex && idValue instanceof String stringValue) {
+                        stringIdIndex.put(stringValue, rowId, generation);
+                    }
+                };
+                default -> (idIndex, idValue, rowId, generation) -> {
+                };
+            };
         }
     }
 
