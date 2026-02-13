@@ -4,7 +4,7 @@ site_author: thejuampi
 site_url: https://thejuampi.github.io/memris/
 
 docs_dir: docs
-site_dir: site
+site_dir: site/docs
 
 # Repository information
 repo_name: thejuampi/memris
