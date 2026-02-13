@@ -39,6 +39,10 @@ jobs:
       - name: Build MkDocs
         run: mkdocs build
 
+      - name: Restore marketing index.html as homepage
+        run: |
+          cp index.html site/index.html
+
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
