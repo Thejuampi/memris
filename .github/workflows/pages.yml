@@ -25,20 +25,24 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install MkDocs
+        run: pip install mkdocs mkdocs-material
+
       - name: Setup Pages
         uses: actions/configure-pages@v5
 
-      - name: Assemble site artifact
-        run: |
-          mkdir -p _site
-          cp index.html _site/index.html
-          cp -r assets _site/assets
-          cp -r docs _site/docs
+      - name: Build MkDocs
+        run: mkdocs build
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: _site
+          path: site
 
       - name: Deploy to GitHub Pages
         id: deployment
