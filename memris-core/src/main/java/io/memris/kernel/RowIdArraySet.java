@@ -2,13 +2,13 @@ package io.memris.kernel;
 
 import java.util.Arrays;
 import java.util.NoSuchElementException;
-import java.util.concurrent.locks.StampedLock;
+import java.util.concurrent.atomic.AtomicReferenceArray;
 
 /**
- * High-performance row ID set for small cardinalities.
+ * Lock-free row ID set for small cardinalities.
  * <p>
- * Optimized for the HashIndex access pattern where writers are serialized
- * by ConcurrentHashMap.compute() and readers are concurrent via index.get().
+ * Uses striped copy-on-write arrays and CAS pointer swaps to avoid locks.
+ * Writers contend only within a stripe; reads are wait-free snapshots.
  * <p>
  * <b>Contract:</b>
  * <ul>
@@ -19,29 +19,28 @@ import java.util.concurrent.locks.StampedLock;
  *   <li>Iteration order is unspecified.</li>
  * </ul>
  * <p>
- * <b>Write path:</b> In-place array mutation under write-lock. O(1) amortized.
- * Writer lock is uncontended when used inside CHM.compute().
+ * <b>Write path:</b> CAS replace of stripe arrays. No blocking lock acquisition.
  * <p>
- * <b>Read path:</b> Wait-free optimistic reads via StampedLock. Zero CAS,
- * zero syscalls in the common case. Falls back to read-lock only if a
- * concurrent write is detected.
+ * <b>Read path:</b> Wait-free direct reads over immutable stripe snapshots.
  */
 public final class RowIdArraySet implements MutableRowIdSet {
-    private static final int DEFAULT_CAPACITY = 16;
+    private static final int STRIPE_COUNT = 16;
+    private static final int STRIPE_MASK = STRIPE_COUNT - 1;
 
-    private final StampedLock lock = new StampedLock();
-    private long[] values;
-    private int size;
+    private final AtomicReferenceArray<long[]> stripes;
 
     public RowIdArraySet() {
-        this.values = new long[DEFAULT_CAPACITY];
+        this.stripes = new AtomicReferenceArray<>(STRIPE_COUNT);
+        for (var i = 0; i < STRIPE_COUNT; i++) {
+            stripes.set(i, new long[0]);
+        }
     }
 
     public RowIdArraySet(int initialCapacity) {
+        this();
         if (initialCapacity < 0) {
             throw new IllegalArgumentException("initialCapacity must be non-negative");
         }
-        this.values = new long[Math.max(DEFAULT_CAPACITY, initialCapacity)];
     }
 
     @Override
@@ -49,61 +48,58 @@ public final class RowIdArraySet implements MutableRowIdSet {
         if (rowId == null) {
             throw new IllegalArgumentException("rowId required");
         }
-        long stamp = lock.writeLock();
-        try {
-            // Check for duplicates (set semantics)
-            var target = rowId.value();
-            for (var i = 0; i < size; i++) {
-                if (values[i] == target) {
-                    return; // Already present
-                }
+
+        var target = rowId.value();
+        var stripeIndex = stripeFor(target);
+        while (true) {
+            var current = stripes.get(stripeIndex);
+            if (containsInStripe(current, target)) {
+                return;
             }
-            ensureCapacity(size + 1);
-            values[size++] = target;
-        } finally {
-            lock.unlockWrite(stamp);
+
+            var next = Arrays.copyOf(current, current.length + 1);
+            next[current.length] = target;
+            if (stripes.compareAndSet(stripeIndex, current, next)) {
+                return;
+            }
         }
     }
 
     @Override
-    @SuppressWarnings("PMD.AvoidBranchingStatementAsLastInLoop")
     public void remove(RowId rowId) {
         if (rowId == null) {
             return;
         }
-        long stamp = lock.writeLock();
-        try {
-            var target = rowId.value();
-            for (var i = 0; i < size; i++) {
-                if (values[i] != target) {
-                    continue;
-                }
-                var lastIndex = size - 1;
-                values[i] = values[lastIndex];
-                values[lastIndex] = 0L;
-                size = lastIndex;
-                break;
+
+        var target = rowId.value();
+        var stripeIndex = stripeFor(target);
+        while (true) {
+            var current = stripes.get(stripeIndex);
+            var index = indexOfInStripe(current, target);
+            if (index < 0) {
+                return;
             }
-        } finally {
-            lock.unlockWrite(stamp);
+
+            var next = new long[current.length - 1];
+            if (index > 0) {
+                System.arraycopy(current, 0, next, 0, index);
+            }
+            if (index < current.length - 1) {
+                System.arraycopy(current, index + 1, next, index, current.length - index - 1);
+            }
+            if (stripes.compareAndSet(stripeIndex, current, next)) {
+                return;
+            }
         }
     }
 
     @Override
     public int size() {
-        // Optimistic read: ~2ns when uncontended
-        long stamp = lock.tryOptimisticRead();
-        int s = size;
-        if (lock.validate(stamp)) {
-            return s;
+        var total = 0;
+        for (var i = 0; i < STRIPE_COUNT; i++) {
+            total += stripes.get(i).length;
         }
-        // Fallback: writer active, take read lock
-        stamp = lock.readLock();
-        try {
-            return size;
-        } finally {
-            lock.unlockRead(stamp);
-        }
+        return total;
     }
 
     @Override
@@ -111,61 +107,33 @@ public final class RowIdArraySet implements MutableRowIdSet {
         if (rowId == null) {
             return false;
         }
+
         var target = rowId.value();
-
-        // Optimistic read: zero-cost if no concurrent writer
-        long stamp = lock.tryOptimisticRead();
-        var v = values;
-        var s = size;
-        if (lock.validate(stamp)) {
-            for (var i = 0; i < s; i++) {
-                if (v[i] == target) {
-                    return true;
-                }
-            }
-            if (lock.validate(stamp)) {
-                return false;
-            }
-        }
-
-        // Fallback: writer was active during our read
-        stamp = lock.readLock();
-        try {
-            for (var i = 0; i < size; i++) {
-                if (values[i] == target) {
-                    return true;
-                }
-            }
-            return false;
-        } finally {
-            lock.unlockRead(stamp);
-        }
+        var stripe = stripes.get(stripeFor(target));
+        return containsInStripe(stripe, target);
     }
 
     @Override
     public long[] toLongArray() {
-        // Optimistic snapshot
-        long stamp = lock.tryOptimisticRead();
-        var v = values;
-        var s = size;
-        if (lock.validate(stamp)) {
-            var result = Arrays.copyOf(v, s);
-            if (lock.validate(stamp)) {
-                return result;
-            }
+        var snapshot = new long[STRIPE_COUNT][];
+        var total = 0;
+        for (var i = 0; i < STRIPE_COUNT; i++) {
+            var stripe = stripes.get(i);
+            snapshot[i] = stripe;
+            total += stripe.length;
         }
-        // Fallback
-        stamp = lock.readLock();
-        try {
-            return Arrays.copyOf(values, size);
-        } finally {
-            lock.unlockRead(stamp);
+
+        var result = new long[total];
+        var offset = 0;
+        for (var stripe : snapshot) {
+            System.arraycopy(stripe, 0, result, offset, stripe.length);
+            offset += stripe.length;
         }
+        return result;
     }
 
     @Override
     public LongEnumerator enumerator() {
-        // Snapshot under lock protection - enumerator is then lock-free
         var snapshot = toLongArray();
         return new LongEnumerator() {
             private int index;
@@ -185,10 +153,30 @@ public final class RowIdArraySet implements MutableRowIdSet {
         };
     }
 
-    private void ensureCapacity(int neededCapacity) {
-        if (neededCapacity <= values.length) {
-            return;
+    private static int stripeFor(long value) {
+        var hash = value ^ (value >>> 33);
+        hash *= 0xff51afd7ed558ccdL;
+        hash ^= hash >>> 33;
+        hash *= 0xc4ceb9fe1a85ec53L;
+        hash ^= hash >>> 33;
+        return (int) (hash & STRIPE_MASK);
+    }
+
+    private static boolean containsInStripe(long[] stripe, long value) {
+        for (var entry : stripe) {
+            if (entry == value) {
+                return true;
+            }
         }
-        values = Arrays.copyOf(values, Math.max(values.length * 2, neededCapacity));
+        return false;
+    }
+
+    private static int indexOfInStripe(long[] stripe, long value) {
+        for (var i = 0; i < stripe.length; i++) {
+            if (stripe[i] == value) {
+                return i;
+            }
+        }
+        return -1;
     }
 }

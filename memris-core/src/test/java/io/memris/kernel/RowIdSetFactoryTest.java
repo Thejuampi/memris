@@ -42,4 +42,16 @@ class RowIdSetFactoryTest {
         assertThat(factory.maybeUpgrade(set).toLongArray())
                 .containsExactlyInAnyOrder(5L, 9L);
     }
+
+    @Test
+    void maybeUpgradePreservesRowIdZero() {
+        RowIdSetFactory factory = new RowIdSetFactory(2);
+        MutableRowIdSet set = factory.create(1);
+
+        set.add(RowId.fromLong(0L));
+        set.add(RowId.fromLong(1L));
+
+        assertThat(factory.maybeUpgrade(set).toLongArray())
+                .containsExactlyInAnyOrder(0L, 1L);
+    }
 }

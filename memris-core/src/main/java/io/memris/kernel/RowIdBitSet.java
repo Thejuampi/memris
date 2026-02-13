@@ -274,9 +274,10 @@ public final class RowIdBitSet implements MutableRowIdSet {
         while (true) {
             var currentChunks = chunks;
             if (requiredChunkIndex < currentChunks.length()) {
-                // Chunk slot exists — ensure it's initialized
-                if (currentChunks.get(requiredChunkIndex) == null) {
-                    currentChunks.compareAndSet(requiredChunkIndex, null, new long[CHUNK_WORDS]);
+                // Chunk slot exists — re-read chunks to handle concurrent expansion
+                var chunksNow = chunks;
+                if (chunksNow.get(requiredChunkIndex) == null) {
+                    chunksNow.compareAndSet(requiredChunkIndex, null, new long[CHUNK_WORDS]);
                 }
                 return;
             }
