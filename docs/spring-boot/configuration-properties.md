@@ -55,6 +55,54 @@ Each arena under `memris.arenas.<name>` supports:
 | `enable-prefix-index` | true | Enable prefix indexes for startsWith queries |
 | `enable-suffix-index` | true | Enable suffix indexes for endsWith queries |
 
+### Property Binding Classes
+
+Properties are bound to `MemrisArenaProperties`:
+
+```java
+package io.memris.spring.boot.autoconfigure;
+
+@ConfigurationProperties("memris")
+public class MemrisArenaProperties {
+    private String defaultArena = "default";
+    private Map<String, MemrisConfigurationProperties> arenas = new HashMap<>();
+    // getters and setters
+}
+```
+
+Each arena is configured via `MemrisConfigurationProperties`:
+
+```java
+package io.memris.spring.boot.autoconfigure;
+
+@Data
+public class MemrisConfigurationProperties {
+    private int pageSize = 1024;
+    private int maxPages = 1024;
+    private int initialPages = 1024;
+    private boolean enableParallelSorting = true;
+    private int parallelSortThreshold = 1000;
+    private boolean codegenEnabled = true;
+    private boolean enablePrefixIndex = true;
+    private boolean enableSuffixIndex = true;
+    
+    public MemrisConfiguration toConfiguration() {
+        return MemrisConfiguration.builder()
+            .pageSize(pageSize)
+            .maxPages(maxPages)
+            .initialPages(initialPages)
+            .enableParallelSorting(enableParallelSorting)
+            .parallelSortThreshold(parallelSortThreshold)
+            .codegenEnabled(codegenEnabled)
+            .enablePrefixIndex(enablePrefixIndex)
+            .enableSuffixIndex(enableSuffixIndex)
+            .build();
+    }
+}
+```
+
+These classes are identical in both Boot 2 and Boot 3 modules.
+
 ## Configuration Examples
 
 ### Read-Heavy Workload
@@ -190,43 +238,6 @@ memris:
     default:
       page-size: 4096
       max-pages: 8192
-```
-
-## Property Binding
-
-Properties are bound to `MemrisArenaProperties`:
-
-```java
-@ConfigurationProperties("memris")
-public class MemrisArenaProperties {
-    private String defaultArena = "default";
-    private Map<String, MemrisConfigurationProperties> arenas = new HashMap<>();
-    // ...
-}
-```
-
-And converted to `MemrisConfiguration`:
-
-```java
-@Data
-public class MemrisConfigurationProperties {
-    private int pageSize = 1024;
-    private int maxPages = 1024;
-    private int initialPages = 1024;
-    private boolean enableParallelSorting = true;
-    private int parallelSortThreshold = 1000;
-    private boolean codegenEnabled = true;
-    private boolean enablePrefixIndex = true;
-    private boolean enableSuffixIndex = true;
-    
-    public MemrisConfiguration toConfiguration() {
-        return MemrisConfiguration.builder()
-            .pageSize(pageSize)
-            .maxPages(maxPages)
-            // ...
-            .build();
-    }
-}
 ```
 
 ## Validation

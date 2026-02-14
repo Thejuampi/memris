@@ -34,9 +34,7 @@ mvn.cmd -q -e -pl memris-core test -Dtest=ClassName#methodName
 ### Java Runtime Requirements
 
 - **Java Version**: 21 (required)
-
-- **Native Access**: `--enable-native-access=ALL-UNNAMED`
-- **Storage**: 100% heap-based (primitive arrays, no FFM/MemorySegment)
+- **Storage**: 100% heap-based (primitive arrays, no FFM/MemorySegment required)
 
 ## Project Overview
 
@@ -385,7 +383,6 @@ When implementing join tables (@OneToMany, @ManyToMany):
 *For detailed architecture and package structure, see [ARCHITECTURE.md](ARCHITECTURE.md)*
 *For Spring Data integration details, see [SPRING_DATA.md](SPRING_DATA.md)*
 *For query method reference, see [QUERY.md](QUERY.md)*
-*For current implementation status, see [IMPLEMENTATION.md](IMPLEMENTATION.md)*
 
 ## Concurrency Guidelines
 

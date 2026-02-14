@@ -13,7 +13,7 @@ This document provides a complete query operator reference for Memris.
 | Operator | JPA Pattern | Status |
 |----------|-------------|--------|
 | EQ | `findByXxx`<br>`findByXxxIs`<br>`findByXxxEquals` | ✅ |
-| NE | `findByXxxNot` | ✅ |
+| NE | `findByXxxNot`<br>`findByXxxNotEqual` | ✅ |
 | GT | `findByXxxGreaterThan` | ✅ |
 | GTE | `findByXxxGreaterThanEqual` | ✅ |
 | LT | `findByXxxLessThan` | ✅ |
@@ -25,21 +25,24 @@ This document provides a complete query operator reference for Memris.
 |----------|-------------|--------|
 | LIKE | `findByXxxLike` | ✅ |
 | NOT_LIKE | `findByXxxNotLike` | ✅ |
-| STARTING_WITH | `findByXxxStartingWith`<br>`findByXxxStartsWith` | ✅ |
-| ENDING_WITH | `findByXxxEndingWith`<br>`findByXxxEndsWith` | ✅ |
-| CONTAINING | `findByXxxContaining`<br>`findByXxxContains` | ✅ |
+| STARTING_WITH | `findByXxxStartingWith` | ✅ |
+| NOT_STARTING_WITH | `findByXxxNotStartingWith` | ✅ |
+| ENDING_WITH | `findByXxxEndingWith` | ✅ |
+| NOT_ENDING_WITH | `findByXxxNotEndingWith` | ✅ |
+| CONTAINING | `findByXxxContaining` | ✅ |
+| NOT_CONTAINING | `findByXxxNotContaining` | ✅ |
 | IGNORE_CASE | `findByXxxIgnoreCase`<br>`findByXxxAndYyyAllIgnoreCase` | ✅ |
 
 ### Boolean Operators
 | Operator | JPA Pattern | Status |
 |----------|-------------|--------|
-| IS_TRUE | `findByXxxTrue`<br>`findByXxxIsTrue` | ✅ |
-| IS_FALSE | `findByXxxFalse`<br>`findByXxxIsFalse` | ✅ |
+| IS_TRUE | `findByXxxTrue` | ✅ |
+| IS_FALSE | `findByXxxFalse` | ✅ |
 
 ### Null Operators
 | Operator | JPA Pattern | Status |
 |----------|-------------|--------|
-| IS_NULL | `findByXxxIsNull`<br>`findByXxxNull` | ✅ |
+| IS_NULL | `findByXxxIsNull` | ✅ |
 | IS_NOT_NULL | `findByXxxIsNotNull`<br>`findByXxxNotNull` | ✅ |
 
 ### Collection Operators
@@ -63,7 +66,7 @@ This document provides a complete query operator reference for Memris.
 ### Query Modifiers
 | Modifier | JPA Pattern | Status |
 |----------|-------------|--------|
-| DISTINCT | `findDistinctByXxx` | ⚠️ |
+| DISTINCT | `findDistinctByXxx` | ✅ |
 | ORDER BY | `findByXxxOrderByYxxAsc`<br>`findByXxxOrderByYyyDesc` | ✅ |
 | LIMIT/TOP/FIRST | `findFirstByXxx`<br>`findTopByXxx`<br>`findTop10ByXxx` | ✅ |
 
@@ -115,12 +118,10 @@ List<Product> findByNameAndPrice(@Param("name") String name, @Param("min") long 
 - Decimal literals are stored as `BigDecimal`
 
 **Limitations (current):**
-- No `DISTINCT`
 - No projections (`select new ...`), no aggregates beyond `count`
 - `GROUP BY` supports root-entity selects or `count`, with record-key Map return types
 - `HAVING` supports `count(...)` comparisons only
 - No subqueries
-- No `UPDATE` / `DELETE` queries
 - Single-column `ORDER BY` only
 
 ## Field Type Support
@@ -291,9 +292,9 @@ GeneratedTable.scan*()
 - Handles wildcard matching for entity types
 
 **Key Files:**
-- `QueryMethodLexer.java:213` - Main tokenization entry point
-- `QueryPlanner.java:1` - Query planning logic
-- `BuiltInResolver.java:57` - Built-in resolution logic
+- `QueryMethodLexer.java` - Main tokenization entry point
+- `QueryPlanner.java` - Query planning logic
+- `BuiltInResolver.java` - Built-in resolution logic
 - `CompiledQuery.java` - Compiled query structure
 
 ## Architecture

@@ -56,12 +56,14 @@ implementation("io.github.thejuampi:memris:0.1.10")
 
 ```java
 import io.memris.core.Entity;
+import io.memris.core.Id;
 import io.memris.core.Index;
 import io.memris.core.GeneratedValue;
 import io.memris.core.GenerationType;
 
 @Entity
 public class User {
+    @Id
     @Index(type = Index.IndexType.HASH)
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -116,10 +118,21 @@ public interface UserRepository extends MemrisRepository<User> {
 ```java
 import io.memris.repository.MemrisRepositoryFactory;
 import io.memris.core.MemrisArena;
+import io.memris.core.MemrisConfiguration;
 
 public class Main {
     static void main(String[] args) throws Exception {
+        // Option 1: Default configuration
         MemrisRepositoryFactory factory = new MemrisRepositoryFactory();
+        
+        // Option 2: Custom configuration
+        // MemrisRepositoryFactory factory = new MemrisRepositoryFactory(
+        //     MemrisConfiguration.builder()
+        //         .pageSize(2048)
+        //         .enableParallelSorting(true)
+        //         .build()
+        // );
+        
         MemrisArena arena = factory.createArena();
         UserRepository repo = arena.createRepository(UserRepository.class);
         
@@ -186,13 +199,7 @@ public class Main {
 | `@Query` | JPQL-like query string |
 | `@Param` | Named parameter binding |
 | `@Modifying` | Marks @Query as UPDATE/DELETE operation |
-| `@PrePersist` | Lifecycle callback before save |
-| `@PostLoad` | Lifecycle callback after load |
-| `@PreUpdate` | Lifecycle callback before update |
-| `@CreatedDate` | Auto-populated creation timestamp |
-| `@LastModifiedDate` | Auto-updated modification timestamp |
-| `@CreatedBy` | Auto-populated creation user |
-| `@LastModifiedBy` | Auto-updated modification user |
+
 
 **Index Types** (`@Index(type = ...)`):
 | Type | Complexity | Use For |
@@ -242,6 +249,8 @@ Class-level `@Index(fields = {"field1", "field2"})` for multi-field indexes.
 
 #### Built-in CRUD Methods
 
+> **Note:** `MemrisRepository<T>` is a marker interface (empty by design). Built-in CRUD methods are dynamically resolved at runtime.
+
 ```java
 T save(T entity);
 Iterable<T> saveAll(Iterable<T> entities);
@@ -262,9 +271,9 @@ void deleteAllById(Iterable<ID> ids);
 findByAgeEquals(int) / findByAge(int)                    // Equality
 findByAgeNotEqual(int) / findByAgeNot(int)               // Inequality
 findByAgeGreaterThan(int) / findByAgeAfter(int)          // Greater than
-findByAgeGreaterThanEqual(int) / findByAgeAfterEqual(int) // Greater than or equal
+findByAgeGreaterThanEqual(int)                           // Greater than or equal
 findByAgeLessThan(int) / findByAgeBefore(int)            // Less than
-findByAgeLessThanEqual(int) / findByAgeBeforeEqual(int)  // Less than or equal
+findByAgeLessThanEqual(int)                              // Less than or equal
 findByAgeBetween(int, int)                               // Range query
 ```
 
@@ -273,11 +282,11 @@ findByAgeBetween(int, int)                               // Range query
 ```java
 findByNameLike(String) / findByNameIsLike(String)              // Pattern match
 findByNameNotLike(String)                                       // Negative pattern match
-findByNameStartingWith(String) / findByNameStartsWith(String)   // Prefix match
+findByNameStartingWith(String)                                  // Prefix match
 findByNameNotStartingWith(String)                               // Negative prefix match
-findByNameEndingWith(String) / findByNameEndsWith(String)       // Suffix match
+findByNameEndingWith(String)                                    // Suffix match
 findByNameNotEndingWith(String)                                 // Negative suffix match
-findByNameContaining(String) / findByNameContains(String)       // Substring match
+findByNameContaining(String)                                     // Substring match
 findByNameNotContaining(String)                                 // Negative substring match
 findByNameIgnoreCase(String)                                    // Case-insensitive equality
 findByNameStartingWithIgnoreCase(String)                        // Case-insensitive prefix
@@ -384,6 +393,9 @@ List<Account> findByAccountEmail(String email);
 Custom type converters allow you to map domain types to storage types:
 
 ```java
+import io.memris.core.converter.TypeConverter;
+import io.memris.core.converter.TypeConverterRegistry;
+
 public class MoneyConverter implements TypeConverter<Money, Long> {
     public Class<Money> javaType() { return Money.class; }
     public Class<Long> storageType() { return Long.class; }
@@ -403,9 +415,12 @@ TypeConverterRegistry.getInstance().register(new MoneyConverter());
 
 ### Custom ID Generation
 
-Provide custom ID generation strategies:
+Provide custom ID generation strategies using `@GeneratedValue(generator = "...")`:
 
 ```java
+import io.memris.core.IdGenerator;
+import java.util.concurrent.atomic.AtomicLong;
+
 public class CustomIdGenerator implements IdGenerator<String> {
     private final AtomicLong counter = new AtomicLong();
 
@@ -414,10 +429,48 @@ public class CustomIdGenerator implements IdGenerator<String> {
     }
 }
 
-// Configure with custom generator
-MemrisConfiguration.builder()
-    .idGenerator(String.class, new CustomIdGenerator())
+// Use in entity with CUSTOM strategy
+@Entity
+public class Order {
+    @Id
+    @GeneratedValue(strategy = GenerationType.CUSTOM, generator = "customIdGenerator")
+    private String id;
+    
+    // The generator must be registered via Spring or provided at runtime
+}
+```
+
+> **Note:** Custom ID generators require external registration (e.g., via Spring Data integration) or manual lookup.
+
+### Configuration Options
+
+`MemrisConfiguration.builder()` supports the following options:
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `tableImplementation(BYTECODE/METHOD_HANDLE)` | `BYTECODE` | Table implementation strategy |
+| `pageSize(int)` | `1024` | Number of rows per page |
+| `maxPages(int)` | `1024` | Maximum number of pages |
+| `initialPages(int)` | `1024` | Initial number of pages |
+| `enableParallelSorting(boolean)` | `true` | Enable parallel sorting for large results |
+| `parallelSortThreshold(int)` | `1000` | Threshold for parallel sorting |
+| `auditProvider(AuditProvider)` | `null` | Provider for @CreatedBy/@LastModifiedBy |
+| `codegenEnabled(boolean)` | `true` | Enable runtime code generation |
+| `enablePrefixIndex(boolean)` | `true` | Enable PREFIX index optimization |
+| `enableSuffixIndex(boolean)` | `true` | Enable SUFFIX index optimization |
+| `entityMetadataProvider(EntityMetadataProvider)` | `MetadataExtractor::extractEntityMetadata` | Custom metadata extraction |
+
+Example:
+
+```java
+MemrisConfiguration config = MemrisConfiguration.builder()
+    .pageSize(2048)
+    .maxPages(2048)
+    .enableParallelSorting(true)
+    .parallelSortThreshold(500)
     .build();
+
+MemrisRepositoryFactory factory = new MemrisRepositoryFactory(config);
 ```
 
 ### Audit Provider
@@ -425,6 +478,9 @@ MemrisConfiguration.builder()
 Configure audit information for `@CreatedBy` and `@LastModifiedBy` annotations:
 
 ```java
+import io.memris.core.AuditProvider;
+import io.memris.core.MemrisConfiguration;
+
 AuditProvider auditProvider = () -> SecurityContextHolder.getCurrentUser();
 
 MemrisConfiguration.builder()
@@ -432,7 +488,7 @@ MemrisConfiguration.builder()
     .build();
 ```
 
-> **Note:** Audit annotations are available in Spring Data modules (memris-spring-data-boot2, memris-spring-data-boot3).
+> **Note:** Audit support is available via field naming convention (fields named `createdBy`, `lastModifiedBy`) or Spring Data modules.
 
 ### Entity Relationships
 
@@ -444,6 +500,89 @@ MemrisConfiguration.builder()
 | Many-to-many | `@ManyToMany` + `@JoinTable` | Eager |
 
 > **Note:** Lazy loading is not supported. All relationships are eagerly fetched.
+
+#### Example: One-to-Many / Many-to-One
+
+```java
+import io.memris.core.Entity;
+import io.memris.core.Id;
+import io.memris.core.ManyToOne;
+import io.memris.core.OneToMany;
+import io.memris.core.JoinColumn;
+import java.util.List;
+
+@Entity
+public class Customer {
+    @Id
+    private Long id;
+    
+    private String email;
+    
+    @OneToMany(mappedBy = "customer")
+    private List<Order> orders;
+    
+    // constructors, getters...
+}
+
+@Entity
+public class Order {
+    @Id
+    private Long id;
+    
+    @ManyToOne
+    @JoinColumn(name = "customer_id")
+    private Customer customer;
+    
+    private long total;
+    
+    // constructors, getters...
+}
+
+// Query by nested property
+public interface OrderRepository extends MemrisRepository<Order> {
+    List<Order> findByCustomerEmail(String email);
+}
+```
+
+#### Example: Many-to-Many
+
+```java
+import io.memris.core.ManyToMany;
+import io.memris.core.JoinTable;
+import io.memris.core.JoinColumn;
+import java.util.Set;
+
+@Entity
+public class Student {
+    @Id
+    private Long id;
+    
+    private String name;
+    
+    @ManyToMany
+    @JoinTable(
+        name = "student_course",
+        joinColumn = "student_id",
+        inverseJoinColumn = "course_id"
+    )
+    private Set<Course> courses;
+    
+    // constructors, getters...
+}
+
+@Entity
+public class Course {
+    @Id
+    private Long id;
+    
+    private String title;
+    
+    @ManyToMany(mappedBy = "courses")
+    private Set<Student> students;
+    
+    // constructors, getters...
+}
+```
 
 ---
 
@@ -463,6 +602,10 @@ mvn -B clean install
 ---
 
 ## 📚 Documentation
+
+**Online Documentation**: [https://thejuampi.github.io/memris/](https://thejuampi.github.io/memris/)
+
+Local documentation files:
 
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — Architecture and design
 - [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) — Development and testing guidelines

@@ -59,7 +59,7 @@ public interface CustomerRepository extends MemrisRepository<Customer> {
 ### 3. Use the Repository
 
 ```java
-import io.memris.core.MemrisRepositoryFactory;
+import io.memris.repository.MemrisRepositoryFactory;
 import io.memris.core.MemrisArena;
 
 public class QuickStart {
@@ -100,7 +100,9 @@ public class QuickStart {
 
 2. **Repository Interface**: By extending `MemrisRepository<Customer>`, you get basic CRUD operations. Method names like `findByLastName` are automatically implemented using Memris's query derivation.
 
-3. **Runtime Generation**: At runtime, Memris uses ByteBuddy to generate optimized storage tables and query implementations based on your entity and repository definitions.
+3. **Arena Isolation**: Each `MemrisArena` is completely isolated - it has its own tables, repositories, and indexes. Data saved in one arena is not visible in another, making arenas ideal for multi-tenant applications and test isolation.
+
+4. **Runtime Generation**: At runtime, Memris uses ByteBuddy to generate optimized storage tables and query implementations based on your entity and repository definitions.
 
 ## Query Methods
 
@@ -134,11 +136,65 @@ public interface CustomerRepository extends MemrisRepository<Customer> {
 }
 ```
 
+## Arena Isolation Pattern
+
+Each `MemrisArena` is a completely isolated data space with its own tables, repositories, and indexes. Data saved in one arena is not visible in another.
+
+```java
+import io.memris.repository.MemrisRepositoryFactory;
+import io.memris.core.MemrisArena;
+
+// Factory creates isolated arenas
+MemrisRepositoryFactory factory = new MemrisRepositoryFactory();
+
+// Create multiple isolated arenas
+MemrisArena tenantA = factory.createArena();
+MemrisArena tenantB = factory.createArena();
+
+CustomerRepository repoA = tenantA.createRepository(CustomerRepository.class);
+CustomerRepository repoB = tenantB.createRepository(CustomerRepository.class);
+
+// Data is completely isolated between arenas
+repoA.save(new Customer(null, "Alice", "TenantA", "alice@a.com", 25));
+repoB.save(new Customer(null, "Bob", "TenantB", "bob@b.com", 30));
+
+// repoA only sees Alice, repoB only sees Bob
+assert repoA.findAll().size() == 1;  // Alice only
+assert repoB.findAll().size() == 1;  // Bob only
+
+// Clean up when done
+tenantA.close();
+tenantB.close();
+```
+
+### Use Cases
+
+| Use Case | Pattern |
+|----------|---------|
+| **Multi-tenant applications** | One arena per tenant, created on-demand |
+| **Test isolation** | Fresh arena per test class/method with `@BeforeEach` |
+| **Parallel processing** | Different arenas in different threads without contention |
+| **Data snapshots** | Create arena, load data, process without affecting live data |
+
+### Arena Lifecycle
+
+```java
+// Create arena (allocates resources)
+MemrisArena arena = factory.createArena();
+
+// Use arena
+CustomerRepository repo = arena.createRepository(CustomerRepository.class);
+repo.save(customer);
+
+// Close arena (releases resources)
+arena.close();
+```
+
 ## Next Steps
 
 Now that you've seen the basics:
 
 - Learn about [Configuration Options](configuration.md)
 - Explore [Spring Boot Integration](spring-boot-setup.md)
-- See more [Examples](../examples/index.md)
-- Read the [Query Reference](../query-reference.md) for all supported operations
+- See more [Examples](../examples/README.md)
+- Read the [Query Reference](../QUERY.md) for all supported operations

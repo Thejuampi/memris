@@ -8,9 +8,11 @@ When using the core library, configure via `MemrisConfiguration`:
 
 ```java
 import io.memris.core.MemrisConfiguration;
-import io.memris.core.MemrisRepositoryFactory;
+import io.memris.core.MemrisConfiguration.TableImplementation;
+import io.memris.repository.MemrisRepositoryFactory;
 
 MemrisConfiguration config = MemrisConfiguration.builder()
+    .tableImplementation(TableImplementation.BYTECODE)
     .pageSize(1024)
     .maxPages(1024)
     .initialPages(1024)
@@ -50,10 +52,18 @@ MemrisRepositoryFactory factory = new MemrisRepositoryFactory(config);
 
 | Property | Default | Description |
 |----------|---------|-------------|
-| `codegenEnabled` | true | Enable ByteBuddy code generation for optimized access |
+| `codegenEnabled` | true | Enable ByteBuddy code generation for optimized runtime executors |
+| `tableImplementation` | BYTECODE | Table generation strategy: `BYTECODE` (ByteBuddy) or `METHOD_HANDLE` (fallback) |
 
 !!! warning "Disable Code Generation"
     Only disable code generation if you encounter compatibility issues. The fallback MethodHandle implementation is slower (~5ns vs ~1ns overhead).
+
+```java
+MemrisConfiguration config = MemrisConfiguration.builder()
+    .tableImplementation(TableImplementation.METHOD_HANDLE)
+    .codegenEnabled(false)
+    .build();
+```
 
 ### Index Configuration
 
@@ -61,6 +71,30 @@ MemrisRepositoryFactory factory = new MemrisRepositoryFactory(config);
 |----------|---------|-------------|
 | `enablePrefixIndex` | true | Enable prefix indexes for `startsWith` queries |
 | `enableSuffixIndex` | true | Enable suffix indexes for `endsWith` queries |
+
+### Audit Configuration
+
+| Property | Default | Description |
+|----------|---------|-------------|
+| `auditProvider` | null | Provider for `@CreatedBy`/`@LastModifiedBy` audit fields |
+
+```java
+MemrisConfiguration config = MemrisConfiguration.builder()
+    .auditProvider(() -> SecurityContextHolder.getCurrentPrincipal())
+    .build();
+```
+
+### Advanced Configuration
+
+| Property | Default | Description |
+|----------|---------|-------------|
+| `entityMetadataProvider` | default | Custom provider for entity metadata extraction |
+
+```java
+MemrisConfiguration config = MemrisConfiguration.builder()
+    .entityMetadataProvider(myCustomProvider)
+    .build();
+```
 
 ## Spring Boot Configuration
 
@@ -97,6 +131,45 @@ memris:
       max-pages: 8192
       enable-parallel-sorting: true
 ```
+
+### Audit Provider (Spring Boot)
+
+In Spring Boot, provide an `AuditProvider` bean for `@CreatedBy`/`@LastModifiedBy`:
+
+```java
+import io.memris.core.AuditProvider;
+import io.memris.core.MemrisConfiguration;
+
+@Bean
+public AuditProvider auditProvider() {
+    return () -> SecurityContextHolder.getContext().getAuthentication().getName();
+}
+
+@Bean
+public MemrisConfiguration memrisConfiguration(AuditProvider auditProvider) {
+    return MemrisConfiguration.builder()
+        .auditProvider(auditProvider)
+        .build();
+}
+```
+
+## All Builder Options Reference
+
+Complete list of `MemrisConfiguration.builder()` options:
+
+| Method | Type | Default | Description |
+|--------|------|---------|-------------|
+| `tableImplementation()` | `TableImplementation` | `BYTECODE` | Table generation strategy |
+| `pageSize()` | `int` | 1024 | Rows per page |
+| `maxPages()` | `int` | 1024 | Maximum pages per table |
+| `initialPages()` | `int` | 1024 | Pages to pre-allocate |
+| `enableParallelSorting()` | `boolean` | true | Enable parallel sort for large results |
+| `parallelSortThreshold()` | `int` | 1000 | Row count to trigger parallel sort |
+| `codegenEnabled()` | `boolean` | true | Enable runtime code generation |
+| `enablePrefixIndex()` | `boolean` | true | Enable prefix index for `startsWith` |
+| `enableSuffixIndex()` | `boolean` | true | Enable suffix index for `endsWith` |
+| `auditProvider()` | `AuditProvider` | null | Provider for audit fields |
+| `entityMetadataProvider()` | `EntityMetadataProvider` | default | Custom metadata extractor |
 
 ## Performance Tuning Guide
 

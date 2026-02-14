@@ -107,6 +107,11 @@ nav:
     - Spring Data: SPRING_DATA.md
     - Benchmark Baselines: BENCHMARK_BASELINES.md
     - Entity Annotations: entity-annotations.md
+  - Design:
+    - Storage Layer: design/storage.md
+    - Query Parsing: design/query-parsing.md
+    - Selection Pipeline: design/selection.md
+    - Indexes: design/indexes.md
   - Examples:
     - Overview: examples/README.md
     - Basic CRUD: examples/basic-crud.md

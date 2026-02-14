@@ -145,8 +145,6 @@ mvn exec:java \
 - Concurrent benchmarks with writes may hit capacity during long runs
 - Insert-heavy workloads limited by pre-allocated capacity
 
-**Solution:** See `docs/DYNAMIC_TABLE_GROWTH.md` for architecture to support 4B+ rows
-
 ---
 
 ## Comparison with Other Benchmarks

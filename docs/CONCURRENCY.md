@@ -8,19 +8,19 @@
 
 | Operation | Thread-Safety | Mechanism | Location |
 |-----------|--------------|------------|----------|
-| ID generation | ✅ Lock-free | `AtomicLong.getAndIncrement()` | `MemrisRepositoryFactory.java:287` |
-| ID index lookups | ✅ Lock-free | `ConcurrentHashMap.get()` | `LongIdIndex.java:38`, `StringIdIndex.java:38` |
-| HashIndex lookups | ✅ Lock-free | `ConcurrentHashMap.get()` | `HashIndex.java:67` |
-| RangeIndex lookups | ✅ Lock-free | `ConcurrentSkipListMap.get()` | `RangeIndex.java:51` |
-| Query scans | ✅ Safe reads | `volatile published` watermark | `PageColumn*.java:20` |
-| Index add/remove | ✅ Thread-safe | `compute()` / `computeIfAbsent()` | `HashIndex.java:31`, `RangeIndex.java:34` |
-| Column writes | ✅ Lock-free | Row seqlock (CAS) + publish ordering | `AbstractTable.java`, `MethodHandleImplementation.java` |
+| ID generation | Lock-free | `AtomicLong.getAndIncrement()` | `MemrisRepositoryFactory.java` |
+| ID index lookups | Lock-free | `ConcurrentHashMap.get()` | `LongIdIndex.java`, `StringIdIndex.java` |
+| HashIndex lookups | Lock-free | `ConcurrentHashMap.get()` | `HashIndex.java` |
+| RangeIndex lookups | Lock-free | `ConcurrentSkipListMap.get()` | `RangeIndex.java` |
+| Query scans | Safe reads | `volatile published` watermark | `PageColumn*.java` |
+| Index add/remove | Thread-safe | `compute()` / `computeIfAbsent()` | `HashIndex.java`, `RangeIndex.java` |
+| Column writes | Coordinated | Row seqlock (CAS) + publish ordering | `AbstractTable.java` |
 
 **Concurrency Caveats (Eventual Consistency):**
 
 | Operation | Behavior | Impact | Location |
 |-----------|----------|--------|----------|
-| Index updates | Eventually consistent with row writes | Stale index entries are filtered at query time | `RepositoryRuntime.java:203-220` |
+| Index updates | Eventually consistent with row writes | Stale index entries are filtered at query time | `RepositoryRuntime.java` |
 
 ### Concurrency Model Summary
 
@@ -30,7 +30,94 @@
 - **Read-Write**: SeqLock provides coordination for row updates and typed reads
 - **Isolation**: Best-effort (seqlock for rows, no MVCC for transactions)
 
-### Hot Path vs Write Path
+## Row-Level SeqLock Implementation
+
+### Overview
+
+Each row has an associated version counter managed via `AtomicLongArray`. The seqlock protocol enables:
+- Wait-free reads (with retry on concurrent write)
+- Exclusive writes via CAS acquisition
+- Detection of concurrent modifications
+
+### Data Structure
+
+```java
+// In AbstractTable / GeneratedTable
+private final AtomicLongArray rowSeqLocks;  // Per-row version counters
+```
+
+### Writer Protocol
+
+```java
+// 1. Acquire write lock (CAS even -> odd)
+boolean acquired = beginSeqLock(rowIndex);
+if (!acquired) {
+    // Retry or fail - another writer is active
+}
+
+try {
+    // 2. Write columns (protected by seqlock)
+    columnInts[columnIndex].set(rowIndex, value);
+    columnLongs[columnIndex].set(rowIndex, value);
+    columnStrings[columnIndex].set(rowIndex, value);
+    
+    // 3. End write lock (increment to even)
+    endSeqLock(rowIndex);
+} finally {
+    // Ensure lock is released on exception
+    if (isSeqLocked(rowIndex)) {
+        endSeqLock(rowIndex);
+    }
+}
+
+// 4. Publish for visibility
+publish(rowIndex);
+```
+
+### Reader Protocol (Optimistic)
+
+```java
+// 1. Capture initial version
+long v1 = rowSeqLocks.get(rowIndex);
+
+// 2. Check if write in progress (odd = writing)
+if ((v1 & 1) == 1) {
+    // Writing in progress, retry
+    return readWithRetry(rowIndex);
+}
+
+// 3. Read columns
+int value = columnInts[columnIndex].get(rowIndex);
+
+// 4. Verify version unchanged
+long v2 = rowSeqLocks.get(rowIndex);
+if (v1 != v2) {
+    // Changed during read, retry
+    return readWithRetry(rowIndex);
+}
+
+return value;
+```
+
+### SeqLock Benefits
+
+| Property | Description |
+|----------|-------------|
+| **Wait-free reads** | No blocking, only retry on conflict |
+| **Single-writer per row** | Only one writer per row at a time via CAS |
+| **Version tracking** | Detect concurrent modifications |
+| **No read locks** | Readers never block writers or other readers |
+| **Backoff strategy** | Thread.onSpinWait -> Thread.yield -> LockSupport.parkNanos |
+
+### SeqLock Limitations
+
+| Limitation | Impact |
+|------------|--------|
+| **Starvation** | Writer can starve readers under heavy write load |
+| **Retry overhead** | High contention causes read retries |
+| **No read ordering** | Reads may see partial updates during retry |
+
+## Hot Path vs Write Path
 
 **Hot Path (Read-Only, Thread-Safe, Zero Reflection):**
 - Query execution uses TypeCode switches and direct array access (no reflection)
@@ -43,19 +130,19 @@
 - Tombstone operations use AtomicIntegerArray (CAS-based) - Thread-safe
 - Index updates can race with row writes - queries validate row liveness
 
-### Critical Issues
+## Fixed Critical Issues
 
-**1. Free-List Race Condition** (`AbstractTable.java:116-117`) ~~FIXED~~
-Multiple threads could pop the same row ID from free-list:
+### 1. Free-List Race Condition (`AbstractTable.java`) - FIXED
+
+**Problem**: Multiple threads could pop the same row ID from free-list:
 ```java
 // OLD PROBLEM: Two threads could get same index
 if (freeListSize > 0) {
     int reusedRowId = freeList[--freeListSize];  // Race condition!
-    // Both threads write to same offset
 }
 ```
 
-**Solution:** Replaced `int[]` with `LockFreeFreeList` using CAS-based operations:
+**Solution**: Replaced `int[]` with `LockFreeFreeList` using CAS-based operations:
 ```java
 // NEW SOLUTION: Lock-free CAS-based pop
 LockFreeFreeList freeList = new LockFreeFreeList(capacity);
@@ -64,8 +151,9 @@ int reusedRowId = freeList.pop();  // Thread-safe CAS
 
 **Impact**: Data corruption eliminated - concurrent saves are now thread-safe.
 
-**2. Tombstone BitSet Not Thread-Safe** (`AbstractTable.java:175-186`) ~~FIXED~~
-Multiple threads could decrement `liveRowCount` for the same row:
+### 2. Tombstone BitSet Not Thread-Safe (`AbstractTable.java`) - FIXED
+
+**Problem**: Multiple threads could decrement `liveRowCount` for the same row:
 ```java
 // OLD PROBLEM: Check-then-act without synchronization
 if (!tombstones.get(index)) {
@@ -74,10 +162,9 @@ if (!tombstones.get(index)) {
 }
 ```
 
-**Solution:** Replaced `BitSet` with `AtomicIntegerArray` using CAS loops:
+**Solution**: Replaced `BitSet` with `AtomicIntegerArray` using CAS loops:
 ```java
 // NEW SOLUTION: CAS-based tombstone set
-int index = rowIndex;
 while (true) {
     int current = tombstones.get(index);
     if (current == 1) break;  // Already tombstoned
@@ -90,8 +177,9 @@ while (true) {
 
 **Impact**: Correct row count - concurrent deletes are now thread-safe.
 
-**3. Column Writes Coordinated via SeqLock** (`AbstractTable.java`, `MethodHandleImplementation.java`)
-Writes are guarded by a CAS-based row seqlock and published after the write completes:
+### 3. Column Writes via SeqLock (`AbstractTable.java`) - IMPLEMENTED
+
+Writes are guarded by a CAS-based row seqlock and published after completion:
 ```java
 beginSeqLock(rowIndex);
 // write columns
@@ -101,59 +189,54 @@ publish(rowIndex);
 
 **Impact**: Readers retry on concurrent writes; scans only see published rows.
 
-**4. SeqLock Not Actually Implemented** (`GeneratedTable.java:51-53`, `GeneratedTable.java:119-124`) ~~FIXED~~
-Interface promises seqlock semantics for writes/reads but no version field existed in tables.
+### 4. SeqLock Implementation (`GeneratedTable.java`) - FIXED
 
-**Solution:** Added `AtomicLongArray` for per-row version tracking with CAS-based writer acquisition:
+**Problem**: Interface promised seqlock semantics but no version field existed.
+
+**Solution**: Added `AtomicLongArray` for per-row version tracking:
 ```java
-// NEW SOLUTION: AtomicLongArray for per-row seqlock
 private final AtomicLongArray rowSeqLocks = new AtomicLongArray(capacity);
 
-// Writer protocol:
-// CAS even -> odd (retry if writer active)
-// Write columns...
-rowSeqLocks.incrementAndGet(rowIndex);  // Make even
-
-// Reader protocol:
-long v1 = rowSeqLocks.get(rowIndex);
-if ((v1 & 1) == 1) return retry();  // Writing, retry
-// Read columns...
-long v2 = rowSeqLocks.get(rowIndex);
-if (v1 != v2) return retry();  // Changed, retry
+// Writer: CAS even -> odd (acquire), write, increment (release)
+// Reader: Read version, read data, verify version unchanged
 ```
 
 **Impact**: Readers can detect concurrent writes and retry for consistency.
 
-**5. RepositoryRuntime ID Counter Is Not Atomic** (`RepositoryRuntime.java:37, 225-227`) ~~FIXED~~
-ID generation in RepositoryRuntime was a plain static counter:
+### 5. RepositoryRuntime ID Counter (`RepositoryRuntime.java`) - FIXED
+
+**Problem**: Plain counter not thread-safe:
 ```java
-// OLD PROBLEM: Plain counter not thread-safe
 private static long idCounter = 1L;
 private Long generateNextId() {
     return idCounter++; // Not thread-safe
 }
 ```
 
-**Solution:** Changed to `AtomicLong`:
+**Solution**: Changed to `AtomicLong`:
 ```java
-// NEW SOLUTION: Atomic counter
 private static final AtomicLong idCounter = new AtomicLong(1L);
 private Long generateNextId() {
-    return idCounter.getAndIncrement();  // Thread-safe
+    return idCounter.getAndIncrement();
 }
 ```
 
 **Impact**: Duplicate IDs eliminated - ID generation is now thread-safe.
 
-### Current Concurrency Guidance
+## Current Concurrency Guidance
 
 Writes are lock-free and safe with row seqlock + CAS. Indexes are eventually consistent and validated at query time.
 
-**Note:** External synchronization is only required if you need strict index/row atomicity. Otherwise, concurrent saves/deletes are safe.
+**Note**: External synchronization is only required if you need strict index/row atomicity. Otherwise, concurrent saves/deletes are safe.
 
-### Practical Usage Patterns
+## Practical Usage Patterns
 
-**Single-Threaded Writes + Concurrent Reads (Optional Optimization):**
+**Concurrent Writes (Supported):**
+- ID generation, free-list, tombstones are thread-safe
+- SeqLock provides coordination for row updates
+- Index queries validate row liveness (eventual consistency)
+
+**Single-Threaded Writes + Concurrent Reads (Optimization):**
 - Single writer can reduce contention under heavy write workloads
 - Readers can safely scan and use indexes concurrently
 
@@ -161,74 +244,49 @@ Writes are lock-free and safe with row seqlock + CAS. Indexes are eventually con
 - Safe out of the box (no reflection, direct arrays, lock-free lookups)
 - Scales with CPU cores for scan-heavy queries
 
-**Concurrent Writes (Supported):**
-- ID generation, free-list, tombstones are thread-safe
-- SeqLock provides coordination for row updates and typed reads
-- Index queries validate row liveness (eventual consistency)
-
 ---
 
 ## Concurrency Improvement Roadmap
 
-### Priority 1: Fix Critical Issues (Correctness)
+### Priority 1: Completed
 
-**1.1 Fix Free-List Race Condition** ~~COMPLETED~~
-**Algorithm**: Lock-free stack with CAS (LockFreeFreeList)
-**Complexity**: HIGH (lock-free)
-**Expected Improvement**: Eliminates data corruption ✓
-**Implementation**: Replaced `int[] freeList` with `LockFreeFreeList` using CAS-based operations
-
-**1.2 Fix Tombstone BitSet Concurrency** ~~COMPLETED~~
-**Algorithm**: AtomicIntegerArray with CAS loops
-**Complexity**: LOW
-**Expected Improvement**: Correct concurrent deletes ✓
-**Implementation**: Replaced `BitSet tombstones` with `AtomicIntegerArray` using CAS loops
-
-**1.3 Fix Column Write Atomicity** ~~PARTIALLY COMPLETED~~
-**Algorithm**: SeqLock (Sequence Lock) per row
-**Complexity**: MEDIUM
-**Expected Improvement**: 2-3x read throughput under concurrent updates
-**Implementation**: Added `AtomicLongArray rowSeqLocks` and seqlock protocol (readers can retry)
+- ~~Fix free-list race condition~~ - LockFreeFreeList with CAS
+- ~~Fix tombstone concurrency~~ - AtomicIntegerArray with CAS
+- ~~Implement row seqlock~~ - AtomicLongArray per-row versioning
 
 ### Priority 2: Performance Improvements
 
 **2.1 Stripe-Based Index Updates**
-**Algorithm**: Partition `MutableRowIdSet` by hash stripes
-**Complexity**: LOW
-**Expected Improvement**: 4-8x index update throughput
-**Implementation**: Add striped locking to `MutableRowIdSet` implementations
+- **Algorithm**: Partition `MutableRowIdSet` by hash stripes
+- **Complexity**: LOW
+- **Expected Improvement**: 4-8x index update throughput
+- **Implementation**: Add striped locking to `MutableRowIdSet` implementations
 
 **2.2 Optimistic Locking for Updates**
-**Algorithm**: CAS-based versioning with retry loops
-**Complexity**: LOW
-**Expected Improvement**: 2x throughput for low-contention updates
-**Implementation**: Add version CAS to update operations
-
-**2.3 Lock-Free Free-List** ~~COMPLETED IN 1.1~~
-~~Lock-free CAS-based stack~~
-~~CAS-based operations~~
-~~5-10x row allocation throughput~~
-~~Replaced with `LockFreeFreeList`~~
+- **Algorithm**: CAS-based versioning with retry loops
+- **Complexity**: LOW
+- **Expected Improvement**: 2x throughput for low-contention updates
+- **Implementation**: Add version CAS to update operations
 
 ### Priority 3: Advanced Features
 
 **3.1 MVCC for Snapshot Isolation**
-**Algorithm**: Per-row version chains with timestamp-based snapshots
-**Complexity**: HIGH
-**Expected Improvement**: 3-5x read throughput, snapshot consistency
-**Implementation**: Extend row storage with version tracking and GC
+- **Algorithm**: Per-row version chains with timestamp-based snapshots
+- **Complexity**: HIGH
+- **Expected Improvement**: 3-5x read throughput, snapshot consistency
+- **Implementation**: Extend row storage with version tracking and GC
 
 **3.2 Pessimistic Locking API**
-**Algorithm**: Striped ReadWriteLock with timeout
-**Complexity**: MEDIUM
-**Expected Improvement**: Predictable high-contention behavior
-**Implementation**: Add `@Lock` annotation support and lock manager
+- **Algorithm**: Striped ReadWriteLock with timeout
+- **Complexity**: MEDIUM
+- **Expected Improvement**: Predictable high-contention behavior
+- **Implementation**: Add `@Lock` annotation support and lock manager
 
 **3.3 Concurrent Hash Join**
-**Algorithm**: Radix-partitioned parallel join
-**Complexity**: VERY HIGH
-**Expected Improvement**: Near-linear scaling with CPU cores
-**Implementation**: New join executor for @OneToMany/@ManyToMany support
+- **Algorithm**: Radix-partitioned parallel join
+- **Complexity**: VERY HIGH
+- **Expected Improvement**: Near-linear scaling with CPU cores
+- **Implementation**: New join executor for @OneToMany/@ManyToMany support
 
 ---
 
@@ -318,135 +376,30 @@ Writes are lock-free and safe with row seqlock + CAS. Indexes are eventually con
 
 ---
 
-## Implementation Examples
-
-### Example 1: Striped Locking for Free-List
-
-```java
-class StripedFreeList {
-    private final ReadWriteLock[] locks;
-    private final int[] freeList;
-    private final AtomicInteger freeListTop = new AtomicInteger(-1);
-    private final int stripes;
-
-    public StripedFreeList(int capacity, int stripes) {
-        this.stripes = stripes;
-        this.locks = new ReadWriteLock[stripes];
-        this.freeList = new int[capacity];
-        for (int i = 0; i < stripes; i++) {
-            locks[i] = new ReentrantReadWriteLock();
-        }
-    }
-
-    private int stripeFor(int rowIndex) {
-        return rowIndex % stripes;
-    }
-
-    public void push(int rowId) {
-        int stripe = stripeFor(rowId);
-        locks[stripe].writeLock().lock();
-        try {
-            int top = freeListTop.getAndIncrement();
-            freeList[top + 1] = rowId;
-        } finally {
-            locks[stripe].writeLock().unlock();
-        }
-    }
-
-    public int pop() {
-        int stripe = stripeFor(freeListTop.get());
-        locks[stripe].writeLock().lock();
-        try {
-            int top = freeListTop.get();
-            if (top < 0) return -1;  // Empty
-            freeListTop.decrementAndGet();
-            return freeList[top + 1];
-        } finally {
-            locks[stripe].writeLock().unlock();
-        }
-    }
-}
-```
-
-### Example 2: SeqLock for Row Updates
-
-```java
-class SeqLockRow {
-    private final AtomicLong version = new AtomicLong(0);
-    private final Object[] columns;
-
-    public void write(Object[] newValues) {
-        version.getAndIncrement();  // Make odd
-        try {
-            // Write all columns
-            System.arraycopy(newValues, 0, columns, 0, columns.length);
-        } finally {
-            version.incrementAndGet();  // Make even
-        }
-    }
-
-    public Object[] read() {
-        long v1 = version.get();
-        if ((v1 & 1) == 1) return read();  // Writing, retry
-
-        Object[] copy = new Object[columns.length];
-        System.arraycopy(columns, 0, copy, 0, columns.length);
-
-        long v2 = version.get();
-        if (v1 != v2) return read();  // Changed, retry
-        return copy;
-    }
-}
-```
-
-### Example 3: Optimistic Update
-
-```java
-class OptimisticRow {
-    private final AtomicLong version = new AtomicLong(0);
-    private final Object[] columns;
-
-    public boolean update(int columnIndex, Object newValue, long expectedVersion) {
-        long oldVersion = version.get();
-        if (oldVersion != expectedVersion) return false;
-
-        columns[columnIndex] = newValue;
-        return version.compareAndSet(oldVersion, oldVersion + 1);
-    }
-
-    public long readVersion() {
-        return version.get();
-    }
-}
-```
-
----
-
 ## Performance Impact
 
-| Improvement | Complexity | Expected Throughput Gain | Priority |
-|-------------|-----------|-------------------------|----------|
-| ~~**Fix free-list race**~~ | HIGH | Correctness only | ~~COMPLETED~~ |
-| **Striped tombstones** | LOW | Correctness only | **CRITICAL** |
-| **SeqLock rows** | MEDIUM | 2-3x | **HIGH** |
-| **Striped indexes** | LOW | 4-8x | **HIGH** |
-| **Optimistic locking** | LOW | 2x | **MEDIUM** |
-| **Pessimistic API** | MEDIUM | Predictable | **MEDIUM** |
-| **MVCC** | HIGH | 3-5x | **LOW** |
-| **Lock-free free-list** | VERY HIGH | 5-10x | **LOW** |
-| **Concurrent join** | VERY HIGH | Near-linear scaling | **LOW** |
+| Improvement | Complexity | Expected Throughput Gain | Status |
+|-------------|-----------|-------------------------|--------|
+| Fix free-list race | HIGH | Correctness only | COMPLETED |
+| Fix tombstone concurrency | LOW | Correctness only | COMPLETED |
+| SeqLock rows | MEDIUM | 2-3x | COMPLETED |
+| Striped indexes | LOW | 4-8x | PLANNED |
+| Optimistic locking | LOW | 2x | PLANNED |
+| Pessimistic API | MEDIUM | Predictable | PLANNED |
+| MVCC | HIGH | 3-5x | PLANNED |
+| Concurrent join | VERY HIGH | Near-linear scaling | PLANNED |
 
 ---
 
-### Performance Characteristics (Unbenchmarked, Design-Level)
+### Performance Characteristics
 
 | Operation | Complexity | Hot Path Notes |
 |-----------|------------|----------------|
 | HashIndex lookup | O(1) | Lock-free `ConcurrentHashMap.get()` |
 | RangeIndex lookup | O(log n) | `ConcurrentSkipListMap.get()` |
 | Query scan | O(n) | Direct array scan, `published` watermark |
-| Typed read | O(1) | Direct array access, no reflection |
-| Save / delete | O(1) | Requires external sync for correctness |
+| Typed read | O(1) | Direct array access, seqlock retry |
+| Save / delete | O(1) | Thread-safe via row seqlock + CAS |
 
 ---
 
