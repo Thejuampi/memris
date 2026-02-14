@@ -118,6 +118,7 @@ The starter automatically configures:
 | `memrisRepositoryFactory` | `MemrisRepositoryFactory` | Factory for creating arenas |
 | `memrisArenaProvider` | `MemrisArenaProvider` | Resolves named arenas |
 | `memrisArena` | `MemrisArena` | Default arena instance |
+| `memrisConverterRegistrar` | `MemrisConverterRegistrar` | Registers JPA converters |
 | Repository beans | Your interfaces | Scanned from `@EnableMemrisRepositories` |
 
 ## Repository Interface Options
@@ -181,6 +182,117 @@ memris:
 ### Advanced Configuration
 
 See [Configuration Properties](../spring-boot/configuration-properties.md) for all options.
+
+## Arena Isolation
+
+Each arena is completely isolated - data saved in one arena is not visible in another. This enables:
+
+- **Multi-tenant applications**: One arena per tenant
+- **Test isolation**: Fresh arena per test class
+- **Parallel processing**: Different arenas in different threads
+
+### Using Multiple Arenas
+
+Configure multiple arenas in `application.yml`:
+
+```yaml
+memris:
+  default-arena: primary
+  arenas:
+    primary:
+      page-size: 1024
+      max-pages: 1024
+    analytics:
+      page-size: 4096
+      max-pages: 8192
+```
+
+Inject arenas using `MemrisArenaProvider`:
+
+```java
+import io.memris.spring.boot.autoconfigure.MemrisArenaProvider;
+import io.memris.core.MemrisArena;
+
+@Service
+public class AnalyticsService {
+    private final MemrisArena analyticsArena;
+    
+    public AnalyticsService(MemrisArenaProvider arenaProvider) {
+        this.analyticsArena = arenaProvider.getArena("analytics");
+    }
+    
+    public void processAnalytics() {
+        ProductRepository repo = analyticsArena.createRepository(ProductRepository.class);
+        // Analytics-specific data operations
+    }
+}
+```
+
+Or inject the default arena directly:
+
+```java
+@Service
+public class DefaultService {
+    private final MemrisArena arena;
+    
+    public DefaultService(MemrisArena arena) {
+        this.arena = arena;
+    }
+}
+```
+
+### Multi-Tenant Pattern
+
+Create tenant-specific arenas programmatically:
+
+```java
+import io.memris.repository.MemrisRepositoryFactory;
+import io.memris.core.MemrisArena;
+
+@Service
+public class TenantService {
+    private final MemrisRepositoryFactory factory;
+    
+    public TenantService(MemrisRepositoryFactory factory) {
+        this.factory = factory;
+    }
+    
+    public MemrisArena getTenantArena(String tenantId) {
+        return factory.createArena();
+    }
+}
+```
+
+### Test Isolation Pattern
+
+Create a fresh arena for each test to ensure complete isolation:
+
+```java
+import io.memris.repository.MemrisRepositoryFactory;
+import io.memris.core.MemrisArena;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.AfterEach;
+
+class CustomerRepositoryTest {
+    private MemrisRepositoryFactory factory;
+    private MemrisArena arena;
+    private CustomerRepository repository;
+    
+    @BeforeEach
+    void setUp() {
+        factory = new MemrisRepositoryFactory();
+        arena = factory.createArena();
+        repository = arena.createRepository(CustomerRepository.class);
+    }
+    
+    @AfterEach
+    void tearDown() {
+        arena.close();
+    }
+    
+    // Tests run in complete isolation
+}
+```
 
 ## Next Steps
 

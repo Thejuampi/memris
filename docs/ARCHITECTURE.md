@@ -12,34 +12,6 @@ Memris is a high-performance in-memory storage engine with the following princip
 - **Primitive-only APIs**: Direct array access, no boxing in hot paths
 - **O(1) design**: Direct index access, hash-based lookups
 
-**Key Design Decisions:**
-- Tables are generated via ByteBuddy, not repositories
-- TypeCodes are static constants (byte), not enum ordinals
-- HeapRuntimeKernel executes queries, not RepositoryRuntime
-- Custom annotations (not Jakarta/JPA) mark entities and indexes
-
-## Future Roadmap: FFM-Based Storage
-
-**Planned Feature**: Off-heap storage using Java Foreign Function & Memory (FFM) API to replace current heap-based storage.
-
-**Benefits:**
-- Reduced GC pressure for large datasets
-- Direct memory control for predictable latency
-- Potential for SIMD vectorization via Vector API
-- Memory-mapped file persistence
-
-**Current Design**: Heap-based storage with primitive arrays is sufficient for most use cases and provides:
-- Simpler deployment (no `--enable-native-access` required)
-- Better Java integration and debugging
-- JIT-optimized primitive arrays
-- Zero configuration overhead
-
-**Implementation Complexity**: HIGH
-- Requires Arena lifecycle management
-- String pooling for off-heap storage
-- Coordination across threads for Arena access
-- Module system integration
-
 ## High-Level Architecture
 
 ```
@@ -81,150 +53,144 @@ Memris is a high-performance in-memory storage engine with the following princip
 
 | Package | Purpose | Key Classes |
 |---------|---------|-------------|
-| `io.memris.kernel` | Core execution primitives | `SelectionVector`, `Predicate`, `PlanNode`, `Executor`, `HashJoin` |
-| `io.memris.storage` | Storage interfaces | `GeneratedTable`, `Table`, `Selection` |
-| `io.memris.storage.heap` | Heap-based implementation | `TableGenerator`, `AbstractTable`, `PageColumn*`, `*IdIndex`, `LockFreeFreeList` |
-| `io.memris.index` | Index implementations | `HashIndex`, `RangeIndex`, `LongIdIndex`, `StringIdIndex` |
-| `io.memris.core` | Custom annotations & types | `@Entity`, `@Index`, `@GeneratedValue`, `TypeCodes` |
-| `io.memris.query` | Query parsing & planning | `QueryMethodLexer`, `QueryPlanner`, `CompiledQuery`, `OpCode` |
-| `io.memris.runtime` | Query execution | `HeapRuntimeKernel`, `EntityMaterializer`, `EntityExtractor` |
-| `io.memris.repository` | Repository scaffolding | `RepositoryMethodIntrospector` |
+| `io.memris.core` | Annotations, types, configuration | `@Entity`, `@Id`, `@Index`, `@GeneratedValue`, `TypeCodes`, `MemrisArena`, `MemrisConfiguration` |
+| `io.memris.query` | Query parsing & planning | `QueryMethodLexer`, `QueryPlanner`, `CompiledQuery`, `OpCode`, `BuiltInResolver` |
+| `io.memris.runtime` | Query execution | `HeapRuntimeKernel`, `EntityMaterializer`, `EntityExtractor`, `RepositoryRuntime` |
+| `io.memris.runtime.codegen` | Runtime code generation | `RuntimeExecutorGenerator` |
+| `io.memris.storage` | Storage interfaces | `GeneratedTable`, `Selection` |
+| `io.memris.storage.heap` | Heap-based implementation | `TableGenerator`, `AbstractTable`, `PageColumnInt`, `PageColumnLong`, `PageColumnString`, `LongIdIndex`, `StringIdIndex`, `LockFreeFreeList` |
+| `io.memris.index` | Index implementations | `HashIndex`, `RangeIndex`, `CompositeHashIndex`, `CompositeRangeIndex`, `StringPrefixIndex`, `StringSuffixIndex` |
+| `io.memris.kernel` | Core execution primitives | `Predicate`, `RowId`, `RowIdSet`, `LongEnumerator` |
+| `io.memris.repository` | Repository scaffolding | `MemrisRepository`, `MemrisRepositoryFactory`, `RepositoryMethodIntrospector` |
 
 ## Layer Responsibilities
 
 ### Layer 1: Domain Layer
+
 **Package:** `io.memris.core`
 
 Custom annotations for entity marking:
 - `@Entity` - Marks a class as an entity
-- `@Index` - Marks field for indexing (HASH/BTREE)
+- `@Id` - Marks primary key field
+- `@Index` - Marks field for indexing (HASH/BTREE/PREFIX/SUFFIX)
 - `@GeneratedValue` - Auto ID generation with strategy
-- `@OneToOne` - Relationship marker
+- `@ManyToOne`, `@OneToMany`, `@OneToOne`, `@ManyToMany` - Relationships
+- `@JoinColumn`, `@JoinTable` - Relationship configuration
 
 **Note:** These are NOT Jakarta/JPA annotations. Memris uses its own annotation system.
 
 ### Layer 2: Parser Layer
+
 **Package:** `io.memris.query`
 
-**QueryMethodLexer** (`QueryMethodLexer.java:213`)
+**QueryMethodLexer**
 - Tokenizes query method names (findByLastname → tokens)
-- Handles operators: GreaterThan, Between, IgnoreCase, etc.
+- Handles operators: GreaterThan, Between, IgnoreCase, Like, In, etc.
 - Built-in detection: findAll, count, deleteAll
+- Supports nested property paths (customer.email)
 
-**Key Files:**
-- `QueryMethodLexer.java` - Main tokenizer
-- `QueryMethodToken.java` - Token type
-- `QueryMethodTokenType.java` - Token type enum
+**Supported Operators:**
 
-### Layer 3: Compiler/Planner Layer
+| Category | Operators |
+|----------|-----------|
+| Comparison | EQ, NE (Not), GT (GreaterThan), GTE (GreaterThanEqual), LT (LessThan), LTE (LessThanEqual), BETWEEN |
+| String | LIKE, NOT_LIKE, STARTING_WITH, ENDING_WITH, CONTAINING, IGNORE_CASE |
+| Boolean | IS_TRUE, IS_FALSE |
+| Null | IS_NULL, IS_NOT_NULL |
+| Collection | IN, NOT_IN |
+| Date/Time | AFTER, BEFORE |
+| Logical | AND, OR |
+| Modifiers | DISTINCT, ORDER BY (Asc/Desc), TOP/FIRST/LIMIT |
+
+### Layer 3: Planner Layer
+
 **Package:** `io.memris.query`
 
-**QueryPlanner** (`QueryPlanner.java`)
+**QueryPlanner**
 - Creates `LogicalQuery` from tokens
 - Resolves built-in operations via `BuiltInResolver`
 - Validates properties against entity metadata
 
-**CompiledQuery** (`CompiledQuery.java`)
+**CompiledQuery**
 - Pre-compiled query with resolved column indices
 - Ready for execution by HeapRuntimeKernel
 
-**BuiltInResolver** (`BuiltInResolver.java:57`)
+**BuiltInResolver**
 - Signature-based built-in method resolution
-- Deterministic tie-breaking for ambiguous matches
-- Handles save, findById, delete, etc.
-
-**Key Files:**
-- `QueryPlanner.java` - Main planner
-- `CompiledQuery.java` - Compiled query representation
-- `LogicalQuery.java` - Intermediate query representation
-- `OpCode.java` - Operation codes (FIND, SAVE, DELETE, etc.)
-- `BuiltInResolver.java` - Built-in method resolution
+- Handles: save, findById, delete, deleteById, existsById, count, findAll, saveAll, deleteAll, findAllById, deleteAllById
 
 ### Layer 4: Runtime Layer
+
 **Package:** `io.memris.runtime`
 
-**HeapRuntimeKernel** (`HeapRuntimeKernel.java:9`)
+**HeapRuntimeKernel**
 - Zero-reflection query execution
 - TypeCode switch dispatch
 - Delegates to GeneratedTable methods
 
-**RuntimeExecutorGenerator** (`RuntimeExecutorGenerator.java:44`)
+**RuntimeExecutorGenerator**
 - Generates type-specialized executors at runtime using ByteBuddy
 - Eliminates runtime type switches on hot paths
-- Generates and caches: FieldValueReader, FkReader, TargetRowResolver, ConditionExecutor, OrderKeyBuilder
-- Uses global cache for reuse across repositories
-- Feature toggle: `-Dmemris.codegen.enabled=false` to disable code generation
+- Generates: FieldValueReader, FkReader, TargetRowResolver, ConditionExecutor, OrderKeyBuilder
+- Feature toggle: `-Dmemris.codegen.enabled=false` to disable
 
-**EntityMaterializer** (`EntityMaterializer.java`)
+**EntityMaterializer**
 - Converts table rows to entity objects
 - Uses MethodHandles for field access
 
-**EntityExtractor** (`EntityExtractor.java`)
+**EntityExtractor**
 - Extracts field values from entities
 - Used for insert/update operations
 
-**Key Files:**
-- `HeapRuntimeKernel.java` - Main execution engine
-- `RuntimeExecutorGenerator.java` - Codegen for type-specialized executors
-- `EntityMaterializer.java` - Entity creation
-- `EntityExtractor.java` - Entity decomposition
-
 ### Layer 5: Storage Layer
+
 **Package:** `io.memris.storage.heap`
 
-**TableGenerator** (`TableGenerator.java:31`)
+**TableGenerator**
 - ByteBuddy bytecode generation
 - Creates table classes extending `AbstractTable`
 - Generates typed columns and ID indexes
 
-**AbstractTable** (`AbstractTable.java:28`)
+**AbstractTable**
 - Base class for all generated tables
 - Manages row allocation with `LockFreeFreeList` for O(1) reuse
-- Provides seqlock infrastructure via `rowSeqLocks` (AtomicLongArray) for row-level atomicity
+- Provides seqlock infrastructure via `rowSeqLocks` (AtomicLongArray)
 - Tracks tombstones, row counts, and generations
-- Implements row-level sequence locking (even = stable, odd = writing)
 
-**GeneratedTable Interface** (`GeneratedTable.java:15`)
+**GeneratedTable Interface**
 - Low-level table interface
-- Typed scans: `scanEqualsLong()`, `scanBetweenInt()`
+- Typed scans: `scanEqualsLong()`, `scanBetweenInt()`, etc.
 - Typed reads: `readLong()`, `readInt()`, `readString()`
 - Primary key index: `lookupById()`, `removeById()`
 
 **PageColumn Implementations**
 - `PageColumnInt` - int[] column with direct array scans
-- `PageColumnLong` - long[] column
-- `PageColumnString` - String[] column
+- `PageColumnLong` - long[] column with direct array scans
+- `PageColumnString` - String[] column with direct array scans
 
 **ID Indexes**
 - `LongIdIndex` - Long-based primary key index
 - `StringIdIndex` - String-based primary key index
 
 **Concurrency Primitives**
-- `LockFreeFreeList` - Lock-free Treiber stack for row ID reuse with CAS-based push/pop operations
-
-**See [CONCURRENCY.md](CONCURRENCY.md)** for detailed concurrency model, thread-safety guarantees, and improvement roadmap.
-
-**Key Files:**
-- `TableGenerator.java` - ByteBuddy generation
-- `AbstractTable.java` - Base class for tables
-- `GeneratedTable.java` - Table interface
-- `PageColumn*.java` - Column implementations
-- `*IdIndex.java` - ID indexes
-- `LockFreeFreeList.java` - Lock-free free-list implementation
+- `LockFreeFreeList` - Lock-free Treiber stack for row ID reuse with CAS-based push/pop
 
 ### Layer 6: Index Layer
+
 **Package:** `io.memris.index`
 
-**HashIndex** - Hash-based equality lookups (O(1))
-**RangeIndex** - ConcurrentSkipListMap for ranges (O(log n))
-
-**Key Files:**
-- `HashIndex.java` - Hash index
-- `RangeIndex.java` - Range index
+| Index | Complexity | Use Case |
+|-------|------------|----------|
+| `HashIndex` | O(1) | Equality lookups |
+| `RangeIndex` | O(log n) | Range queries (ConcurrentSkipListMap) |
+| `CompositeHashIndex` | O(1) | Multi-field equality lookups |
+| `StringPrefixIndex` | O(k) | STARTING_WITH queries |
+| `StringSuffixIndex` | O(k) | ENDING_WITH queries |
 
 ## Critical Design Principles
 
 ### 1. O(1) First, O(log n) Second, O(n) Forbidden
+
 All hot path operations are O(1):
 - Direct array access via column indices
 - Hash-based ID lookups
@@ -233,18 +199,23 @@ All hot path operations are O(1):
 - Lock-free row allocation via `LockFreeFreeList`
 
 ### 2. Primitive-Only APIs
+
 Never use boxed types in hot paths:
 - `int[]` instead of `List<Integer>`
 - `IntEnumerator` instead of `Iterator<Integer>`
 - `long` row references instead of objects
 
 ### 3. TypeCodes (Static Constants)
+
 Type switching uses static byte constants:
 
 ```java
 public final class TypeCodes {
     public static final byte TYPE_INT = 0;
     public static final byte TYPE_LONG = 1;
+    public static final byte TYPE_FLOAT = 2;
+    public static final byte TYPE_DOUBLE = 3;
+    public static final byte TYPE_BOOLEAN = 4;
     public static final byte TYPE_STRING = 8;
     // ...
 }
@@ -253,18 +224,21 @@ public final class TypeCodes {
 JVM inlines these constants and compiles switch to tableswitch (direct jump).
 
 ### 4. Zero Reflection Hot Path
+
 - MethodHandles extracted at build time
 - Column indices resolved at compile time
 - queryId-based dispatch (int lookup, not string)
 - No `Class.forName()`, no `Method.invoke()` in hot path
 
 ### 5. Lock-Free Concurrency Primitives
+
 - `LockFreeFreeList`: Treiber stack with CAS-based push/pop for O(1) row reuse
 - `rowSeqLocks`: AtomicLongArray seqlock per row for atomic read-write transactions
 
 ## Build-Time vs Runtime
 
 ### Build-Time (Once Per Entity Type)
+
 ```
 @Entity class Person { ... }  
     ↓
@@ -284,6 +258,7 @@ Loads with: PersonTable table = new PersonTable(pageSize, maxPages)
 - Methods implementing `GeneratedTable` interface
 
 ### Runtime (Hot Path)
+
 ```
 repository.findByAgeGreaterThan(18)
     ↓
@@ -302,74 +277,32 @@ return int[] rowIndices
 EntityMaterializer.materialize(rows) → List<Person>
 ```
 
-## ByteBuddy Table Generation
-
-Unlike typical Spring Data implementations that generate repository classes, Memris generates **storage table classes**:
-
-**Generated Class Structure:**
-```java
-public final class PersonTable extends AbstractTable implements GeneratedTable {
-    // Column fields
-    public final PageColumnLong idColumn;
-    public final PageColumnString nameColumn;
-    public final PageColumnInt ageColumn;
-    
-    // ID index
-    public LongIdIndex idIndex;
-    
-    // Constructor
-    public PersonTable(int pageSize, int maxPages) {
-        super("Person", pageSize, maxPages);
-        // Initialize columns and index
-    }
-    
-    // GeneratedTable interface methods
-    @Override
-    public int[] scanEqualsLong(int columnIndex, long value) { ... }
-    
-    @Override
-    public long lookupById(long id) { ... }
-    
-    @Override
-    public long insertFrom(Object[] values) { ... }
-}
-```
-
-**Why Tables Instead of Repositories?**
-- Repositories = high-level interface (Spring Data concern)
-- Tables = low-level storage (Memris concern)
-- Clean separation: Memris handles storage, caller handles repository pattern
-- Better testability: Can test storage layer independently
-
 ## Important Files Reference
 
-| File | Line | Purpose |
-|------|------|---------|
-| `TableGenerator.java` | 31 | ByteBuddy table generation |
-| `RuntimeExecutorGenerator.java` | 44 | Runtime codegen for type-specialized executors |
-| `HeapRuntimeKernel.java` | 9 | Query execution engine |
-| `TypeCodes.java` | 16 | Type code constants |
-| `BuiltInResolver.java` | 57 | Built-in method resolution |
-| `QueryMethodLexer.java` | 213 | Method name tokenization |
-| `QueryPlanner.java` | 1 | Query planning |
-| `CompiledQuery.java` | 1 | Compiled query structure |
-| `GeneratedTable.java` | 15 | Table interface |
-| `AbstractTable.java` | 28 | Base table class with seqlocks |
-| `PageColumnInt.java` | 16 | int column storage |
-| `PageColumnLong.java` | 16 | long column storage |
-| `PageColumnString.java` | 16 | String column storage |
-| `LockFreeFreeList.java` | 13 | Lock-free Treiber stack for row reuse |
-| `RangeIndex.java` | 1 | Range index (O(log n)) |
-| `HashIndex.java` | 1 | Hash index (O(1)) |
+| File | Purpose |
+|------|---------|
+| `TableGenerator.java` | ByteBuddy table generation |
+| `RuntimeExecutorGenerator.java` | Runtime codegen for type-specialized executors |
+| `HeapRuntimeKernel.java` | Query execution engine |
+| `RepositoryRuntime.java` | Repository runtime with join materialization |
+| `TypeCodes.java` | Type code constants |
+| `BuiltInResolver.java` | Built-in method resolution |
+| `QueryMethodLexer.java` | Method name tokenization |
+| `QueryPlanner.java` | Query planning |
+| `CompiledQuery.java` | Compiled query structure |
+| `GeneratedTable.java` | Table interface |
+| `AbstractTable.java` | Base table class with seqlocks |
+| `PageColumn*.java` | Column implementations (Int, Long, String) |
+| `LockFreeFreeList.java` | Lock-free Treiber stack for row reuse |
+| `RangeIndex.java` | Range index (O(log n)) |
+| `HashIndex.java` | Hash index (O(1)) |
 
 ## Notes
 
-- **Current Storage**: 100% heap-based using primitive arrays (int[], long[], String[])
-- **Future Roadmap**: FFM off-heap storage planned for large dataset scenarios
-- **SIMD Not Implemented**: Plain loops used; JIT may auto-vectorize but no explicit Vector API
+- **Current Storage**: 100% heap-based using primitive arrays
+- **SIMD Not Implemented**: Plain loops used; JIT may auto-vectorize
 - **Custom annotations**: Uses `@Entity`, `@Index`, etc. (not Jakarta/JPA)
 - **No Repository generation**: Generates tables, caller implements repository pattern
-- **Relationship Support**: All relationship types (@OneToOne, @ManyToOne, @OneToMany, @ManyToMany) fully implemented
-- **RangeIndex Exists**: O(log n) operations via ConcurrentSkipListMap
-- **Lock-Free Data Structures**: `LockFreeFreeList` uses Treiber stack algorithm with CAS for O(1) row allocation/deallocation
-- **Seqlock Support**: `rowSeqLocks` in AbstractTable provides per-row atomic read-write transactions
+- **Relationship Support**: All relationship types fully implemented
+- **Lock-Free Data Structures**: `LockFreeFreeList` uses Treiber stack algorithm with CAS
+- **Seqlock Support**: `rowSeqLocks` in AbstractTable provides per-row atomicity

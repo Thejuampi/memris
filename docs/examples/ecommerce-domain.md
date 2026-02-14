@@ -1,290 +1,419 @@
-# Memris - E-Commerce Domain Model
+# E-Commerce Domain Model Example
 
-## Overview
+This document demonstrates a complete e-commerce domain model with entities, relationships, repositories, and query patterns.
 
-This document describes the real-world e-commerce domain model implemented in `ECommerceRealWorldTest.java`. It demonstrates Memris's support for @ManyToOne and @OneToOne relationships using manual foreign key fields (long) for relationship storage.
+## Entity Definitions
 
-## Entity Relationship Diagram
-
-```plantuml
-@startuml E-Commerce Domain Model
-
-skinparam linetype ortho
-skinparam packageStyle rectangle
-skinparam classAttributeIconSize 0
-
-hide circle
-skinparam monochrome true
-
-class Account {
-  +int id
-  +String email <<INDEX>>
-  +String passwordHash
-  +boolean emailVerified
-  +LocalDateTime createdAt
-  +LocalDateTime lastLoginAt
-}
-
-class Customer {
-  +int id
-   +String firstName
-   +String lastName
-   +String phone <<INDEX>>
-}
-
-class Category {
-  +int id
-  +String name <<INDEX>>
-  +String slug <<INDEX>>
-  +String description
-}
-
-class Product {
-   +int id
-   +String name <<INDEX>>
-   +String sku <<INDEX>>
-   +String barcode <<INDEX>>
-   +String description
-   +BigDecimal price
-   +int stockQuantity
-   +double weightKg
-}
-
-class Supplier {
-  +int id
-  +String name <<INDEX>>
-  +String contactEmail
-  +String contactPhone
-  +String website
-}
-
-class Address {
-  +int id
-  +String street
-  +String city
-  +String state
-  +String postalCode <<INDEX>>
-  +String country
-  +double latitude
-  +double longitude
-}
-
-class Order {
-   +int id
-   +String orderNumber
-   +LocalDateTime orderDate
-   +LocalDateTime shippedAt
-   +LocalDateTime deliveredAt
-   +OrderStatus status
-   +PaymentType paymentType
-   +BigDecimal subtotal
-   +BigDecimal taxAmount
-   +BigDecimal shippingCost
-   +BigDecimal discountAmount
-   +BigDecimal totalAmount
-}
-
-class OrderItem {
-  +int id
-  +int quantity
-  +BigDecimal unitPrice
-  +BigDecimal discountPercent
-  +BigDecimal lineTotal
-}
-
-class Coupon {
-  +int id
-  +String code <<INDEX>>
-  +String description
-  +BigDecimal discountPercent
-  +BigDecimal discountAmount
-  +LocalDateTime validFrom
-  +LocalDateTime validUntil
-  +int maxUsageCount
-  +int currentUsageCount
-  +boolean active
-}
-
-enum OrderStatus {
-  PENDING
-  CONFIRMED
-  PROCESSING
-  SHIPPED
-  DELIVERED
-  CANCELLED
-  REFUNDED
-}
-
-enum PaymentType {
-  CREDIT_CARD
-  DEBIT_CARD
-  PAYPAL
-  BANK_TRANSFER
-  COD
-}
-
-' Relationships
-Account "1" --> "1" Customer : One-to-One
-Customer "1" --> "*" Order : NOT IMPLEMENTED
-Customer "1" --> "1" Address : Many-to-One (billing)
-Customer "1" --> "1" Address : Many-to-One (shipping)
-Category "1" --> "0..1" Category : self (parent)
-Category "*" --> "1" Category : children
-Product "*" --> "1" Supplier : Many-to-One
-Product "*" --> "*" Category : NOT IMPLEMENTED
-Supplier "1" --> "1" Address : Many-to-One
-Order "*" --> "1" Customer : Many-to-One
-Order "*" --> "*" Coupon : NOT IMPLEMENTED
-Order "1" --> "*" OrderItem : NOT IMPLEMENTED
-OrderItem "*" --> "1" Product : Many-to-One
-OrderItem "*" --> "1" Order : Many-to-One
-
-@enduml
-```
-
-## Category Hierarchy (Self-Referential)
-
-```plantuml
-@startuml Category Tree
-
-skinparam linetype ortho
-skinparam monochrome true
-
-class "Electronics" as E {
-  id=1
-  slug=electronics
-}
-
-class "Computers" as C {
-  id=2
-  parent_id=1
-}
-
-class "Phones" as P {
-  id=3
-  parent_id=1
-}
-
-class "Clothing" as CL {
-  id=4
-  parent_id=NULL
-}
-
-E --> C : parent
-E --> P : parent
-CL --> CL : root (no parent)
-
-note right of E
-  Root category
-  (parent = null)
-end note
-
-@enduml
-```
-
-## Query Patterns Supported
-
-### Equality Queries (Hash Index)
+### Customer Entity
 
 ```java
-// Indexed fields - O(1) lookup
-Product findBySku(String sku);           // HashIndex on sku
-Product findByBarcode(String barcode);   // HashIndex on barcode
-Coupon findByCode(String code);          // HashIndex on code
-Customer findByAccountEmail(String email); // HashIndex on email
+import io.memris.core.Entity;
+import io.memris.core.Id;
+import io.memris.core.Index;
+
+@Entity
+public class Customer {
+    @Id
+    public Long id;
+    
+    @Index(type = Index.IndexType.HASH)
+    public String email;
+    
+    public String name;
+    public String phone;
+    public long created;
+    
+    public Customer() {
+        this.created = System.currentTimeMillis();
+    }
+    
+    public Customer(String email, String name, String phone) {
+        this.email = email;
+        this.name = name;
+        this.phone = phone;
+        this.created = System.currentTimeMillis();
+    }
+}
 ```
 
-### Range Queries (BTree Index)
+### Product Entity
 
 ```java
-// Range queries - O(log n) lookup
-List<Product> findByPriceGreaterThan(BigDecimal price);
-List<Product> findByPriceLessThan(BigDecimal price);
-List<Product> findByPriceBetween(BigDecimal min, BigDecimal max);
-List<Order> findByTotalAmountGreaterThan(BigDecimal amount);
-List<Order> findByOrderDateBetween(LocalDateTime start, LocalDateTime end);
+import io.memris.core.Entity;
+import io.memris.core.Id;
+import io.memris.core.Index;
+
+@Entity
+public class Product {
+    @Id
+    public Long id;
+    
+    @Index(type = Index.IndexType.HASH)
+    public String sku;
+    
+    public String name;
+    public long price;  // Stored in cents (e.g., $19.99 = 1999)
+    public int stock;
+    
+    public Product() {}
+    
+    public Product(String sku, String name, long price, int stock) {
+        this.sku = sku;
+        this.name = name;
+        this.price = price;
+        this.stock = stock;
+    }
+    
+    public double getPriceDollars() {
+        return price / 100.0;
+    }
+}
 ```
 
-### Pattern Matching
+### Order Entity
 
 ```java
-// LIKE queries - O(n) scan
-List<Category> findBySlug(String slug);              // Exact match
-List<Category> findByNameContaining(String keyword); // LIKE %keyword%
-List<Product> findBySkuStartingWith(String prefix);  // LIKE prefix%
-List<Customer> findByLastNameContaining(String part); // LIKE %part%
+import io.memris.core.Entity;
+import io.memris.core.Id;
+import io.memris.core.Index;
+import io.memris.core.ManyToOne;
+import io.memris.core.JoinColumn;
+import io.memris.core.OneToMany;
+
+import java.util.List;
+
+@Entity
+public class Order {
+    @Id
+    public Long id;
+    
+    public Long customerId;  // FK stored directly for simplicity
+    public String status;
+    public long total;
+    public long date;
+    
+    @ManyToOne
+    @JoinColumn(name = "customer_id")
+    public Customer customer;
+    
+    @OneToMany(mappedBy = "order")
+    public List<OrderItem> items;
+    
+    public Order() {}
+    
+    public Order(Long customerId, String status, long total) {
+        this.customerId = customerId;
+        this.status = status;
+        this.total = total;
+        this.date = System.currentTimeMillis();
+    }
+    
+    public Order(Customer customer, String status, long total) {
+        this.customer = customer;
+        this.customerId = customer != null ? customer.id : null;
+        this.status = status;
+        this.total = total;
+        this.date = System.currentTimeMillis();
+    }
+}
 ```
 
-### Combined Conditions
+### OrderItem Entity
 
 ```java
-// Multiple conditions - in-memory AND after indexed fetch
-List<Product> findByNameContainingAndPriceLessThan(String name, BigDecimal maxPrice);
-List<Order> findByStatusAndTotalAmountGreaterThan(OrderStatus status, BigDecimal amount);
+import io.memris.core.Entity;
+import io.memris.core.Id;
+import io.memris.core.ManyToOne;
+import io.memris.core.JoinColumn;
+
+@Entity
+public class OrderItem {
+    @Id
+    public Long id;
+    
+    public Long orderId;    // FK stored directly
+    public Long productId;  // FK stored directly
+    public int quantity;
+    public long unitPrice;  // Stored in cents
+    
+    @ManyToOne
+    @JoinColumn(name = "order_id")
+    public Order order;
+    
+    public OrderItem() {}
+    
+    public OrderItem(Long orderId, Long productId, int quantity, long unitPrice) {
+        this.orderId = orderId;
+        this.productId = productId;
+        this.quantity = quantity;
+        this.unitPrice = unitPrice;
+    }
+    
+    public long getSubtotal() {
+        return unitPrice * quantity;
+    }
+}
 ```
 
-### Enum Queries
+## Repository Interfaces
+
+### CustomerRepository
 
 ```java
-// Enum mapped as STRING or ORDINAL
-List<Order> findByStatus(OrderStatus status);  // WHERE status = 'DELIVERED'
-List<Order> findByPaymentType(PaymentType type); // WHERE payment_type = 0
+import io.memris.repository.MemrisRepository;
+import java.util.List;
+import java.util.Optional;
+
+public interface CustomerRepository extends MemrisRepository<Customer> {
+    Customer save(Customer customer);
+    Optional<Customer> findById(Long id);
+    Optional<Customer> findByEmail(String email);
+    List<Customer> findByNameContainingIgnoreCase(String name);
+    List<Customer> findAll();
+    boolean existsByEmail(String email);
+    void deleteById(Long id);
+}
+```
+
+### ProductRepository
+
+```java
+import io.memris.repository.MemrisRepository;
+import java.util.List;
+import java.util.Optional;
+
+public interface ProductRepository extends MemrisRepository<Product> {
+    Product save(Product product);
+    Optional<Product> findById(Long id);
+    Optional<Product> findBySku(String sku);
+    List<Product> findByPriceBetween(long min, long max);
+    List<Product> findByStockGreaterThan(int stock);
+    List<Product> findAll();
+    List<Product> findTop3ByOrderByPriceDesc();
+}
+```
+
+### OrderRepository
+
+```java
+import io.memris.repository.MemrisRepository;
+import java.util.List;
+import java.util.Optional;
+
+public interface OrderRepository extends MemrisRepository<Order> {
+    Order save(Order order);
+    Optional<Order> findById(Long id);
+    List<Order> findAll();
+    List<Order> findByCustomerId(Long customerId);
+    List<Order> findByCustomerIdAndStatus(Long customerId, String status);
+    List<Order> findByStatus(String status);
+    List<Order> findByStatusOrderByTotalDesc(String status);
+    List<Order> findByStatusIn(List<String> statuses);
+    List<Order> findByStatusAndTotalGreaterThanEqual(String status, long total);
+    List<Order> findTop3ByStatusOrderByIdAsc(String status);
+    long countByStatus(String status);
+    void deleteById(Long id);
+}
+```
+
+### OrderItemRepository
+
+```java
+import io.memris.repository.MemrisRepository;
+import java.util.List;
+
+public interface OrderItemRepository extends MemrisRepository<OrderItem> {
+    OrderItem save(OrderItem item);
+    List<OrderItem> findAll();
+    List<OrderItem> findByOrder(Long orderId);
+    List<OrderItem> findByProduct(Long productId);
+    List<OrderItem> findByQtyGreaterThan(int minQty);
+}
+```
+
+## Usage Examples
+
+### Basic CRUD Operations
+
+```java
+import io.memris.repository.MemrisRepositoryFactory;
+import io.memris.core.MemrisArena;
+
+public class ECommerceDemo {
+    public static void main(String[] args) {
+        var factory = new MemrisRepositoryFactory();
+        var arena = factory.createArena();
+        
+        var customerRepo = arena.createRepository(CustomerRepository.class);
+        var productRepo = arena.createRepository(ProductRepository.class);
+        var orderRepo = arena.createRepository(OrderRepository.class);
+        var itemRepo = arena.createRepository(OrderItemRepository.class);
+        
+        Customer customer = customerRepo.save(
+            new Customer("john@example.com", "John Doe", "555-1234")
+        );
+        
+        Product laptop = productRepo.save(
+            new Product("LAPTOP-001", "Gaming Laptop", 129999, 50)
+        );
+        Product mouse = productRepo.save(
+            new Product("MOUSE-001", "Wireless Mouse", 2999, 100)
+        );
+        
+        Order order = orderRepo.save(new Order(customer.id, "PENDING", 0));
+        
+        itemRepo.save(new OrderItem(order.id, laptop.id, 1, laptop.price));
+        itemRepo.save(new OrderItem(order.id, mouse.id, 2, mouse.price));
+        
+        order.total = laptop.price + (mouse.price * 2);
+        orderRepo.save(order);
+        
+        factory.close();
+    }
+}
+```
+
+### Query Patterns
+
+```java
+Optional<Customer> found = customerRepo.findByEmail("john@example.com");
+
+List<Product> affordable = productRepo.findByPriceBetween(5000, 20000);
+
+List<Product> inStock = productRepo.findByStockGreaterThan(0);
+
+List<Order> pendingOrders = orderRepo.findByStatus("PENDING");
+
+long pendingCount = orderRepo.countByStatus("PENDING");
+
+boolean exists = customerRepo.existsByEmail("john@example.com");
+
+List<Customer> matches = customerRepo.findByNameContainingIgnoreCase("john");
+
+List<Order> top3 = orderRepo.findTop3ByStatusOrderByIdAsc("PENDING");
+
+List<Order> byStatuses = orderRepo.findByStatusIn(List.of("PENDING", "SHIPPED"));
+```
+
+### Relationship Queries
+
+Memris supports traversing relationships in queries using property paths:
+
+```java
+List<Customer> customers = customerRepo.findByOrdersStatus("PAID");
+```
+
+This finds customers who have at least one order with status "PAID".
+
+### Relationship Entity Definitions
+
+For relationship traversal to work, entities must define the relationship annotations:
+
+```java
+@Entity
+public class Customer {
+    @Id
+    public Long id;
+    public String name;
+    
+    @OneToMany(mappedBy = "customer")
+    public List<Order> orders;
+}
+
+@Entity
+public class Order {
+    @Id
+    public Long id;
+    public String status;
+    
+    @ManyToOne
+    @JoinColumn(name = "customer_id")
+    public Customer customer;
+}
+
+public interface CustomerRepository extends MemrisRepository<Customer> {
+    List<Customer> findByOrdersStatus(String status);
+}
+```
+
+## Composite Indexes
+
+Composite indexes optimize queries that filter on multiple fields. Define them at the class level using `@Indexes`:
+
+```java
+import io.memris.core.Entity;
+import io.memris.core.Id;
+import io.memris.core.Index;
+import io.memris.core.Indexes;
+
+@Entity
+@Indexes({
+    @Index(name = "status_total_idx", fields = {"status", "total"}, type = Index.IndexType.BTREE),
+    @Index(name = "status_date_idx", fields = {"status", "date"}, type = Index.IndexType.BTREE)
+})
+public class Order {
+    @Id
+    public Long id;
+    public String status;
+    public long total;
+    public long date;
+}
+```
+
+### When to Use Composite Indexes
+
+| Query Pattern | Index Type | Benefit |
+|---------------|------------|---------|
+| `findByStatusAndTotalGreaterThan("PENDING", 10000)` | BTREE on (status, total) | O(log n) instead of O(n) scan |
+| `findByStatusAndDateBetween(...)` | BTREE on (status, date) | Efficient range within status partition |
+
+### Composite Index Best Practices
+
+1. **Order matters**: Put equality filter fields first, range filter fields second
+2. **Use BTREE for range queries**: HASH indexes only support equality
+3. **Limit composite indexes**: Each index consumes memory and adds write overhead
+
+```java
+@Entity
+@Indexes({
+    @Index(name = "customer_status_idx", fields = {"customerId", "status"}, type = Index.IndexType.HASH)
+})
+public class Order {
+    @Id
+    public Long id;
+    public Long customerId;
+    public String status;
+    public long total;
+}
+
+public interface OrderRepository extends MemrisRepository<Order> {
+    List<Order> findByCustomerIdAndStatus(Long customerId, String status);
+}
 ```
 
 ## Index Strategy
 
 | Field | Index Type | Use Case |
 |-------|------------|----------|
-| `sku`, `barcode`, `code` | HASH | Exact match lookups |
-| `email`, `phone` | HASH | Customer lookup by contact |
-| `slug`, `name` | HASH | Category/product lookup |
-
-**Note:** RangeIndex (O(log n)) is available but not demonstrated in this example.
+| `email`, `sku` | HASH | Exact match lookups (O(1)) |
+| `status` | HASH | Status filtering |
+| `price`, `total` | BTREE | Range queries (O(log n)) |
+| `status`, `total` | BTREE (composite) | Combined status + range queries |
 
 ## Performance Characteristics
 
 | Query Type | Without Index | With Index |
 |------------|---------------|------------|
-| `findBySku("PRO-LP-001")` | O(n) scan | O(1) HashIndex |
+| `findBySku("SKU-001")` | O(n) scan | O(1) HashIndex |
 | `findByPriceBetween(100, 500)` | O(n) scan | O(log n) RangeIndex |
-| `findByStatus(SHIPPED)` | O(n) scan | O(1) if HashIndex exists |
+| `findByStatus("PENDING")` | O(n) scan | O(1) HashIndex |
+| `findByCustomerIdAndStatus(...)` | O(n) scan | O(log n) CompositeIndex |
 
-## Test Coverage
+## Supported Relationship Types
 
-The `ECommerceRealWorldTest` includes 12 comprehensive query tests:
-
-1. ✅ Find by indexed SKU
-2. ✅ Price range query
-3. ✅ Low stock detection
-4. ✅ Order status filtering
-5. ✅ Amount-based filtering
-6. ✅ Name pattern matching
-7. ✅ Slug-based lookup
-8. ✅ Active coupon retrieval
-9. ✅ Self-referential hierarchy
-10. ✅ Combined status + amount query
-11. ✅ Name contains + price constraint
-12. ✅ Related entity field queries
-
-**Note:** @Embeddable, @Enumerated, and lifecycle callbacks (@PrePersist, @PostLoad) are NOT implemented. Entities use manual foreign key fields (long) for relationships.
-
-## Usage Example
-
-```java
-// Generate tables (build-time via TableGenerator)
-GeneratedTable productTable = TableGenerator.generate(productMetadata)
-    .getConstructor(int.class, int.class, int.class)
-    .newInstance(1024, 100, 1);
-GeneratedTable orderTable = TableGenerator.generate(orderMetadata)
-    .getConstructor(int.class, int.class, int.class)
-    .newInstance(1024, 100, 1);
-
-// Save entities
-productTable.insertFrom(new Object[]{1L, "PRO-LP-001", "Laptop", 999.99});
-orderTable.insertFrom(new Object[]{1L, 1L, 999.99, "SHIPPED"});
-
-// Query using GeneratedTable methods
-long productRef = productTable.lookupByIdString("PRO-LP-001");
-int[] shippedOrders = orderTable.scanEqualsString(3, "SHIPPED");
-int[] affordableProducts = productTable.scanLessThanDouble(3, 500.0);
-```
+| Annotation | Description | Use Case |
+|------------|-------------|----------|
+| `@ManyToOne` | Many orders belong to one customer | Order -> Customer |
+| `@OneToMany` | One customer has many orders | Customer -> List&lt;Order&gt; |
+| `@OneToOne` | One-to-one relationship | User -> Profile |
+| `@ManyToMany` | Many-to-many via join table | Student <-> Course |

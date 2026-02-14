@@ -11,7 +11,7 @@ Before installing Memris, ensure you have:
 - A compatible Spring Boot version (for Spring Boot integration)
 
 !!! tip "Java Version"
-    Memris requires Java 21+ due to its use of advanced features like the Foreign Function & Memory API and pattern matching switches.
+    Memris requires Java 21+ due to its use of advanced features like pattern matching switches and virtual threads support.
 
 ## Maven
 
@@ -86,7 +86,7 @@ dependencies {
 Create a simple test to verify the installation:
 
 ```java
-import io.memris.core.MemrisRepositoryFactory;
+import io.memris.repository.MemrisRepositoryFactory;
 import io.memris.core.MemrisArena;
 
 public class InstallationTest {

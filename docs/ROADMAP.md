@@ -15,14 +15,21 @@
 
 **2.1 Scan Method Completeness** [Priority: HIGH] ✅
 - Add missing scan methods for all type codes ✅
-- Complete scanIn, scanNotIn, scanLike, scanNotLike implementations ✅
-- **Status**: Complete - Full scan method coverage
+- Complete scanIn implementations ✅
+- **Status**: Complete - scanIn method coverage for all types
 
 **2.2 Query Performance** [Priority: HIGH] ✅
 - Nested loop scanIn optimization (O(n) → O(1) average case) ✅
 - O(n) string pattern scans (documented trade-off, kept as-is) ✅
 - Allocation reduction in hot paths ✅
 - **Status**: Complete - Query execution optimized
+
+**2.3 Relationship Support** [Priority: HIGH] ✅
+- @OneToOne relationships ✅
+- @ManyToOne relationships ✅
+- @OneToMany relationships ✅
+- @ManyToMany relationships ✅
+- **Status**: Complete - All relationship types fully implemented
 
 **1.2 Advanced Concurrency Optimizations** [Priority: HIGH] ⏳
 - Stripe-based index updates (4-8x throughput) - Not started
@@ -48,19 +55,12 @@
 - Optimistic concurrency control
 - Expected: Data consistency guarantees
 
-### Phase 4: Relationship Features (Medium-Term)
+### Phase 4: Query Enhancements (Medium-Term)
 
-**4.1 @OneToMany Support** [Priority: HIGH] ⏳
-- Bidirectional relationships
-- Collection field mapping
-- Cascade operations
-- Expected: Full relationship support
-
-**4.2 @ManyToMany Support** [Priority: MEDIUM] ⏳
-- Join table generation
-- Many-to-many relationship mapping
-- Optimized join execution
-- Expected: Many-to-many queries
+**4.1 Additional Scan Methods** [Priority: MEDIUM] ⏳
+- scanNotIn implementations
+- scanLike / scanNotLike pattern matching
+- Expected: Complete scan method coverage
 
 ### Phase 5: Storage Evolution (Long-Term)
 
@@ -110,4 +110,3 @@
 - [CONCURRENCY.md](CONCURRENCY.md) - Current concurrency model and improvements
 - [ARCHITECTURE.md](ARCHITECTURE.md) - Current architecture
 - [SPRING_DATA.md](SPRING_DATA.md) - Spring Data integration
-- [IMPLEMENTATION.md](IMPLEMENTATION.md) - Current implementation status

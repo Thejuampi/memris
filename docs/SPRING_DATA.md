@@ -13,7 +13,8 @@ Memris provides a lightweight, high-performance Spring Data-compatible API for i
 **Compatibility Target:**
 - Spring Data-like query method patterns (`findBy…And…`, `In`, `Between`, comparisons)
 - Custom annotations (`@Entity`, `@Index`, `@GeneratedValue`, `@OneToOne`)
-- **Note:** Uses custom annotations, NOT Jakarta/JPA annotations
+- **Note:** Core system uses custom annotations, NOT Jakarta/JPA annotations
+- **Note:** Spring Data integration accepts both JPA (javax/jakarta) and Memris annotations
 - **Note:** Transactions and session management are not supported (in-memory, no persistence context)
 
 **Architecture Note:**
@@ -39,8 +40,6 @@ Memris provides a lightweight, high-performance Spring Data-compatible API for i
 | **Advanced** | Hash join | ✅ Done | ✅ Available |
 | **Advanced** | MemrisException | ✅ Done | ✅ Integrated |
 
-**Total Test Count:** 148 tests, 147 passing ✅
-
 ## Annotations
 
 Memris uses **custom annotations** (not Jakarta/JPA):
@@ -59,7 +58,7 @@ Memris uses **custom annotations** (not Jakarta/JPA):
 **@GeneratedValue** (`io.memris.core.GeneratedValue`)
 - Marks an ID field for automatic generation
 - Strategy: AUTO, IDENTITY, UUID, CUSTOM
-- Used with `@Id` (Jakarta) in tests, but custom `@Entity` in main code
+- Used with `@Id` (Memris) annotation
 
 **@OneToOne** (`io.memris.core.OneToOne`)
 - Marks a one-to-one relationship
@@ -88,15 +87,59 @@ import io.memris.core.GenerationType;
 
 @Entity
 public class User {
-    @Index(type = Index.Type.HASH)
+    @Index(type = Index.IndexType.HASH)
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
     
-    @Index(type = Index.Type.HASH)
+    @Index(type = Index.IndexType.HASH)
     private String email;
     
     private String name;
     private int age;
+}
+```
+
+## Spring Data Integration
+
+Memris provides Spring Data integration modules that allow using standard Spring Data repositories with Memris storage:
+
+- **memris-spring-data-boot2**: For Spring Boot 2.x (uses `javax.persistence.*` annotations)
+- **memris-spring-data-boot3**: For Spring Boot 3.x (uses `jakarta.persistence.*` annotations)
+
+### Annotation Compatibility
+
+The Spring Data integration layer **accepts both JPA and Memris annotations** and normalizes them dynamically:
+
+**Supported JPA Annotations (Boot 2 - javax.persistence):**
+- `@javax.persistence.Entity` → normalized to `io.memris.core.Entity`
+- `@javax.persistence.Id` → normalized to `io.memris.core.Id`
+- `@javax.persistence.GeneratedValue` → normalized to `io.memris.core.GeneratedValue`
+- `@javax.persistence.OneToOne`, `@javax.persistence.ManyToOne` → normalized to Memris equivalents
+
+**Supported JPA Annotations (Boot 3 - jakarta.persistence):**
+- `@jakarta.persistence.Entity` → normalized to `io.memris.core.Entity`
+- `@jakarta.persistence.Id` → normalized to `io.memris.core.Id`
+- `@jakarta.persistence.GeneratedValue` → normalized to `io.memris.core.GeneratedValue`
+- `@jakarta.persistence.OneToOne`, `@jakarta.persistence.ManyToOne` → normalized to Memris equivalents
+
+**Memris Annotations (always supported):**
+- `@io.memris.core.Entity`, `@io.memris.core.Id`, etc.
+
+This allows existing Spring Data applications to work with Memris with minimal changes, while also supporting Memris-specific features.
+
+### Repository Usage
+
+```java
+// Standard Spring Data repository
+public interface UserRepository extends CrudRepository<User, Long> {
+    List<User> findByEmail(String email);
+    List<User> findByAgeGreaterThan(int age);
+}
+
+// Enable Memris repositories
+@Configuration
+@EnableMemrisRepositories(basePackages = "com.example.repository")
+public class MemrisConfig {
 }
 ```
 
@@ -276,14 +319,13 @@ public final class UserTable extends AbstractTable implements GeneratedTable {
 - Sorting (OrderBy)
 - Paging/limit (Top/First)
 - @Query with JPQL-like syntax
+- DISTINCT queries
 
 ### Not Yet Implemented
 
-- @OneToMany and @ManyToMany relationships
 - CASCADE delete / orphan removal
 - CASCADE operations on @OneToOne relationships
 - Transaction support
-- DISTINCT query modifier (tokenized, execution incomplete)
 - Inheritance hierarchies
 - Composite keys
 - @Embeddable components
@@ -294,8 +336,8 @@ public final class UserTable extends AbstractTable implements GeneratedTable {
 
 **Current Implementation:**
 - **Multi-reader**: Thread-safe concurrent queries (via HashIndex, RangeIndex)
-- **Single-writer**: External synchronization required for concurrent saves
-- **Read-write**: No coordination, potential inconsistency
+- **Multi-writer**: Thread-safe with row seqlock + CAS (concurrent saves supported)
+- **Read-write**: SeqLock provides coordination for row updates and typed reads
 - **Isolation**: Best-effort (no MVCC, no transactions)
 
 **Thread-Safe Operations:**
@@ -303,16 +345,10 @@ public final class UserTable extends AbstractTable implements GeneratedTable {
 - ID indexes: `ConcurrentHashMap` for lock-free lookups
 - Query execution: Thread-safe reads on published data
 - Index updates: `ConcurrentHashMap.compute()` / `ConcurrentSkipListMap.compute()`
-
-**NOT Thread-Safe (External Sync Required):**
-- Column writes: No atomicity between writes (torn reads possible)
-- Index updates: Can race with column writes
-
-**Now Thread-Safe (Previously Not Thread-Safe):**
-- Entity saves: Lock-free free-list with CAS
+- Entity saves: Coordinated by row seqlock (beginSeqLock/endSeqLock)
 - Entity deletes: AtomicIntegerArray with CAS loops
-- Row allocation: LockFreeFreeList operations
-- RepositoryRuntime ID generation: AtomicLong
+- Row allocation: Lock-free via LockFreeFreeList (CAS-based)
+- Column writes: Protected by beginSeqLock/endSeqLock
 
 **See Also:** [CONCURRENCY.md](CONCURRENCY.md) for detailed concurrency model and improvement roadmap.
 - Cascade delete / orphan removal

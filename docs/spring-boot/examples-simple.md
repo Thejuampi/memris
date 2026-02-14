@@ -2,6 +2,16 @@
 
 Basic examples for getting started with Memris and Spring Boot.
 
+## Boot 2 vs Boot 3 Quick Reference
+
+| Aspect | Boot 2 | Boot 3 |
+|--------|--------|--------|
+| Starter artifact | `memris-spring-boot-starter-2` | `memris-spring-boot-starter-3` |
+| JPA namespace | `javax.persistence.*` | `jakarta.persistence.*` |
+| Entity annotations | `io.memris.core.*` | `io.memris.core.*` (same) |
+| Repository interfaces | `io.memris.spring.data.repository.*` | `io.memris.spring.data.repository.*` (same) |
+| EnableMemrisRepositories | `io.memris.spring.data.repository.config.*` | `io.memris.spring.data.repository.config.*` (same) |
+
 ## Example 1: Basic Entity and Repository
 
 ### Maven Configuration
@@ -54,7 +64,6 @@ public class Customer {
     private String email;
     private int age;
     
-    // Constructors
     public Customer() {}
     
     public Customer(String firstName, String lastName, String email, int age) {
@@ -64,7 +73,6 @@ public class Customer {
         this.age = age;
     }
     
-    // Getters and setters
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
     public String getFirstName() { return firstName; }
@@ -80,14 +88,41 @@ public class Customer {
 
 ### Repository Interface
 
+**Option 1: MemrisCrudRepository (Recommended)**
+
+Extends `CrudRepository<T, ID>` - inherits all CRUD methods automatically:
+
+```java
+import io.memris.spring.data.repository.MemrisCrudRepository;
+import java.util.List;
+
+public interface CustomerRepository extends MemrisCrudRepository<Customer, Long> {
+    // Inherits: save, findById, findAll, deleteById, deleteAll, count, existsById
+    // Add custom query methods:
+    List<Customer> findByLastName(String lastName);
+    List<Customer> findByAgeGreaterThan(int age);
+    boolean existsByEmail(String email);
+}
+```
+
+**Option 2: MemrisSpringRepository**
+
+Marker interface - declare all methods manually:
+
 ```java
 import io.memris.spring.data.repository.MemrisSpringRepository;
 import java.util.List;
 import java.util.Optional;
 
 public interface CustomerRepository extends MemrisSpringRepository<Customer, Long> {
+    // Must declare CRUD methods:
+    Customer save(Customer customer);
     Optional<Customer> findById(Long id);
     List<Customer> findAll();
+    void deleteById(Long id);
+    void deleteAll();
+    
+    // Custom query methods:
     List<Customer> findByLastName(String lastName);
     List<Customer> findByAgeGreaterThan(int age);
     boolean existsByEmail(String email);
@@ -151,37 +186,29 @@ public class Application {
 ### Repository with Query Methods
 
 ```java
-import io.memris.spring.data.repository.MemrisSpringRepository;
-import io.memris.core.Index;
-import io.memris.core.IndexType;
+import io.memris.spring.data.repository.MemrisCrudRepository;
 import java.util.List;
 import java.util.Optional;
 
-public interface ProductRepository extends MemrisSpringRepository<Product, Long> {
+public interface ProductRepository extends MemrisCrudRepository<Product, Long> {
     
-    // Equality
     Optional<Product> findBySku(String sku);
     
-    // Comparison
     List<Product> findByPriceGreaterThan(double price);
     List<Product> findByPriceLessThan(double price);
     List<Product> findByPriceBetween(double min, double max);
     
-    // String operations
     List<Product> findByNameContaining(String substring);
     List<Product> findByNameStartingWith(String prefix);
     List<Product> findByNameEndingWith(String suffix);
     List<Product> findByNameIgnoreCase(String name);
     
-    // Logical combinations
     List<Product> findByCategoryAndPriceGreaterThan(String category, double price);
     List<Product> findByCategoryOrNameContaining(String category, String name);
     
-    // Existence and counting
     boolean existsBySku(String sku);
     long countByCategory(String category);
     
-    // Delete by
     long deleteByCategory(String category);
 }
 ```
@@ -194,7 +221,7 @@ import io.memris.core.Id;
 import io.memris.core.GeneratedValue;
 import io.memris.core.GenerationType;
 import io.memris.core.Index;
-import io.memris.core.IndexType;
+import io.memris.core.Index.IndexType;
 
 @Entity
 public class Product {
@@ -202,7 +229,7 @@ public class Product {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
     
-    @Index(IndexType.HASH)
+    @Index(type = IndexType.HASH)
     private String sku;
     
     private String name;

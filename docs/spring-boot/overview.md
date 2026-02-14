@@ -27,6 +27,60 @@ Memris includes **4 Spring-related modules** to support different Spring Boot ve
 !!! note "Implementation Details"
     The implementation modules contain the actual Spring Boot integration code. The starters are convenience POMs that aggregate the correct dependencies.
 
+## Repository Interfaces
+
+Memris provides two base repository interfaces. The core `MemrisRepository<T>` is a marker interface (empty by design):
+
+```java
+package io.memris.repository;
+
+public interface MemrisRepository<T> {
+    // EMPTY BY DESIGN
+}
+```
+
+### MemrisSpringRepository
+
+Base marker interface extending `MemrisRepository<T>` and Spring Data's `Repository<T, ID>`. Use this when you only need custom query methods:
+
+```java
+import io.memris.spring.data.repository.MemrisSpringRepository;
+import java.util.List;
+import java.util.Optional;
+
+public interface CustomerRepository extends MemrisSpringRepository<Customer, Long> {
+    // Must declare CRUD methods manually
+    Optional<Customer> findById(Long id);
+    List<Customer> findAll();
+    Customer save(Customer customer);
+    void deleteById(Long id);
+    
+    // Custom query methods
+    List<Customer> findByLastName(String lastName);
+}
+```
+
+### MemrisCrudRepository
+
+Convenience interface combining `MemrisRepository<T>` with Spring Data's `CrudRepository<T, ID>`. Use this when you want Spring Data CRUD methods automatically:
+
+```java
+import io.memris.spring.data.repository.MemrisCrudRepository;
+import java.util.List;
+
+public interface ProductRepository extends MemrisCrudRepository<Product, Long> {
+    // Inherits from CrudRepository: save, findById, findAll, deleteById, deleteAll, count, existsById
+    // No need to declare CRUD methods manually
+    
+    // Custom query methods
+    List<Product> findByCategory(String category);
+}
+```
+
+**Key difference:** 
+- `MemrisCrudRepository` inherits Spring Data's `CrudRepository` methods (`save`, `findById`, `findAll`, `deleteById`, `deleteAll`, `count`, `existsById`) automatically
+- `MemrisSpringRepository` is a marker interface - you must declare all methods manually, including CRUD operations
+
 ## Choosing the Right Module
 
 ### Spring Boot 3.x (Recommended)
@@ -69,12 +123,46 @@ For existing projects on Spring Boot 2.7.x:
 
 | Aspect | Boot 2 | Boot 3 |
 |--------|--------|--------|
-| Configuration annotation | `@Configuration` | `@AutoConfiguration` |
-| Auto-config registration | `spring.factories` | `META-INF/spring/*.imports` |
-| JPA namespace | `javax.persistence.*` | `jakarta.persistence.*` |
+| Auto-configuration annotation | `@Configuration` | `@AutoConfiguration` |
+| Auto-config registration | `META-INF/spring.factories` | `META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports` |
+| JPA namespace (AttributeConverter) | `javax.persistence.*` | `jakarta.persistence.*` |
 | Spring Framework | 5.3.33 | 6.1.3 |
 | Spring Data | 2.7.18 | 3.2.2 |
 | Minimum Java | 21 | 21 |
+
+**Same for Both Versions:**
+- Memris entity annotations: `io.memris.core.*` (`@Entity`, `@Id`, `@ManyToOne`, etc.)
+- Memris query annotations: `io.memris.core.*` (`@Query`, `@Param`, `@Modifying`)
+- Repository interfaces: `io.memris.spring.data.repository.*`
+- Configuration properties: `io.memris.spring.boot.autoconfigure.*`
+
+### JPA Converter Namespace
+
+When using JPA `AttributeConverter` for custom types:
+
+**Boot 3 (jakarta):**
+```java
+import jakarta.persistence.Converter;
+import jakarta.persistence.AttributeConverter;
+
+@Converter(autoApply = true)
+public class MoneyConverter implements AttributeConverter<Money, BigDecimal> {
+    // ...
+}
+```
+
+**Boot 2 (javax):**
+```java
+import javax.persistence.Converter;
+import javax.persistence.AttributeConverter;
+
+@Converter(autoApply = true)
+public class MoneyConverter implements AttributeConverter<Money, BigDecimal> {
+    // ...
+}
+```
+
+Note: Memris entity annotations (`@Entity`, `@Id`, `@ManyToOne`, etc.) come from `io.memris.core` package and are the same for both Boot 2 and Boot 3.
 
 ## What Gets Auto-Configured?
 
@@ -83,13 +171,39 @@ When you include a Memris starter, the following beans are automatically configu
 | Bean | Type | Description |
 |------|------|-------------|
 | `memrisConfiguration` | `MemrisConfiguration` | Core configuration from properties |
-| `memrisRepositoryFactory` | `MemrisRepositoryFactory` | Factory for creating arenas |
-| `memrisArenaProvider` | `MemrisArenaProvider` | Resolves named arenas |
-| `memrisConverterRegistrar` | `MemrisConverterRegistrar` | Registers JPA converters (static bean) |
+| `memrisRepositoryFactory` | `MemrisRepositoryFactory` | Factory for creating MemrisArena instances |
+| `memrisArenaProvider` | `MemrisArenaProvider` | Resolves named arenas from configuration |
+| `memrisConverterRegistrar` | `MemrisConverterRegistrar` | Registers JPA AttributeConverter beans |
 | `memrisArena` | `MemrisArena` | Default arena instance |
 | Repository beans | Your interfaces | Scanned from `@EnableMemrisRepositories` |
 
 All beans are created with `@ConditionalOnMissingBean`, allowing you to override any bean by defining your own.
+
+## EnableMemrisRepositories Annotation
+
+Enable repository scanning with `@EnableMemrisRepositories`:
+
+```java
+import io.memris.spring.data.repository.config.EnableMemrisRepositories;
+
+@SpringBootApplication
+@EnableMemrisRepositories(basePackages = "com.example.repositories")
+public class Application {
+    public static void main(String[] args) {
+        SpringApplication.run(Application.class, args);
+    }
+}
+```
+
+### Annotation Attributes
+
+| Attribute | Default | Description |
+|-----------|---------|-------------|
+| `basePackages` | `{}` | Base packages to scan for repository interfaces |
+| `basePackageClasses` | `{}` | Marker classes whose packages will be scanned |
+| `repositoryFactoryBeanClass` | `MemrisRepositoryFactoryBean` | Factory bean class for creating repository proxies |
+| `repositoryBaseClass` | `MemrisSpringRepository` | Base interface that discovered repositories should extend |
+| `considerNestedRepositories` | `false` | Whether to include nested repository interfaces |
 
 ## Features
 
@@ -177,6 +291,47 @@ memris:
     @Query("SELECT p FROM Product p WHERE p.name = :name ORDER BY p.price DESC")
     List<Product> findByNameOrdered(@Param("name") String name);
     ```
+
+## Relationship Annotations
+
+Memris provides relationship annotations from `io.memris.core` package:
+
+| Annotation | Description |
+|------------|-------------|
+| `@ManyToOne` | Many-to-one relationship with optional `@JoinColumn` |
+| `@OneToMany` | One-to-many relationship with `mappedBy` attribute |
+| `@ManyToMany` | Many-to-many relationship with `@JoinTable` |
+| `@JoinColumn` | Specifies foreign key column details |
+| `@JoinTable` | Specifies join table for many-to-many |
+
+All relationships are eagerly loaded. Use `io.memris.core` annotations, not JPA annotations.
+
+## Query Annotations
+
+Memris supports JPQL-like queries via annotations from `io.memris.core`:
+
+| Annotation | Description |
+|------------|-------------|
+| `@Query` | Defines JPQL-like query (value, nativeQuery) |
+| `@Modifying` | Marks a query as UPDATE/DELETE operation |
+| `@Param` | Binds named parameter to method argument |
+
+Example:
+```java
+import io.memris.core.Query;
+import io.memris.core.Modifying;
+import io.memris.core.Param;
+
+public interface ProductRepository extends MemrisCrudRepository<Product, Long> {
+    
+    @Query("SELECT p FROM Product p WHERE p.category = :cat")
+    List<Product> findByCategory(@Param("cat") String category);
+    
+    @Modifying
+    @Query("UPDATE Product p SET p.price = p.price * :mult WHERE p.category = :cat")
+    int applyDiscount(@Param("cat") String category, @Param("mult") double multiplier);
+}
+```
 
 ## Next Steps
 

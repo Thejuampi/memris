@@ -9,8 +9,61 @@ The `MemrisAutoConfiguration` class is the entry point for Spring Boot integrati
 1. The `MemrisRepositoryFactory` class is present on the classpath
 2. No existing `MemrisConfiguration` bean is defined
 
-**Spring Boot 3:** Uses `@AutoConfiguration` annotation
-**Spring Boot 2:** Uses `@Configuration` annotation
+### Boot 2 vs Boot 3 Differences
+
+| Aspect | Boot 2 | Boot 3 |
+|--------|--------|--------|
+| Configuration annotation | `@Configuration` | `@AutoConfiguration` |
+| Auto-config registration | `META-INF/spring.factories` | `META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports` |
+| JPA namespace (AttributeConverter) | `javax.persistence.*` | `jakarta.persistence.*` |
+| Memris entity annotations | `io.memris.core.*` | `io.memris.core.*` (same for both) |
+| Repository interfaces | `io.memris.spring.data.repository.*` | `io.memris.spring.data.repository.*` (same for both) |
+
+**Boot 3 AutoConfiguration:**
+```java
+package io.memris.spring.boot.autoconfigure;
+
+import org.springframework.boot.autoconfigure.AutoConfiguration;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.context.annotation.Bean;
+
+import io.memris.core.MemrisArena;
+import io.memris.core.MemrisConfiguration;
+import io.memris.repository.MemrisRepositoryFactory;
+
+@AutoConfiguration
+@ConditionalOnClass(MemrisRepositoryFactory.class)
+@EnableConfigurationProperties(MemrisArenaProperties.class)
+public class MemrisAutoConfiguration {
+    // ...
+}
+```
+
+**Boot 2 AutoConfiguration:**
+```java
+package io.memris.spring.boot.autoconfigure;
+
+import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
+import io.memris.core.MemrisArena;
+import io.memris.core.MemrisConfiguration;
+import io.memris.repository.MemrisRepositoryFactory;
+
+@Configuration
+@ConditionalOnClass(MemrisRepositoryFactory.class)
+@EnableConfigurationProperties(MemrisArenaProperties.class)
+public class MemrisAutoConfiguration {
+    // ...
+}
+```
+
+The only difference is the annotation (`@AutoConfiguration` vs `@Configuration`) and the import for that annotation.
 
 ## Auto-Configured Beans
 
@@ -25,8 +78,10 @@ Core configuration bean created from `application.yml` properties.
 ```java
 @Bean
 @ConditionalOnMissingBean
-public MemrisConfiguration memrisConfiguration(MemrisArenaProperties arenaProperties) {
-    return arenaProperties.getDefaultArenaConfig().toConfiguration();
+public MemrisConfiguration memrisConfiguration(MemrisArenaProperties properties) {
+    var defaultProps = properties.getArenas()
+            .getOrDefault(properties.getDefaultArena(), new MemrisConfigurationProperties());
+    return defaultProps.toConfiguration();
 }
 ```
 
@@ -34,7 +89,7 @@ public MemrisConfiguration memrisConfiguration(MemrisArenaProperties arenaProper
 
 **Type:** `MemrisRepositoryFactory`
 
-Factory for creating `MemrisArena` instances.
+Factory for creating MemrisArena instances from configuration.
 
 ```java
 @Bean
@@ -53,8 +108,9 @@ Resolves named arenas for multi-arena setups.
 ```java
 @Bean
 @ConditionalOnMissingBean
-public MemrisArenaProvider memrisArenaProvider(MemrisRepositoryFactory factory) {
-    return new MemrisArenaProvider(factory);
+public MemrisArenaProvider memrisArenaProvider(MemrisRepositoryFactory factory,
+        MemrisArenaProperties properties) {
+    return new MemrisArenaProviderImpl(factory, properties);
 }
 ```
 
@@ -163,13 +219,14 @@ public MemrisRepositoryFactory memrisRepositoryFactory(MemrisConfiguration confi
 
 ```java
 @Bean
-public MemrisArenaProvider memrisArenaProvider(MemrisRepositoryFactory factory) {
-    return new MemrisArenaProvider(factory) {
+public MemrisArenaProvider memrisArenaProvider(MemrisRepositoryFactory factory,
+        MemrisArenaProperties properties) {
+    return new MemrisArenaProviderImpl(factory, properties) {
         @Override
         public MemrisArena getArena(String name) {
             // Custom arena resolution
             if ("special".equals(name)) {
-                // Return specialized arena
+                // Return specialized arena configuration
             }
             return super.getArena(name);
         }
@@ -225,6 +282,8 @@ public class MoneyConverter implements AttributeConverter<Money, BigDecimal> {
 Repositories are scanned based on `@EnableMemrisRepositories`:
 
 ```java
+import io.memris.spring.data.repository.config.EnableMemrisRepositories;
+
 @SpringBootApplication
 @EnableMemrisRepositories(basePackages = "com.example.repositories")
 public class Application {

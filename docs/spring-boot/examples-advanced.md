@@ -2,17 +2,31 @@
 
 Complex examples showcasing advanced Memris features.
 
+## Boot 2 vs Boot 3 Summary
+
+| Feature | Boot 2 | Boot 3 |
+|---------|--------|--------|
+| JPA AttributeConverter | `javax.persistence.*` | `jakarta.persistence.*` |
+| Memris annotations | `io.memris.core.*` | `io.memris.core.*` |
+| Repository interfaces | `io.memris.spring.data.repository.*` | `io.memris.spring.data.repository.*` |
+| EnableMemrisRepositories | `io.memris.spring.data.repository.config.*` | `io.memris.spring.data.repository.config.*` |
+
+All Memris core annotations (`@Entity`, `@Id`, `@Query`, `@Param`, `@ManyToOne`, etc.) are in `io.memris.core.*` for both versions. Only JPA converters differ.
+
 ## Example 1: @Query with JPQL
+
+Memris supports JPQL-like queries via the `@Query` annotation from `io.memris.core`.
 
 ### Basic SELECT with Named Parameters
 
 ```java
 import io.memris.core.Query;
 import io.memris.core.Param;
+import io.memris.spring.data.repository.MemrisCrudRepository;
 import java.util.List;
 import java.util.Optional;
 
-public interface ProductRepository extends MemrisSpringRepository<Product, Long> {
+public interface ProductRepository extends MemrisCrudRepository<Product, Long> {
     
     @Query("SELECT p FROM Product p WHERE p.sku = :sku")
     Optional<Product> findBySkuQuery(@Param("sku") String sku);
@@ -32,7 +46,7 @@ import io.memris.core.Query;
 import io.memris.core.Modifying;
 import io.memris.core.Param;
 
-public interface InventoryRepository extends MemrisSpringRepository<Inventory, Long> {
+public interface InventoryRepository extends MemrisCrudRepository<Inventory, Long> {
     
     @Modifying
     @Query("UPDATE Inventory i SET i.stock = :stock WHERE i.sku = :sku")
@@ -47,7 +61,7 @@ public interface InventoryRepository extends MemrisSpringRepository<Inventory, L
 ### DELETE with @Modifying
 
 ```java
-public interface CustomerRepository extends MemrisSpringRepository<Customer, Long> {
+public interface CustomerRepository extends MemrisCrudRepository<Customer, Long> {
     
     @Modifying
     @Query("DELETE FROM Customer c WHERE c.lastLogin < :date")
@@ -62,33 +76,28 @@ public interface CustomerRepository extends MemrisSpringRepository<Customer, Lon
 ### GROUP BY with Map Return Type
 
 ```java
-public interface OrderRepository extends MemrisSpringRepository<Order, Long> {
+public interface OrderRepository extends MemrisCrudRepository<Order, Long> {
     
-    // Group by single field
     @Query("SELECT o FROM Order o GROUP BY o.status")
     Map<String, List<Order>> findAllGroupedByStatus();
     
-    // Group by multiple fields
     @Query("SELECT o FROM Order o GROUP BY o.customerId, o.status")
     Map<CustomerStatusKey, List<Order>> findAllGroupedByCustomerAndStatus();
     
-    // Count by group
     @Query("SELECT COUNT(o) FROM Order o GROUP BY o.status")
     Map<String, Long> countByStatus();
     
-    // With HAVING clause
     @Query("SELECT COUNT(o) FROM Order o GROUP BY o.customerId HAVING COUNT(o) > :min")
     Map<Long, Long> findCustomersWithManyOrders(@Param("min") long minOrders);
 }
 
-// Key class for composite grouping
 public record CustomerStatusKey(Long customerId, String status) {}
 ```
 
 ### Record Projections with SELECT Aliases
 
 ```java
-public interface OrderRepository extends MemrisSpringRepository<Order, Long> {
+public interface OrderRepository extends MemrisCrudRepository<Order, Long> {
     
     @Query("SELECT o.total as total, o.customer.name as customerName FROM Order o WHERE o.total >= :min")
     List<OrderSummary> findLargeOrders(@Param("min") double minTotal);
@@ -97,24 +106,20 @@ public interface OrderRepository extends MemrisSpringRepository<Order, Long> {
     List<OrderSummary> findAllOrderSummaries();
 }
 
-// Projection record
 public record OrderSummary(double total, String customerName) {}
 ```
 
 ### JOIN Queries
 
 ```java
-public interface OrderRepository extends MemrisSpringRepository<Order, Long> {
+public interface OrderRepository extends MemrisCrudRepository<Order, Long> {
     
-    // INNER JOIN
     @Query("SELECT o FROM Order o JOIN o.customer c WHERE c.email = :email")
     List<Order> findOrdersByCustomerEmail(@Param("email") String email);
     
-    // LEFT JOIN
     @Query("SELECT o FROM Order o LEFT JOIN o.items i WHERE i.product.sku = :sku")
     List<Order> findOrdersContainingProduct(@Param("sku") String sku);
     
-    // JOIN with nested properties
     @Query("SELECT o FROM Order o JOIN o.customer c WHERE c.address.city = :city")
     List<Order> findOrdersByCustomerCity(@Param("city") String city);
 }
@@ -122,9 +127,18 @@ public interface OrderRepository extends MemrisSpringRepository<Order, Long> {
 
 ## Example 2: Entity Relationships
 
+Memris provides relationship annotations from `io.memris.core` package. These are the same for both Boot 2 and Boot 3.
+
 ### @ManyToOne with @JoinColumn
 
 ```java
+import io.memris.core.Entity;
+import io.memris.core.Id;
+import io.memris.core.GeneratedValue;
+import io.memris.core.GenerationType;
+import io.memris.core.ManyToOne;
+import io.memris.core.JoinColumn;
+
 @Entity
 public class Order {
     @Id
@@ -157,6 +171,15 @@ public class Customer {
 ### @OneToMany with mappedBy
 
 ```java
+import io.memris.core.Entity;
+import io.memris.core.Id;
+import io.memris.core.GeneratedValue;
+import io.memris.core.GenerationType;
+import io.memris.core.OneToMany;
+import io.memris.core.ManyToOne;
+import io.memris.core.JoinColumn;
+import java.util.List;
+
 @Entity
 public class Customer {
     @Id
@@ -191,8 +214,7 @@ public class Order {
 ### Query by Nested Properties
 
 ```java
-public interface OrderRepository extends MemrisSpringRepository<Order, Long> {
-    // Query by nested property
+public interface OrderRepository extends MemrisCrudRepository<Order, Long> {
     List<Order> findByCustomerEmail(String email);
     List<Order> findByCustomerNameContaining(String name);
     List<Order> findByCustomerStatus(String status);
@@ -202,6 +224,14 @@ public interface OrderRepository extends MemrisSpringRepository<Order, Long> {
 ### @ManyToMany with @JoinTable
 
 ```java
+import io.memris.core.Entity;
+import io.memris.core.Id;
+import io.memris.core.GeneratedValue;
+import io.memris.core.GenerationType;
+import io.memris.core.ManyToMany;
+import io.memris.core.JoinTable;
+import java.util.List;
+
 @Entity
 public class Student {
     @Id
@@ -211,11 +241,7 @@ public class Student {
     private String name;
     
     @ManyToMany
-    @JoinTable(
-        name = "student_course",
-        joinColumns = @JoinColumn(name = "student_id"),
-        inverseJoinColumns = @JoinColumn(name = "course_id")
-    )
+    @JoinTable(name = "student_course", joinColumn = "student_id", inverseJoinColumn = "course_id")
     private List<Course> courses;
     
     // Getters and setters...
@@ -317,7 +343,16 @@ public class MultiArenaService {
 
 ## Example 4: JPA Attribute Converters
 
-### Custom Converter
+Memris automatically registers JPA `AttributeConverter` beans. The JPA namespace differs between Boot versions, but Memris core annotations are the same.
+
+### Namespace Differences
+
+| Boot Version | JPA AttributeConverter | Memris Annotations |
+|--------------|------------------------|-------------------|
+| Boot 2.x | `javax.persistence.*` | `io.memris.core.*` |
+| Boot 3.x | `jakarta.persistence.*` | `io.memris.core.*` |
+
+### Custom Converter (Boot 3)
 
 ```java
 import jakarta.persistence.Converter;
@@ -338,7 +373,6 @@ public class MoneyConverter implements AttributeConverter<Money, BigDecimal> {
     }
 }
 
-// Value object
 public class Money {
     private final BigDecimal amount;
     
@@ -348,6 +382,30 @@ public class Money {
     
     public BigDecimal getAmount() {
         return amount;
+    }
+}
+```
+
+### Custom Converter (Boot 2)
+
+Same logic, different import:
+
+```java
+import javax.persistence.Converter;
+import javax.persistence.AttributeConverter;
+import java.math.BigDecimal;
+
+@Converter(autoApply = true)
+public class MoneyConverter implements AttributeConverter<Money, BigDecimal> {
+    
+    @Override
+    public BigDecimal convertToDatabaseColumn(Money money) {
+        return money != null ? money.getAmount() : null;
+    }
+    
+    @Override
+    public Money convertToEntityAttribute(BigDecimal amount) {
+        return amount != null ? new Money(amount) : null;
     }
 }
 ```
@@ -411,7 +469,7 @@ public class OrderService {
 ### Native Queries
 
 ```java
-public interface ProductRepository extends MemrisSpringRepository<Product, Long> {
+public interface ProductRepository extends MemrisCrudRepository<Product, Long> {
     
     // This will throw UnsupportedOperationException
     @Query(value = "SELECT * FROM products WHERE active = 1", nativeQuery = true)
@@ -425,7 +483,7 @@ public interface ProductRepository extends MemrisSpringRepository<Product, Long>
 ### Pageable and Sort Parameters
 
 ```java
-public interface ProductRepository extends MemrisSpringRepository<Product, Long> {
+public interface ProductRepository extends MemrisCrudRepository<Product, Long> {
     
     // NOT supported
     List<Product> findByCategory(String category, Pageable pageable);
@@ -449,7 +507,7 @@ public interface ProductRepository extends MemrisSpringRepository<Product, Long>
 
 ```java
 // NOT supported
-public interface ProductRepository extends MemrisSpringRepository<Product, Long>,
+public interface ProductRepository extends MemrisCrudRepository<Product, Long>,
                                           JpaSpecificationExecutor<Product> {
     // Specifications won't work
 }
