@@ -111,8 +111,6 @@
                             <propertyName>jacocoArgLine</propertyName>
                             <excludes>
                                 <exclude>io/memris/storage/generated/**/*</exclude>
-                                <exclude>io/memris/storage/heap/*</exclude>
-                                <exclude>*$*</exclude>
                             </excludes>
                         </configuration>
                     </execution>
@@ -125,8 +123,6 @@
                         <configuration>
                             <excludes>
                                 <exclude>io/memris/storage/generated/**/*</exclude>
-                                <exclude>io/memris/storage/heap/*</exclude>
-                                <exclude>*$*</exclude>
                             </excludes>
                         </configuration>
                     </execution>
