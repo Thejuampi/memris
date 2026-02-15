@@ -57,7 +57,7 @@ public final class HashIndex<K> {
     }
 
     /**
-     * Clear all entries from the index (O(1) operation).
+     * Clear all entries from the index.
      * Used for deleteAll() to avoid iterating over all entities.
      */
     public void clear() {

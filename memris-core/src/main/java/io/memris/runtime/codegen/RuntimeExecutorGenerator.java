@@ -101,10 +101,6 @@ public final class RuntimeExecutorGenerator {
      */
     public static FieldValueReader generateFieldValueReader(int columnIndex, byte typeCode,
             TypeConverter<?, ?> converter) {
-        if (!isEnabled()) {
-            return createFallbackFieldValueReader(columnIndex, typeCode, converter);
-        }
-
         String converterKey = converter != null ? "_C" + System.identityHashCode(converter) : "";
         String key = "FVR_" + columnIndex + "_" + typeCode + converterKey;
 
@@ -139,7 +135,7 @@ public final class RuntimeExecutorGenerator {
                 return (FieldValueReader) implClass.getDeclaredConstructor().newInstance();
             }
         } catch (Exception e) {
-            return createFallbackFieldValueReader(columnIndex, typeCode, converter);
+            throw new IllegalStateException("Failed to generate FieldValueReader for column " + columnIndex, e);
         }
     }
 
@@ -450,10 +446,6 @@ public final class RuntimeExecutorGenerator {
      * Generate a specialized FkReader for the given column and type.
      */
     public static FkReader generateFkReader(int columnIndex, byte typeCode) {
-        if (!isEnabled()) {
-            return createFallbackFkReader(columnIndex, typeCode);
-        }
-
         String key = "FK_" + columnIndex + "_" + typeCode;
         return (FkReader) CACHE.computeIfAbsent(key, k -> doGenerateFkReader(columnIndex, typeCode));
     }
@@ -483,7 +475,7 @@ public final class RuntimeExecutorGenerator {
                 return (FkReader) implClass.getDeclaredConstructor().newInstance();
             }
         } catch (Exception e) {
-            return createFallbackFkReader(columnIndex, typeCode);
+            throw new IllegalStateException("Failed to generate FkReader for column " + columnIndex, e);
         }
     }
 
@@ -588,10 +580,6 @@ public final class RuntimeExecutorGenerator {
      */
     public static TargetRowResolver generateTargetRowResolver(
             boolean targetColumnIsId, byte fkTypeCode, int targetColumnIndex) {
-        if (!isEnabled()) {
-            return createFallbackTargetRowResolver(targetColumnIsId, fkTypeCode, targetColumnIndex);
-        }
-
         String key = "TRR_" + targetColumnIsId + "_" + fkTypeCode + "_" + targetColumnIndex;
         return (TargetRowResolver) CACHE.computeIfAbsent(key,
                 k -> doGenerateTargetRowResolver(targetColumnIsId, fkTypeCode, targetColumnIndex));
@@ -623,7 +611,7 @@ public final class RuntimeExecutorGenerator {
                 return (TargetRowResolver) implClass.getDeclaredConstructor().newInstance();
             }
         } catch (Exception e) {
-            return createFallbackTargetRowResolver(targetColumnIsId, fkTypeCode, targetColumnIndex);
+            throw new IllegalStateException("Failed to generate TargetRowResolver", e);
         }
     }
 
@@ -1626,10 +1614,6 @@ public final class RuntimeExecutorGenerator {
      * Eliminates runtime branching on type codes when reading raw storage values.
      */
     public static io.memris.runtime.StorageValueReader generateStorageValueReader(int columnIndex, byte typeCode) {
-        if (!isEnabled()) {
-            return createFallbackStorageValueReader(columnIndex, typeCode);
-        }
-
         String key = "SVR_" + columnIndex + "_" + typeCode;
         return (io.memris.runtime.StorageValueReader) CACHE.computeIfAbsent(key,
                 k -> doGenerateStorageValueReader(columnIndex, typeCode));
@@ -1654,7 +1638,7 @@ public final class RuntimeExecutorGenerator {
                 return (io.memris.runtime.StorageValueReader) implClass.getDeclaredConstructor().newInstance();
             }
         } catch (Exception e) {
-            return createFallbackStorageValueReader(columnIndex, typeCode);
+            throw new IllegalStateException("Failed to generate StorageValueReader for column " + columnIndex, e);
         }
     }
 

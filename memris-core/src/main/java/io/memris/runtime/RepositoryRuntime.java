@@ -29,6 +29,7 @@ import io.memris.kernel.Column;
 import io.memris.storage.GeneratedTable;
 import io.memris.storage.Selection;
 import io.memris.storage.SelectionImpl;
+import io.memris.runtime.codegen.ConditionRowEvaluatorGenerator;
 import io.memris.runtime.codegen.RuntimeExecutorGenerator;
 import io.memris.runtime.dispatch.ConditionProgramCompiler;
 import io.memris.runtime.dispatch.ConditionSelectionOrchestrator;
@@ -51,6 +52,7 @@ import java.util.Date;
 
 import java.lang.reflect.RecordComponent;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -80,6 +82,8 @@ public final class RepositoryRuntime<T> {
     private final EntitySaver<T, ?> entitySaver;
     private final java.util.concurrent.ConcurrentHashMap<Class<?>, EntityMetadata<?>> projectionMetadata;
     private final java.util.concurrent.ConcurrentHashMap<Class<?>, MethodHandle> projectionConstructors;
+    private final java.util.concurrent.ConcurrentHashMap<CompiledQuery, ConditionExecutor[]> dynamicConditionExecutors;
+    private final java.util.concurrent.ConcurrentHashMap<CompiledQuery, ProjectionExecutor> dynamicProjectionExecutors;
     private final Map<Class<?>, EntityRuntimeLayout> runtimeLayoutsByEntity;
     private final FieldMapping[] fieldByColumn;
     private final TypeConverter<?, ?>[] converterByColumn;
@@ -98,6 +102,11 @@ public final class RepositoryRuntime<T> {
     private final java.util.function.Predicate<RowId> rowValidator;
     private final java.util.concurrent.ConcurrentHashMap<Object, IndexProbeCompiler.IndexProbe> indexProbes;
     private final Map<CompiledQuery, CompositeIndexProbeCompiler.CompositeIndexProbe> compositeIndexProbesByQuery;
+    private final Map<CompiledQuery, CompiledConditionProgram> compiledConditionProgramsByQuery;
+    private final StorageValueReader[] storageReadersByColumn;
+    private final ConditionExecutor[][] compiledConditionExecutorsByQuery;
+    private final ProjectionExecutor[] compiledProjectionExecutorsByQuery;
+    private final java.util.IdentityHashMap<CompiledQuery, Integer> compiledQueryIndexByInstance;
     private final boolean hasCompositeIndexPlans;
     private static final ThreadLocal<SortBuffers> SORT_BUFFERS = ThreadLocal.withInitial(SortBuffers::new);
 
@@ -141,13 +150,20 @@ public final class RepositoryRuntime<T> {
         this.metadataProvider = config != null && config.entityMetadataProvider() != null
                 ? config.entityMetadataProvider()
                 : MetadataExtractor::extractEntityMetadata;
+        var compiledArtifacts = RepositoryRuntimeCompiler.compile(plan, factory, arena, metadata, this.metadataProvider);
+        this.storageReadersByColumn = compiledArtifacts.storageReadersByColumn();
+        this.compiledConditionExecutorsByQuery = compiledArtifacts.conditionExecutorsByQuery();
+        this.compiledProjectionExecutorsByQuery = compiledArtifacts.projectionExecutorsByQuery();
+        this.compiledQueryIndexByInstance = compiledArtifacts.queryIndexByInstance();
         this.relatedMetadata = buildRelatedMetadata(metadata, this.metadataProvider);
         this.projectionMetadata = new java.util.concurrent.ConcurrentHashMap<>();
+        this.dynamicConditionExecutors = new java.util.concurrent.ConcurrentHashMap<>();
         if (metadata != null) {
             this.projectionMetadata.put(metadata.entityClass(), metadata);
         }
         this.projectionMetadata.putAll(this.relatedMetadata);
         this.projectionConstructors = new java.util.concurrent.ConcurrentHashMap<>();
+        this.dynamicProjectionExecutors = new java.util.concurrent.ConcurrentHashMap<>();
         this.entitySaver = plan.entitySaver();
         this.idCounter = new AtomicLong(1L);
         this.runtimeLayoutsByEntity = buildRuntimeLayouts(metadata, this.relatedMetadata);
@@ -168,6 +184,7 @@ public final class RepositoryRuntime<T> {
         this.rowValidator = createRowValidator(plan.table());
         this.indexProbes = new java.util.concurrent.ConcurrentHashMap<>();
         this.compositeIndexProbesByQuery = buildCompositeIndexProbesByQuery(plan.queries());
+        this.compiledConditionProgramsByQuery = buildCompiledConditionPrograms(plan.queries());
         this.idLookup = plan.idLookup();
         var queries = plan.queries();
         if (queries != null) {
@@ -204,15 +221,15 @@ public final class RepositoryRuntime<T> {
 
     public static ConditionExecutor[][] buildConditionExecutors(CompiledQuery[] queries, String[] columnNames,
             boolean[] primitiveNonNullColumns, Class<?> entityClass, boolean useIndex) {
-        ConditionExecutor[][] executors = new ConditionExecutor[queries.length][];
-        for (int i = 0; i < queries.length; i++) {
-            CompiledQuery.CompiledCondition[] conditions = queries[i].conditions();
+        var executors = new ConditionExecutor[queries.length][];
+        for (var i = 0; i < queries.length; i++) {
+            var conditions = queries[i].conditions();
             if (conditions == null || conditions.length == 0) {
                 executors[i] = new ConditionExecutor[0];
                 continue;
             }
-            ConditionExecutor[] queryExecutors = new ConditionExecutor[conditions.length];
-            for (int j = 0; j < conditions.length; j++) {
+            var queryExecutors = new ConditionExecutor[conditions.length];
+            for (var j = 0; j < conditions.length; j++) {
                 queryExecutors[j] = buildConditionExecutor(conditions[j], columnNames, primitiveNonNullColumns,
                         entityClass, useIndex);
             }
@@ -223,8 +240,8 @@ public final class RepositoryRuntime<T> {
 
     public static OrderExecutor[] buildOrderExecutors(CompiledQuery[] queries, GeneratedTable table,
             boolean[] primitiveNonNullColumns) {
-        OrderExecutor[] executors = new OrderExecutor[queries.length];
-        for (int i = 0; i < queries.length; i++) {
+        var executors = new OrderExecutor[queries.length];
+        for (var i = 0; i < queries.length; i++) {
             executors[i] = buildOrderExecutor(queries[i], table, primitiveNonNullColumns);
         }
         return executors;
@@ -236,8 +253,8 @@ public final class RepositoryRuntime<T> {
 
     public static ProjectionExecutor[] buildProjectionExecutors(CompiledQuery[] queries,
             io.memris.core.EntityMetadataProvider metadataProvider) {
-        ProjectionExecutor[] executors = new ProjectionExecutor[queries.length];
-        for (int i = 0; i < queries.length; i++) {
+        var executors = new ProjectionExecutor[queries.length];
+        for (var i = 0; i < queries.length; i++) {
             executors[i] = buildProjectionExecutor(queries[i], metadataProvider);
         }
         return executors;
@@ -267,39 +284,34 @@ public final class RepositoryRuntime<T> {
                 if (condition.argumentIndex() < 0 || condition.argumentIndex() >= args.length) {
                     return fallbackSelector.execute(runtime, args);
                 }
-                if (runtime.indexFactory() == null) {
-                    return fallbackSelector.execute(runtime, args);
-                }
                 Selection selection = InIndexSelector.select(
                         args[condition.argumentIndex()],
                         value -> runtime.queryIndex(entityClass, fieldName, Predicate.Operator.EQ, value),
                         runtime::selectionFromRows);
                 return selection != null ? selection : fallbackSelector.execute(runtime, args);
             });
-            case BETWEEN -> new ConditionExecutor(condition.nextCombinator(), (runtime, args) -> {
-                if (condition.argumentIndex() + 1 >= args.length) {
-                    return fallbackSelector.execute(runtime, args);
-                }
-                Object[] range = new Object[] { args[condition.argumentIndex()], args[condition.argumentIndex() + 1] };
-                MemrisRepositoryFactory indexFactory = runtime.indexFactory();
-                if (indexFactory == null) {
-                    return fallbackSelector.execute(runtime, args);
-                }
-                int[] rows = indexFactory.queryIndex(entityClass, fieldName, operator.toPredicateOperator(), range);
-                return rows != null ? runtime.selectionFromRows(rows) : fallbackSelector.execute(runtime, args);
-            });
-            case EQ, GT, GTE, LT, LTE -> new ConditionExecutor(condition.nextCombinator(), (runtime, args) -> {
-                if (condition.argumentIndex() < 0 || condition.argumentIndex() >= args.length) {
-                    return fallbackSelector.execute(runtime, args);
-                }
-                MemrisRepositoryFactory indexFactory = runtime.indexFactory();
-                if (indexFactory == null) {
-                    return fallbackSelector.execute(runtime, args);
-                }
-                var value = args[condition.argumentIndex()];
-                int[] rows = indexFactory.queryIndex(entityClass, fieldName, operator.toPredicateOperator(), value);
-                return rows != null ? runtime.selectionFromRows(rows) : fallbackSelector.execute(runtime, args);
-            });
+            case BETWEEN -> {
+                var predicateOperator = operator.toPredicateOperator();
+                yield new ConditionExecutor(condition.nextCombinator(), (runtime, args) -> {
+                    if (condition.argumentIndex() + 1 >= args.length) {
+                        return fallbackSelector.execute(runtime, args);
+                    }
+                    Object[] range = new Object[] { args[condition.argumentIndex()], args[condition.argumentIndex() + 1] };
+                    int[] rows = runtime.queryIndex(entityClass, fieldName, predicateOperator, range);
+                    return rows != null ? runtime.selectionFromRows(rows) : fallbackSelector.execute(runtime, args);
+                });
+            }
+            case EQ, GT, GTE, LT, LTE -> {
+                var predicateOperator = operator.toPredicateOperator();
+                yield new ConditionExecutor(condition.nextCombinator(), (runtime, args) -> {
+                    if (condition.argumentIndex() < 0 || condition.argumentIndex() >= args.length) {
+                        return fallbackSelector.execute(runtime, args);
+                    }
+                    var value = args[condition.argumentIndex()];
+                    int[] rows = runtime.queryIndex(entityClass, fieldName, predicateOperator, value);
+                    return rows != null ? runtime.selectionFromRows(rows) : fallbackSelector.execute(runtime, args);
+                });
+            }
             default -> new ConditionExecutor(condition.nextCombinator(), fallbackSelector);
         };
     }
@@ -372,6 +384,157 @@ public final class RepositoryRuntime<T> {
             compiled.put(query, probe);
         }
         return compiled.isEmpty() ? Map.of() : Map.copyOf(compiled);
+    }
+
+    private Map<CompiledQuery, CompiledConditionProgram> buildCompiledConditionPrograms(CompiledQuery[] queries) {
+        if (queries == null || queries.length == 0 || metadata == null) {
+            return Map.of();
+        }
+
+        var compiled = new HashMap<CompiledQuery, CompiledConditionProgram>(queries.length * 2);
+        for (var query : queries) {
+            var conditions = query.conditions();
+            if (conditions == null || conditions.length == 0) {
+                continue;
+            }
+            var groups = splitConditionGroups(conditions);
+            var compiledGroups = new ArrayList<CompiledConditionGroup>(groups.size());
+            var compilable = true;
+
+            for (var group : groups) {
+                var leadConditionIndex = findIndexedLeadConditionIndex(conditions, group.start(), group.end());
+                if (leadConditionIndex < 0) {
+                    compilable = false;
+                    break;
+                }
+                var leadCondition = conditions[leadConditionIndex];
+                var leadSelectionExecutor = compileLeadSelectionExecutor(leadCondition);
+                if (leadSelectionExecutor == null) {
+                    compilable = false;
+                    break;
+                }
+                var residualMatchers = new ArrayList<ConditionRowEvaluatorGenerator.RowConditionEvaluator>(
+                        Math.max(0, (group.end() - group.start()) - 1));
+
+                for (var i = group.start(); i <= group.end(); i++) {
+                    if (i == leadConditionIndex) {
+                        continue;
+                    }
+                    var condition = conditions[i];
+                    var matcher = ConditionRowEvaluatorGenerator.generate(
+                            condition,
+                            isPrimitiveNonNullColumn(condition.columnIndex()));
+                    if (matcher == null) {
+                        compilable = false;
+                        break;
+                    }
+                    residualMatchers.add(matcher);
+                }
+                if (!compilable) {
+                    break;
+                }
+                compiledGroups.add(new CompiledConditionGroup(
+                        leadSelectionExecutor,
+                        residualMatchers.toArray(new ConditionRowEvaluatorGenerator.RowConditionEvaluator[0])));
+            }
+
+            if (!compilable || compiledGroups.isEmpty()) {
+                continue;
+            }
+
+            compiled.put(query, new CompiledConditionProgram(compiledGroups.toArray(new CompiledConditionGroup[0])));
+        }
+
+        return compiled.isEmpty() ? Map.of() : Map.copyOf(compiled);
+    }
+
+    private LeadSelectionExecutor compileLeadSelectionExecutor(CompiledQuery.CompiledCondition condition) {
+        if (condition == null || metadata == null || condition.ignoreCase()) {
+            return null;
+        }
+        var fieldName = resolveFieldName(condition.columnIndex());
+        if (fieldName == null) {
+            return null;
+        }
+        var argumentIndex = condition.argumentIndex();
+        var operator = condition.operator();
+
+        return switch (operator) {
+            case IN -> args -> {
+                if (argumentIndex < 0 || argumentIndex >= args.length) {
+                    return null;
+                }
+                return selectWithIndexForIn(fieldName, args[argumentIndex]);
+            };
+            case BETWEEN -> args -> {
+                if (argumentIndex + 1 >= args.length) {
+                    return null;
+                }
+                var range = new Object[] { args[argumentIndex], args[argumentIndex + 1] };
+                var rows = queryIndex(metadata.entityClass(), fieldName, Predicate.Operator.BETWEEN, range);
+                return rows != null ? selectionFromRows(rows) : null;
+            };
+            case EQ, GT, GTE, LT, LTE, STARTING_WITH, ENDING_WITH -> {
+                var predicateOperator = operator.toPredicateOperator();
+                yield args -> {
+                    if (argumentIndex < 0 || argumentIndex >= args.length) {
+                        return null;
+                    }
+                    var rows = queryIndex(metadata.entityClass(), fieldName, predicateOperator,
+                            args[argumentIndex]);
+                    return rows != null ? selectionFromRows(rows) : null;
+                };
+            }
+            default -> null;
+        };
+    }
+
+    private List<ConditionGroupRange> splitConditionGroups(CompiledQuery.CompiledCondition[] conditions) {
+        var groups = new ArrayList<ConditionGroupRange>();
+        var start = 0;
+        for (var i = 0; i < conditions.length; i++) {
+            if (i == conditions.length - 1 || conditions[i].nextCombinator() == LogicalQuery.Combinator.OR) {
+                groups.add(new ConditionGroupRange(start, i));
+                start = i + 1;
+            }
+        }
+        return groups;
+    }
+
+    private int findIndexedLeadConditionIndex(CompiledQuery.CompiledCondition[] conditions, int start, int end) {
+        for (var i = start; i <= end; i++) {
+            if (isIndexAddressable(conditions[i])) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    private boolean isIndexAddressable(CompiledQuery.CompiledCondition condition) {
+        if (condition.ignoreCase()) {
+            return false;
+        }
+        var fieldName = resolveFieldName(condition.columnIndex());
+        if (fieldName == null) {
+            return false;
+        }
+        var indexPlan = indexPlansByField.get(fieldName);
+        if (indexPlan == null || indexPlan.indexType() == null) {
+            return false;
+        }
+        return supportsOperator(indexPlan.indexType(), condition.operator());
+    }
+
+    private static boolean supportsOperator(io.memris.core.Index.IndexType indexType, LogicalQuery.Operator operator) {
+        return switch (indexType) {
+            case HASH -> operator == LogicalQuery.Operator.EQ || operator == LogicalQuery.Operator.IN;
+            case BTREE -> switch (operator) {
+                case EQ, IN, GT, GTE, LT, LTE, BETWEEN, BEFORE, AFTER -> true;
+                default -> false;
+            };
+            case PREFIX -> operator == LogicalQuery.Operator.STARTING_WITH;
+            case SUFFIX -> operator == LogicalQuery.Operator.ENDING_WITH;
+        };
     }
 
     private static OrderExecutor buildOrderExecutor(CompiledQuery query, GeneratedTable table,
@@ -728,17 +891,6 @@ public final class RepositoryRuntime<T> {
         return columnIndex >= 0
                 && columnIndex < primitiveNonNullByColumn.length
                 && primitiveNonNullByColumn[columnIndex];
-    }
-
-    private static boolean isPrimitiveNonNullColumn(EntityRuntimeLayout layout, int columnIndex) {
-        if (layout == null) {
-            return false;
-        }
-        var fields = layout.fieldsByColumn();
-        return columnIndex >= 0
-                && columnIndex < fields.length
-                && fields[columnIndex] != null
-                && fields[columnIndex].javaType().isPrimitive();
     }
 
     private EntityMetadata<?> resolveEntityMetadata(Class<?> entityClass) {
@@ -1113,16 +1265,17 @@ public final class RepositoryRuntime<T> {
         var max = (limit > 0 && limit < rows.length) ? limit : rows.length;
 
         var projection = query.projection();
-        var projectionExecutor = plan.projectionExecutorFor(query);
+        var projectionExecutor = projectionExecutorFor(query);
         if (projection != null) {
+            if (projectionExecutor == null) {
+                throw new IllegalStateException("Projection executor not configured for query");
+            }
             var returnSet = query.returnKind() == LogicalQuery.ReturnKind.MANY_SET;
             List<Object> results = returnSet ? null : new ArrayList<>(max);
             java.util.Set<Object> resultSet = returnSet ? new java.util.LinkedHashSet<>(Math.max(16, max)) : null;
             for (var i = 0; i < max; i++) {
                 var rowIndex = rows[i];
-                var value = projectionExecutor != null
-                        ? projectionExecutor.materialize(this, rowIndex)
-                        : materializeProjection(projection, rowIndex);
+                var value = projectionExecutor.materialize(this, rowIndex);
                 if (returnSet) {
                     resultSet.add(value);
                 } else {
@@ -1372,7 +1525,7 @@ public final class RepositoryRuntime<T> {
      */
     private boolean executeExistsFast(CompiledQuery query, Object[] args) {
         CompiledQuery.CompiledCondition[] conditions = query.conditions();
-        ConditionExecutor[] executors = plan.conditionExecutorsFor(query);
+        ConditionExecutor[] executors = conditionExecutorsFor(query);
 
         if (conditions.length == 0) {
             // No conditions - check if table has any rows
@@ -1465,7 +1618,7 @@ public final class RepositoryRuntime<T> {
             return executeCount(query, args);
         }
         CompiledQuery.CompiledCondition[] conditions = query.conditions();
-        ConditionExecutor[] executors = plan.conditionExecutorsFor(query);
+        ConditionExecutor[] executors = conditionExecutorsFor(query);
 
         if (conditions.length == 0) {
             // No conditions - count all rows
@@ -1760,6 +1913,7 @@ public final class RepositoryRuntime<T> {
         if (updates == null || updates.length == 0) {
             throw new IllegalArgumentException("@Query update requires SET assignments");
         }
+        validateUpdateAssignments(updates, args);
 
         Selection selection = executeConditions(query, args);
         GeneratedTable table = plan.table();
@@ -1799,16 +1953,15 @@ public final class RepositoryRuntime<T> {
         int columnCount = table.columnCount();
         Object[] values = new Object[columnCount];
         for (int i = 0; i < columnCount; i++) {
-            byte typeCode = plan.typeCodes()[i];
             if (isPrimitiveNonNullColumn(i)) {
-                values[i] = readStorageValue(table, i, typeCode, rowIndex);
+                values[i] = readStorageValue(table, i, rowIndex);
                 continue;
             }
             if (!table.isPresent(i, rowIndex)) {
                 values[i] = null;
                 continue;
             }
-            values[i] = readStorageValue(table, i, typeCode, rowIndex);
+            values[i] = readStorageValue(table, i, rowIndex);
         }
         return values;
     }
@@ -1817,15 +1970,7 @@ public final class RepositoryRuntime<T> {
             Object[] args) {
         for (var update : updates) {
             var columnIndex = update.columnIndex();
-            Object value = update.argumentIndex() < args.length ? args[update.argumentIndex()] : null;
-            if (columnIndex >= 0 && columnIndex < converterByColumn.length) {
-                var converter = converterByColumn[columnIndex];
-                if (converter != null) {
-                    @SuppressWarnings("unchecked")
-                    var typed = (TypeConverter<Object, Object>) converter;
-                    value = typed.toStorage(value);
-                }
-            }
+            Object value = resolveUpdateAssignmentValue(update, args);
             if (isPrimitiveNonNullColumn(columnIndex) && value == null) {
                 throw new IllegalArgumentException("Null assigned to primitive column index: " + columnIndex);
             }
@@ -1833,21 +1978,35 @@ public final class RepositoryRuntime<T> {
         }
     }
 
-    private Object readStorageValue(GeneratedTable table, int columnIndex, byte typeCode, int rowIndex) {
-        return switch (typeCode) {
-            case TypeCodes.TYPE_STRING,
-                    TypeCodes.TYPE_BIG_DECIMAL,
-                    TypeCodes.TYPE_BIG_INTEGER ->
-                table.readString(columnIndex, rowIndex);
-            case TypeCodes.TYPE_LONG,
-                    TypeCodes.TYPE_INSTANT,
-                    TypeCodes.TYPE_LOCAL_DATE,
-                    TypeCodes.TYPE_LOCAL_DATE_TIME,
-                    TypeCodes.TYPE_DATE,
-                    TypeCodes.TYPE_DOUBLE ->
-                table.readLong(columnIndex, rowIndex);
-            default -> table.readInt(columnIndex, rowIndex);
-        };
+    private void validateUpdateAssignments(CompiledQuery.CompiledUpdateAssignment[] updates, Object[] args) {
+        for (var update : updates) {
+            var columnIndex = update.columnIndex();
+            if (!isPrimitiveNonNullColumn(columnIndex)) {
+                continue;
+            }
+            Object value = resolveUpdateAssignmentValue(update, args);
+            if (value == null) {
+                throw new IllegalArgumentException("Null assigned to primitive column index: " + columnIndex);
+            }
+        }
+    }
+
+    private Object resolveUpdateAssignmentValue(CompiledQuery.CompiledUpdateAssignment update, Object[] args) {
+        var columnIndex = update.columnIndex();
+        Object value = update.argumentIndex() < args.length ? args[update.argumentIndex()] : null;
+        if (columnIndex >= 0 && columnIndex < converterByColumn.length) {
+            var converter = converterByColumn[columnIndex];
+            if (converter != null) {
+                @SuppressWarnings("unchecked")
+                var typed = (TypeConverter<Object, Object>) converter;
+                value = typed.toStorage(value);
+            }
+        }
+        return value;
+    }
+
+    private Object readStorageValue(GeneratedTable table, int columnIndex, int rowIndex) {
+        return storageReadersByColumn[columnIndex].read(table, rowIndex);
     }
 
     private int resolveRowIndexById(GeneratedTable table, Object idValue) {
@@ -1955,47 +2114,11 @@ public final class RepositoryRuntime<T> {
     }
 
     private IndexValueReader buildIndexValueReader(FieldMapping field, TypeConverter<?, ?> converter) {
-        int columnIndex = field.columnPosition();
-        byte typeCode = field.typeCode();
-        @SuppressWarnings("unchecked")
-        TypeConverter<Object, Object> typedConverter = (TypeConverter<Object, Object>) converter;
-        return new IndexValueReader() {
-            @Override
-            public Object read(GeneratedTable table, int rowIndex) {
-                if (!table.isPresent(columnIndex, rowIndex)) {
-                    return null;
-                }
-                Object storage = switch (typeCode) {
-                    case TypeCodes.TYPE_STRING,
-                            TypeCodes.TYPE_BIG_DECIMAL,
-                            TypeCodes.TYPE_BIG_INTEGER ->
-                        table.readString(columnIndex, rowIndex);
-                    case TypeCodes.TYPE_LONG,
-                            TypeCodes.TYPE_INSTANT,
-                            TypeCodes.TYPE_LOCAL_DATE,
-                            TypeCodes.TYPE_LOCAL_DATE_TIME,
-                            TypeCodes.TYPE_DATE,
-                            TypeCodes.TYPE_DOUBLE ->
-                        table.readLong(columnIndex, rowIndex);
-                    default -> table.readInt(columnIndex, rowIndex);
-                };
-                if (typedConverter != null && storage != null) {
-                    return typedConverter.fromStorage(storage);
-                }
-                return switch (typeCode) {
-                    case TypeCodes.TYPE_LONG -> (Long) storage;
-                    case TypeCodes.TYPE_INT -> (Integer) storage;
-                    case TypeCodes.TYPE_BOOLEAN -> ((Integer) storage) != 0;
-                    case TypeCodes.TYPE_BYTE -> (byte) (int) storage;
-                    case TypeCodes.TYPE_SHORT -> (short) (int) storage;
-                    case TypeCodes.TYPE_FLOAT -> FloatEncoding.sortableIntToFloat((Integer) storage);
-                    case TypeCodes.TYPE_DOUBLE -> FloatEncoding.sortableLongToDouble((Long) storage);
-                    case TypeCodes.TYPE_CHAR -> (char) (int) storage;
-                    case TypeCodes.TYPE_STRING -> storage;
-                    default -> storage;
-                };
-            }
-        };
+        var compiledReader = RuntimeExecutorGenerator.generateFieldValueReader(
+                field.columnPosition(),
+                field.typeCode(),
+                converter);
+        return compiledReader::read;
     }
 
     private static final class IndexFieldReader {
@@ -2113,7 +2236,14 @@ public final class RepositoryRuntime<T> {
             var allRows = plan.table().scanAll();
             return applyJoins(query, args, selectionFromRows(allRows));
         }
-        var executors = plan.conditionExecutorsFor(query);
+        var compiledProgram = compiledConditionProgramsByQuery.get(query);
+        if (compiledProgram != null) {
+            var optimized = executeCompiledConditionProgram(compiledProgram, args);
+            if (optimized != null) {
+                return applyJoins(query, args, optimized);
+            }
+        }
+        var executors = conditionExecutorsFor(query);
         var compositeProbe = compositeIndexProbesByQuery.get(query);
         var combined = ConditionSelectionOrchestrator.execute(conditions,
                 executors,
@@ -2126,6 +2256,52 @@ public final class RepositoryRuntime<T> {
                                 : selectWithIndex(compiled[index], runtimeArgs),
                 () -> selectionFromRows(plan.table().scanAll()));
         return applyJoins(query, args, combined);
+    }
+
+    private Selection executeCompiledConditionProgram(CompiledConditionProgram program, Object[] args) {
+        Selection combined = null;
+        for (var group : program.groups()) {
+            var groupSelection = executeCompiledConditionGroup(group, args);
+            if (groupSelection == null) {
+                return null;
+            }
+            combined = combined == null ? groupSelection : combined.union(groupSelection);
+        }
+        return combined != null ? combined : selectionFromRows(new int[0]);
+    }
+
+    private Selection executeCompiledConditionGroup(CompiledConditionGroup group, Object[] args) {
+        var leadingSelection = group.leadSelectionExecutor().select(args);
+        if (leadingSelection == null) {
+            return null;
+        }
+
+        var residualMatchers = group.residualMatchers();
+        if (residualMatchers.length == 0) {
+            return leadingSelection;
+        }
+
+        var candidateRows = leadingSelection.toIntArray();
+        var matched = new int[candidateRows.length];
+        var matchedCount = 0;
+
+        for (var rowIndex : candidateRows) {
+            var accepted = true;
+            for (var matcher : residualMatchers) {
+                if (!matcher.matches(plan.table(), rowIndex, args)) {
+                    accepted = false;
+                    break;
+                }
+            }
+            if (accepted) {
+                matched[matchedCount++] = rowIndex;
+            }
+        }
+
+        if (matchedCount == candidateRows.length) {
+            return leadingSelection;
+        }
+        return selectionFromRows(Arrays.copyOf(matched, matchedCount));
     }
 
     private Selection selectWithCompositeIndex(CompositeIndexProbeCompiler.CompositeIndexProbe probe,
@@ -2236,6 +2412,48 @@ public final class RepositoryRuntime<T> {
             return columnNames[columnIndex];
         }
         return null;
+    }
+
+    private ConditionExecutor[] conditionExecutorsFor(CompiledQuery query) {
+        var executors = plan.conditionExecutorsFor(query);
+        if (executors != null) {
+            return executors;
+        }
+        var index = compiledQueryIndexByInstance.get(query);
+        if (index != null
+                && index >= 0
+                && index < compiledConditionExecutorsByQuery.length) {
+            return compiledConditionExecutorsByQuery[index];
+        }
+        return dynamicConditionExecutors.computeIfAbsent(query, q -> {
+            var columnNames = plan.columnNames() != null ? plan.columnNames() : new String[0];
+            var entityClass = metadata != null ? metadata.entityClass() : plan.entityClass();
+            var useIndex = (factory != null || arena != null) && entityClass != null;
+            return buildConditionExecutors(
+                    new CompiledQuery[] { q },
+                    columnNames,
+                    primitiveNonNullByColumn,
+                    entityClass != null ? entityClass : Object.class,
+                    useIndex)[0];
+        });
+    }
+
+    private ProjectionExecutor projectionExecutorFor(CompiledQuery query) {
+        var executor = plan.projectionExecutorFor(query);
+        if (executor != null) {
+            return executor;
+        }
+        var index = compiledQueryIndexByInstance.get(query);
+        if (index != null
+                && index >= 0
+                && index < compiledProjectionExecutorsByQuery.length) {
+            return compiledProjectionExecutorsByQuery[index];
+        }
+        if (query.projection() == null) {
+            return null;
+        }
+        return dynamicProjectionExecutors.computeIfAbsent(query,
+                q -> buildProjectionExecutor(q, metadataProvider));
     }
 
     Selection selectionFromRows(int[] rows) {
@@ -3243,150 +3461,11 @@ public final class RepositoryRuntime<T> {
         return current;
     }
 
-    private Object materializeProjection(CompiledQuery.CompiledProjection projection, int rowIndex) {
-        CompiledQuery.CompiledProjectionItem[] items = projection.items();
-        Object[] args = new Object[items.length];
-        for (int i = 0; i < items.length; i++) {
-            args[i] = resolveProjectionValue(items[i], rowIndex);
-        }
-        MethodHandle ctor = projectionConstructor(projection.projectionType());
-        try {
-            return ctor.invokeWithArguments(args);
-        } catch (Throwable e) {
-            throw new RuntimeException("Failed to materialize projection", e);
-        }
-    }
-
-    private Object resolveProjectionValue(CompiledQuery.CompiledProjectionItem item, int rootRowIndex) {
-        int currentRow = rootRowIndex;
-        for (CompiledQuery.CompiledProjectionStep step : item.steps()) {
-            GeneratedTable sourceTable = tableFor(step.sourceEntity());
-            if (sourceTable == null || currentRow < 0) {
-                return null;
-            }
-            if (!sourceTable.isPresent(step.sourceColumnIndex(), currentRow)) {
-                return null;
-            }
-            Object fkValue = readProjectionFkValue(sourceTable, step.fkTypeCode(), step.sourceColumnIndex(),
-                    currentRow);
-            if (fkValue == null) {
-                return null;
-            }
-            GeneratedTable targetTable = tableFor(step.targetEntity());
-            if (targetTable == null) {
-                return null;
-            }
-            currentRow = resolveProjectionTargetRow(targetTable, step, fkValue);
-            if (currentRow < 0) {
-                return null;
-            }
-        }
-
-        GeneratedTable fieldTable = tableFor(item.fieldEntity());
-        if (fieldTable == null || currentRow < 0) {
-            return null;
-        }
-        var layout = runtimeLayoutsByEntity.get(item.fieldEntity());
-        return readProjectedValue(fieldTable, layout, item.columnIndex(), item.typeCode(),
-                currentRow);
-    }
-
-    private Object readProjectionFkValue(GeneratedTable table, byte typeCode, int columnIndex, int rowIndex) {
-        return switch (typeCode) {
-            case TypeCodes.TYPE_LONG -> Long.valueOf(table.readLong(columnIndex, rowIndex));
-            case TypeCodes.TYPE_INT -> Integer.valueOf(table.readInt(columnIndex, rowIndex));
-            case TypeCodes.TYPE_SHORT -> Short.valueOf((short) table.readInt(columnIndex, rowIndex));
-            case TypeCodes.TYPE_BYTE -> Byte.valueOf((byte) table.readInt(columnIndex, rowIndex));
-            case TypeCodes.TYPE_STRING -> table.readString(columnIndex, rowIndex);
-            default -> Long.valueOf(table.readLong(columnIndex, rowIndex));
-        };
-    }
-
-    private int resolveProjectionTargetRow(GeneratedTable targetTable,
-            CompiledQuery.CompiledProjectionStep step,
-            Object fkValue) {
-        if (step.targetColumnIsId()) {
-            long packedRef;
-            if (fkValue instanceof String stringId) {
-                packedRef = targetTable.lookupByIdString(stringId);
-            } else if (fkValue instanceof Number number) {
-                packedRef = targetTable.lookupById(number.longValue());
-            } else {
-                return -1;
-            }
-            return packedRef < 0 ? -1 : Selection.index(packedRef);
-        }
-
-        int[] matches = switch (step.fkTypeCode()) {
-            case TypeCodes.TYPE_LONG ->
-                targetTable.scanEqualsLong(step.targetColumnIndex(), ((Number) fkValue).longValue());
-            case TypeCodes.TYPE_INT,
-                    TypeCodes.TYPE_SHORT,
-                    TypeCodes.TYPE_BYTE ->
-                targetTable.scanEqualsInt(step.targetColumnIndex(), ((Number) fkValue).intValue());
-            case TypeCodes.TYPE_STRING -> targetTable.scanEqualsString(step.targetColumnIndex(), fkValue.toString());
-            default -> targetTable.scanEqualsLong(step.targetColumnIndex(), ((Number) fkValue).longValue());
-        };
-        return matches.length == 0 ? -1 : matches[0];
-    }
-
-    private Object readProjectedValue(GeneratedTable table,
-            EntityRuntimeLayout layout,
-            int columnIndex,
-            byte typeCode,
-            int rowIndex) {
-        if (!isPrimitiveNonNullColumn(layout, columnIndex) && !table.isPresent(columnIndex, rowIndex)) {
-            return null;
-        }
-
-        Object storage = switch (typeCode) {
-            case TypeCodes.TYPE_STRING,
-                    TypeCodes.TYPE_BIG_DECIMAL,
-                    TypeCodes.TYPE_BIG_INTEGER ->
-                table.readString(columnIndex, rowIndex);
-            case TypeCodes.TYPE_LONG,
-                    TypeCodes.TYPE_INSTANT,
-                    TypeCodes.TYPE_LOCAL_DATE,
-                    TypeCodes.TYPE_LOCAL_DATE_TIME,
-                    TypeCodes.TYPE_DATE,
-                    TypeCodes.TYPE_DOUBLE ->
-                table.readLong(columnIndex, rowIndex);
-            default -> table.readInt(columnIndex, rowIndex);
-        };
-
-        TypeConverter<?, ?> converter = layout != null && columnIndex >= 0
-                && columnIndex < layout.convertersByColumn().length
-                        ? layout.convertersByColumn()[columnIndex]
-                        : null;
-        if (converter != null && storage != null) {
-            @SuppressWarnings("unchecked")
-            TypeConverter<Object, Object> typedConverter = (TypeConverter<Object, Object>) converter;
-            return typedConverter.fromStorage(storage);
-        }
-
-        return switch (typeCode) {
-            case TypeCodes.TYPE_LONG -> (Long) storage;
-            case TypeCodes.TYPE_INT -> (Integer) storage;
-            case TypeCodes.TYPE_BOOLEAN -> ((Integer) storage) != 0;
-            case TypeCodes.TYPE_BYTE -> (byte) (int) storage;
-            case TypeCodes.TYPE_SHORT -> (short) (int) storage;
-            case TypeCodes.TYPE_FLOAT -> Float.intBitsToFloat((Integer) storage);
-            case TypeCodes.TYPE_DOUBLE -> Double.longBitsToDouble((Long) storage);
-            case TypeCodes.TYPE_CHAR -> (char) (int) storage;
-            case TypeCodes.TYPE_STRING -> storage;
-            default -> storage;
-        };
-    }
-
     private GeneratedTable tableFor(Class<?> entityClass) {
         if (metadata != null && metadata.entityClass().equals(entityClass)) {
             return plan.table();
         }
         return plan.tablesByEntity().get(entityClass);
-    }
-
-    private EntityMetadata<?> projectionMetadata(Class<?> entityClass) {
-        return projectionMetadata.get(entityClass);
     }
 
     private MethodHandle projectionConstructor(Class<?> projectionType) {
@@ -3770,6 +3849,27 @@ public final class RepositoryRuntime<T> {
     }
 
     private record JoinKey(Object left, Object right) {
+    }
+
+    boolean hasCompiledConditionProgram(CompiledQuery query) {
+        return compiledConditionProgramsByQuery.containsKey(query);
+    }
+
+    private record CompiledConditionProgram(
+            CompiledConditionGroup[] groups) {
+    }
+
+    private record CompiledConditionGroup(
+            LeadSelectionExecutor leadSelectionExecutor,
+            ConditionRowEvaluatorGenerator.RowConditionEvaluator[] residualMatchers) {
+    }
+
+    private record ConditionGroupRange(int start, int end) {
+    }
+
+    @FunctionalInterface
+    private interface LeadSelectionExecutor {
+        Selection select(Object[] args);
     }
 
     public RepositoryPlan<T> plan() {

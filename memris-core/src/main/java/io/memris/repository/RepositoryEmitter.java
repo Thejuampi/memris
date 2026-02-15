@@ -14,6 +14,7 @@ import io.memris.index.RangeIndex;
 import io.memris.index.StringPrefixIndex;
 import io.memris.index.StringSuffixIndex;
 import io.memris.query.CompiledQuery;
+import io.memris.query.OpCode;
 import io.memris.query.QueryCompiler;
 import io.memris.query.QueryPlanner;
 import io.memris.runtime.EntityMaterializer;
@@ -46,6 +47,7 @@ import java.lang.invoke.MethodHandles;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 import java.util.ArrayDeque;
+import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
 import java.util.HashMap;
@@ -62,12 +64,24 @@ import static java.util.Locale.ROOT;
 public final class RepositoryEmitter {
 
     private final ByteBuddy byteBuddy;
+    private static final Map<OpCode, InterceptorFactory> INTERCEPTOR_FACTORIES = buildInterceptorFactories();
+    private static final Map<OpCode, ExecutorFactory> EXECUTOR_FACTORIES = buildExecutorFactories();
 
     /**
      * Creates a RepositoryEmitter with default configuration.
      */
     public RepositoryEmitter() {
         this.byteBuddy = new ByteBuddy();
+    }
+
+    @FunctionalInterface
+    private interface InterceptorFactory {
+        Object create(RepositoryRuntime<?> runtime, RepositoryMethodBinding binding);
+    }
+
+    @FunctionalInterface
+    private interface ExecutorFactory {
+        RepositoryMethodExecutor create(RepositoryMethodBinding binding);
     }
 
     /**
@@ -587,24 +601,11 @@ public final class RepositoryEmitter {
     private static <T> Object interceptorFor(RepositoryRuntime<T> runtime,
             CompiledQuery query,
             RepositoryMethodBinding binding) {
-        return switch (query.opCode()) {
-            case SAVE_ONE -> new SaveOneInterceptor<>(runtime);
-            case SAVE_ALL -> new SaveAllInterceptor<>(runtime);
-            case FIND_BY_ID -> new FindByIdInterceptor<>(runtime);
-            case FIND_ALL -> new FindAllInterceptor<>(runtime);
-            case FIND -> new FindInterceptor<>(runtime, binding);
-            case COUNT -> new CountInterceptor<>(runtime, binding);
-            case COUNT_ALL -> new CountAllInterceptor<>(runtime);
-            case EXISTS -> new ExistsInterceptor<>(runtime, binding);
-            case EXISTS_BY_ID -> new ExistsByIdInterceptor<>(runtime);
-            case DELETE_ONE -> new DeleteOneInterceptor<>(runtime);
-            case DELETE_ALL -> new DeleteAllInterceptor<>(runtime);
-            case DELETE_BY_ID -> new DeleteByIdInterceptor<>(runtime);
-            case DELETE_QUERY -> new DeleteQueryInterceptor<>(runtime, binding);
-            case UPDATE_QUERY -> new UpdateQueryInterceptor<>(runtime, binding);
-            case DELETE_ALL_BY_ID -> new DeleteAllByIdInterceptor<>(runtime);
-            default -> throw new UnsupportedOperationException("Unsupported OpCode: " + query.opCode());
-        };
+        var factory = INTERCEPTOR_FACTORIES.get(query.opCode());
+        if (factory == null) {
+            throw new UnsupportedOperationException("Unsupported OpCode: " + query.opCode());
+        }
+        return factory.create(runtime, binding);
     }
 
     private static RepositoryMethodExecutor[] buildExecutors(CompiledQuery[] queries,
@@ -617,39 +618,77 @@ public final class RepositoryEmitter {
     }
 
     private static RepositoryMethodExecutor executorFor(CompiledQuery query, RepositoryMethodBinding binding) {
-        return switch (query.opCode()) {
-            case SAVE_ONE -> (runtime, args) -> ((RepositoryRuntime) runtime).saveOne(args[0]);
-            case SAVE_ALL -> (runtime, args) -> ((RepositoryRuntime) runtime).saveAll((Iterable<?>) args[0]);
-            case FIND_BY_ID -> (runtime, args) -> ((RepositoryRuntime) runtime).findById(args[0]);
-            case FIND_ALL -> (runtime, args) -> ((RepositoryRuntime) runtime).findAll();
-            case FIND -> (runtime, args) -> ((RepositoryRuntime) runtime).find(binding.query(),
-                    binding.resolveArgs(args));
-            case COUNT -> (runtime, args) -> ((RepositoryRuntime) runtime).countFast(binding.query(),
-                    binding.resolveArgs(args));
-            case COUNT_ALL -> (runtime, args) -> ((RepositoryRuntime) runtime).countAll();
-            case EXISTS -> (runtime, args) -> ((RepositoryRuntime) runtime).existsFast(binding.query(),
-                    binding.resolveArgs(args));
-            case EXISTS_BY_ID -> (runtime, args) -> ((RepositoryRuntime) runtime).existsById(args[0]);
-            case DELETE_ONE -> (runtime, args) -> {
-                ((RepositoryRuntime) runtime).deleteOne(args[0]);
-                return null;
-            };
-            case DELETE_ALL -> (runtime, args) -> {
-                ((RepositoryRuntime) runtime).deleteAll();
-                return null;
-            };
-            case DELETE_BY_ID -> (runtime, args) -> {
-                ((RepositoryRuntime) runtime).deleteById(args[0]);
-                return null;
-            };
-            case DELETE_QUERY -> (runtime, args) -> ((RepositoryRuntime) runtime).deleteQuery(binding.query(),
-                    binding.resolveArgs(args));
-            case UPDATE_QUERY -> (runtime, args) -> ((RepositoryRuntime) runtime).updateQuery(binding.query(),
-                    binding.resolveArgs(args));
-            case DELETE_ALL_BY_ID -> (runtime, args) -> ((RepositoryRuntime) runtime)
-                    .deleteAllById((Iterable<?>) args[0]);
-            default -> throw new UnsupportedOperationException("Unsupported OpCode: " + query.opCode());
-        };
+        var factory = EXECUTOR_FACTORIES.get(query.opCode());
+        if (factory == null) {
+            throw new UnsupportedOperationException("Unsupported OpCode: " + query.opCode());
+        }
+        return factory.create(binding);
+    }
+
+    private static Map<OpCode, InterceptorFactory> buildInterceptorFactories() {
+        var factories = new EnumMap<OpCode, InterceptorFactory>(OpCode.class);
+        factories.put(OpCode.SAVE_ONE, (runtime, binding) -> new SaveOneInterceptor<>(castRuntime(runtime)));
+        factories.put(OpCode.SAVE_ALL, (runtime, binding) -> new SaveAllInterceptor<>(castRuntime(runtime)));
+        factories.put(OpCode.FIND_BY_ID, (runtime, binding) -> new FindByIdInterceptor<>(castRuntime(runtime)));
+        factories.put(OpCode.FIND_ALL, (runtime, binding) -> new FindAllInterceptor<>(castRuntime(runtime)));
+        factories.put(OpCode.FIND_ALL_BY_ID,
+                (runtime, binding) -> new FindInterceptor<>(castRuntime(runtime), binding));
+        factories.put(OpCode.FIND, (runtime, binding) -> new FindInterceptor<>(castRuntime(runtime), binding));
+        factories.put(OpCode.COUNT, (runtime, binding) -> new CountInterceptor<>(castRuntime(runtime), binding));
+        factories.put(OpCode.COUNT_ALL, (runtime, binding) -> new CountAllInterceptor<>(castRuntime(runtime)));
+        factories.put(OpCode.EXISTS, (runtime, binding) -> new ExistsInterceptor<>(castRuntime(runtime), binding));
+        factories.put(OpCode.EXISTS_BY_ID, (runtime, binding) -> new ExistsByIdInterceptor<>(castRuntime(runtime)));
+        factories.put(OpCode.DELETE_ONE, (runtime, binding) -> new DeleteOneInterceptor<>(castRuntime(runtime)));
+        factories.put(OpCode.DELETE_ALL, (runtime, binding) -> new DeleteAllInterceptor<>(castRuntime(runtime)));
+        factories.put(OpCode.DELETE_BY_ID, (runtime, binding) -> new DeleteByIdInterceptor<>(castRuntime(runtime)));
+        factories.put(OpCode.DELETE_QUERY,
+                (runtime, binding) -> new DeleteQueryInterceptor<>(castRuntime(runtime), binding));
+        factories.put(OpCode.UPDATE_QUERY,
+                (runtime, binding) -> new UpdateQueryInterceptor<>(castRuntime(runtime), binding));
+        factories.put(OpCode.DELETE_ALL_BY_ID,
+                (runtime, binding) -> new DeleteAllByIdInterceptor<>(castRuntime(runtime)));
+        return Map.copyOf(factories);
+    }
+
+    private static Map<OpCode, ExecutorFactory> buildExecutorFactories() {
+        var factories = new EnumMap<OpCode, ExecutorFactory>(OpCode.class);
+        factories.put(OpCode.SAVE_ONE, binding -> (runtime, args) -> ((RepositoryRuntime) runtime).saveOne(args[0]));
+        factories.put(OpCode.SAVE_ALL,
+                binding -> (runtime, args) -> ((RepositoryRuntime) runtime).saveAll((Iterable<?>) args[0]));
+        factories.put(OpCode.FIND_BY_ID, binding -> (runtime, args) -> runtime.findById(args[0]));
+        factories.put(OpCode.FIND_ALL, binding -> (runtime, args) -> runtime.findAll());
+        factories.put(OpCode.FIND_ALL_BY_ID,
+                binding -> (runtime, args) -> runtime.find(binding.query(), binding.resolveArgs(args)));
+        factories.put(OpCode.FIND, binding -> (runtime, args) -> runtime.find(binding.query(), binding.resolveArgs(args)));
+        factories.put(OpCode.COUNT,
+                binding -> (runtime, args) -> runtime.countFast(binding.query(), binding.resolveArgs(args)));
+        factories.put(OpCode.COUNT_ALL, binding -> (runtime, args) -> runtime.countAll());
+        factories.put(OpCode.EXISTS,
+                binding -> (runtime, args) -> runtime.existsFast(binding.query(), binding.resolveArgs(args)));
+        factories.put(OpCode.EXISTS_BY_ID, binding -> (runtime, args) -> runtime.existsById(args[0]));
+        factories.put(OpCode.DELETE_ONE, binding -> (runtime, args) -> {
+            runtime.deleteOne(args[0]);
+            return null;
+        });
+        factories.put(OpCode.DELETE_ALL, binding -> (runtime, args) -> {
+            runtime.deleteAll();
+            return null;
+        });
+        factories.put(OpCode.DELETE_BY_ID, binding -> (runtime, args) -> {
+            runtime.deleteById(args[0]);
+            return null;
+        });
+        factories.put(OpCode.DELETE_QUERY,
+                binding -> (runtime, args) -> runtime.deleteQuery(binding.query(), binding.resolveArgs(args)));
+        factories.put(OpCode.UPDATE_QUERY,
+                binding -> (runtime, args) -> runtime.updateQuery(binding.query(), binding.resolveArgs(args)));
+        factories.put(OpCode.DELETE_ALL_BY_ID, binding -> (runtime, args) -> runtime.deleteAllById((Iterable<?>) args[0]));
+        return Map.copyOf(factories);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static <T> RepositoryRuntime<T> castRuntime(RepositoryRuntime<?> runtime) {
+        return (RepositoryRuntime<T>) runtime;
     }
 
     public static class SaveOneInterceptor<T> {
@@ -882,7 +921,7 @@ public final class RepositoryEmitter {
 
         // Always create a HashIndex on the ID field for O(1) lookups
         var idFieldName = metadata.idColumnName();
-        indexes.put(idFieldName, new HashIndex<>());
+        indexes.putIfAbsent(idFieldName, new HashIndex<>());
 
         for (var indexDefinition : metadata.indexDefinitions()) {
             var fieldNames = indexDefinition.fieldNames();
@@ -910,7 +949,7 @@ public final class RepositoryEmitter {
             } else {
                 index = composite ? new CompositeHashIndex() : new HashIndex<>();
             }
-            indexes.put(key, index);
+            indexes.putIfAbsent(key, index);
             if (!composite && fieldNames.length == 1 && !key.equals(fieldName)) {
                 // Preserve an explicit field-name index if one already exists.
                 // Custom-name aliases should not override an independently declared
