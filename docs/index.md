@@ -6,7 +6,7 @@ Welcome to Memris - a high-performance in-memory data storage for Java with Spri
 
 Memris is a blazingly fast, concurrency-safe, in-memory storage engine designed for Java applications. It provides:
 
-- **Zero-reflection query execution** - Sub-microsecond query performance via pre-compiled MethodHandles
+- **Zero-reflection query execution** - Low-overhead execution through pre-compiled access paths
 - **Columnar storage** - Paged primitive arrays (PageColumnInt, PageColumnLong, PageColumnString) for efficient memory usage and SIMD-friendly access
 - **Spring Boot integration** - Auto-configuration and Spring Data repository support
 - **JPQL queries** - Full @Query annotation support with SELECT, UPDATE, DELETE statements
@@ -40,7 +40,7 @@ public class Application {
 ### Method Name Derivation
 
 ```java
-public interface UserRepository extends MemrisRepository<User, Long> {
+public interface UserRepository extends MemrisRepository<User> {
     // Equality
     List<User> findByEmail(String email);
     Optional<User> findByEmailAndStatus(String email, String status);
@@ -80,7 +80,7 @@ public interface UserRepository extends MemrisRepository<User, Long> {
 ### JPQL Queries
 
 ```java
-public interface UserRepository extends MemrisRepository<User, Long> {
+public interface UserRepository extends MemrisRepository<User> {
     @Query("SELECT u FROM User u WHERE u.email = :email")
     Optional<User> findByEmailQuery(@Param("email") String email);
     
@@ -121,13 +121,13 @@ public class User {
     @Id
     private Long id;
     
-    @Index(IndexType.HASH)
+    @Index(type = Index.IndexType.HASH)
     private String email;
     
-    @Index(IndexType.RANGE)
+    @Index(type = Index.IndexType.BTREE)
     private Integer age;
     
-    @Index(IndexType.PREFIX)
+    @Index(type = Index.IndexType.PREFIX)
     private String name;
 }
 ```
@@ -182,7 +182,7 @@ Practical examples from basic CRUD to complex e-commerce scenarios.
 
 ## Performance Highlights
 
-- **Query execution**: ~1-5 nanoseconds overhead (pre-compiled)
+- **Query execution**: pre-compiled execution paths with low dispatch overhead
 - **Concurrent operations**: Lock-free ID generation and index lookups
 - **Memory efficiency**: Columnar storage with dense primitive arrays
 - **Scan performance**: SIMD-friendly paged arrays

@@ -74,7 +74,7 @@ String column storage with case-insensitive scan support.
 | **Cache locality** | Sequential access within pages |
 | **SIMD-friendly** | Primitive arrays enable JIT vectorization |
 | **Lazy allocation** | Pages created on demand via CAS |
-| **No boxing** | Direct primitive array access (5-10x memory savings) |
+| **No boxing** | Direct primitive array access with reduced per-row memory overhead |
 | **Growth** | 2x capacity when exceeded (amortized O(1)) |
 
 ## Index Integration

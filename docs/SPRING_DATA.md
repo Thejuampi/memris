@@ -361,7 +361,7 @@ public final class UserTable extends AbstractTable implements GeneratedTable {
 **1. Field Caching (O(1) lookup)** ✅
 - Direct field access via MethodHandles
 - Compile-time extraction
-- Impact: ~2-5x faster materialization
+- Impact: reduced materialization overhead
 
 **2. Zero-Reflection Hot Path** ✅
 - Compile-time query planning
@@ -381,7 +381,7 @@ public final class UserTable extends AbstractTable implements GeneratedTable {
 **5. ByteBuddy Table Generation** ✅
 - Generates optimized table classes at runtime
 - Pre-compiled MethodHandles for column access
-- Two strategies: MethodHandle (~5ns) and Bytecode (~1ns)
+- Two strategies: MethodHandle and Bytecode (`BYTECODE` is optimized for hot paths)
 
 ## Design Principles
 

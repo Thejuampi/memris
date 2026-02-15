@@ -91,7 +91,7 @@ For new projects using Spring Boot 3.x:
 <dependency>
     <groupId>io.github.thejuampi</groupId>
     <artifactId>memris-spring-boot-starter-3</artifactId>
-    <version>0.1.10</version>
+    <version>0.2.0</version>
 </dependency>
 ```
 
@@ -109,7 +109,7 @@ For existing projects on Spring Boot 2.7.x:
 <dependency>
     <groupId>io.github.thejuampi</groupId>
     <artifactId>memris-spring-boot-starter-2</artifactId>
-    <version>0.1.10</version>
+    <version>0.2.0</version>
 </dependency>
 ```
 

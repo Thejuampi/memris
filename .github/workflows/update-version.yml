@@ -36,26 +36,55 @@ jobs:
       - name: Update README.md
         run: |
           VERSION="${{ steps.version.outputs.VERSION }}"
-          
-          # Update Maven dependency
-          sed -i "s/<version>.*<\/version>/<version>$VERSION<\/version>/g" README.md
-          
-          # Update Gradle dependencies
-          sed -i "s/io.github.thejuampi:memris:[^']*/io.github.thejuampi:memris:$VERSION/g" README.md
-          
+          export VERSION
+          python3 - <<'PY'
+          import os
+          import pathlib
+          import re
+
+          version = os.environ["VERSION"]
+          path = pathlib.Path("README.md")
+          content = path.read_text(encoding="utf-8")
+          content = re.sub(
+              r'(<artifactId>memris(?:-[a-z0-9-]+)?</artifactId>\s*<version>)[^<]+(</version>)',
+              rf'\g<1>{version}\g<2>',
+              content
+          )
+          content = re.sub(
+              r'(io\.github\.thejuampi:memris(?:-[a-z0-9-]+)?:)[^\'"\s]+',
+              rf'\g<1>{version}',
+              content
+          )
+          path.write_text(content, encoding="utf-8")
+          PY
+
           # Show changes
           git diff README.md
 
       - name: Update Documentation Files
         run: |
           VERSION="${{ steps.version.outputs.VERSION }}"
-          
-          # Update all documentation files that contain version numbers
-          find docs -name "*.md" -type f -exec sed -i "s/<version>.*<\/version>/<version>$VERSION<\/version>/g" {} \;
-          find docs -name "*.md" -type f -exec sed -i "s/io.github.thejuampi:memris:[^']*/io.github.thejuampi:memris:$VERSION/g" {} \;
-          find docs -name "*.md" -type f -exec sed -i "s/io.github.thejuampi:memris-spring-boot-starter-3:[^']*/io.github.thejuampi:memris-spring-boot-starter-3:$VERSION/g" {} \;
-          find docs -name "*.md" -type f -exec sed -i "s/io.github.thejuampi:memris-spring-boot-starter-2:[^']*/io.github.thejuampi:memris-spring-boot-starter-2:$VERSION/g" {} \;
-          
+          export VERSION
+          python3 - <<'PY'
+          import os
+          import pathlib
+          import re
+
+          version = os.environ["VERSION"]
+          pattern_maven = re.compile(
+              r'(<artifactId>memris(?:-[a-z0-9-]+)?</artifactId>\s*<version>)[^<]+(</version>)'
+          )
+          pattern_gradle = re.compile(
+              r'(io\.github\.thejuampi:memris(?:-[a-z0-9-]+)?:)[^\'"\s]+'
+          )
+
+          for path in pathlib.Path("docs").rglob("*.md"):
+              content = path.read_text(encoding="utf-8")
+              content = pattern_maven.sub(rf'\g<1>{version}\g<2>', content)
+              content = pattern_gradle.sub(rf'\g<1>{version}', content)
+              path.write_text(content, encoding="utf-8")
+          PY
+
           # Show all changes
           git diff --stat
 
