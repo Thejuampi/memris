@@ -928,7 +928,7 @@ public final class RuntimeExecutorGenerator {
             }
             long min = ((Number) args[argIndex]).longValue();
             long max = ((Number) args[argIndex + 1]).longValue();
-            return createSelection(table, table.scanBetweenLong(columnIndex, min, max));
+            return SelectionImpl.fromScanIndices(table, table.scanBetweenLong(columnIndex, min, max));
         }
     }
 
@@ -946,7 +946,7 @@ public final class RuntimeExecutorGenerator {
             }
             int min = ((Number) args[argIndex]).intValue();
             int max = ((Number) args[argIndex + 1]).intValue();
-            return createSelection(table, table.scanBetweenInt(columnIndex, min, max));
+            return SelectionImpl.fromScanIndices(table, table.scanBetweenInt(columnIndex, min, max));
         }
     }
 
@@ -966,7 +966,7 @@ public final class RuntimeExecutorGenerator {
             Object maxObj = args[argIndex + 1];
             int min = (minObj instanceof Character c) ? c : minObj.toString().charAt(0);
             int max = (maxObj instanceof Character c) ? c : maxObj.toString().charAt(0);
-            return createSelection(table, table.scanBetweenInt(columnIndex, min, max));
+            return SelectionImpl.fromScanIndices(table, table.scanBetweenInt(columnIndex, min, max));
         }
     }
 
@@ -984,7 +984,7 @@ public final class RuntimeExecutorGenerator {
             }
             int min = FloatEncoding.floatToSortableInt(((Number) args[argIndex]).floatValue());
             int max = FloatEncoding.floatToSortableInt(((Number) args[argIndex + 1]).floatValue());
-            return createSelection(table, table.scanBetweenInt(columnIndex, min, max));
+            return SelectionImpl.fromScanIndices(table, table.scanBetweenInt(columnIndex, min, max));
         }
     }
 
@@ -1002,7 +1002,7 @@ public final class RuntimeExecutorGenerator {
             }
             long min = FloatEncoding.doubleToSortableLong(((Number) args[argIndex]).doubleValue());
             long max = FloatEncoding.doubleToSortableLong(((Number) args[argIndex + 1]).doubleValue());
-            return createSelection(table, table.scanBetweenLong(columnIndex, min, max));
+            return SelectionImpl.fromScanIndices(table, table.scanBetweenLong(columnIndex, min, max));
         }
     }
 
@@ -1022,7 +1022,7 @@ public final class RuntimeExecutorGenerator {
             }
             long min = convertToEpochLong(typeCode, args[argIndex]);
             long max = convertToEpochLong(typeCode, args[argIndex + 1]);
-            return createSelection(table, table.scanBetweenLong(columnIndex, min, max));
+            return SelectionImpl.fromScanIndices(table, table.scanBetweenLong(columnIndex, min, max));
         }
     }
 
@@ -1048,7 +1048,7 @@ public final class RuntimeExecutorGenerator {
                     }
                     long min = ((Number) args[argIndex]).longValue();
                     long max = ((Number) args[argIndex + 1]).longValue();
-                    return createSelection(table, table.scanBetweenLong(columnIndex, min, max));
+                    return SelectionImpl.fromScanIndices(table, table.scanBetweenLong(columnIndex, min, max));
                 };
             case TypeCodes.TYPE_INT, TypeCodes.TYPE_BYTE, TypeCodes.TYPE_SHORT ->
                 (table, argIndex, args) -> {
@@ -1057,7 +1057,7 @@ public final class RuntimeExecutorGenerator {
                     }
                     int min = ((Number) args[argIndex]).intValue();
                     int max = ((Number) args[argIndex + 1]).intValue();
-                    return createSelection(table, table.scanBetweenInt(columnIndex, min, max));
+                    return SelectionImpl.fromScanIndices(table, table.scanBetweenInt(columnIndex, min, max));
                 };
             case TypeCodes.TYPE_CHAR ->
                 (table, argIndex, args) -> {
@@ -1068,7 +1068,7 @@ public final class RuntimeExecutorGenerator {
                     Object maxObj = args[argIndex + 1];
                     int min = (minObj instanceof Character c) ? c : minObj.toString().charAt(0);
                     int max = (maxObj instanceof Character c) ? c : maxObj.toString().charAt(0);
-                    return createSelection(table, table.scanBetweenInt(columnIndex, min, max));
+                    return SelectionImpl.fromScanIndices(table, table.scanBetweenInt(columnIndex, min, max));
                 };
             case TypeCodes.TYPE_FLOAT ->
                 (table, argIndex, args) -> {
@@ -1077,7 +1077,7 @@ public final class RuntimeExecutorGenerator {
                     }
                     int min = FloatEncoding.floatToSortableInt(((Number) args[argIndex]).floatValue());
                     int max = FloatEncoding.floatToSortableInt(((Number) args[argIndex + 1]).floatValue());
-                    return createSelection(table, table.scanBetweenInt(columnIndex, min, max));
+                    return SelectionImpl.fromScanIndices(table, table.scanBetweenInt(columnIndex, min, max));
                 };
             case TypeCodes.TYPE_DOUBLE ->
                 (table, argIndex, args) -> {
@@ -1086,7 +1086,7 @@ public final class RuntimeExecutorGenerator {
                     }
                     long min = FloatEncoding.doubleToSortableLong(((Number) args[argIndex]).doubleValue());
                     long max = FloatEncoding.doubleToSortableLong(((Number) args[argIndex + 1]).doubleValue());
-                    return createSelection(table, table.scanBetweenLong(columnIndex, min, max));
+                    return SelectionImpl.fromScanIndices(table, table.scanBetweenLong(columnIndex, min, max));
                 };
             case TypeCodes.TYPE_INSTANT, TypeCodes.TYPE_LOCAL_DATE, TypeCodes.TYPE_LOCAL_DATE_TIME,
                     TypeCodes.TYPE_DATE ->
@@ -1096,7 +1096,7 @@ public final class RuntimeExecutorGenerator {
                     }
                     long min = convertToEpochLong(typeCode, args[argIndex]);
                     long max = convertToEpochLong(typeCode, args[argIndex + 1]);
-                    return createSelection(table, table.scanBetweenLong(columnIndex, min, max));
+                    return SelectionImpl.fromScanIndices(table, table.scanBetweenLong(columnIndex, min, max));
                 };
             default ->
                 (table, argIndex, args) -> {
@@ -1177,9 +1177,9 @@ public final class RuntimeExecutorGenerator {
         @RuntimeType
         public Selection execute(GeneratedTable table, Object value) {
             if (value == null) {
-                return createSelection(table, new int[0]);
+                return SelectionImpl.EMPTY;
             }
-            return createSelection(table, table.scanInString(columnIndex, toStringArray(value)));
+            return SelectionImpl.fromScanIndices(table, table.scanInString(columnIndex, toStringArray(value)));
         }
     }
 
@@ -1195,9 +1195,9 @@ public final class RuntimeExecutorGenerator {
         @RuntimeType
         public Selection execute(GeneratedTable table, Object value) {
             if (value == null) {
-                return createSelection(table, new int[0]);
+                return SelectionImpl.EMPTY;
             }
-            return createSelection(table, table.scanInLong(columnIndex, toLongArray(typeCode, value)));
+            return SelectionImpl.fromScanIndices(table, table.scanInLong(columnIndex, toLongArray(typeCode, value)));
         }
     }
 
@@ -1213,9 +1213,9 @@ public final class RuntimeExecutorGenerator {
         @RuntimeType
         public Selection execute(GeneratedTable table, Object value) {
             if (value == null) {
-                return createSelection(table, new int[0]);
+                return SelectionImpl.EMPTY;
             }
-            return createSelection(table, table.scanInInt(columnIndex, toIntArray(typeCode, value)));
+            return SelectionImpl.fromScanIndices(table, table.scanInInt(columnIndex, toIntArray(typeCode, value)));
         }
     }
 
@@ -1237,25 +1237,27 @@ public final class RuntimeExecutorGenerator {
             case TypeCodes.TYPE_STRING, TypeCodes.TYPE_BIG_DECIMAL, TypeCodes.TYPE_BIG_INTEGER ->
                 (table, value) -> {
                     if (value == null) {
-                        return createSelection(table, new int[0]);
+                        return SelectionImpl.EMPTY;
                     }
-                    return createSelection(table, table.scanInString(columnIndex, toStringArray(value)));
+                    return SelectionImpl.fromScanIndices(table, table.scanInString(columnIndex, toStringArray(value)));
                 };
             case TypeCodes.TYPE_LONG, TypeCodes.TYPE_INSTANT, TypeCodes.TYPE_LOCAL_DATE,
                     TypeCodes.TYPE_LOCAL_DATE_TIME, TypeCodes.TYPE_DATE, TypeCodes.TYPE_DOUBLE ->
                 (table, value) -> {
                     if (value == null) {
-                        return createSelection(table, new int[0]);
+                        return SelectionImpl.EMPTY;
                     }
-                    return createSelection(table, table.scanInLong(columnIndex, toLongArray(typeCode, value)));
+                    return SelectionImpl.fromScanIndices(table,
+                            table.scanInLong(columnIndex, toLongArray(typeCode, value)));
                 };
             case TypeCodes.TYPE_INT, TypeCodes.TYPE_BOOLEAN, TypeCodes.TYPE_BYTE, TypeCodes.TYPE_SHORT,
                     TypeCodes.TYPE_CHAR, TypeCodes.TYPE_FLOAT ->
                 (table, value) -> {
                     if (value == null) {
-                        return createSelection(table, new int[0]);
+                        return SelectionImpl.EMPTY;
                     }
-                    return createSelection(table, table.scanInInt(columnIndex, toIntArray(typeCode, value)));
+                    return SelectionImpl.fromScanIndices(table,
+                            table.scanInInt(columnIndex, toIntArray(typeCode, value)));
                 };
             default ->
                 (table, value) -> {
@@ -1286,7 +1288,16 @@ public final class RuntimeExecutorGenerator {
             }
             return result;
         }
+        if (value instanceof java.util.Collection<?> col) {
+            long[] result = new long[col.size()];
+            int i = 0;
+            for (Object item : col) {
+                result[i++] = convertToLong(typeCode, item);
+            }
+            return result;
+        }
         if (value instanceof Iterable<?> iterable) {
+            // Rare path: non-Collection Iterable — must count first
             int size = 0;
             for (Object ignored : iterable) {
                 size++;
@@ -1347,7 +1358,16 @@ public final class RuntimeExecutorGenerator {
             }
             return result;
         }
+        if (value instanceof java.util.Collection<?> col) {
+            int[] result = new int[col.size()];
+            int i = 0;
+            for (Object item : col) {
+                result[i++] = convertToInt(typeCode, item);
+            }
+            return result;
+        }
         if (value instanceof Iterable<?> iterable) {
+            // Rare path: non-Collection Iterable — must count first
             int size = 0;
             for (Object ignored : iterable) {
                 size++;
@@ -1373,7 +1393,16 @@ public final class RuntimeExecutorGenerator {
             }
             return result;
         }
+        if (value instanceof java.util.Collection<?> col) {
+            String[] result = new String[col.size()];
+            int i = 0;
+            for (Object item : col) {
+                result[i++] = item != null ? item.toString() : null;
+            }
+            return result;
+        }
         if (value instanceof Iterable<?> iterable) {
+            // Rare path: non-Collection Iterable — must count first
             int size = 0;
             for (Object ignored : iterable) {
                 size++;
@@ -1422,15 +1451,6 @@ public final class RuntimeExecutorGenerator {
             case TypeCodes.TYPE_DATE -> ((Date) value).getTime();
             default -> ((Number) value).longValue();
         };
-    }
-
-    private static Selection createSelection(GeneratedTable table, int[] indices) {
-        long[] packed = new long[indices.length];
-        for (int i = 0; i < indices.length; i++) {
-            int rowIndex = indices[i];
-            packed[i] = Selection.pack(rowIndex, table.rowGeneration(rowIndex));
-        }
-        return new SelectionImpl(packed);
     }
 
     // ========================================================================

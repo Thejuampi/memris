@@ -7,18 +7,58 @@ import java.util.Arrays;
  * <p>
  * <b>Performance characteristics:</b>
  * <ul>
- *   <li>contains(): O(log n) binary search (sorted refs)</li>
- *   <li>intersect(): O(n+m) merge</li>
- *   <li>union(): O(n+m) merge with dedupe</li>
- *   <li>subtract(): O(n+m) merge</li>
+ * <li>contains(): O(log n) binary search (sorted refs)</li>
+ * <li>intersect(): O(n+m) merge</li>
+ * <li>union(): O(n+m) merge with dedupe</li>
+ * <li>subtract(): O(n+m) merge</li>
  * </ul>
  */
 public final class SelectionImpl implements Selection {
+
+    /**
+     * Shared empty selection — avoids allocating a new object on every null/empty
+     * path.
+     */
+    public static final SelectionImpl EMPTY = new SelectionImpl(new long[0]);
 
     private final long[] refs;
 
     public SelectionImpl(long[] refs) {
         this.refs = normalize(refs);
+    }
+
+    /**
+     * Package-private constructor that skips normalization.
+     * Use only when the caller guarantees refs are already sorted ascending.
+     */
+    SelectionImpl(long[] refs, boolean preSorted) {
+        this.refs = preSorted ? refs : normalize(refs);
+    }
+
+    /**
+     * Create a Selection from scan-result row indices.
+     * <p>
+     * This is the canonical way to convert {@code int[]} scan results
+     * (which are already in ascending row-index order) into a {@code Selection}.
+     * It packs each index with its generation in a single pass and skips
+     * the sort-verification that the normal constructor performs.
+     *
+     * @param table   the table to read row generations from
+     * @param indices row indices returned by a scan method
+     * @return a new Selection, or {@link #EMPTY} if indices is empty
+     */
+    public static SelectionImpl fromScanIndices(GeneratedTable table, int[] indices) {
+        if (indices.length == 0) {
+            return EMPTY;
+        }
+        long[] packed = new long[indices.length];
+        for (int i = 0; i < indices.length; i++) {
+            int rowIndex = indices[i];
+            packed[i] = Selection.pack(rowIndex, table.rowGeneration(rowIndex));
+        }
+        // Scan results are in ascending row-index order, and pack preserves
+        // that order (generation is in the high bits), so skip re-sorting.
+        return new SelectionImpl(packed, true);
     }
 
     @Override
