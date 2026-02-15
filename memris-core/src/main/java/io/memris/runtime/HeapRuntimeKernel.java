@@ -81,9 +81,9 @@ public record HeapRuntimeKernel(GeneratedTable table, TypeHandlerRegistry handle
         var operator = cc.operator();
         Object value = null;
         if (operator != LogicalQuery.Operator.IS_NULL
-            && operator != LogicalQuery.Operator.NOT_NULL
-            && operator != LogicalQuery.Operator.IS_TRUE
-            && operator != LogicalQuery.Operator.IS_FALSE) {
+                && operator != LogicalQuery.Operator.NOT_NULL
+                && operator != LogicalQuery.Operator.IS_TRUE
+                && operator != LogicalQuery.Operator.IS_FALSE) {
             value = args[cc.argumentIndex()];
         }
 
@@ -123,21 +123,6 @@ public record HeapRuntimeKernel(GeneratedTable table, TypeHandlerRegistry handle
     }
 
     private Selection subtractSelections(int[] allRows, Selection toRemove) {
-        var packed = new long[allRows.length];
-        for (var i = 0; i < allRows.length; i++) {
-            var rowIndex = allRows[i];
-            packed[i] = Selection.pack(rowIndex, table.rowGeneration(rowIndex));
-        }
-        return new SelectionImpl(packed).subtract(toRemove);
-    }
-
-    @SuppressWarnings("unused")
-    private Selection createSelection(GeneratedTable table, int[] indices) {
-        var packed = new long[indices.length];
-        for (var i = 0; i < indices.length; i++) {
-            var rowIndex = indices[i];
-            packed[i] = Selection.pack(rowIndex, table.rowGeneration(rowIndex));
-        }
-        return new SelectionImpl(packed);
+        return SelectionImpl.fromScanIndices(table, allRows).subtract(toRemove);
     }
 }

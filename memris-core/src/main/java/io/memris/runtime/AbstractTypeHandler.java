@@ -8,16 +8,17 @@ import io.memris.query.LogicalQuery;
 /**
  * Abstract base class for type handlers providing common functionality.
  * 
- * <p>Subclasses only need to implement the type-specific scan methods.
+ * <p>
+ * Subclasses only need to implement the type-specific scan methods.
  * Common operations like NOT, IN, and NOT_IN are handled by this base class.
  * 
  * @param <T> the Java type this handler supports
  */
 public abstract class AbstractTypeHandler<T> implements TypeHandler<T> {
-    
+
     @Override
     public Selection executeCondition(GeneratedTable table, int columnIndex,
-                                       LogicalQuery.Operator operator, T value, boolean ignoreCase) {
+            LogicalQuery.Operator operator, T value, boolean ignoreCase) {
         return switch (operator) {
             case EQ -> executeEquals(table, columnIndex, value, ignoreCase);
             case NE -> executeNotEquals(table, columnIndex, value);
@@ -31,15 +32,15 @@ public abstract class AbstractTypeHandler<T> implements TypeHandler<T> {
             case IS_NULL -> executeIsNull(table, columnIndex);
             case NOT_NULL -> executeIsNotNull(table, columnIndex);
             default -> throw new UnsupportedOperationException(
-                "Operator " + operator + " not supported for type " + getJavaType().getSimpleName());
+                    "Operator " + operator + " not supported for type " + getJavaType().getSimpleName());
         };
     }
-    
+
     /**
      * Execute equality comparison.
      */
     protected abstract Selection executeEquals(GeneratedTable table, int columnIndex, T value, boolean ignoreCase);
-    
+
     /**
      * Execute not-equals comparison (default: all minus matches).
      */
@@ -48,38 +49,38 @@ public abstract class AbstractTypeHandler<T> implements TypeHandler<T> {
         Selection matches = executeEquals(table, columnIndex, value, false);
         return subtractSelections(table, all, matches);
     }
-    
+
     /**
      * Execute greater-than comparison.
      */
     protected abstract Selection executeGreaterThan(GeneratedTable table, int columnIndex, T value);
-    
+
     /**
      * Execute greater-than-or-equal comparison.
      */
     protected abstract Selection executeGreaterThanOrEqual(GeneratedTable table, int columnIndex, T value);
-    
+
     /**
      * Execute less-than comparison.
      */
     protected abstract Selection executeLessThan(GeneratedTable table, int columnIndex, T value);
-    
+
     /**
      * Execute less-than-or-equal comparison.
      */
     protected abstract Selection executeLessThanOrEqual(GeneratedTable table, int columnIndex, T value);
-    
+
     /**
      * Execute between comparison.
      * Value should be an array of two elements [min, max].
      */
     protected abstract Selection executeBetween(GeneratedTable table, int columnIndex, T value);
-    
+
     /**
      * Execute IN (set membership) comparison.
      */
     protected abstract Selection executeIn(GeneratedTable table, int columnIndex, T value);
-    
+
     /**
      * Execute NOT IN comparison (default: all minus in set).
      */
@@ -88,7 +89,7 @@ public abstract class AbstractTypeHandler<T> implements TypeHandler<T> {
         Selection inSet = executeIn(table, columnIndex, value);
         return subtractSelections(table, all, inSet);
     }
-    
+
     /**
      * Execute IS NULL check.
      * Default implementation scans all and filters nulls.
@@ -106,7 +107,7 @@ public abstract class AbstractTypeHandler<T> implements TypeHandler<T> {
         System.arraycopy(nullRows, 0, trimmed, 0, count);
         return createSelection(table, trimmed);
     }
-    
+
     /**
      * Execute IS NOT NULL check.
      * Default implementation: all rows minus null rows.
@@ -116,19 +117,14 @@ public abstract class AbstractTypeHandler<T> implements TypeHandler<T> {
         int[] all = table.scanAll();
         return subtractSelections(table, all, nullRows);
     }
-    
+
     /**
      * Helper method to create a Selection from int[] row indices.
      */
     protected Selection createSelection(GeneratedTable table, int[] indices) {
-        long[] packed = new long[indices.length];
-        for (int i = 0; i < indices.length; i++) {
-            int rowIndex = indices[i];
-            packed[i] = io.memris.storage.Selection.pack(rowIndex, table.rowGeneration(rowIndex));
-        }
-        return new SelectionImpl(packed);
+        return SelectionImpl.fromScanIndices(table, indices);
     }
-    
+
     /**
      * Helper method to subtract one selection from another.
      */
@@ -141,7 +137,7 @@ public abstract class AbstractTypeHandler<T> implements TypeHandler<T> {
         Selection allSel = new SelectionImpl(allPacked);
         return allSel.subtract(toRemove);
     }
-    
+
     /**
      * Helper method to subtract a selection from an int array.
      */
