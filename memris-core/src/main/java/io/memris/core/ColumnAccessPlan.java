@@ -13,8 +13,6 @@ import java.lang.reflect.Field;
  */
 public final class ColumnAccessPlan {
 
-    private static final MethodHandles.Lookup LOOKUP = MethodHandles.lookup();
-
     private final Class<?> rootType;
     private final String propertyPath;
     private final int columnIndex;
@@ -98,7 +96,9 @@ public final class ColumnAccessPlan {
                 throw new IllegalArgumentException("Field path not found: " + rootType.getName() + "#" + propertyPath);
             }
             try {
-                MethodHandles.Lookup privateLookup = MethodHandles.privateLookupIn(field.getDeclaringClass(), LOOKUP);
+                MethodHandles.Lookup privateLookup = MethodHandles.privateLookupIn(
+                        field.getDeclaringClass(),
+                        MethodHandles.lookup());
                 getters[i] = privateLookup.unreflectGetter(field)
                         .asType(MethodType.methodType(Object.class, Object.class));
                 setters[i] = privateLookup.unreflectSetter(field)
@@ -218,7 +218,7 @@ public final class ColumnAccessPlan {
 
     private static MethodHandle resolveNoArgConstructor(Class<?> type, Class<?> rootType, String propertyPath) {
         try {
-            MethodHandles.Lookup privateLookup = MethodHandles.privateLookupIn(type, LOOKUP);
+            MethodHandles.Lookup privateLookup = MethodHandles.privateLookupIn(type, MethodHandles.lookup());
             return privateLookup.findConstructor(type, MethodType.methodType(void.class))
                     .asType(MethodType.methodType(Object.class));
         } catch (NoSuchMethodException | IllegalAccessException e) {

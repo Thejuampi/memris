@@ -25,10 +25,12 @@ import static net.bytebuddy.matcher.ElementMatchers.named;
  */
 public final class ConditionRowEvaluatorGenerator {
 
-    private static final ConcurrentHashMap<String, RowConditionEvaluator> CACHE = new ConcurrentHashMap<>();
-    private static final AtomicLong CLASS_COUNTER = new AtomicLong();
+    private final ConcurrentHashMap<String, RowConditionEvaluator> cache = new ConcurrentHashMap<>();
+    private final AtomicLong classCounter = new AtomicLong();
+    private final RuntimeExecutorGenerator runtimeExecutorGenerator;
 
-    private ConditionRowEvaluatorGenerator() {
+    public ConditionRowEvaluatorGenerator(RuntimeExecutorGenerator runtimeExecutorGenerator) {
+        this.runtimeExecutorGenerator = runtimeExecutorGenerator;
     }
 
     @FunctionalInterface
@@ -36,13 +38,13 @@ public final class ConditionRowEvaluatorGenerator {
         boolean matches(GeneratedTable table, int rowIndex, Object[] args);
     }
 
-    public static RowConditionEvaluator generate(CompiledQuery.CompiledCondition condition, boolean primitiveNonNull) {
+    public RowConditionEvaluator generate(CompiledQuery.CompiledCondition condition, boolean primitiveNonNull) {
         if (!isSupported(condition)) {
             return null;
         }
         var key = condition.columnIndex() + ":" + condition.typeCode() + ":" + condition.operator() + ":"
                 + condition.argumentIndex() + ":" + condition.ignoreCase() + ":" + primitiveNonNull;
-        return CACHE.computeIfAbsent(key, ignored -> doGenerate(condition, primitiveNonNull));
+        return cache.computeIfAbsent(key, ignored -> doGenerate(condition, primitiveNonNull));
     }
 
     private static boolean isSupported(CompiledQuery.CompiledCondition condition) {
@@ -53,16 +55,16 @@ public final class ConditionRowEvaluatorGenerator {
         };
     }
 
-    private static RowConditionEvaluator doGenerate(CompiledQuery.CompiledCondition condition, boolean primitiveNonNull) {
+    private RowConditionEvaluator doGenerate(CompiledQuery.CompiledCondition condition, boolean primitiveNonNull) {
         MatcherDelegate delegate = createDelegate(condition, primitiveNonNull);
         if (delegate == null) {
             return null;
         }
-        if (!RuntimeExecutorGenerator.isEnabled()) {
+        if (!runtimeExecutorGenerator.isEnabled()) {
             return delegate::matches;
         }
         try {
-            String className = "io.memris.runtime.codegen.RowConditionEvaluator$Gen" + CLASS_COUNTER.incrementAndGet();
+            String className = "io.memris.runtime.codegen.RowConditionEvaluator$Gen" + classCounter.incrementAndGet();
             DynamicType.Builder<?> builder = new ByteBuddy()
                     .subclass(Object.class)
                     .implement(RowConditionEvaluator.class)
@@ -672,7 +674,7 @@ public final class ConditionRowEvaluatorGenerator {
         return new String[] { value.toString() };
     }
 
-    static void clearCache() {
-        CACHE.clear();
+    public void clearCache() {
+        cache.clear();
     }
 }

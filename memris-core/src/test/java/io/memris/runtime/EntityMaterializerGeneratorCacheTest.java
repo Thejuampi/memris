@@ -8,6 +8,12 @@ import io.memris.core.converter.TypeConverterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 class EntityMaterializerGeneratorCacheTest {
@@ -16,7 +22,7 @@ class EntityMaterializerGeneratorCacheTest {
 
     @BeforeEach
     void clearCache() {
-        EntityMaterializerGenerator.clearCacheForTests();
+        generator.clearCache();
     }
 
     @Test
@@ -39,6 +45,35 @@ class EntityMaterializerGeneratorCacheTest {
         var second = generator.generate(MetadataExtractor.extractEntityMetadata(ConverterEntity.class));
 
         assertThat(second).isNotSameAs(first);
+    }
+
+    @Test
+    void shouldReuseMaterializerUnderConcurrentGeneration() throws Exception {
+        var metadata = MetadataExtractor.extractEntityMetadata(CachedEntity.class);
+        var unique = ConcurrentHashMap.newKeySet();
+        int threads = 8;
+        var ready = new CountDownLatch(threads);
+        var start = new CountDownLatch(1);
+        var done = new CountDownLatch(threads);
+        try (var executor = Executors.newFixedThreadPool(threads)) {
+            for (int i = 0; i < threads; i++) {
+                executor.submit(() -> {
+                    ready.countDown();
+                    try {
+                        start.await();
+                        unique.add(generator.generate(metadata));
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                    } finally {
+                        done.countDown();
+                    }
+                });
+            }
+            ready.await();
+            start.countDown();
+            assertThat(done.await(5, TimeUnit.SECONDS)).isTrue();
+        }
+        assertThat((Set<?>) unique).hasSize(1);
     }
 
     @Entity

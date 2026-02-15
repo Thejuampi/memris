@@ -1,6 +1,7 @@
 package io.memris.runtime;
 
 import io.memris.query.CompiledQuery;
+import io.memris.runtime.codegen.RuntimeExecutorGenerator;
 import io.memris.storage.GeneratedTable;
 import io.memris.storage.SimpleTable;
 
@@ -173,8 +174,58 @@ public final class RepositoryPlan<T> {
             java.util.Map<String, SimpleTable> joinTables,
             EntitySaver<T, ?> entitySaver,
             IdLookup idLookup) {
+        return fromGeneratedTable(
+                table,
+                entityClass,
+                idColumnName,
+                queries,
+                bindings,
+                executors,
+                conditionExecutors,
+                orderExecutors,
+                projectionExecutors,
+                entityConstructor,
+                columnNames,
+                typeCodes,
+                converters,
+                setters,
+                tablesByEntity,
+                kernelsByEntity,
+                materializersByEntity,
+                joinTables,
+                entitySaver,
+                idLookup,
+                new RuntimeExecutorGenerator());
+    }
 
-        HeapRuntimeKernel kernel = new HeapRuntimeKernel(table);
+    /**
+     * Create a RepositoryPlan from a GeneratedTable with an explicit runtime
+     * executor generator.
+     */
+    public static <T> RepositoryPlan<T> fromGeneratedTable(
+            GeneratedTable table,
+            Class<T> entityClass,
+            String idColumnName,
+            CompiledQuery[] queries,
+            RepositoryMethodBinding[] bindings,
+            RepositoryMethodExecutor[] executors,
+            ConditionExecutor[][] conditionExecutors,
+            OrderExecutor[] orderExecutors,
+            ProjectionExecutor[] projectionExecutors,
+            MethodHandle entityConstructor,
+            String[] columnNames,
+            byte[] typeCodes,
+            io.memris.core.converter.TypeConverter<?, ?>[] converters,
+            MethodHandle[] setters,
+            java.util.Map<Class<?>, GeneratedTable> tablesByEntity,
+            java.util.Map<Class<?>, HeapRuntimeKernel> kernelsByEntity,
+            java.util.Map<Class<?>, EntityMaterializer<?>> materializersByEntity,
+            java.util.Map<String, SimpleTable> joinTables,
+            EntitySaver<T, ?> entitySaver,
+            IdLookup idLookup,
+            RuntimeExecutorGenerator runtimeExecutorGenerator) {
+
+        HeapRuntimeKernel kernel = new HeapRuntimeKernel(table, runtimeExecutorGenerator);
 
         return new Builder<T>()
                 .entityClass(entityClass)

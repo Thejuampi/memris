@@ -40,27 +40,27 @@ import java.util.concurrent.ConcurrentHashMap;
  * Embedded/multi-segment fields use precompiled {@link ColumnAccessPlan}.
  */
 public final class EntitySaverGenerator {
-    private static final ConcurrentHashMap<ShapeKey, EntitySaver<?, ?>> SAVER_CACHE = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<ShapeKey, EntitySaver<?, ?>> saverCache = new ConcurrentHashMap<>();
     private static final String RELATIONSHIP_HANDLE_MAP_FIELD = "relationshipHandleMap";
 
-    public static <T> EntitySaver<T, ?> generate(Class<T> entityClass, EntityMetadata<T> metadata) {
+    public <T> EntitySaver<T, ?> generate(Class<T> entityClass, EntityMetadata<T> metadata) {
         ShapeKey key = ShapeKey.from(metadata);
         @SuppressWarnings("unchecked")
-        EntitySaver<T, ?> cached = (EntitySaver<T, ?>) SAVER_CACHE.get(key);
+        EntitySaver<T, ?> cached = (EntitySaver<T, ?>) saverCache.get(key);
         if (cached != null) {
             return cached;
         }
         EntitySaver<T, ?> generated = generateUncached(entityClass, metadata);
         @SuppressWarnings("unchecked")
-        EntitySaver<T, ?> existing = (EntitySaver<T, ?>) SAVER_CACHE.putIfAbsent(key, generated);
+        EntitySaver<T, ?> existing = (EntitySaver<T, ?>) saverCache.putIfAbsent(key, generated);
         return existing != null ? existing : generated;
     }
 
-    static void clearCacheForTests() {
-        SAVER_CACHE.clear();
+    void clearCache() {
+        saverCache.clear();
     }
 
-    private static <T> EntitySaver<T, ?> generateUncached(Class<T> entityClass, EntityMetadata<T> metadata) {
+    private <T> EntitySaver<T, ?> generateUncached(Class<T> entityClass, EntityMetadata<T> metadata) {
         var idField = resolveIdField(entityClass, metadata);
         var fields = resolveFields(entityClass, metadata, idField.field.getName());
         var converterFields = fields.stream().filter(f -> f.converter != null).toList();

@@ -25,7 +25,7 @@ class RepositoryPlanTest {
         EntityMetadata<TestEntity> metadata = MetadataExtractor.extractEntityMetadata(entityClass);
 
         // Generate EntitySaver
-        EntitySaver<TestEntity, ?> entitySaver = EntitySaverGenerator.generate(entityClass, metadata);
+        EntitySaver<TestEntity, ?> entitySaver = new EntitySaverGenerator().generate(entityClass, metadata);
 
         // Create minimal RepositoryPlan with EntitySaver
         CompiledQuery[] queries = new CompiledQuery[0];
@@ -71,7 +71,7 @@ class RepositoryPlanTest {
         // Create entity and metadata
         Class<TestEntity> entityClass = TestEntity.class;
         EntityMetadata<TestEntity> metadata = MetadataExtractor.extractEntityMetadata(entityClass);
-        EntitySaver<TestEntity, ?> entitySaver = EntitySaverGenerator.generate(entityClass, metadata);
+        EntitySaver<TestEntity, ?> entitySaver = new EntitySaverGenerator().generate(entityClass, metadata);
 
         // Build plan with EntitySaver
         RepositoryPlan<TestEntity> plan = RepositoryPlan.<TestEntity>builder()
@@ -110,3 +110,4 @@ class RepositoryPlanTest {
     private record SaverSnapshot(Object idBeforeSet, Long idAfterSet, Object extractedAfterSet) {
     }
 }
+

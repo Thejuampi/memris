@@ -108,6 +108,8 @@ public final class RepositoryRuntime<T> {
     private final ProjectionExecutor[] compiledProjectionExecutorsByQuery;
     private final java.util.IdentityHashMap<CompiledQuery, Integer> compiledQueryIndexByInstance;
     private final boolean hasCompositeIndexPlans;
+    private final RuntimeExecutorGenerator runtimeExecutorGenerator;
+    private final ConditionRowEvaluatorGenerator conditionRowEvaluatorGenerator;
     private static final ThreadLocal<SortBuffers> SORT_BUFFERS = ThreadLocal.withInitial(SortBuffers::new);
 
     /**
@@ -131,6 +133,16 @@ public final class RepositoryRuntime<T> {
      */
     public RepositoryRuntime(RepositoryPlan<T> plan, MemrisRepositoryFactory factory, MemrisArena arena,
             EntityMetadata<T> metadata) {
+        this(plan, factory, arena, metadata, defaultRuntimeExecutorGenerator(factory), null);
+    }
+
+    public RepositoryRuntime(
+            RepositoryPlan<T> plan,
+            MemrisRepositoryFactory factory,
+            MemrisArena arena,
+            EntityMetadata<T> metadata,
+            RuntimeExecutorGenerator runtimeExecutorGenerator,
+            ConditionRowEvaluatorGenerator conditionRowEvaluatorGenerator) {
         if (plan == null) {
             throw new IllegalArgumentException("plan required");
         }
@@ -138,6 +150,12 @@ public final class RepositoryRuntime<T> {
         this.factory = factory;
         this.arena = arena;
         this.metadata = metadata;
+        this.runtimeExecutorGenerator = runtimeExecutorGenerator != null
+                ? runtimeExecutorGenerator
+                : defaultRuntimeExecutorGenerator(factory);
+        this.conditionRowEvaluatorGenerator = conditionRowEvaluatorGenerator != null
+                ? conditionRowEvaluatorGenerator
+                : new ConditionRowEvaluatorGenerator(this.runtimeExecutorGenerator);
         if (metadata != null && plan.materializersByEntity() != null) {
             @SuppressWarnings("unchecked")
             EntityMaterializer<T> materializer = (EntityMaterializer<T>) plan.materializersByEntity()
@@ -151,7 +169,7 @@ public final class RepositoryRuntime<T> {
                 ? config.entityMetadataProvider()
                 : MetadataExtractor::extractEntityMetadata;
         var compiledArtifacts = RepositoryRuntimeCompiler.compile(plan, factory, arena, metadata,
-                this.metadataProvider);
+                this.metadataProvider, this.runtimeExecutorGenerator);
         this.storageReadersByColumn = compiledArtifacts.storageReadersByColumn();
         this.compiledConditionExecutorsByQuery = compiledArtifacts.conditionExecutorsByQuery();
         this.compiledProjectionExecutorsByQuery = compiledArtifacts.projectionExecutorsByQuery();
@@ -222,6 +240,11 @@ public final class RepositoryRuntime<T> {
         }
     }
 
+    private static RuntimeExecutorGenerator defaultRuntimeExecutorGenerator(MemrisRepositoryFactory factory) {
+        var config = factory != null ? factory.getConfiguration() : null;
+        return new RuntimeExecutorGenerator(config);
+    }
+
     public static ConditionExecutor[][] buildConditionExecutors(CompiledQuery[] queries, String[] columnNames,
             boolean[] primitiveNonNullColumns, Class<?> entityClass, boolean useIndex) {
         var executors = new ConditionExecutor[queries.length][];
@@ -251,14 +274,24 @@ public final class RepositoryRuntime<T> {
     }
 
     public static ProjectionExecutor[] buildProjectionExecutors(CompiledQuery[] queries) {
-        return buildProjectionExecutors(queries, io.memris.core.MetadataExtractor::extractEntityMetadata);
+        return buildProjectionExecutors(
+                queries,
+                io.memris.core.MetadataExtractor::extractEntityMetadata,
+                new RuntimeExecutorGenerator());
     }
 
     public static ProjectionExecutor[] buildProjectionExecutors(CompiledQuery[] queries,
             io.memris.core.EntityMetadataProvider metadataProvider) {
+        return buildProjectionExecutors(queries, metadataProvider, new RuntimeExecutorGenerator());
+    }
+
+    public static ProjectionExecutor[] buildProjectionExecutors(
+            CompiledQuery[] queries,
+            io.memris.core.EntityMetadataProvider metadataProvider,
+            RuntimeExecutorGenerator runtimeExecutorGenerator) {
         var executors = new ProjectionExecutor[queries.length];
         for (var i = 0; i < queries.length; i++) {
-            executors[i] = buildProjectionExecutor(queries[i], metadataProvider);
+            executors[i] = buildProjectionExecutor(queries[i], metadataProvider, runtimeExecutorGenerator);
         }
         return executors;
     }
@@ -425,7 +458,7 @@ public final class RepositoryRuntime<T> {
                         continue;
                     }
                     var condition = conditions[i];
-                    var matcher = ConditionRowEvaluatorGenerator.generate(
+                    var matcher = conditionRowEvaluatorGenerator.generate(
                             condition,
                             isPrimitiveNonNullColumn(condition.columnIndex()));
                     if (matcher == null) {
@@ -560,8 +593,10 @@ public final class RepositoryRuntime<T> {
                 builders);
     }
 
-    private static ProjectionExecutor buildProjectionExecutor(CompiledQuery query,
-            io.memris.core.EntityMetadataProvider metadataProvider) {
+    private static ProjectionExecutor buildProjectionExecutor(
+            CompiledQuery query,
+            io.memris.core.EntityMetadataProvider metadataProvider,
+            RuntimeExecutorGenerator runtimeExecutorGenerator) {
         var projection = query.projection();
         if (projection == null) {
             return null;
@@ -569,16 +604,18 @@ public final class RepositoryRuntime<T> {
         var items = projection.items();
         var itemExecutors = new ProjectionItemExecutor[items.length];
         for (var i = 0; i < items.length; i++) {
-            itemExecutors[i] = buildProjectionItemExecutor(items[i], metadataProvider);
+            itemExecutors[i] = buildProjectionItemExecutor(items[i], metadataProvider, runtimeExecutorGenerator);
         }
         return new ProjectionExecutorImpl(projection, itemExecutors);
     }
 
-    private static ProjectionItemExecutor buildProjectionItemExecutor(CompiledQuery.CompiledProjectionItem item,
-            io.memris.core.EntityMetadataProvider metadataProvider) {
+    private static ProjectionItemExecutor buildProjectionItemExecutor(
+            CompiledQuery.CompiledProjectionItem item,
+            io.memris.core.EntityMetadataProvider metadataProvider,
+            RuntimeExecutorGenerator runtimeExecutorGenerator) {
         var steps = new ProjectionStepExecutor[item.steps().length];
         for (var i = 0; i < item.steps().length; i++) {
-            steps[i] = buildProjectionStepExecutor(item.steps()[i]);
+            steps[i] = buildProjectionStepExecutor(item.steps()[i], runtimeExecutorGenerator);
         }
         EntityMetadata<?> fieldMetadata = metadataProvider.getMetadata(item.fieldEntity());
         TypeConverter<?, ?> converter = TypeConverterRegistry.getInstance()
@@ -586,28 +623,36 @@ public final class RepositoryRuntime<T> {
         if (converter == null) {
             converter = fieldMetadata.converters().get(item.fieldName());
         }
-        var reader = buildFieldValueReader(item.columnIndex(), item.typeCode(), converter);
+        var reader = buildFieldValueReader(item.columnIndex(), item.typeCode(), converter, runtimeExecutorGenerator);
         return new ProjectionItemExecutor(item.fieldEntity(), steps, reader);
     }
 
-    private static ProjectionStepExecutor buildProjectionStepExecutor(CompiledQuery.CompiledProjectionStep step) {
-        var fkReader = buildFkReader(step.fkTypeCode(), step.sourceColumnIndex());
-        var resolver = buildTargetRowResolver(step);
+    private static ProjectionStepExecutor buildProjectionStepExecutor(
+            CompiledQuery.CompiledProjectionStep step,
+            RuntimeExecutorGenerator runtimeExecutorGenerator) {
+        var fkReader = buildFkReader(step.fkTypeCode(), step.sourceColumnIndex(), runtimeExecutorGenerator);
+        var resolver = buildTargetRowResolver(step, runtimeExecutorGenerator);
         return new ProjectionStepExecutor(step.sourceEntity(), step.targetEntity(), fkReader, resolver);
     }
 
-    private static FkReader buildFkReader(byte typeCode, int columnIndex) {
-        return RuntimeExecutorGenerator.generateFkReader(columnIndex, typeCode)::read;
+    private static FkReader buildFkReader(
+            byte typeCode,
+            int columnIndex,
+            RuntimeExecutorGenerator runtimeExecutorGenerator) {
+        return runtimeExecutorGenerator.generateFkReader(columnIndex, typeCode)::read;
     }
 
-    private static TargetRowResolver buildTargetRowResolver(CompiledQuery.CompiledProjectionStep step) {
-        return RuntimeExecutorGenerator.generateTargetRowResolver(
+    private static TargetRowResolver buildTargetRowResolver(
+            CompiledQuery.CompiledProjectionStep step,
+            RuntimeExecutorGenerator runtimeExecutorGenerator) {
+        return runtimeExecutorGenerator.generateTargetRowResolver(
                 step.targetColumnIsId(), step.fkTypeCode(), step.targetColumnIndex())::resolve;
     }
 
     private static FieldValueReader buildFieldValueReader(int columnIndex, byte typeCode,
-            TypeConverter<?, ?> converter) {
-        return RuntimeExecutorGenerator.generateFieldValueReader(columnIndex, typeCode, converter)::read;
+            TypeConverter<?, ?> converter,
+            RuntimeExecutorGenerator runtimeExecutorGenerator) {
+        return runtimeExecutorGenerator.generateFieldValueReader(columnIndex, typeCode, converter)::read;
     }
 
     private static final class ProjectionExecutorImpl implements ProjectionExecutor {
@@ -1495,7 +1540,7 @@ public final class RepositoryRuntime<T> {
     private Object readGroupingValue(int columnIndex, byte typeCode, int rowIndex) {
         var table = plan.table();
         return table.readWithSeqLock(rowIndex,
-                () -> RuntimeExecutorGenerator.generateGroupingValueReader(columnIndex, typeCode).read(table,
+                () -> runtimeExecutorGenerator.generateGroupingValueReader(columnIndex, typeCode).read(table,
                         rowIndex));
     }
 
@@ -2145,7 +2190,7 @@ public final class RepositoryRuntime<T> {
     }
 
     private IndexValueReader buildIndexValueReader(FieldMapping field, TypeConverter<?, ?> converter) {
-        var compiledReader = RuntimeExecutorGenerator.generateFieldValueReader(
+        var compiledReader = runtimeExecutorGenerator.generateFieldValueReader(
                 field.columnPosition(),
                 field.typeCode(),
                 converter);
@@ -2489,7 +2534,7 @@ public final class RepositoryRuntime<T> {
             return null;
         }
         return dynamicProjectionExecutors.computeIfAbsent(query,
-                q -> buildProjectionExecutor(q, metadataProvider));
+                q -> buildProjectionExecutor(q, metadataProvider, runtimeExecutorGenerator));
     }
 
     Selection selectionFromRows(int[] rows) {

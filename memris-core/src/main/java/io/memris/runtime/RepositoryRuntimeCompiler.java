@@ -23,12 +23,16 @@ public final class RepositoryRuntimeCompiler {
             MemrisRepositoryFactory factory,
             MemrisArena arena,
             EntityMetadata<T> metadata,
-            EntityMetadataProvider metadataProvider) {
+            EntityMetadataProvider metadataProvider,
+            RuntimeExecutorGenerator runtimeExecutorGenerator) {
         var queries = plan.queries();
         var queryIndexByInstance = buildQueryIndex(queries);
-        var storageReadersByColumn = compileStorageReaders(plan);
+        var storageReadersByColumn = compileStorageReaders(plan, runtimeExecutorGenerator);
         var conditionExecutorsByQuery = compileConditionExecutors(plan, metadata, factory, arena);
-        var projectionExecutorsByQuery = compileProjectionExecutors(queries, metadataProvider);
+        var projectionExecutorsByQuery = compileProjectionExecutors(
+                queries,
+                metadataProvider,
+                runtimeExecutorGenerator);
         return new CompiledRuntimeArtifacts(
                 storageReadersByColumn,
                 conditionExecutorsByQuery,
@@ -36,7 +40,9 @@ public final class RepositoryRuntimeCompiler {
                 queryIndexByInstance);
     }
 
-    private static StorageValueReader[] compileStorageReaders(RepositoryPlan<?> plan) {
+    private static StorageValueReader[] compileStorageReaders(
+            RepositoryPlan<?> plan,
+            RuntimeExecutorGenerator runtimeExecutorGenerator) {
         var table = plan.table();
         var typeCodes = plan.typeCodes();
 
@@ -48,14 +54,14 @@ public final class RepositoryRuntimeCompiler {
             var readers = new StorageValueReader[columnCount];
             for (var i = 0; i < columnCount; i++) {
                 var typeCode = typeCodes != null && i < typeCodes.length ? typeCodes[i] : table.typeCodeAt(i);
-                readers[i] = RuntimeExecutorGenerator.generateStorageValueReader(i, typeCode);
+                readers[i] = runtimeExecutorGenerator.generateStorageValueReader(i, typeCode);
             }
             return readers;
         } else if (typeCodes != null && typeCodes.length > 0) {
             int columnCount = typeCodes.length;
             var readers = new StorageValueReader[columnCount];
             for (var i = 0; i < columnCount; i++) {
-                readers[i] = RuntimeExecutorGenerator.generateStorageValueReader(i, typeCodes[i]);
+                readers[i] = runtimeExecutorGenerator.generateStorageValueReader(i, typeCodes[i]);
             }
             return readers;
         } else {
@@ -102,14 +108,15 @@ public final class RepositoryRuntimeCompiler {
 
     private static ProjectionExecutor[] compileProjectionExecutors(
             CompiledQuery[] queries,
-            EntityMetadataProvider metadataProvider) {
+            EntityMetadataProvider metadataProvider,
+            RuntimeExecutorGenerator runtimeExecutorGenerator) {
         if (queries == null || queries.length == 0) {
             return new ProjectionExecutor[0];
         }
         EntityMetadataProvider provider = metadataProvider != null
                 ? metadataProvider
                 : MetadataExtractor::extractEntityMetadata;
-        return RepositoryRuntime.buildProjectionExecutors(queries, provider);
+        return RepositoryRuntime.buildProjectionExecutors(queries, provider, runtimeExecutorGenerator);
     }
 
     private static IdentityHashMap<CompiledQuery, Integer> buildQueryIndex(CompiledQuery[] queries) {

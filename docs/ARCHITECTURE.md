@@ -134,19 +134,20 @@ Custom annotations for entity marking:
 - Generates type-specialized executors at runtime using ByteBuddy
 - Eliminates runtime type switches on hot paths
 - Generates: FieldValueReader, FkReader, TargetRowResolver, ConditionExecutor, OrderKeyBuilder
+- Instance-owned by `RepositoryEmitter` (arena-scoped), no static mutable registry
 - Feature toggle: `-Dmemris.codegen.enabled=false` to disable
 
 **EntityMaterializerGenerator**
 - Generates materializer classes for flat and embedded columns
 - Uses direct field bytecode for flat public fields
 - Uses `ColumnAccessPlan` for dotted/embedded paths
-- Caches generated artifacts by entity shape
+- Caches generated artifacts by entity shape per arena
 
 **EntitySaverGenerator**
 - Generates saver classes for insert/update operations
 - Uses direct field bytecode for flat public fields
 - Uses `ColumnAccessPlan` for dotted/embedded paths
-- Caches generated artifacts by entity shape
+- Caches generated artifacts by entity shape per arena
 
 ### Layer 5: Storage Layer
 
@@ -284,6 +285,17 @@ return int[] rowIndices
 EntityMaterializer.materialize(rows) → List<Person>
 ```
 
+## Arena Scope and Lifecycle
+
+- `MemrisArena` owns one `RepositoryEmitter`, and each emitter owns all runtime generators.
+- Runtime codegen caches are per-arena (`ConcurrentHashMap`) and are not shared globally.
+- `MemrisArena` uses a `ReentrantReadWriteLock` + `AtomicBoolean closed` lifecycle contract:
+  - read lock for public operations (`createRepository`, table/index/counter access)
+  - write lock for `close()`
+  - operations after close fail fast with `IllegalStateException`
+- Repository creation inside one arena is idempotent under concurrency via `computeIfAbsent`.
+- `close()` is terminal: new operations are rejected, in-flight operations complete, arena/emitter caches are cleared.
+
 ## Important Files Reference
 
 | File | Purpose |
@@ -313,6 +325,8 @@ EntityMaterializer.materialize(rows) → List<Person>
 - **SIMD Not Implemented**: Plain loops used; JIT may auto-vectorize
 - **Custom annotations**: Uses `@Entity`, `@Index`, etc. (not Jakarta/JPA)
 - **Repository generation**: `RepositoryEmitter` generates repository implementations at runtime
+- **Codegen cache scope**: Runtime executor/saver/materializer/evaluator caches are arena-scoped
+- **Arena close semantics**: Fail-fast for new operations; in-flight operations complete safely
 - **Relationship Support**: All relationship types fully implemented
 - **Lock-Free Data Structures**: `LockFreeFreeList` uses Treiber stack algorithm with CAS
 - **Seqlock Support**: `rowSeqLocks` in AbstractTable provides per-row atomicity
