@@ -4,25 +4,26 @@ import json
 import math
 import sys
 from pathlib import Path
+from typing import Dict, List
 
 
-def load_baseline(path: Path) -> dict[str, float]:
+def load_baseline(path: Path) -> Dict[str, float]:
     with path.open("r", encoding="utf-8") as handle:
         raw = json.load(handle)
     if not isinstance(raw, dict):
         raise ValueError("baseline must be a JSON object {benchmark: score}")
-    baseline: dict[str, float] = {}
+    baseline: Dict[str, float] = {}
     for benchmark, score in raw.items():
         baseline[str(benchmark)] = float(score)
     return baseline
 
 
-def load_current(path: Path) -> dict[str, float]:
+def load_current(path: Path) -> Dict[str, float]:
     with path.open("r", encoding="utf-8") as handle:
         raw = json.load(handle)
     if not isinstance(raw, list):
         raise ValueError("current JMH result must be a JSON array")
-    current: dict[str, float] = {}
+    current: Dict[str, float] = {}
     for entry in raw:
         benchmark = entry.get("benchmark")
         metric = entry.get("primaryMetric") or {}
@@ -55,7 +56,7 @@ def main() -> int:
     baseline = load_baseline(Path(args.baseline))
     current = load_current(Path(args.current))
 
-    failures: list[str] = []
+    failures: List[str] = []
     for benchmark, baseline_score in baseline.items():
         if benchmark not in current:
             failures.append(f"missing benchmark result: {benchmark}")
