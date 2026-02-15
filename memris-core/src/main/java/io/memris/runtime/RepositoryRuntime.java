@@ -2296,7 +2296,12 @@ public final class RepositoryRuntime<T> {
         for (var rowIndex : candidateRows) {
             var accepted = true;
             for (var matcher : residualMatchers) {
-                if (!matcher.matches(plan.table(), rowIndex, args)) {
+                // Matchers might read from the table, so we must protect against torn reads
+                // using the seqlock, similar to other read paths.
+                var isMatch = plan.table().readWithSeqLock(rowIndex,
+                        () -> matcher.matches(plan.table(), rowIndex, args));
+
+                if (!isMatch) {
                     accepted = false;
                     break;
                 }

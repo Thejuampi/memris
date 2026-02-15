@@ -12,12 +12,10 @@ Example usage (from PowerShell):
 
 ```powershell
 # Preview actions only
-.
-\scripts\remove_memris_worktrees.ps1 -Repo "G:\dev\repos\memris" -DryRun
+.\scripts\remove_memris_worktrees.ps1 -Repo "G:\dev\repos\memris" -DryRun
 
 # Interactive run (prompts before removing and deleting directories)
-.
-\scripts\remove_memris_worktrees.ps1 -Repo "G:\dev\repos\memris"
+.\scripts\remove_memris_worktrees.ps1 -Repo "G:\dev\repos\memris"
 
 # Force removal and delete directories without prompts
 .

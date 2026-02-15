@@ -55,7 +55,7 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 # Parse porcelain blocks (blocks separated by blank line)
-$blocks = -split ($porcelain -join "`n"), "`n`n"
+$blocks = ($porcelain -join "`n") -split "`n`n"
 $worktrees = @()
 foreach ($b in $blocks) {
     $lines = $b -split "`n" | Where-Object { $_ -ne "" }
@@ -78,7 +78,7 @@ $index = 0
 foreach ($w in $worktrees) {
     $index++
     $isMain = (Resolve-Path -Path $w.Path).ProviderPath -eq $repoFull
-    $marker = $isMain ? "(main)" : "(remove)"
+    if ($isMain) { $marker = "(main)" } else { $marker = "(remove)" }
     Write-Host "[$index] $($w.Path) $marker -- HEAD: $($w.HEAD) Branch: $($w.Branch)"
 }
 
@@ -114,12 +114,14 @@ foreach ($w in $toRemove) {
         Write-Host "Deleting directory: $p"
         try { Remove-Item -LiteralPath $p -Recurse -Force -ErrorAction Stop; Write-Host "Directory deleted." }
         catch { Write-Warning ("Failed to delete directory {0}: {1}" -f $p, $_) }
-    } else {
+    }
+    else {
         $del = Read-Host "Delete directory $p from disk? Type 'yes' to delete"
         if ($del -eq 'yes') {
             try { Remove-Item -LiteralPath $p -Recurse -Force -ErrorAction Stop; Write-Host "Directory deleted." }
             catch { Write-Warning ("Failed to delete directory {0}: {1}" -f $p, $_) }
-        } else {
+        }
+        else {
             Write-Host "Left directory intact: $p"
         }
     }

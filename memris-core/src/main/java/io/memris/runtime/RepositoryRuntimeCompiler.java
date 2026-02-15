@@ -39,22 +39,28 @@ public final class RepositoryRuntimeCompiler {
     private static StorageValueReader[] compileStorageReaders(RepositoryPlan<?> plan) {
         var table = plan.table();
         var typeCodes = plan.typeCodes();
-        var columnCount = table != null ? table.columnCount() : (typeCodes != null ? typeCodes.length : 0);
-        if (columnCount == 0) {
-            return new StorageValueReader[0];
-        }
-        var readers = new StorageValueReader[columnCount];
-        if (table == null) {
+
+        if (table != null) {
+            int columnCount = table.columnCount();
+            if (columnCount == 0) {
+                return new StorageValueReader[0];
+            }
+            var readers = new StorageValueReader[columnCount];
+            for (var i = 0; i < columnCount; i++) {
+                var typeCode = typeCodes != null && i < typeCodes.length ? typeCodes[i] : table.typeCodeAt(i);
+                readers[i] = RuntimeExecutorGenerator.generateStorageValueReader(i, typeCode);
+            }
+            return readers;
+        } else if (typeCodes != null && typeCodes.length > 0) {
+            int columnCount = typeCodes.length;
+            var readers = new StorageValueReader[columnCount];
             for (var i = 0; i < columnCount; i++) {
                 readers[i] = RuntimeExecutorGenerator.generateStorageValueReader(i, typeCodes[i]);
             }
             return readers;
+        } else {
+            return new StorageValueReader[0];
         }
-        for (var i = 0; i < columnCount; i++) {
-            var typeCode = typeCodes != null && i < typeCodes.length ? typeCodes[i] : table.typeCodeAt(i);
-            readers[i] = RuntimeExecutorGenerator.generateStorageValueReader(i, typeCode);
-        }
-        return readers;
     }
 
     private static <T> ConditionExecutor[][] compileConditionExecutors(
