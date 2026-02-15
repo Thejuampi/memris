@@ -39,13 +39,17 @@ public final class RepositoryRuntimeCompiler {
     private static StorageValueReader[] compileStorageReaders(RepositoryPlan<?> plan) {
         var table = plan.table();
         var typeCodes = plan.typeCodes();
-        var columnCount = table != null
-                ? table.columnCount()
-                : (typeCodes != null ? typeCodes.length : 0);
+        var columnCount = table != null ? table.columnCount() : (typeCodes != null ? typeCodes.length : 0);
         if (columnCount == 0) {
             return new StorageValueReader[0];
         }
         var readers = new StorageValueReader[columnCount];
+        if (table == null) {
+            for (var i = 0; i < columnCount; i++) {
+                readers[i] = RuntimeExecutorGenerator.generateStorageValueReader(i, typeCodes[i]);
+            }
+            return readers;
+        }
         for (var i = 0; i < columnCount; i++) {
             var typeCode = typeCodes != null && i < typeCodes.length ? typeCodes[i] : table.typeCodeAt(i);
             readers[i] = RuntimeExecutorGenerator.generateStorageValueReader(i, typeCode);

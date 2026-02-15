@@ -253,7 +253,7 @@ public final class ConditionRowEvaluatorGenerator {
             }
             String actual = table.readString(columnIndex, rowIndex);
             if (actual == null || expected == null) {
-                return actual == expected;
+                return java.util.Objects.equals(actual, expected);
             }
             return ignoreCase ? actual.equalsIgnoreCase(expected) : actual.equals(expected);
         }
