@@ -101,10 +101,6 @@ public final class RuntimeExecutorGenerator {
      */
     public static FieldValueReader generateFieldValueReader(int columnIndex, byte typeCode,
             TypeConverter<?, ?> converter) {
-        if (!isEnabled()) {
-            return createFallbackFieldValueReader(columnIndex, typeCode, converter);
-        }
-
         String converterKey = converter != null ? "_C" + System.identityHashCode(converter) : "";
         String key = "FVR_" + columnIndex + "_" + typeCode + converterKey;
 
@@ -139,7 +135,7 @@ public final class RuntimeExecutorGenerator {
                 return (FieldValueReader) implClass.getDeclaredConstructor().newInstance();
             }
         } catch (Exception e) {
-            return createFallbackFieldValueReader(columnIndex, typeCode, converter);
+            throw new IllegalStateException("Failed to generate FieldValueReader for column " + columnIndex, e);
         }
     }
 
@@ -350,90 +346,6 @@ public final class RuntimeExecutorGenerator {
         return ((TypeConverter<Object, Object>) converter).fromStorage(value);
     }
 
-    private static FieldValueReader createFallbackFieldValueReader(int columnIndex, byte typeCode,
-            TypeConverter<?, ?> converter) {
-        return switch (typeCode) {
-            case TypeCodes.TYPE_STRING, TypeCodes.TYPE_BIG_DECIMAL, TypeCodes.TYPE_BIG_INTEGER ->
-                (table, rowIndex) -> {
-                    if (!table.isPresent(columnIndex, rowIndex))
-                        return null;
-                    Object val = table.readString(columnIndex, rowIndex);
-                    return converter != null ? applyConverter(converter, val) : val;
-                };
-            case TypeCodes.TYPE_LONG ->
-                (table, rowIndex) -> {
-                    if (!table.isPresent(columnIndex, rowIndex))
-                        return null;
-                    Object val = table.readLong(columnIndex, rowIndex);
-                    return converter != null ? applyConverter(converter, val) : val;
-                };
-            case TypeCodes.TYPE_INSTANT, TypeCodes.TYPE_LOCAL_DATE, TypeCodes.TYPE_LOCAL_DATE_TIME,
-                    TypeCodes.TYPE_DATE ->
-                (table, rowIndex) -> {
-                    if (!table.isPresent(columnIndex, rowIndex))
-                        return null;
-                    Object val = table.readLong(columnIndex, rowIndex);
-                    return converter != null ? applyConverter(converter, val) : val;
-                };
-            case TypeCodes.TYPE_INT ->
-                (table, rowIndex) -> {
-                    if (!table.isPresent(columnIndex, rowIndex))
-                        return null;
-                    Object val = table.readInt(columnIndex, rowIndex);
-                    return converter != null ? applyConverter(converter, val) : val;
-                };
-            case TypeCodes.TYPE_BOOLEAN ->
-                (table, rowIndex) -> {
-                    if (!table.isPresent(columnIndex, rowIndex))
-                        return null;
-                    Object val = table.readInt(columnIndex, rowIndex) != 0;
-                    return converter != null ? applyConverter(converter, val) : val;
-                };
-            case TypeCodes.TYPE_BYTE ->
-                (table, rowIndex) -> {
-                    if (!table.isPresent(columnIndex, rowIndex))
-                        return null;
-                    Object val = (byte) table.readInt(columnIndex, rowIndex);
-                    return converter != null ? applyConverter(converter, val) : val;
-                };
-            case TypeCodes.TYPE_SHORT ->
-                (table, rowIndex) -> {
-                    if (!table.isPresent(columnIndex, rowIndex))
-                        return null;
-                    Object val = (short) table.readInt(columnIndex, rowIndex);
-                    return converter != null ? applyConverter(converter, val) : val;
-                };
-            case TypeCodes.TYPE_CHAR ->
-                (table, rowIndex) -> {
-                    if (!table.isPresent(columnIndex, rowIndex))
-                        return null;
-                    Object val = (char) table.readInt(columnIndex, rowIndex);
-                    return converter != null ? applyConverter(converter, val) : val;
-                };
-            case TypeCodes.TYPE_FLOAT ->
-                (table, rowIndex) -> {
-                    if (!table.isPresent(columnIndex, rowIndex))
-                        return null;
-                    Object val = FloatEncoding.sortableIntToFloat(table.readInt(columnIndex, rowIndex));
-                    return converter != null ? applyConverter(converter, val) : val;
-                };
-            case TypeCodes.TYPE_DOUBLE ->
-                (table, rowIndex) -> {
-                    if (!table.isPresent(columnIndex, rowIndex))
-                        return null;
-                    Object val = FloatEncoding.sortableLongToDouble(table.readLong(columnIndex, rowIndex));
-                    return converter != null ? applyConverter(converter, val) : val;
-                };
-            default ->
-                (table, rowIndex) -> {
-                    if (!table.isPresent(columnIndex, rowIndex))
-                        return null;
-                    Object val = table.readInt(columnIndex, rowIndex);
-                    return converter != null ? applyConverter(converter, val) : val;
-                };
-        };
-    }
-
     // ========================================================================
     // FkReader Generation
     // ========================================================================
@@ -450,10 +362,6 @@ public final class RuntimeExecutorGenerator {
      * Generate a specialized FkReader for the given column and type.
      */
     public static FkReader generateFkReader(int columnIndex, byte typeCode) {
-        if (!isEnabled()) {
-            return createFallbackFkReader(columnIndex, typeCode);
-        }
-
         String key = "FK_" + columnIndex + "_" + typeCode;
         return (FkReader) CACHE.computeIfAbsent(key, k -> doGenerateFkReader(columnIndex, typeCode));
     }
@@ -483,7 +391,7 @@ public final class RuntimeExecutorGenerator {
                 return (FkReader) implClass.getDeclaredConstructor().newInstance();
             }
         } catch (Exception e) {
-            return createFallbackFkReader(columnIndex, typeCode);
+            throw new IllegalStateException("Failed to generate FkReader for column " + columnIndex, e);
         }
     }
 
@@ -546,31 +454,6 @@ public final class RuntimeExecutorGenerator {
         }
     }
 
-    private static FkReader createFallbackFkReader(int columnIndex, byte typeCode) {
-        return switch (typeCode) {
-            case TypeCodes.TYPE_STRING -> (table, rowIndex) -> {
-                if (!table.isPresent(columnIndex, rowIndex))
-                    return null;
-                return table.readString(columnIndex, rowIndex);
-            };
-            case TypeCodes.TYPE_LONG -> (table, rowIndex) -> {
-                if (!table.isPresent(columnIndex, rowIndex))
-                    return null;
-                return table.readLong(columnIndex, rowIndex);
-            };
-            case TypeCodes.TYPE_INT -> (table, rowIndex) -> {
-                if (!table.isPresent(columnIndex, rowIndex))
-                    return null;
-                return table.readInt(columnIndex, rowIndex);
-            };
-            default -> (table, rowIndex) -> {
-                if (!table.isPresent(columnIndex, rowIndex))
-                    return null;
-                return table.readLong(columnIndex, rowIndex);
-            };
-        };
-    }
-
     // ========================================================================
     // TargetRowResolver Generation
     // ========================================================================
@@ -588,10 +471,6 @@ public final class RuntimeExecutorGenerator {
      */
     public static TargetRowResolver generateTargetRowResolver(
             boolean targetColumnIsId, byte fkTypeCode, int targetColumnIndex) {
-        if (!isEnabled()) {
-            return createFallbackTargetRowResolver(targetColumnIsId, fkTypeCode, targetColumnIndex);
-        }
-
         String key = "TRR_" + targetColumnIsId + "_" + fkTypeCode + "_" + targetColumnIndex;
         return (TargetRowResolver) CACHE.computeIfAbsent(key,
                 k -> doGenerateTargetRowResolver(targetColumnIsId, fkTypeCode, targetColumnIndex));
@@ -623,7 +502,7 @@ public final class RuntimeExecutorGenerator {
                 return (TargetRowResolver) implClass.getDeclaredConstructor().newInstance();
             }
         } catch (Exception e) {
-            return createFallbackTargetRowResolver(targetColumnIsId, fkTypeCode, targetColumnIndex);
+            throw new IllegalStateException("Failed to generate TargetRowResolver", e);
         }
     }
 
@@ -725,65 +604,6 @@ public final class RuntimeExecutorGenerator {
                 return -1;
             int[] matches = table.scanEqualsInt(targetColumnIndex, ((Number) fkValue).intValue());
             return matches.length > 0 ? matches[0] : -1;
-        }
-    }
-
-    private static TargetRowResolver createFallbackTargetRowResolver(
-            boolean targetColumnIsId, byte fkTypeCode, int targetColumnIndex) {
-        if (targetColumnIsId) {
-            return switch (fkTypeCode) {
-                case TypeCodes.TYPE_STRING -> (table, fkValue) -> {
-                    if (fkValue == null)
-                        return -1;
-                    long ref = table.lookupByIdString((String) fkValue);
-                    return ref >= 0 ? (int) (ref & 0xFFFFFFFFL) : -1;
-                };
-                case TypeCodes.TYPE_LONG -> (table, fkValue) -> {
-                    if (fkValue == null)
-                        return -1;
-                    long ref = table.lookupById(((Number) fkValue).longValue());
-                    return ref >= 0 ? (int) (ref & 0xFFFFFFFFL) : -1;
-                };
-                case TypeCodes.TYPE_INT -> (table, fkValue) -> {
-                    if (fkValue == null)
-                        return -1;
-                    long ref = table.lookupById(((Number) fkValue).intValue());
-                    return ref >= 0 ? (int) (ref & 0xFFFFFFFFL) : -1;
-                };
-                default -> (table, fkValue) -> {
-                    if (fkValue == null)
-                        return -1;
-                    long ref = table.lookupById(((Number) fkValue).longValue());
-                    return ref >= 0 ? (int) (ref & 0xFFFFFFFFL) : -1;
-                };
-            };
-        } else {
-            return switch (fkTypeCode) {
-                case TypeCodes.TYPE_STRING -> (table, fkValue) -> {
-                    if (fkValue == null)
-                        return -1;
-                    int[] matches = table.scanEqualsString(targetColumnIndex, (String) fkValue);
-                    return matches.length > 0 ? matches[0] : -1;
-                };
-                case TypeCodes.TYPE_LONG -> (table, fkValue) -> {
-                    if (fkValue == null)
-                        return -1;
-                    int[] matches = table.scanEqualsLong(targetColumnIndex, ((Number) fkValue).longValue());
-                    return matches.length > 0 ? matches[0] : -1;
-                };
-                case TypeCodes.TYPE_INT -> (table, fkValue) -> {
-                    if (fkValue == null)
-                        return -1;
-                    int[] matches = table.scanEqualsInt(targetColumnIndex, ((Number) fkValue).intValue());
-                    return matches.length > 0 ? matches[0] : -1;
-                };
-                default -> (table, fkValue) -> {
-                    if (fkValue == null)
-                        return -1;
-                    int[] matches = table.scanEqualsLong(targetColumnIndex, ((Number) fkValue).longValue());
-                    return matches.length > 0 ? matches[0] : -1;
-                };
-            };
         }
     }
 
@@ -1626,10 +1446,6 @@ public final class RuntimeExecutorGenerator {
      * Eliminates runtime branching on type codes when reading raw storage values.
      */
     public static io.memris.runtime.StorageValueReader generateStorageValueReader(int columnIndex, byte typeCode) {
-        if (!isEnabled()) {
-            return createFallbackStorageValueReader(columnIndex, typeCode);
-        }
-
         String key = "SVR_" + columnIndex + "_" + typeCode;
         return (io.memris.runtime.StorageValueReader) CACHE.computeIfAbsent(key,
                 k -> doGenerateStorageValueReader(columnIndex, typeCode));
@@ -1654,7 +1470,7 @@ public final class RuntimeExecutorGenerator {
                 return (io.memris.runtime.StorageValueReader) implClass.getDeclaredConstructor().newInstance();
             }
         } catch (Exception e) {
-            return createFallbackStorageValueReader(columnIndex, typeCode);
+            throw new IllegalStateException("Failed to generate StorageValueReader for column " + columnIndex, e);
         }
     }
 
@@ -1707,19 +1523,6 @@ public final class RuntimeExecutorGenerator {
         public Object read(GeneratedTable table, int rowIndex) {
             return table.readInt(columnIndex, rowIndex);
         }
-    }
-
-    private static io.memris.runtime.StorageValueReader createFallbackStorageValueReader(int columnIndex,
-            byte typeCode) {
-        return switch (typeCode) {
-            case TypeCodes.TYPE_STRING, TypeCodes.TYPE_BIG_DECIMAL, TypeCodes.TYPE_BIG_INTEGER ->
-                (table, rowIndex) -> table.readString(columnIndex, rowIndex);
-            case TypeCodes.TYPE_LONG, TypeCodes.TYPE_INSTANT, TypeCodes.TYPE_LOCAL_DATE,
-                    TypeCodes.TYPE_LOCAL_DATE_TIME, TypeCodes.TYPE_DATE, TypeCodes.TYPE_DOUBLE ->
-                (table, rowIndex) -> table.readLong(columnIndex, rowIndex);
-            default ->
-                (table, rowIndex) -> table.readInt(columnIndex, rowIndex);
-        };
     }
 
     /**

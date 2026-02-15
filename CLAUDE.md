@@ -192,12 +192,12 @@ When calling tools for project files, always use relative paths from the project
 - ID indexes: `ConcurrentHashMap` for lock-free lookups
 - Query execution: Thread-safe reads on published data
 - Index updates: `ConcurrentHashMap.compute()` / `ConcurrentSkipListMap.compute()`
-- Entity saves: Coordinated by row seqlock (AbstractTable.java:172-195)
-- Entity deletes: AtomicIntegerArray with CAS loops (AbstractTable.java:255-274)
+- Entity saves: Coordinated by row seqlock (AbstractTable.java)
+- Entity deletes: AtomicIntegerArray with CAS loops (AbstractTable.java)
 - Row allocation: Lock-free via LockFreeFreeList (CAS-based)
 - Column writes: Protected by beginSeqLock/endSeqLock
 
-**See Also:** [CONCURRENCY.md](CONCURRENCY.md) for detailed concurrency model and improvement roadmap.
+**See Also:** [CONCURRENCY.md](docs/CONCURRENCY.md) for detailed concurrency model and improvement roadmap.
 
 ---
 

@@ -115,4 +115,55 @@ class RangeIndexTest {
         assertThatThrownBy(() -> index.add(null, RowId.fromLong(1L)))
                 .isInstanceOf(IllegalArgumentException.class);
     }
+
+    @Test
+    void addRejectsNullRowId() {
+        RangeIndex<Integer> index = new RangeIndex<>();
+
+        assertThatThrownBy(() -> index.add(1, null))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void removeShouldIgnoreNullArguments() {
+        RangeIndex<Integer> index = new RangeIndex<>();
+        RowId rowId = RowId.fromLong(1L);
+        index.add(1, rowId);
+
+        index.remove(null, rowId);
+        index.remove(1, null);
+
+        assertThat(index.lookup(1).toLongArray()).containsExactly(1L);
+    }
+
+    @Test
+    void lookupWithFilterShouldApplyFilterAndRespectNullFilter() {
+        RangeIndex<Integer> index = new RangeIndex<>();
+        index.add(10, RowId.fromLong(1L));
+        index.add(10, RowId.fromLong(2L));
+
+        assertThat(index.lookup(10, rowId -> rowId.value() == 2L).toLongArray())
+                .containsExactly(2L);
+        assertThat(index.lookup(10, null).toLongArray())
+                .containsExactlyInAnyOrder(1L, 2L);
+    }
+
+    @Test
+    void rangeMethodsWithFilterShouldOnlyReturnMatchingRows() {
+        RangeIndex<Integer> index = new RangeIndex<>();
+        index.add(1, RowId.fromLong(11L));
+        index.add(2, RowId.fromLong(22L));
+        index.add(3, RowId.fromLong(33L));
+
+        assertThat(index.between(1, 3, rowId -> rowId.value() >= 22).toLongArray())
+                .containsExactlyInAnyOrder(22L, 33L);
+        assertThat(index.greaterThan(1, rowId -> rowId.value() == 33L).toLongArray())
+                .containsExactly(33L);
+        assertThat(index.greaterThanOrEqual(2, rowId -> rowId.value() != 22L).toLongArray())
+                .containsExactly(33L);
+        assertThat(index.lessThan(3, rowId -> rowId.value() == 11L).toLongArray())
+                .containsExactly(11L);
+        assertThat(index.lessThanOrEqual(2, rowId -> rowId.value() >= 22L).toLongArray())
+                .containsExactly(22L);
+    }
 }

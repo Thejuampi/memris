@@ -1,5 +1,6 @@
 package io.memris.storage.heap;
 
+import java.util.HashSet;
 import java.util.concurrent.atomic.AtomicReferenceArray;
 import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
 
@@ -403,7 +404,7 @@ public final class PageColumnLong {
         }
 
         // Use HashSet for O(1) lookup - more efficient for large target sets
-        java.util.HashSet<Long> targetSet = new java.util.HashSet<>(targets.length * 2);
+        HashSet<Long> targetSet = new HashSet<>(targets.length * 2);
         for (long target : targets) {
             targetSet.add(target);
         }

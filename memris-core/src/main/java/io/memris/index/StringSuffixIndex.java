@@ -37,7 +37,7 @@ import io.memris.kernel.RowIdSets;
  * <p><strong>Implementation notes:</strong>
  * <ul>
  *   <li>Stores strings in reverse order internally</li>
- *   <li>Uses a trie (prefix tree) for efficient prefix matching on reversed strings</li>
+ *   <li>Uses HashMap-based prefix index for O(1) prefix lookups on reversed strings</li>
  *   <li>Case sensitivity is configurable at construction time</li>
  *   <li>Thread-safe using ConcurrentHashMap</li>
  * </ul>

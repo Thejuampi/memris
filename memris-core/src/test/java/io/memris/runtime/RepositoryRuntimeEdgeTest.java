@@ -12,6 +12,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.util.Optional;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -35,6 +36,10 @@ class RepositoryRuntimeEdgeTest {
         @Modifying
         @Query("update TestEntity t set t.age = :age where t.id = :id")
         long updateAgeById(@Param("age") Integer age, @Param("id") Long id);
+    }
+
+    public interface FindAllByIdRepository extends MemrisRepository<TestEntity> {
+        List<TestEntity> findAllById(Iterable<Long> ids);
     }
 
     @BeforeEach
@@ -129,5 +134,20 @@ class RepositoryRuntimeEdgeTest {
 
         assertThatThrownBy(() -> primitiveRepo.updateAgeById(null, saved.id))
                 .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    @DisplayName("findAllById should return matching entities for iterable IDs")
+    void findAllByIdShouldReturnMatchingEntities() {
+        TestEntity first = repo.save(new TestEntity(null, "A", 20));
+        TestEntity second = repo.save(new TestEntity(null, "B", 30));
+        repo.save(new TestEntity(null, "C", 40));
+
+        FindAllByIdRepository findAllByIdRepo = arena.createRepository(FindAllByIdRepository.class);
+        List<TestEntity> found = findAllByIdRepo.findAllById(List.of(first.id, second.id, 999_999L));
+
+        assertThat(found)
+                .extracting(entity -> entity.id)
+                .containsExactlyInAnyOrder(first.id, second.id);
     }
 }
