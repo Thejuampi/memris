@@ -32,7 +32,7 @@ import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 
 public final class EntityMaterializerGenerator {
-    private static final ConcurrentHashMap<ShapeKey, EntityMaterializer<?>> MATERIALIZER_CACHE = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<ShapeKey, EntityMaterializer<?>> materializerCache = new ConcurrentHashMap<>();
 
     /**
      * Generates an entity materializer implementation for one entity metadata shape.
@@ -52,18 +52,18 @@ public final class EntityMaterializerGenerator {
     public <T> EntityMaterializer<T> generate(EntityMetadata<T> metadata) {
         ShapeKey key = ShapeKey.from(metadata);
         @SuppressWarnings("unchecked")
-        EntityMaterializer<T> cached = (EntityMaterializer<T>) MATERIALIZER_CACHE.get(key);
+        EntityMaterializer<T> cached = (EntityMaterializer<T>) materializerCache.get(key);
         if (cached != null) {
             return cached;
         }
         EntityMaterializer<T> generated = generateUncached(metadata);
         @SuppressWarnings("unchecked")
-        EntityMaterializer<T> existing = (EntityMaterializer<T>) MATERIALIZER_CACHE.putIfAbsent(key, generated);
+        EntityMaterializer<T> existing = (EntityMaterializer<T>) materializerCache.putIfAbsent(key, generated);
         return existing != null ? existing : generated;
     }
 
-    static void clearCacheForTests() {
-        MATERIALIZER_CACHE.clear();
+    public void clearCache() {
+        materializerCache.clear();
     }
 
     private <T> EntityMaterializer<T> generateUncached(EntityMetadata<T> metadata) {

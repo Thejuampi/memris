@@ -29,7 +29,7 @@ class EntitySaverGeneratorTest {
     @Test
     void generatedSaverShouldSkipNoOpConvertersForDefaultTypes() throws Exception {
         var metadata = MetadataExtractor.extractEntityMetadata(Customer.class);
-        var saver = EntitySaverGenerator.generate(Customer.class, metadata);
+        var saver = new EntitySaverGenerator().generate(Customer.class, metadata);
 
         var converterFieldCount = Arrays.stream(saver.getClass().getDeclaredFields())
                 .filter(field -> TypeConverter.class.isAssignableFrom(field.getType()))
@@ -44,7 +44,7 @@ class EntitySaverGeneratorTest {
                 new OffsetStockConverter());
 
         var metadata = MetadataExtractor.extractEntityMetadata(InventoryItem.class);
-        var saver = EntitySaverGenerator.generate(InventoryItem.class, metadata);
+        var saver = new EntitySaverGenerator().generate(InventoryItem.class, metadata);
 
         var tableMetadata = new TableMetadata(
                 "InventoryItem",
@@ -75,7 +75,7 @@ class EntitySaverGeneratorTest {
         EntityMetadata<Customer> metadata = MetadataExtractor.extractEntityMetadata(entityClass);
 
         // Generate the saver
-        EntitySaver<Customer, ?> saver = EntitySaverGenerator.generate(entityClass, metadata);
+        EntitySaver<Customer, ?> saver = new EntitySaverGenerator().generate(entityClass, metadata);
 
         // Verify no MethodHandle fields
         assertNoMethodHandleFields(saver.getClass());
@@ -114,7 +114,7 @@ class EntitySaverGeneratorTest {
     void generatedSaverShouldExtractId() throws Exception {
         Class<Customer> entityClass = Customer.class;
         EntityMetadata<Customer> metadata = MetadataExtractor.extractEntityMetadata(entityClass);
-        EntitySaver<Customer, ?> saver = EntitySaverGenerator.generate(entityClass, metadata);
+        EntitySaver<Customer, ?> saver = new EntitySaverGenerator().generate(entityClass, metadata);
 
         Customer customer = new Customer();
         customer.id = 42L;
@@ -128,7 +128,7 @@ class EntitySaverGeneratorTest {
     void generatedSaverShouldSetId() throws Exception {
         Class<Customer> entityClass = Customer.class;
         EntityMetadata<Customer> metadata = MetadataExtractor.extractEntityMetadata(entityClass);
-        EntitySaver<Customer, ?> saver = EntitySaverGenerator.generate(entityClass, metadata);
+        EntitySaver<Customer, ?> saver = new EntitySaverGenerator().generate(entityClass, metadata);
 
         Customer customer = new Customer();
         assertThat(customer.id).isNull();
@@ -145,7 +145,7 @@ class EntitySaverGeneratorTest {
         // Test with Order that has Customer relationship
         Class<Order> entityClass = Order.class;
         EntityMetadata<Order> metadata = MetadataExtractor.extractEntityMetadata(entityClass);
-        EntitySaver<Order, ?> saver = EntitySaverGenerator.generate(entityClass, metadata);
+        EntitySaver<Order, ?> saver = new EntitySaverGenerator().generate(entityClass, metadata);
 
         Customer customer = new Customer();
         customer.id = 5L;
@@ -165,7 +165,7 @@ class EntitySaverGeneratorTest {
     void generatedSaverShouldNotUseReflection() throws Exception {
         Class<Customer> entityClass = Customer.class;
         EntityMetadata<Customer> metadata = MetadataExtractor.extractEntityMetadata(entityClass);
-        EntitySaver<Customer, ?> saver = EntitySaverGenerator.generate(entityClass, metadata);
+        EntitySaver<Customer, ?> saver = new EntitySaverGenerator().generate(entityClass, metadata);
 
         Class<?> saverClass = saver.getClass();
 
@@ -239,3 +239,4 @@ class EntitySaverGeneratorTest {
         }
     }
 }
+

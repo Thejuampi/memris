@@ -2,6 +2,7 @@ package io.memris.repository;
 
 import io.memris.core.EntityMetadata;
 import io.memris.core.EntityMetadata.FieldMapping;
+import io.memris.core.MemrisConfiguration;
 import io.memris.core.Index.IndexType;
 import io.memris.core.MemrisArena;
 import io.memris.core.EntityMetadataProvider;
@@ -32,6 +33,8 @@ import io.memris.runtime.RepositoryMethodExecutor;
 import io.memris.runtime.RepositoryPlan;
 import io.memris.runtime.RepositoryRuntime;
 import io.memris.runtime.IdLookup;
+import io.memris.runtime.codegen.ConditionRowEvaluatorGenerator;
+import io.memris.runtime.codegen.RuntimeExecutorGenerator;
 
 import io.memris.storage.GeneratedTable;
 import io.memris.storage.SimpleTable;
@@ -64,6 +67,10 @@ import static java.util.Locale.ROOT;
 public final class RepositoryEmitter {
 
     private final ByteBuddy byteBuddy;
+    private final EntitySaverGenerator saverGenerator;
+    private final EntityMaterializerGenerator materializerGenerator;
+    private final RuntimeExecutorGenerator runtimeExecutorGenerator;
+    private final ConditionRowEvaluatorGenerator conditionRowEvaluatorGenerator;
     private static final Map<OpCode, InterceptorFactory> INTERCEPTOR_FACTORIES = buildInterceptorFactories();
     private static final Map<OpCode, ExecutorFactory> EXECUTOR_FACTORIES = buildExecutorFactories();
 
@@ -71,7 +78,15 @@ public final class RepositoryEmitter {
      * Creates a RepositoryEmitter with default configuration.
      */
     public RepositoryEmitter() {
+        this(MemrisConfiguration.builder().build());
+    }
+
+    public RepositoryEmitter(MemrisConfiguration configuration) {
         this.byteBuddy = new ByteBuddy();
+        this.saverGenerator = new EntitySaverGenerator();
+        this.materializerGenerator = new EntityMaterializerGenerator();
+        this.runtimeExecutorGenerator = new RuntimeExecutorGenerator(configuration);
+        this.conditionRowEvaluatorGenerator = new ConditionRowEvaluatorGenerator(this.runtimeExecutorGenerator);
     }
 
     @FunctionalInterface
@@ -94,10 +109,9 @@ public final class RepositoryEmitter {
      * @param <R>                 the repository interface type
      * @return an instance of the generated repository implementation
      */
-    public static <T, R extends MemrisRepository<T>> R createRepository(Class<R> repositoryInterface,
+    public <T, R extends MemrisRepository<T>> R createRepository(
+            Class<R> repositoryInterface,
             MemrisArena arena) {
-        var emitter = new RepositoryEmitter();
-
         // Extract entity class and create/get table
         Class<T> entityClass = extractEntityClass(repositoryInterface);
         var table = arena.getOrCreateTable(entityClass);
@@ -147,7 +161,10 @@ public final class RepositoryEmitter {
                 metadata.entityClass(),
                 true);
         var orderExecutors = RepositoryRuntime.buildOrderExecutors(compiledQueries, table, primitiveNonNullColumns);
-        var projectionExecutors = RepositoryRuntime.buildProjectionExecutors(compiledQueries, provider);
+        var projectionExecutors = RepositoryRuntime.buildProjectionExecutors(
+                compiledQueries,
+                provider,
+                runtimeExecutorGenerator);
 
         // Create entity constructor handle
         MethodHandle entityConstructor;
@@ -181,12 +198,26 @@ public final class RepositoryEmitter {
                 materializersByEntity,
                 joinTables,
                 entitySaver,
-                generateIdLookup(metadata, typeCodes));
+                generateIdLookup(metadata, typeCodes),
+                runtimeExecutorGenerator);
 
         // Create RepositoryRuntime with factory and arena references for index queries
-        var runtime = new RepositoryRuntime<>(plan, arena.getFactory(), arena, metadata);
+        var runtime = new RepositoryRuntime<>(
+                plan,
+                arena.getFactory(),
+                arena,
+                metadata,
+                runtimeExecutorGenerator,
+                conditionRowEvaluatorGenerator);
 
-        return emitter.emitAndInstantiate(repositoryInterface, runtime);
+        return emitAndInstantiate(repositoryInterface, runtime);
+    }
+
+    public void clearCaches() {
+        saverGenerator.clearCache();
+        materializerGenerator.clearCache();
+        runtimeExecutorGenerator.clearCache();
+        conditionRowEvaluatorGenerator.clearCache();
     }
 
     private static <T> Map<Class<?>, GeneratedTable> buildJoinTables(
@@ -218,30 +249,29 @@ public final class RepositoryEmitter {
         return Map.copyOf(tablesByEntity);
     }
 
-    private static Map<Class<?>, HeapRuntimeKernel> buildJoinKernels(
+    private Map<Class<?>, HeapRuntimeKernel> buildJoinKernels(
             Map<Class<?>, GeneratedTable> tablesByEntity) {
         Map<Class<?>, HeapRuntimeKernel> kernels = new HashMap<>();
         for (var entry : tablesByEntity.entrySet()) {
-            kernels.put(entry.getKey(), new HeapRuntimeKernel(entry.getValue()));
+            kernels.put(entry.getKey(), new HeapRuntimeKernel(entry.getValue(), runtimeExecutorGenerator));
         }
         return Map.copyOf(kernels);
     }
 
-    private static Map<Class<?>, EntityMaterializer<?>> buildJoinMaterializers(
+    private Map<Class<?>, EntityMaterializer<?>> buildJoinMaterializers(
             Map<Class<?>, GeneratedTable> tablesByEntity,
             EntityMetadataProvider provider) {
         Map<Class<?>, EntityMaterializer<?>> materializers = new HashMap<>();
-        var generator = new EntityMaterializerGenerator();
         for (var entityClass : tablesByEntity.keySet()) {
             var entityMetadata = provider.getMetadata(entityClass);
-            materializers.put(entityClass, generator.generate(entityMetadata));
+            materializers.put(entityClass, materializerGenerator.generate(entityMetadata));
         }
         return Map.copyOf(materializers);
     }
 
-    private static <T> io.memris.runtime.EntitySaver<T, ?> createEntitySaver(Class<T> entityClass,
+    private <T> io.memris.runtime.EntitySaver<T, ?> createEntitySaver(Class<T> entityClass,
             EntityMetadata<T> metadata) {
-        return EntitySaverGenerator.generate(entityClass, metadata);
+        return saverGenerator.generate(entityClass, metadata);
     }
 
     private static <T> Map<String, SimpleTable> buildManyToManyJoinTables(

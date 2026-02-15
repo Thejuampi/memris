@@ -1,0 +1,35 @@
+name: Thread-Safety Guardrails
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "memris-core/**"
+      - ".github/workflows/thread-safety.yml"
+
+jobs:
+  concurrency-codegen:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "21"
+          cache: "maven"
+
+      - name: Install parent POM
+        run: mvn -q -e -N install
+
+      - name: Run forked parallel thread-safety suite
+        run: |
+          mvn -q -e -pl memris-core test \
+            -Dtest=MemrisArenaConcurrencyTest,RuntimeExecutorGeneratorConcurrencyTest,ConditionRowEvaluatorGeneratorConcurrencyTest,EntitySaverGeneratorCacheTest,EntityMaterializerGeneratorCacheTest,RuntimeExecutorGeneratorArenaIsolationTest \
+            -DforkCount=2 \
+            -DreuseForks=false \
+            -Djunit.jupiter.execution.parallel.enabled=true \
+            -Djunit.jupiter.execution.parallel.mode.default=same_thread \
+            -Djunit.jupiter.execution.parallel.mode.classes.default=concurrent

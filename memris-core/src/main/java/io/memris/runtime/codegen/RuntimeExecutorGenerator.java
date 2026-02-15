@@ -46,8 +46,8 @@ import static net.bytebuddy.matcher.ElementMatchers.named;
  */
 public final class RuntimeExecutorGenerator {
 
-    private static final ConcurrentHashMap<String, Object> CACHE = new ConcurrentHashMap<>();
-    private static final AtomicLong CLASS_COUNTER = new AtomicLong(0);
+    private final ConcurrentHashMap<String, Object> cache = new ConcurrentHashMap<>();
+    private final AtomicLong classCounter = new AtomicLong(0);
 
     /**
      * System property to disable code generation (deprecated, use
@@ -55,18 +55,13 @@ public final class RuntimeExecutorGenerator {
      */
     public static final String CODEGEN_ENABLED_PROPERTY = "memris.codegen.enabled";
 
-    private static volatile MemrisConfiguration configuration;
+    private final MemrisConfiguration configuration;
 
-    private RuntimeExecutorGenerator() {
+    public RuntimeExecutorGenerator() {
+        this(null);
     }
 
-    /**
-     * Set the configuration for runtime executor generation.
-     * This should be called when initializing the MemrisRepositoryFactory.
-     *
-     * @param config the MemrisConfiguration to use
-     */
-    public static void setConfiguration(MemrisConfiguration config) {
+    public RuntimeExecutorGenerator(MemrisConfiguration config) {
         configuration = config;
     }
 
@@ -77,7 +72,7 @@ public final class RuntimeExecutorGenerator {
      * or use MemrisConfiguration.builder().codegenEnabled(false).build()
      * programmatically.
      */
-    public static boolean isEnabled() {
+    public boolean isEnabled() {
         if (configuration != null) {
             return configuration.codegenEnabled();
         }
@@ -99,16 +94,16 @@ public final class RuntimeExecutorGenerator {
     /**
      * Generate a specialized FieldValueReader for the given column and type.
      */
-    public static FieldValueReader generateFieldValueReader(int columnIndex, byte typeCode,
+    public FieldValueReader generateFieldValueReader(int columnIndex, byte typeCode,
             TypeConverter<?, ?> converter) {
         String converterKey = converter != null ? "_C" + System.identityHashCode(converter) : "";
         String key = "FVR_" + columnIndex + "_" + typeCode + converterKey;
 
-        return (FieldValueReader) CACHE.computeIfAbsent(key,
+        return (FieldValueReader) cache.computeIfAbsent(key,
                 k -> doGenerateFieldValueReader(columnIndex, typeCode, converter));
     }
 
-    private static FieldValueReader doGenerateFieldValueReader(int columnIndex, byte typeCode,
+    private FieldValueReader doGenerateFieldValueReader(int columnIndex, byte typeCode,
             TypeConverter<?, ?> converter) {
         // Equivalent generated Java (simplified):
         // final class FieldValueReader$GenN implements FieldValueReader {
@@ -116,7 +111,7 @@ public final class RuntimeExecutorGenerator {
         // return interceptor.read(table, rowIndex);
         // }
         // }
-        String className = "io.memris.runtime.codegen.FieldValueReader$Gen" + CLASS_COUNTER.incrementAndGet();
+        String className = "io.memris.runtime.codegen.FieldValueReader$Gen" + classCounter.incrementAndGet();
 
         try {
             // Select the appropriate interceptor based on type code
@@ -361,19 +356,19 @@ public final class RuntimeExecutorGenerator {
     /**
      * Generate a specialized FkReader for the given column and type.
      */
-    public static FkReader generateFkReader(int columnIndex, byte typeCode) {
+    public FkReader generateFkReader(int columnIndex, byte typeCode) {
         String key = "FK_" + columnIndex + "_" + typeCode;
-        return (FkReader) CACHE.computeIfAbsent(key, k -> doGenerateFkReader(columnIndex, typeCode));
+        return (FkReader) cache.computeIfAbsent(key, k -> doGenerateFkReader(columnIndex, typeCode));
     }
 
-    private static FkReader doGenerateFkReader(int columnIndex, byte typeCode) {
+    private FkReader doGenerateFkReader(int columnIndex, byte typeCode) {
         // Equivalent generated Java (simplified):
         // final class FkReader$GenN implements FkReader {
         // public Object read(GeneratedTable table, int rowIndex) {
         // return interceptor.read(table, rowIndex);
         // }
         // }
-        String className = "io.memris.runtime.codegen.FkReader$Gen" + CLASS_COUNTER.incrementAndGet();
+        String className = "io.memris.runtime.codegen.FkReader$Gen" + classCounter.incrementAndGet();
 
         try {
             Object interceptor = createFkReaderInterceptor(columnIndex, typeCode);
@@ -469,14 +464,14 @@ public final class RuntimeExecutorGenerator {
     /**
      * Generate a specialized TargetRowResolver.
      */
-    public static TargetRowResolver generateTargetRowResolver(
+    public TargetRowResolver generateTargetRowResolver(
             boolean targetColumnIsId, byte fkTypeCode, int targetColumnIndex) {
         String key = "TRR_" + targetColumnIsId + "_" + fkTypeCode + "_" + targetColumnIndex;
-        return (TargetRowResolver) CACHE.computeIfAbsent(key,
+        return (TargetRowResolver) cache.computeIfAbsent(key,
                 k -> doGenerateTargetRowResolver(targetColumnIsId, fkTypeCode, targetColumnIndex));
     }
 
-    private static TargetRowResolver doGenerateTargetRowResolver(
+    private TargetRowResolver doGenerateTargetRowResolver(
             boolean targetColumnIsId, byte fkTypeCode, int targetColumnIndex) {
         // Equivalent generated Java (simplified):
         // final class TargetRowResolver$GenN implements TargetRowResolver {
@@ -484,7 +479,7 @@ public final class RuntimeExecutorGenerator {
         // return interceptor.resolve(table, fkValue);
         // }
         // }
-        String className = "io.memris.runtime.codegen.TargetRowResolver$Gen" + CLASS_COUNTER.incrementAndGet();
+        String className = "io.memris.runtime.codegen.TargetRowResolver$Gen" + classCounter.incrementAndGet();
 
         try {
             Object interceptor = createTargetRowResolverInterceptor(targetColumnIsId, fkTypeCode, targetColumnIndex);
@@ -623,24 +618,24 @@ public final class RuntimeExecutorGenerator {
     /**
      * Generate a specialized GroupingValueReader for the given column and type.
      */
-    public static GroupingValueReader generateGroupingValueReader(int columnIndex, byte typeCode) {
+    public GroupingValueReader generateGroupingValueReader(int columnIndex, byte typeCode) {
         if (!isEnabled()) {
             return createFallbackGroupingValueReader(columnIndex, typeCode);
         }
 
         String key = "GVR_" + columnIndex + "_" + typeCode;
-        return (GroupingValueReader) CACHE.computeIfAbsent(key,
+        return (GroupingValueReader) cache.computeIfAbsent(key,
                 k -> doGenerateGroupingValueReader(columnIndex, typeCode));
     }
 
-    private static GroupingValueReader doGenerateGroupingValueReader(int columnIndex, byte typeCode) {
+    private GroupingValueReader doGenerateGroupingValueReader(int columnIndex, byte typeCode) {
         // Equivalent generated Java (simplified):
         // final class GroupingValueReader$GenN implements GroupingValueReader {
         // public Object read(GeneratedTable table, int rowIndex) {
         // return interceptor.read(table, rowIndex);
         // }
         // }
-        String className = "io.memris.runtime.codegen.GroupingValueReader$Gen" + CLASS_COUNTER.incrementAndGet();
+        String className = "io.memris.runtime.codegen.GroupingValueReader$Gen" + classCounter.incrementAndGet();
 
         try {
             Object interceptor = createGroupingValueReaderInterceptor(columnIndex, typeCode);
@@ -861,24 +856,24 @@ public final class RuntimeExecutorGenerator {
         Selection execute(GeneratedTable table, int argIndex, Object[] args);
     }
 
-    public static BetweenExecutor generateBetweenExecutor(int columnIndex, byte typeCode) {
+    public BetweenExecutor generateBetweenExecutor(int columnIndex, byte typeCode) {
         if (!isEnabled()) {
             return createFallbackBetweenExecutor(columnIndex, typeCode);
         }
 
         String key = "BETWEEN_" + columnIndex + "_" + typeCode;
-        return (BetweenExecutor) CACHE.computeIfAbsent(key,
+        return (BetweenExecutor) cache.computeIfAbsent(key,
                 k -> doGenerateBetweenExecutor(columnIndex, typeCode));
     }
 
-    private static BetweenExecutor doGenerateBetweenExecutor(int columnIndex, byte typeCode) {
+    private BetweenExecutor doGenerateBetweenExecutor(int columnIndex, byte typeCode) {
         // Equivalent generated Java (simplified):
         // final class BetweenExecutor$GenN implements BetweenExecutor {
         // public Selection execute(GeneratedTable table, int argIndex, Object[] args) {
         // return interceptor.execute(table, argIndex, args);
         // }
         // }
-        String className = "io.memris.runtime.codegen.BetweenExecutor$Gen" + CLASS_COUNTER.incrementAndGet();
+        String className = "io.memris.runtime.codegen.BetweenExecutor$Gen" + classCounter.incrementAndGet();
 
         try {
             Object interceptor = createBetweenExecutorInterceptor(columnIndex, typeCode);
@@ -1114,24 +1109,24 @@ public final class RuntimeExecutorGenerator {
         Selection execute(GeneratedTable table, Object value);
     }
 
-    public static InListExecutor generateInListExecutor(int columnIndex, byte typeCode) {
+    public InListExecutor generateInListExecutor(int columnIndex, byte typeCode) {
         if (!isEnabled()) {
             return createFallbackInListExecutor(columnIndex, typeCode);
         }
 
         String key = "IN_" + columnIndex + "_" + typeCode;
-        return (InListExecutor) CACHE.computeIfAbsent(key,
+        return (InListExecutor) cache.computeIfAbsent(key,
                 k -> doGenerateInListExecutor(columnIndex, typeCode));
     }
 
-    private static InListExecutor doGenerateInListExecutor(int columnIndex, byte typeCode) {
+    private InListExecutor doGenerateInListExecutor(int columnIndex, byte typeCode) {
         // Equivalent generated Java (simplified):
         // final class InListExecutor$GenN implements InListExecutor {
         // public Selection execute(GeneratedTable table, Object value) {
         // return interceptor.execute(table, value);
         // }
         // }
-        String className = "io.memris.runtime.codegen.InListExecutor$Gen" + CLASS_COUNTER.incrementAndGet();
+        String className = "io.memris.runtime.codegen.InListExecutor$Gen" + classCounter.incrementAndGet();
 
         try {
             Object interceptor = createInListExecutorInterceptor(columnIndex, typeCode);
@@ -1465,14 +1460,14 @@ public final class RuntimeExecutorGenerator {
      * Generate a specialized StorageValueReader for the given column and type.
      * Eliminates runtime branching on type codes when reading raw storage values.
      */
-    public static io.memris.runtime.StorageValueReader generateStorageValueReader(int columnIndex, byte typeCode) {
+    public io.memris.runtime.StorageValueReader generateStorageValueReader(int columnIndex, byte typeCode) {
         String key = "SVR_" + columnIndex + "_" + typeCode;
-        return (io.memris.runtime.StorageValueReader) CACHE.computeIfAbsent(key,
+        return (io.memris.runtime.StorageValueReader) cache.computeIfAbsent(key,
                 k -> doGenerateStorageValueReader(columnIndex, typeCode));
     }
 
-    private static io.memris.runtime.StorageValueReader doGenerateStorageValueReader(int columnIndex, byte typeCode) {
-        String className = "io.memris.runtime.codegen.StorageValueReader$Gen" + CLASS_COUNTER.incrementAndGet();
+    private io.memris.runtime.StorageValueReader doGenerateStorageValueReader(int columnIndex, byte typeCode) {
+        String className = "io.memris.runtime.codegen.StorageValueReader$Gen" + classCounter.incrementAndGet();
 
         try {
             Object interceptor = createStorageValueReaderInterceptor(columnIndex, typeCode);
@@ -1548,7 +1543,8 @@ public final class RuntimeExecutorGenerator {
     /**
      * Clear the executor cache. Primarily for testing.
      */
-    public static void clearCache() {
-        CACHE.clear();
+    public void clearCache() {
+        cache.clear();
     }
 }
+

@@ -15,7 +15,6 @@ import io.memris.index.StringSuffixIndex;
 import io.memris.kernel.Predicate;
 import io.memris.kernel.RowId;
 import io.memris.kernel.RowIdSet;
-import io.memris.runtime.codegen.RuntimeExecutorGenerator;
 import io.memris.storage.GeneratedTable;
 import io.memris.storage.Selection;
 import io.memris.storage.heap.AbstractTable;
@@ -26,9 +25,9 @@ import io.memris.storage.heap.TableMetadata;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -36,8 +35,8 @@ import java.util.concurrent.atomic.AtomicReference;
 
 public final class MemrisRepositoryFactory implements AutoCloseable {
 
-    private final Map<Class<?>, GeneratedTable> tables = new HashMap<>();
-    private final Map<Class<?>, Map<String, Object>> indexes = new HashMap<>();
+    private final Map<Class<?>, GeneratedTable> tables = new ConcurrentHashMap<>();
+    private final Map<Class<?>, Map<String, Object>> indexes = new ConcurrentHashMap<>();
 
     // Configuration settings
     private final MemrisConfiguration configuration;
@@ -59,7 +58,6 @@ public final class MemrisRepositoryFactory implements AutoCloseable {
      */
     public MemrisRepositoryFactory(MemrisConfiguration configuration) {
         this.configuration = configuration;
-        RuntimeExecutorGenerator.setConfiguration(configuration);
     }
 
     /**
@@ -312,7 +310,13 @@ public final class MemrisRepositoryFactory implements AutoCloseable {
 
     @Override
     public void close() {
-        // TODO: Clean up resources
+        for (var arena : arenas.values()) {
+            arena.close();
+        }
+        arenas.clear();
+        tables.clear();
+        indexes.clear();
+        defaultArenaRef.set(null);
     }
 
     /**
@@ -328,8 +332,17 @@ public final class MemrisRepositoryFactory implements AutoCloseable {
      * @return an instantiated repository implementation
      */
     public <T, R extends MemrisRepository<T>> R createJPARepository(Class<R> repositoryInterface) {
-        // Always use arena - create default if needed (lock-free)
-        var arena = defaultArenaRef.updateAndGet(existing -> existing != null ? existing : createArena());
+        var arena = defaultArenaRef.get();
+        if (arena == null) {
+            var candidate = createArena();
+            if (defaultArenaRef.compareAndSet(null, candidate)) {
+                arena = candidate;
+            } else {
+                arenas.remove(candidate.getArenaId(), candidate);
+                candidate.close();
+                arena = defaultArenaRef.get();
+            }
+        }
         return arena.createRepository(repositoryInterface);
     }
 
@@ -395,7 +408,7 @@ public final class MemrisRepositoryFactory implements AutoCloseable {
     // ========== Arena Support Methods ==========
 
     private final AtomicLong arenaCounter = new AtomicLong(0);
-    private final Map<Long, MemrisArena> arenas = new HashMap<>();
+    private final Map<Long, MemrisArena> arenas = new ConcurrentHashMap<>();
 
     /**
      * Create a new isolated arena.

@@ -18,6 +18,8 @@ Memris combines columnar, primitive-backed storage with ByteBuddy-generated tabl
 - ⚡ **ByteBuddy-generated tables** for zero-reflection hot paths
 - 🧠 **Plan-driven embedded paths** via precompiled `ColumnAccessPlan`
 - 🔧 **Generated saver/materializer** for flat + embedded fields (no runtime reflection fallback)
+- 🏟️ **Arena-scoped codegen caches** (no static mutable runtime registries)
+- 🔒 **Thread-safe arena lifecycle** with fail-fast close semantics
 - 🎯 **Spring Data-style queries** (`findBy*`, `countBy*`, `existsBy*`)
 - 🔍 **Lightweight indexes** — hash (O(1)) and range (O(log n))
 - ☕ **Targeted for Java 21** — leverages modern language features
@@ -610,6 +612,12 @@ mvn -B clean install
 - Embedded-path benchmark: `io.memris.benchmarks.EmbeddedPathBenchmark`
 - Regression checker script: `scripts/check-jmh-regression.py`
 - Baseline file: `memris-core/src/jmh/resources/embedded-path-baseline.json`
+
+### Thread-Safety Guardrails
+
+- Dedicated thread-safety workflow: `.github/workflows/thread-safety.yml`
+- Runs arena/codegen concurrency tests with forked JVMs (`forkCount > 1`, `reuseForks=false`)
+- Enables JUnit parallel class execution in the dedicated lane
 
 ---
 

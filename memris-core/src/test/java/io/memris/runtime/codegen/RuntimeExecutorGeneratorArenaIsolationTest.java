@@ -27,7 +27,6 @@ class RuntimeExecutorGeneratorArenaIsolationTest {
 
     @BeforeEach
     void setUp() {
-        RuntimeExecutorGenerator.clearCache(); // Start with clean cache
         factory = new MemrisRepositoryFactory();
     }
 

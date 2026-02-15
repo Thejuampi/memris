@@ -4,9 +4,12 @@ import io.memris.repository.RepositoryEmitter;
 import io.memris.repository.MemrisRepository;
 import io.memris.repository.MemrisRepositoryFactory;
 
-import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 /**
  * An isolated data space containing its own tables, repositories, and indexes.
@@ -27,19 +30,23 @@ public final class MemrisArena implements AutoCloseable {
 
     private final long arenaId;
     private final MemrisRepositoryFactory factory;
+    private final RepositoryEmitter repositoryEmitter;
 
     // Arena-scoped state
-    private final Map<Class<?>, io.memris.storage.GeneratedTable> tables = new HashMap<>();
-    private final Map<Class<?>, Map<String, Object>> indexes = new HashMap<>();
-    private final Map<Class<?>, AtomicLong> numericIdCounters = new HashMap<>();
-    private final Map<Class<?>, Object> repositories = new HashMap<>();
+    private final ConcurrentMap<Class<?>, io.memris.storage.GeneratedTable> tables = new ConcurrentHashMap<>();
+    private final ConcurrentMap<Class<?>, Map<String, Object>> indexes = new ConcurrentHashMap<>();
+    private final ConcurrentMap<Class<?>, AtomicLong> numericIdCounters = new ConcurrentHashMap<>();
+    private final ConcurrentMap<Class<?>, Object> repositories = new ConcurrentHashMap<>();
 
     // Mapping from entity class to repository interface class
-    private final Map<Class<?>, Class<?>> entityToRepositoryMap = new HashMap<>();
+    private final ConcurrentMap<Class<?>, Class<?>> entityToRepositoryMap = new ConcurrentHashMap<>();
+    private final ReentrantReadWriteLock lifecycleLock = new ReentrantReadWriteLock();
+    private final AtomicBoolean closed = new AtomicBoolean(false);
 
     public MemrisArena(long arenaId, MemrisRepositoryFactory factory) {
         this.arenaId = arenaId;
         this.factory = factory;
+        this.repositoryEmitter = new RepositoryEmitter(factory.getConfiguration());
     }
 
     /**
@@ -68,20 +75,20 @@ public final class MemrisArena implements AutoCloseable {
      */
     @SuppressWarnings("unchecked")
     public <T, R extends MemrisRepository<T>> R createRepository(Class<R> repositoryInterface) {
-        // Check cache first
-        if (repositories.containsKey(repositoryInterface)) {
-            return (R) repositories.get(repositoryInterface);
+        var readLock = lifecycleLock.readLock();
+        readLock.lock();
+        try {
+            assertOpen();
+            Object repository = repositories.computeIfAbsent(repositoryInterface, ignored -> {
+                R created = repositoryEmitter.createRepository(repositoryInterface, this);
+                Class<T> entityClass = extractEntityClass(repositoryInterface);
+                entityToRepositoryMap.put(entityClass, repositoryInterface);
+                return created;
+            });
+            return (R) repository;
+        } finally {
+            readLock.unlock();
         }
-
-        // Create repository through factory's emitter, but scoped to this arena
-        R repository = RepositoryEmitter.createRepository(repositoryInterface, this);
-        repositories.put(repositoryInterface, repository);
-
-        // Also map entity class to repository interface for lookup by entity class
-        Class<T> entityClass = extractEntityClass(repositoryInterface);
-        entityToRepositoryMap.put(entityClass, repositoryInterface);
-
-        return repository;
     }
 
     /**
@@ -114,13 +121,18 @@ public final class MemrisArena implements AutoCloseable {
      */
     @SuppressWarnings("unchecked")
     public <T> MemrisRepository<T> getRepository(Class<T> entityClass) {
-        // Look up the repository interface for this entity class
-        Class<?> repositoryInterface = entityToRepositoryMap.get(entityClass);
-        if (repositoryInterface == null) {
-            return null;
+        var readLock = lifecycleLock.readLock();
+        readLock.lock();
+        try {
+            assertOpen();
+            Class<?> repositoryInterface = entityToRepositoryMap.get(entityClass);
+            if (repositoryInterface == null) {
+                return null;
+            }
+            return (MemrisRepository<T>) repositories.get(repositoryInterface);
+        } finally {
+            readLock.unlock();
         }
-        // Get the repository instance using the interface class
-        return (MemrisRepository<T>) repositories.get(repositoryInterface);
     }
 
     /**
@@ -133,7 +145,14 @@ public final class MemrisArena implements AutoCloseable {
      * @return the generated table
      */
     public <T> io.memris.storage.GeneratedTable getOrCreateTable(Class<T> entityClass) {
-        return tables.computeIfAbsent(entityClass, ec -> factory.buildTableForEntity(ec, this));
+        var readLock = lifecycleLock.readLock();
+        readLock.lock();
+        try {
+            assertOpen();
+            return tables.computeIfAbsent(entityClass, ec -> factory.buildTableForEntity(ec, this));
+        } finally {
+            readLock.unlock();
+        }
     }
 
     /**
@@ -143,7 +162,14 @@ public final class MemrisArena implements AutoCloseable {
      * @return the table, or null if not created
      */
     public io.memris.storage.GeneratedTable getTable(Class<?> entityClass) {
-        return tables.get(entityClass);
+        var readLock = lifecycleLock.readLock();
+        readLock.lock();
+        try {
+            assertOpen();
+            return tables.get(entityClass);
+        } finally {
+            readLock.unlock();
+        }
     }
 
     /**
@@ -153,7 +179,14 @@ public final class MemrisArena implements AutoCloseable {
      * @return the atomic long counter
      */
     public AtomicLong getOrCreateNumericIdCounter(Class<?> entityClass) {
-        return numericIdCounters.computeIfAbsent(entityClass, ec -> new AtomicLong(0));
+        var readLock = lifecycleLock.readLock();
+        readLock.lock();
+        try {
+            assertOpen();
+            return numericIdCounters.computeIfAbsent(entityClass, ec -> new AtomicLong(0));
+        } finally {
+            readLock.unlock();
+        }
     }
 
     /**
@@ -163,7 +196,14 @@ public final class MemrisArena implements AutoCloseable {
      * @return the counter, or null if not created
      */
     public AtomicLong getNumericIdCounter(Class<?> entityClass) {
-        return numericIdCounters.get(entityClass);
+        var readLock = lifecycleLock.readLock();
+        readLock.lock();
+        try {
+            assertOpen();
+            return numericIdCounters.get(entityClass);
+        } finally {
+            readLock.unlock();
+        }
     }
 
     /**
@@ -173,7 +213,14 @@ public final class MemrisArena implements AutoCloseable {
      * @return the index map
      */
     public Map<String, Object> getOrCreateIndexes(Class<?> entityClass) {
-        return indexes.computeIfAbsent(entityClass, ec -> new HashMap<>());
+        var readLock = lifecycleLock.readLock();
+        readLock.lock();
+        try {
+            assertOpen();
+            return indexes.computeIfAbsent(entityClass, ec -> new ConcurrentHashMap<>());
+        } finally {
+            readLock.unlock();
+        }
     }
 
     /**
@@ -183,15 +230,38 @@ public final class MemrisArena implements AutoCloseable {
      * @return the index map, or null if not created
      */
     public Map<String, Object> getIndexes(Class<?> entityClass) {
-        return indexes.get(entityClass);
+        var readLock = lifecycleLock.readLock();
+        readLock.lock();
+        try {
+            assertOpen();
+            return indexes.get(entityClass);
+        } finally {
+            readLock.unlock();
+        }
     }
 
     @Override
     public void close() {
-        // Clear all arena-scoped state
-        repositories.clear();
-        tables.clear();
-        indexes.clear();
-        numericIdCounters.clear();
+        var writeLock = lifecycleLock.writeLock();
+        writeLock.lock();
+        try {
+            if (!closed.compareAndSet(false, true)) {
+                return;
+            }
+            repositoryEmitter.clearCaches();
+            repositories.clear();
+            entityToRepositoryMap.clear();
+            tables.clear();
+            indexes.clear();
+            numericIdCounters.clear();
+        } finally {
+            writeLock.unlock();
+        }
+    }
+
+    private void assertOpen() {
+        if (closed.get()) {
+            throw new IllegalStateException("Arena is closed");
+        }
     }
 }

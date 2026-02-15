@@ -221,7 +221,7 @@ class RepositoryRuntimeCompiledConditionProgramTest {
                 true);
         var orderExecutors = RepositoryRuntime.buildOrderExecutors(queries, table, primitiveNonNull);
         var projectionExecutors = RepositoryRuntime.buildProjectionExecutors(queries, MetadataExtractor::extractEntityMetadata);
-        var entitySaver = EntitySaverGenerator.generate(Person.class, metadata);
+        var entitySaver = new EntitySaverGenerator().generate(Person.class, metadata);
 
         MethodHandle entityConstructor;
         try {
@@ -470,3 +470,4 @@ class RepositoryRuntimeCompiledConditionProgramTest {
         }
     }
 }
+

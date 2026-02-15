@@ -22,13 +22,14 @@ class RepositoryEmitterGeneratedPathTest {
     @Test
     void createEntitySaverShouldUseGeneratedPath() throws Exception {
         var metadata = MetadataExtractor.extractEntityMetadata(EmbeddedOwner.class);
+        var emitter = new RepositoryEmitter();
         Method method = RepositoryEmitter.class.getDeclaredMethod(
                 "createEntitySaver",
                 Class.class,
                 EntityMetadata.class);
         method.setAccessible(true);
 
-        Object saver = method.invoke(null, EmbeddedOwner.class, metadata);
+        Object saver = method.invoke(emitter, EmbeddedOwner.class, metadata);
 
         assertThat(saver).isNotInstanceOf(ReflectionEntitySaver.class);
     }
@@ -38,6 +39,7 @@ class RepositoryEmitterGeneratedPathTest {
         try (var factory = new MemrisRepositoryFactory()) {
             MemrisArena arena = factory.createArena();
             GeneratedTable table = arena.getOrCreateTable(EmbeddedOwner.class);
+            var emitter = new RepositoryEmitter();
 
             Method method = RepositoryEmitter.class.getDeclaredMethod(
                     "buildJoinMaterializers",
@@ -47,7 +49,7 @@ class RepositoryEmitterGeneratedPathTest {
 
             @SuppressWarnings("unchecked")
             Map<Class<?>, EntityMaterializer<?>> materializers = (Map<Class<?>, EntityMaterializer<?>>) method.invoke(
-                    null,
+                    emitter,
                     Map.of(EmbeddedOwner.class, table),
                     (EntityMetadataProvider) MetadataExtractor::extractEntityMetadata);
 

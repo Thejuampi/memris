@@ -124,9 +124,14 @@ class ArenaFeatureTest {
         
         // When
         arena.close();
-        
-        // Then - After close, arena should be empty
-        assertThat(arena.getRepository(SimpleEntity.class)).isNull();
+
+        // Then - After close, arena should reject new operations
+        assertThatThrownBy(() -> arena.getRepository(SimpleEntity.class))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("closed");
+        assertThatThrownBy(() -> arena.createRepository(SimpleEntityRepository.class))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("closed");
     }
 
     // Test entity and repository
