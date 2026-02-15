@@ -206,9 +206,13 @@ public final class MultiColumnOrderCompiler {
             var present = new boolean[rows.length];
             var values = new int[rows.length];
             for (var i = 0; i < rows.length; i++) {
-                var row = rows[i];
-                present[i] = table.isPresent(columnIndex, row);
-                values[i] = table.readInt(columnIndex, row);
+                final int idx = i;
+                final var row = rows[i];
+                table.readWithSeqLock(row, () -> {
+                    present[idx] = table.isPresent(columnIndex, row);
+                    values[idx] = table.readInt(columnIndex, row);
+                    return null;
+                });
             }
             return new IntOrderKey(ascending, present, values);
         }
@@ -227,7 +231,8 @@ public final class MultiColumnOrderCompiler {
         public OrderKey build(GeneratedTable table, int[] rows) {
             var values = new int[rows.length];
             for (var i = 0; i < rows.length; i++) {
-                values[i] = table.readInt(columnIndex, rows[i]);
+                final int ri = rows[i];
+                values[i] = table.readWithSeqLock(ri, () -> table.readInt(columnIndex, ri));
             }
             return new IntOrderKeyNonNull(ascending, values);
         }
@@ -247,9 +252,13 @@ public final class MultiColumnOrderCompiler {
             var present = new boolean[rows.length];
             var values = new float[rows.length];
             for (var i = 0; i < rows.length; i++) {
-                var row = rows[i];
-                present[i] = table.isPresent(columnIndex, row);
-                values[i] = FloatEncoding.sortableIntToFloat(table.readInt(columnIndex, row));
+                final int idx = i;
+                final var row = rows[i];
+                table.readWithSeqLock(row, () -> {
+                    present[idx] = table.isPresent(columnIndex, row);
+                    values[idx] = FloatEncoding.sortableIntToFloat(table.readInt(columnIndex, row));
+                    return null;
+                });
             }
             return new FloatOrderKey(ascending, present, values);
         }
@@ -268,7 +277,9 @@ public final class MultiColumnOrderCompiler {
         public OrderKey build(GeneratedTable table, int[] rows) {
             var values = new float[rows.length];
             for (var i = 0; i < rows.length; i++) {
-                values[i] = FloatEncoding.sortableIntToFloat(table.readInt(columnIndex, rows[i]));
+                final int ri = rows[i];
+                values[i] = table.readWithSeqLock(ri,
+                        () -> FloatEncoding.sortableIntToFloat(table.readInt(columnIndex, ri)));
             }
             return new FloatOrderKeyNonNull(ascending, values);
         }
@@ -288,9 +299,13 @@ public final class MultiColumnOrderCompiler {
             var present = new boolean[rows.length];
             var values = new long[rows.length];
             for (var i = 0; i < rows.length; i++) {
-                var row = rows[i];
-                present[i] = table.isPresent(columnIndex, row);
-                values[i] = table.readLong(columnIndex, row);
+                final int idx = i;
+                final var row = rows[i];
+                table.readWithSeqLock(row, () -> {
+                    present[idx] = table.isPresent(columnIndex, row);
+                    values[idx] = table.readLong(columnIndex, row);
+                    return null;
+                });
             }
             return new LongOrderKey(ascending, present, values);
         }
@@ -309,7 +324,8 @@ public final class MultiColumnOrderCompiler {
         public OrderKey build(GeneratedTable table, int[] rows) {
             var values = new long[rows.length];
             for (var i = 0; i < rows.length; i++) {
-                values[i] = table.readLong(columnIndex, rows[i]);
+                final int ri = rows[i];
+                values[i] = table.readWithSeqLock(ri, () -> table.readLong(columnIndex, ri));
             }
             return new LongOrderKeyNonNull(ascending, values);
         }
@@ -329,9 +345,13 @@ public final class MultiColumnOrderCompiler {
             var present = new boolean[rows.length];
             var values = new double[rows.length];
             for (var i = 0; i < rows.length; i++) {
-                var row = rows[i];
-                present[i] = table.isPresent(columnIndex, row);
-                values[i] = Double.longBitsToDouble(table.readLong(columnIndex, row));
+                final int idx = i;
+                final var row = rows[i];
+                table.readWithSeqLock(row, () -> {
+                    present[idx] = table.isPresent(columnIndex, row);
+                    values[idx] = Double.longBitsToDouble(table.readLong(columnIndex, row));
+                    return null;
+                });
             }
             return new DoubleOrderKey(ascending, present, values);
         }
@@ -350,7 +370,8 @@ public final class MultiColumnOrderCompiler {
         public OrderKey build(GeneratedTable table, int[] rows) {
             var values = new double[rows.length];
             for (var i = 0; i < rows.length; i++) {
-                values[i] = Double.longBitsToDouble(table.readLong(columnIndex, rows[i]));
+                final int ri = rows[i];
+                values[i] = table.readWithSeqLock(ri, () -> Double.longBitsToDouble(table.readLong(columnIndex, ri)));
             }
             return new DoubleOrderKeyNonNull(ascending, values);
         }
@@ -370,9 +391,13 @@ public final class MultiColumnOrderCompiler {
             var present = new boolean[rows.length];
             var values = new String[rows.length];
             for (var i = 0; i < rows.length; i++) {
-                var row = rows[i];
-                values[i] = table.readString(columnIndex, row);
-                present[i] = values[i] != null;
+                final int idx = i;
+                final var row = rows[i];
+                table.readWithSeqLock(row, () -> {
+                    values[idx] = table.readString(columnIndex, row);
+                    present[idx] = values[idx] != null;
+                    return null;
+                });
             }
             return new StringOrderKey(ascending, present, values);
         }

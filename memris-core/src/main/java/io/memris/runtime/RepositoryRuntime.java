@@ -150,7 +150,8 @@ public final class RepositoryRuntime<T> {
         this.metadataProvider = config != null && config.entityMetadataProvider() != null
                 ? config.entityMetadataProvider()
                 : MetadataExtractor::extractEntityMetadata;
-        var compiledArtifacts = RepositoryRuntimeCompiler.compile(plan, factory, arena, metadata, this.metadataProvider);
+        var compiledArtifacts = RepositoryRuntimeCompiler.compile(plan, factory, arena, metadata,
+                this.metadataProvider);
         this.storageReadersByColumn = compiledArtifacts.storageReadersByColumn();
         this.compiledConditionExecutorsByQuery = compiledArtifacts.conditionExecutorsByQuery();
         this.compiledProjectionExecutorsByQuery = compiledArtifacts.projectionExecutorsByQuery();
@@ -195,7 +196,8 @@ public final class RepositoryRuntime<T> {
                 }
                 for (var condition : conditions) {
                     var primitiveNonNull = isPrimitiveNonNullColumn(condition.columnIndex());
-                    directConditionExecutors.put(condition, ConditionProgramCompiler.compile(condition, primitiveNonNull));
+                    directConditionExecutors.put(condition,
+                            ConditionProgramCompiler.compile(condition, primitiveNonNull));
                 }
                 var joins = query.joins();
                 if (joins == null) {
@@ -267,8 +269,8 @@ public final class RepositoryRuntime<T> {
             boolean useIndex) {
         var primitiveNonNull = isPrimitiveNonNullColumn(primitiveNonNullColumns, condition.columnIndex());
         var directExecutor = ConditionProgramCompiler.compile(condition, primitiveNonNull);
-        var fallbackSelector = (ConditionExecutor.Selector) (runtime, args) ->
-                directExecutor.execute(runtime.plan().table(), runtime.plan().kernel(), args);
+        var fallbackSelector = (ConditionExecutor.Selector) (runtime, args) -> directExecutor
+                .execute(runtime.plan().table(), runtime.plan().kernel(), args);
         if (!useIndex || condition.ignoreCase()) {
             return new ConditionExecutor(condition.nextCombinator(), fallbackSelector);
         }
@@ -296,7 +298,8 @@ public final class RepositoryRuntime<T> {
                     if (condition.argumentIndex() + 1 >= args.length) {
                         return fallbackSelector.execute(runtime, args);
                     }
-                    Object[] range = new Object[] { args[condition.argumentIndex()], args[condition.argumentIndex() + 1] };
+                    Object[] range = new Object[] { args[condition.argumentIndex()],
+                            args[condition.argumentIndex() + 1] };
                     int[] rows = runtime.queryIndex(entityClass, fieldName, predicateOperator, range);
                     return rows != null ? runtime.selectionFromRows(rows) : fallbackSelector.execute(runtime, args);
                 });
@@ -552,7 +555,8 @@ public final class RepositoryRuntime<T> {
         }
 
         var builders = MultiColumnOrderCompiler.compileBuilders(orderBy, table, primitiveNonNullColumns);
-        return (runtime, rows) -> MultiColumnOrderCompiler.sortByCompiledBuilders(runtime.plan().table(), rows, builders);
+        return (runtime, rows) -> MultiColumnOrderCompiler.sortByCompiledBuilders(runtime.plan().table(), rows,
+                builders);
     }
 
     private static ProjectionExecutor buildProjectionExecutor(CompiledQuery query,
@@ -1240,7 +1244,7 @@ public final class RepositoryRuntime<T> {
 
         var results = new ArrayList<T>(rowIndices.length);
         for (var rowIndex : rowIndices) {
-            var entity = materializer.materialize(table, rowIndex);
+            var entity = table.readWithSeqLock(rowIndex, () -> materializer.materialize(table, rowIndex));
             applyPostLoad(entity);
             hydrateCollections(entity, rowIndex);
             results.add(entity);
@@ -1275,7 +1279,8 @@ public final class RepositoryRuntime<T> {
             java.util.Set<Object> resultSet = returnSet ? new java.util.LinkedHashSet<>(Math.max(16, max)) : null;
             for (var i = 0; i < max; i++) {
                 var rowIndex = rows[i];
-                var value = projectionExecutor.materialize(this, rowIndex);
+                var value = plan.table().readWithSeqLock(rowIndex,
+                        () -> projectionExecutor.materialize(this, rowIndex));
                 if (returnSet) {
                     resultSet.add(value);
                 } else {
@@ -1306,7 +1311,7 @@ public final class RepositoryRuntime<T> {
         var table = plan.table();
         for (var i = 0; i < max; i++) {
             var rowIndex = rows[i];
-            var entity = materializer.materialize(table, rowIndex);
+            var entity = table.readWithSeqLock(rowIndex, () -> materializer.materialize(table, rowIndex));
             applyPostLoad(entity);
             hydrateJoins(entity, rowIndex, query);
             hydrateCollections(entity, rowIndex);
@@ -1414,7 +1419,7 @@ public final class RepositoryRuntime<T> {
         var table = plan.table();
         for (int i = 0; i < max; i++) {
             int rowIndex = rows[i];
-            T entity = materializer.materialize(table, rowIndex);
+            T entity = table.readWithSeqLock(rowIndex, () -> materializer.materialize(table, rowIndex));
             applyPostLoad(entity);
             hydrateJoins(entity, rowIndex, query);
             hydrateCollections(entity, rowIndex);
@@ -1431,7 +1436,7 @@ public final class RepositoryRuntime<T> {
         var table = plan.table();
         for (int i = 0; i < max; i++) {
             int rowIndex = rows[i];
-            T entity = materializer.materialize(table, rowIndex);
+            T entity = table.readWithSeqLock(rowIndex, () -> materializer.materialize(table, rowIndex));
             applyPostLoad(entity);
             hydrateJoins(entity, rowIndex, query);
             hydrateCollections(entity, rowIndex);
@@ -1446,7 +1451,8 @@ public final class RepositoryRuntime<T> {
         Map<Object, Long> resultMap = new java.util.LinkedHashMap<>();
         for (int i = 0; i < max; i++) {
             int rowIndex = rows[i];
-            Object key = readGroupingKey(query, groupColumnIndices, groupTypeCodes, rowIndex);
+            Object key = plan.table().readWithSeqLock(rowIndex,
+                    () -> readGroupingKey(query, groupColumnIndices, groupTypeCodes, rowIndex));
             resultMap.merge(key, 1L, Long::sum);
         }
         return resultMap;
@@ -1472,8 +1478,10 @@ public final class RepositoryRuntime<T> {
     }
 
     private Object readGroupingValue(int columnIndex, byte typeCode, int rowIndex) {
-        return RuntimeExecutorGenerator.generateGroupingValueReader(columnIndex, typeCode)
-                .read(plan.table(), rowIndex);
+        var table = plan.table();
+        return table.readWithSeqLock(rowIndex,
+                () -> RuntimeExecutorGenerator.generateGroupingValueReader(columnIndex, typeCode).read(table,
+                        rowIndex));
     }
 
     private int[] distinctRows(int[] rows) {
@@ -2248,8 +2256,8 @@ public final class RepositoryRuntime<T> {
         var combined = ConditionSelectionOrchestrator.execute(conditions,
                 executors,
                 args,
-                (groupConditions, start, end, runtimeArgs, consumed) ->
-                    selectWithCompositeIndex(compositeProbe, groupConditions, start, end, runtimeArgs, consumed),
+                (groupConditions, start, end, runtimeArgs, consumed) -> selectWithCompositeIndex(compositeProbe,
+                        groupConditions, start, end, runtimeArgs, consumed),
                 (compiled, compiledExecutors, index, runtimeArgs) -> compiledExecutors != null
                         && index < compiledExecutors.length
                                 ? compiledExecutors[index].execute(this, runtimeArgs)
@@ -2557,7 +2565,8 @@ public final class RepositoryRuntime<T> {
         SortBuffers buffers = SORT_BUFFERS.get();
         int[] keys = buffers.intKeys(result.length);
         for (int i = 0; i < result.length; i++) {
-            keys[i] = table.readInt(columnIndex, result[i]);
+            final int ri = result[i];
+            keys[i] = table.readWithSeqLock(ri, () -> table.readInt(columnIndex, ri));
         }
         topKHeapIntNonNull(result, keys, k, ascending);
         quickSortIntNonNull(result, keys, 0, k - 1, ascending);
@@ -2573,9 +2582,13 @@ public final class RepositoryRuntime<T> {
         int[] keys = buffers.intKeys(result.length);
         boolean[] present = buffers.present(result.length);
         for (int i = 0; i < result.length; i++) {
-            int row = result[i];
-            present[i] = table.isPresent(columnIndex, row);
-            keys[i] = table.readInt(columnIndex, row);
+            final int idx = i;
+            final int row = result[i];
+            table.readWithSeqLock(row, () -> {
+                present[idx] = table.isPresent(columnIndex, row);
+                keys[idx] = table.readInt(columnIndex, row);
+                return null;
+            });
         }
         topKHeapInt(result, keys, present, k, ascending);
         quickSortInt(result, keys, present, 0, k - 1, ascending);
@@ -2680,7 +2693,8 @@ public final class RepositoryRuntime<T> {
         SortBuffers buffers = SORT_BUFFERS.get();
         long[] keys = buffers.longKeys(result.length);
         for (int i = 0; i < result.length; i++) {
-            keys[i] = table.readLong(columnIndex, result[i]);
+            final int ri = result[i];
+            keys[i] = table.readWithSeqLock(ri, () -> table.readLong(columnIndex, ri));
         }
         topKHeapLongNonNull(result, keys, k, ascending);
         quickSortLongNonNull(result, keys, 0, k - 1, ascending);
@@ -2696,9 +2710,13 @@ public final class RepositoryRuntime<T> {
         long[] keys = buffers.longKeys(result.length);
         boolean[] present = buffers.present(result.length);
         for (int i = 0; i < result.length; i++) {
-            int row = result[i];
-            present[i] = table.isPresent(columnIndex, row);
-            keys[i] = table.readLong(columnIndex, row);
+            final int idx = i;
+            final int row = result[i];
+            table.readWithSeqLock(row, () -> {
+                present[idx] = table.isPresent(columnIndex, row);
+                keys[idx] = table.readLong(columnIndex, row);
+                return null;
+            });
         }
         topKHeapLong(result, keys, present, k, ascending);
         quickSortLong(result, keys, present, 0, k - 1, ascending);
@@ -2798,7 +2816,8 @@ public final class RepositoryRuntime<T> {
         SortBuffers buffers = SORT_BUFFERS.get();
         String[] keys = buffers.stringKeys(result.length);
         for (int i = 0; i < result.length; i++) {
-            keys[i] = table.readString(columnIndex, result[i]);
+            final int ri = result[i];
+            keys[i] = table.readWithSeqLock(ri, () -> table.readString(columnIndex, ri));
         }
         topKHeapString(result, keys, k, ascending);
         quickSortString(result, keys, 0, k - 1, ascending);
@@ -2896,7 +2915,8 @@ public final class RepositoryRuntime<T> {
         int[] keys = buffers.intKeys(result.length);
         GeneratedTable table = plan.table();
         for (int i = 0; i < result.length; i++) {
-            keys[i] = table.readInt(columnIndex, result[i]);
+            final int ri = result[i];
+            keys[i] = table.readWithSeqLock(ri, () -> table.readInt(columnIndex, ri));
         }
         quickSortIntNonNull(result, keys, 0, result.length - 1, ascending);
         return result;
@@ -2909,9 +2929,13 @@ public final class RepositoryRuntime<T> {
         boolean[] present = buffers.present(result.length);
         GeneratedTable table = plan.table();
         for (int i = 0; i < result.length; i++) {
-            int row = result[i];
-            present[i] = table.isPresent(columnIndex, row);
-            keys[i] = table.readInt(columnIndex, row);
+            final int idx = i;
+            final int row = result[i];
+            table.readWithSeqLock(row, () -> {
+                present[idx] = table.isPresent(columnIndex, row);
+                keys[idx] = table.readInt(columnIndex, row);
+                return null;
+            });
         }
         quickSortInt(result, keys, present, 0, result.length - 1, ascending);
         return result;
@@ -2929,7 +2953,8 @@ public final class RepositoryRuntime<T> {
         float[] keys = buffers.floatKeys(result.length);
         GeneratedTable table = plan.table();
         for (int i = 0; i < result.length; i++) {
-            keys[i] = FloatEncoding.sortableIntToFloat(table.readInt(columnIndex, result[i]));
+            final int ri = result[i];
+            keys[i] = table.readWithSeqLock(ri, () -> FloatEncoding.sortableIntToFloat(table.readInt(columnIndex, ri)));
         }
         quickSortFloatNonNull(result, keys, 0, result.length - 1, ascending);
         return result;
@@ -2942,9 +2967,13 @@ public final class RepositoryRuntime<T> {
         boolean[] present = buffers.present(result.length);
         GeneratedTable table = plan.table();
         for (int i = 0; i < result.length; i++) {
-            int row = result[i];
-            present[i] = table.isPresent(columnIndex, row);
-            keys[i] = FloatEncoding.sortableIntToFloat(table.readInt(columnIndex, row));
+            final int idx = i;
+            final int row = result[i];
+            table.readWithSeqLock(row, () -> {
+                present[idx] = table.isPresent(columnIndex, row);
+                keys[idx] = FloatEncoding.sortableIntToFloat(table.readInt(columnIndex, row));
+                return null;
+            });
         }
         quickSortFloat(result, keys, present, 0, result.length - 1, ascending);
         return result;
@@ -2962,7 +2991,8 @@ public final class RepositoryRuntime<T> {
         long[] keys = buffers.longKeys(result.length);
         GeneratedTable table = plan.table();
         for (int i = 0; i < result.length; i++) {
-            keys[i] = table.readLong(columnIndex, result[i]);
+            final int ri = result[i];
+            keys[i] = table.readWithSeqLock(ri, () -> table.readLong(columnIndex, ri));
         }
         quickSortLongNonNull(result, keys, 0, result.length - 1, ascending);
         return result;
@@ -2975,9 +3005,13 @@ public final class RepositoryRuntime<T> {
         boolean[] present = buffers.present(result.length);
         GeneratedTable table = plan.table();
         for (int i = 0; i < result.length; i++) {
-            int row = result[i];
-            present[i] = table.isPresent(columnIndex, row);
-            keys[i] = table.readLong(columnIndex, row);
+            final int idx = i;
+            final int row = result[i];
+            table.readWithSeqLock(row, () -> {
+                present[idx] = table.isPresent(columnIndex, row);
+                keys[idx] = table.readLong(columnIndex, row);
+                return null;
+            });
         }
         quickSortLong(result, keys, present, 0, result.length - 1, ascending);
         return result;
@@ -2995,7 +3029,8 @@ public final class RepositoryRuntime<T> {
         double[] keys = buffers.doubleKeys(result.length);
         GeneratedTable table = plan.table();
         for (int i = 0; i < result.length; i++) {
-            keys[i] = Double.longBitsToDouble(table.readLong(columnIndex, result[i]));
+            final int ri = result[i];
+            keys[i] = table.readWithSeqLock(ri, () -> Double.longBitsToDouble(table.readLong(columnIndex, ri)));
         }
         quickSortDoubleNonNull(result, keys, 0, result.length - 1, ascending);
         return result;
@@ -3008,9 +3043,13 @@ public final class RepositoryRuntime<T> {
         boolean[] present = buffers.present(result.length);
         GeneratedTable table = plan.table();
         for (int i = 0; i < result.length; i++) {
-            int row = result[i];
-            present[i] = table.isPresent(columnIndex, row);
-            keys[i] = Double.longBitsToDouble(table.readLong(columnIndex, row));
+            final int idx = i;
+            final int row = result[i];
+            table.readWithSeqLock(row, () -> {
+                present[idx] = table.isPresent(columnIndex, row);
+                keys[idx] = Double.longBitsToDouble(table.readLong(columnIndex, row));
+                return null;
+            });
         }
         quickSortDouble(result, keys, present, 0, result.length - 1, ascending);
         return result;
@@ -3022,7 +3061,8 @@ public final class RepositoryRuntime<T> {
         String[] keys = buffers.stringKeys(result.length);
         GeneratedTable table = plan.table();
         for (int i = 0; i < result.length; i++) {
-            keys[i] = table.readString(columnIndex, result[i]);
+            final int ri = result[i];
+            keys[i] = table.readWithSeqLock(ri, () -> table.readString(columnIndex, ri));
         }
         quickSortString(result, keys, 0, result.length - 1, ascending);
         return result;
@@ -3545,7 +3585,8 @@ public final class RepositoryRuntime<T> {
         var collection = createCollection(relationPlan.collectionType(), matches.length);
         var targetTable = relationPlan.targetTable();
         for (var targetRow : matches) {
-            var related = relationPlan.targetMaterializer().materialize(targetTable, targetRow);
+            var related = targetTable.readWithSeqLock(targetRow,
+                    () -> relationPlan.targetMaterializer().materialize(targetTable, targetRow));
             invokeLifecycle(relationPlan.targetPostLoadHandle(), related);
             collection.add(related);
         }
@@ -3558,14 +3599,14 @@ public final class RepositoryRuntime<T> {
     }
 
     private long readSourceId(GeneratedTable table, int idColumnIndex, byte typeCode, int rowIndex) {
-        return switch (typeCode) {
+        return table.readWithSeqLock(rowIndex, () -> switch (typeCode) {
             case TypeCodes.TYPE_LONG -> table.readLong(idColumnIndex, rowIndex);
             case TypeCodes.TYPE_INT,
                     TypeCodes.TYPE_SHORT,
                     TypeCodes.TYPE_BYTE ->
-                table.readInt(idColumnIndex, rowIndex);
+                (long) table.readInt(idColumnIndex, rowIndex);
             default -> table.readLong(idColumnIndex, rowIndex);
-        };
+        });
     }
 
     private java.util.Collection<Object> createCollection(Class<?> fieldType, int expectedSize) {
@@ -3604,7 +3645,8 @@ public final class RepositoryRuntime<T> {
                     targetIdValue);
             var targetTable = relationPlan.joinInfo().targetTable();
             for (int targetRow : matches) {
-                Object related = relationPlan.targetMaterializer().materialize(targetTable, targetRow);
+                Object related = targetTable.readWithSeqLock(targetRow,
+                        () -> relationPlan.targetMaterializer().materialize(targetTable, targetRow));
                 invokeLifecycle(relationPlan.targetPostLoadHandle(), related);
                 collection.add(related);
             }
@@ -3636,13 +3678,13 @@ public final class RepositoryRuntime<T> {
 
     private Object readSourceIdValue(GeneratedTable table, int idColumnIndex, byte typeCode,
             int rowIndex) {
-        return switch (typeCode) {
+        return table.readWithSeqLock(rowIndex, () -> switch (typeCode) {
             case TypeCodes.TYPE_LONG -> Long.valueOf(table.readLong(idColumnIndex, rowIndex));
             case TypeCodes.TYPE_INT -> Integer.valueOf(table.readInt(idColumnIndex, rowIndex));
             case TypeCodes.TYPE_SHORT -> Short.valueOf((short) table.readInt(idColumnIndex, rowIndex));
             case TypeCodes.TYPE_BYTE -> Byte.valueOf((byte) table.readInt(idColumnIndex, rowIndex));
             default -> Long.valueOf(table.readLong(idColumnIndex, rowIndex));
-        };
+        });
     }
 
     private void persistManyToMany(T entity) {
