@@ -9,6 +9,8 @@ Memris is a high-performance in-memory storage engine with the following princip
 - **Heap-based storage**: 100% Java heap using primitive arrays and object pools
 - **Zero reflection hot paths**: Compile-time metadata extraction, runtime queryId dispatch
 - **ByteBuddy table generation**: Generates optimized table classes at build time
+- **Plan-driven property paths**: Embedded/dotted access compiled once into `ColumnAccessPlan`
+- **Generated entity accessors**: Saver/materializer bytecode for flat and embedded columns
 - **Primitive-only APIs**: Direct array access, no boxing in hot paths
 - **O(1) design**: Direct index access, hash-based lookups
 
@@ -61,7 +63,7 @@ Memris is a high-performance in-memory storage engine with the following princip
 | `io.memris.storage.heap` | Heap-based implementation | `TableGenerator`, `AbstractTable`, `PageColumnInt`, `PageColumnLong`, `PageColumnString`, `LongIdIndex`, `StringIdIndex`, `LockFreeFreeList` |
 | `io.memris.index` | Index implementations | `HashIndex`, `RangeIndex`, `CompositeHashIndex`, `CompositeRangeIndex`, `StringPrefixIndex`, `StringSuffixIndex` |
 | `io.memris.kernel` | Core execution primitives | `Predicate`, `RowId`, `RowIdSet`, `LongEnumerator` |
-| `io.memris.repository` | Repository scaffolding | `MemrisRepository`, `MemrisRepositoryFactory`, `RepositoryMethodIntrospector` |
+| `io.memris.repository` | Repository + saver generation | `RepositoryEmitter`, `EntitySaverGenerator`, `MemrisRepositoryFactory`, `RepositoryMethodIntrospector` |
 
 ## Layer Responsibilities
 
@@ -134,13 +136,17 @@ Custom annotations for entity marking:
 - Generates: FieldValueReader, FkReader, TargetRowResolver, ConditionExecutor, OrderKeyBuilder
 - Feature toggle: `-Dmemris.codegen.enabled=false` to disable
 
-**EntityMaterializer**
-- Converts table rows to entity objects
-- Uses MethodHandles for field access
+**EntityMaterializerGenerator**
+- Generates materializer classes for flat and embedded columns
+- Uses direct field bytecode for flat public fields
+- Uses `ColumnAccessPlan` for dotted/embedded paths
+- Caches generated artifacts by entity shape
 
-**EntityExtractor**
-- Extracts field values from entities
-- Used for insert/update operations
+**EntitySaverGenerator**
+- Generates saver classes for insert/update operations
+- Uses direct field bytecode for flat public fields
+- Uses `ColumnAccessPlan` for dotted/embedded paths
+- Caches generated artifacts by entity shape
 
 ### Layer 5: Storage Layer
 
@@ -229,6 +235,7 @@ JVM inlines these constants and compiles switch to tableswitch (direct jump).
 - Column indices resolved at compile time
 - queryId-based dispatch (int lookup, not string)
 - No `Class.forName()`, no `Method.invoke()` in hot path
+- Embedded property chains compiled once in `ColumnAccessPlan` and reused
 
 ### 5. Lock-Free Concurrency Primitives
 
@@ -283,6 +290,9 @@ EntityMaterializer.materialize(rows) → List<Person>
 |------|---------|
 | `TableGenerator.java` | ByteBuddy table generation |
 | `RuntimeExecutorGenerator.java` | Runtime codegen for type-specialized executors |
+| `ColumnAccessPlan.java` | Compiled path metadata for embedded/dotted properties |
+| `EntitySaverGenerator.java` | Generated entity saver for flat + embedded paths |
+| `EntityMaterializerGenerator.java` | Generated entity materializer for flat + embedded paths |
 | `HeapRuntimeKernel.java` | Query execution engine |
 | `RepositoryRuntime.java` | Repository runtime with join materialization |
 | `TypeCodes.java` | Type code constants |
@@ -302,7 +312,7 @@ EntityMaterializer.materialize(rows) → List<Person>
 - **Current Storage**: 100% heap-based using primitive arrays
 - **SIMD Not Implemented**: Plain loops used; JIT may auto-vectorize
 - **Custom annotations**: Uses `@Entity`, `@Index`, etc. (not Jakarta/JPA)
-- **No Repository generation**: Generates tables, caller implements repository pattern
+- **Repository generation**: `RepositoryEmitter` generates repository implementations at runtime
 - **Relationship Support**: All relationship types fully implemented
 - **Lock-Free Data Structures**: `LockFreeFreeList` uses Treiber stack algorithm with CAS
 - **Seqlock Support**: `rowSeqLocks` in AbstractTable provides per-row atomicity

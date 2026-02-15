@@ -27,8 +27,6 @@ import io.memris.runtime.JoinCollectionMaterializer;
 import io.memris.runtime.JoinMaterializer;
 import io.memris.runtime.JoinMaterializerImpl;
 import io.memris.runtime.NoopJoinMaterializer;
-import io.memris.runtime.ReflectionEntityMaterializer;
-import io.memris.runtime.ReflectionEntitySaver;
 import io.memris.runtime.RepositoryMethodBinding;
 import io.memris.runtime.RepositoryMethodExecutor;
 import io.memris.runtime.RepositoryPlan;
@@ -236,30 +234,14 @@ public final class RepositoryEmitter {
         var generator = new EntityMaterializerGenerator();
         for (var entityClass : tablesByEntity.keySet()) {
             var entityMetadata = provider.getMetadata(entityClass);
-            if (requiresReflectionPathAccess(entityMetadata)) {
-                materializers.put(entityClass, new ReflectionEntityMaterializer<>(entityMetadata));
-            } else {
-                materializers.put(entityClass, generator.generate(entityMetadata));
-            }
+            materializers.put(entityClass, generator.generate(entityMetadata));
         }
         return Map.copyOf(materializers);
     }
 
     private static <T> io.memris.runtime.EntitySaver<T, ?> createEntitySaver(Class<T> entityClass,
             EntityMetadata<T> metadata) {
-        if (requiresReflectionPathAccess(metadata)) {
-            return new ReflectionEntitySaver<>(metadata);
-        }
         return EntitySaverGenerator.generate(entityClass, metadata);
-    }
-
-    private static boolean requiresReflectionPathAccess(EntityMetadata<?> metadata) {
-        for (FieldMapping field : metadata.fields()) {
-            if (field.columnPosition() >= 0 && field.name().indexOf('.') >= 0) {
-                return true;
-            }
-        }
-        return false;
     }
 
     private static <T> Map<String, SimpleTable> buildManyToManyJoinTables(

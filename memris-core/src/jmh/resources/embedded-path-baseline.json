@@ -1,0 +1,8 @@
+{
+  "io.memris.benchmarks.EmbeddedPathBenchmark.flat_findById": 9400000.0,
+  "io.memris.benchmarks.EmbeddedPathBenchmark.flat_save": 1250000.0,
+  "io.memris.benchmarks.EmbeddedPathBenchmark.flat_update": 1330000.0,
+  "io.memris.benchmarks.EmbeddedPathBenchmark.embedded_findById": 4500000.0,
+  "io.memris.benchmarks.EmbeddedPathBenchmark.embedded_save": 1100000.0,
+  "io.memris.benchmarks.EmbeddedPathBenchmark.embedded_update": 1170000.0
+}

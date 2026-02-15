@@ -6,24 +6,26 @@ import io.memris.core.TypeCodes;
 import io.memris.core.converter.TypeConverter;
 import io.memris.storage.GeneratedTable;
 
-import java.lang.reflect.Constructor;
+import java.lang.invoke.MethodHandle;
+import java.lang.invoke.MethodHandles;
+import java.lang.invoke.MethodType;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 
 /**
- * Reflection-based materializer used for entities with flattened embedded paths.
+ * Compatibility wrapper for path-aware materialization.
+ * <p>
+ * Prefer {@link EntityMaterializerGenerator} in runtime code paths.
  */
+@Deprecated(forRemoval = false)
 public final class ReflectionEntityMaterializer<T> implements EntityMaterializer<T> {
 
-    private final Constructor<T> constructor;
+    private final MethodHandle constructor;
     private final Entry[] entries;
 
     public ReflectionEntityMaterializer(EntityMetadata<T> metadata) {
-        this.constructor = metadata.entityConstructor();
-        if (this.constructor != null) {
-            this.constructor.setAccessible(true);
-        }
+        this.constructor = resolveConstructor(metadata.entityConstructor());
         this.entries = buildEntries(metadata);
     }
 
@@ -31,7 +33,7 @@ public final class ReflectionEntityMaterializer<T> implements EntityMaterializer
     @SuppressWarnings("unchecked")
     public T materialize(GeneratedTable table, int rowIndex) {
         try {
-            T entity = constructor.newInstance();
+            T entity = (T) constructor.invoke();
             for (Entry entry : entries) {
                 int columnIndex = entry.mapping.columnPosition();
                 if (!entry.mapping.javaType().isPrimitive() && !table.isPresent(columnIndex, rowIndex)) {
@@ -44,8 +46,18 @@ public final class ReflectionEntityMaterializer<T> implements EntityMaterializer
                 entry.accessor.set(entity, value);
             }
             return entity;
-        } catch (ReflectiveOperationException e) {
+        } catch (Throwable e) {
             throw new RuntimeException("Failed to materialize entity", e);
+        }
+    }
+
+    private MethodHandle resolveConstructor(java.lang.reflect.Constructor<T> ctor) {
+        try {
+            MethodHandles.Lookup privateLookup = MethodHandles.privateLookupIn(ctor.getDeclaringClass(),
+                    MethodHandles.lookup());
+            return privateLookup.unreflectConstructor(ctor).asType(MethodType.methodType(Object.class));
+        } catch (IllegalAccessException e) {
+            throw new RuntimeException("Failed to access entity constructor", e);
         }
     }
 
