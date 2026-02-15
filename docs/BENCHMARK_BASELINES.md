@@ -195,3 +195,37 @@ mvn.cmd -pl memris-core exec:java \
 ### Artifacts
 - `memris-core/target/jmh-results/dispatch-avgt.json`
 - `memris-core/target/jmh-results/dispatch-thrpt.csv`
+
+---
+
+## Embedded Path Benchmarks
+
+This suite guards flat vs embedded save/find/update throughput after the
+plan-driven embedded-path refactor.
+
+### Class
+- `io.memris.benchmarks.EmbeddedPathBenchmark`
+
+### Baseline Source
+- `memris-core/src/jmh/resources/embedded-path-baseline.json`
+
+### Regression Policy
+- Flat benchmarks fail above **10%** slowdown
+- Embedded benchmarks fail above **15%** slowdown
+
+### Run + Check
+
+```bash
+mvn -q -pl memris-core -DskipTests test-compile dependency:build-classpath \
+  -Dmdep.includeScope=test -Dmdep.outputFile=target/jmh-cp.txt
+
+CP="memris-core/target/test-classes:memris-core/target/classes:$(cat memris-core/target/jmh-cp.txt)"
+java -cp "$CP" org.openjdk.jmh.Main io.memris.benchmarks.EmbeddedPathBenchmark.* \
+  -wi 1 -i 1 -f 1 -rf json -rff memris-core/target/jmh-embedded.json
+
+python scripts/check-jmh-regression.py \
+  --baseline memris-core/src/jmh/resources/embedded-path-baseline.json \
+  --current memris-core/target/jmh-embedded.json \
+  --flat-threshold 0.10 \
+  --embedded-threshold 0.15
+```

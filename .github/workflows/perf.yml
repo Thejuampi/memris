@@ -1,0 +1,53 @@
+name: Perf Guardrails
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "memris-core/**"
+      - "scripts/check-jmh-regression.py"
+      - ".github/workflows/perf.yml"
+
+jobs:
+  jmh-embedded-regression:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "21"
+          cache: "maven"
+
+      - name: Install parent POM
+        run: mvn -q -e -N install
+
+      - name: Compile benchmarks and resolve classpath
+        run: |
+          mvn -q -e -pl memris-core -DskipTests test-compile dependency:build-classpath \
+            -Dmdep.includeScope=test \
+            -Dmdep.outputFile=target/jmh-cp.txt
+
+      - name: Run embedded path benchmark subset
+        run: |
+          CP="memris-core/target/test-classes:memris-core/target/classes:$(cat memris-core/target/jmh-cp.txt)"
+          java -cp "$CP" org.openjdk.jmh.Main io.memris.benchmarks.EmbeddedPathBenchmark.* \
+            -wi 1 -i 1 -f 1 \
+            -rf json -rff memris-core/target/jmh-embedded.json
+
+      - name: Check throughput regressions
+        run: |
+          python3 scripts/check-jmh-regression.py \
+            --baseline memris-core/src/jmh/resources/embedded-path-baseline.json \
+            --current memris-core/target/jmh-embedded.json \
+            --flat-threshold 0.10 \
+            --embedded-threshold 0.15
+
+      - name: Upload JMH results
+        uses: actions/upload-artifact@v4
+        with:
+          name: jmh-embedded-results
+          path: memris-core/target/jmh-embedded.json

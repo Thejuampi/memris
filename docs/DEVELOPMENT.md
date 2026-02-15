@@ -88,6 +88,12 @@ mvn.cmd -q -e -pl memris-core test -Dtest=ClassName#methodName
 **Usage:**
 Generated automatically at runtime and cached globally. No manual configuration needed.
 
+### Embedded Path Generation
+
+- Embedded/dotted persisted paths are compiled once into `ColumnAccessPlan`.
+- `EntitySaverGenerator` and `EntityMaterializerGenerator` always generate runtime accessors (no reflection strategy fallback).
+- Generated saver/materializer instances are cached by entity shape (classloader + column/converter signature).
+
 ## Code Style Guidelines
 
 ### Primitive-Only APIs (CRITICAL)
@@ -291,6 +297,32 @@ System.out.println("Found " + results.length + " matches");  // NOT A TEST!
 - Target: Hash index lookup O(1) < 1μs
 - Target: Range index lookup O(log n) < 10μs
 - Use JMH for microbenchmarks when needed
+
+### Embedded Path Perf Guardrails
+
+- Dedicated workflow: `.github/workflows/perf.yml`
+- Benchmark suite: `io.memris.benchmarks.EmbeddedPathBenchmark`
+- Baseline thresholds:
+  - flat benchmarks: fail above 10% slowdown
+  - embedded benchmarks: fail above 15% slowdown
+- Baseline source: `memris-core/src/jmh/resources/embedded-path-baseline.json`
+- Checker script: `scripts/check-jmh-regression.py`
+
+Run locally:
+```bash
+mvn -q -pl memris-core -DskipTests test-compile dependency:build-classpath \
+  -Dmdep.includeScope=test -Dmdep.outputFile=target/jmh-cp.txt
+
+CP="memris-core/target/test-classes:memris-core/target/classes:$(cat memris-core/target/jmh-cp.txt)"
+java -cp "$CP" org.openjdk.jmh.Main io.memris.benchmarks.EmbeddedPathBenchmark.* \
+  -wi 1 -i 1 -f 1 -rf json -rff memris-core/target/jmh-embedded.json
+
+python scripts/check-jmh-regression.py \
+  --baseline memris-core/src/jmh/resources/embedded-path-baseline.json \
+  --current memris-core/target/jmh-embedded.json \
+  --flat-threshold 0.10 \
+  --embedded-threshold 0.15
+```
 
 ### Benchmark Baseline (2026-02-01)
 

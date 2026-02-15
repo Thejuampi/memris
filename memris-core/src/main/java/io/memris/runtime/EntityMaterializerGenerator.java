@@ -1,11 +1,12 @@
 package io.memris.runtime;
 
+import io.memris.core.ColumnAccessPlan;
 import io.memris.core.FloatEncoding;
-
 import io.memris.core.EntityMetadata;
 import io.memris.core.EntityMetadata.FieldMapping;
 import io.memris.core.TypeCodes;
 import io.memris.core.converter.TypeConverter;
+import io.memris.core.converter.TypeConverterRegistry;
 import io.memris.storage.GeneratedTable;
 import net.bytebuddy.ByteBuddy;
 import net.bytebuddy.description.method.MethodDescription;
@@ -27,8 +28,11 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
+import java.util.concurrent.ConcurrentHashMap;
 
 public final class EntityMaterializerGenerator {
+    private static final ConcurrentHashMap<ShapeKey, EntityMaterializer<?>> MATERIALIZER_CACHE = new ConcurrentHashMap<>();
 
     /**
      * Generates an entity materializer implementation for one entity metadata shape.
@@ -46,6 +50,23 @@ public final class EntityMaterializerGenerator {
      * }</pre>
      */
     public <T> EntityMaterializer<T> generate(EntityMetadata<T> metadata) {
+        ShapeKey key = ShapeKey.from(metadata);
+        @SuppressWarnings("unchecked")
+        EntityMaterializer<T> cached = (EntityMaterializer<T>) MATERIALIZER_CACHE.get(key);
+        if (cached != null) {
+            return cached;
+        }
+        EntityMaterializer<T> generated = generateUncached(metadata);
+        @SuppressWarnings("unchecked")
+        EntityMaterializer<T> existing = (EntityMaterializer<T>) MATERIALIZER_CACHE.putIfAbsent(key, generated);
+        return existing != null ? existing : generated;
+    }
+
+    static void clearCacheForTests() {
+        MATERIALIZER_CACHE.clear();
+    }
+
+    private <T> EntityMaterializer<T> generateUncached(EntityMetadata<T> metadata) {
         Class<T> entityClass = metadata.entityClass();
         Constructor<T> ctor = metadata.entityConstructor();
         if (ctor == null || !Modifier.isPublic(ctor.getModifiers())) {
@@ -55,6 +76,7 @@ public final class EntityMaterializerGenerator {
 
         List<FieldInfo> fields = resolveFields(metadata);
         List<FieldInfo> converterFields = fields.stream().filter(f -> f.converter != null).toList();
+        List<FieldInfo> planFields = fields.stream().filter(f -> f.plan != null).toList();
 
         String implName = entityClass.getName() + "$MemrisMaterializer$" + System.nanoTime();
         DynamicType.Builder<?> builder = new ByteBuddy()
@@ -67,12 +89,20 @@ public final class EntityMaterializerGenerator {
             builder = builder.defineField(converterFieldName(i), TypeConverter.class, Visibility.PRIVATE,
                     FieldManifestation.FINAL);
         }
+        for (int i = 0; i < planFields.size(); i++) {
+            builder = builder.defineField(planFieldName(i), ColumnAccessPlan.class, Visibility.PRIVATE,
+                    FieldManifestation.FINAL);
+        }
 
-        if (!converterFields.isEmpty()) {
-            Class<?>[] paramTypes = new Class<?>[converterFields.size()];
+        if (!converterFields.isEmpty() || !planFields.isEmpty()) {
+            Class<?>[] paramTypes = new Class<?>[converterFields.size() + planFields.size()];
             for (int i = 0; i < converterFields.size(); i++) {
                 paramTypes[i] = TypeConverter.class;
                 converterFields.get(i).converterIndex = i;
+            }
+            for (int i = 0; i < planFields.size(); i++) {
+                paramTypes[converterFields.size() + i] = ColumnAccessPlan.class;
+                planFields.get(i).planIndex = i;
             }
 
             Implementation.Composable ctorCall;
@@ -83,6 +113,10 @@ public final class EntityMaterializerGenerator {
             }
             for (int i = 0; i < converterFields.size(); i++) {
                 ctorCall = ctorCall.andThen(FieldAccessor.ofField(converterFieldName(i)).setsArgumentAt(i));
+            }
+            for (int i = 0; i < planFields.size(); i++) {
+                ctorCall = ctorCall.andThen(
+                        FieldAccessor.ofField(planFieldName(i)).setsArgumentAt(converterFields.size() + i));
             }
 
             builder = builder.defineConstructor(Visibility.PUBLIC)
@@ -96,14 +130,18 @@ public final class EntityMaterializerGenerator {
 
         try (DynamicType.Unloaded<?> unloaded = builder.make()) {
             Class<?> implClass = unloaded.load(entityClass.getClassLoader()).getLoaded();
-            if (converterFields.isEmpty()) {
+            if (converterFields.isEmpty() && planFields.isEmpty()) {
                 return (EntityMaterializer<T>) implClass.getDeclaredConstructor().newInstance();
             }
-            Object[] args = new Object[converterFields.size()];
-            Class<?>[] paramTypes = new Class<?>[converterFields.size()];
+            Object[] args = new Object[converterFields.size() + planFields.size()];
+            Class<?>[] paramTypes = new Class<?>[converterFields.size() + planFields.size()];
             for (int i = 0; i < converterFields.size(); i++) {
                 args[i] = converterFields.get(i).converter;
                 paramTypes[i] = TypeConverter.class;
+            }
+            for (int i = 0; i < planFields.size(); i++) {
+                args[converterFields.size() + i] = planFields.get(i).plan;
+                paramTypes[converterFields.size() + i] = ColumnAccessPlan.class;
             }
             return (EntityMaterializer<T>) implClass.getDeclaredConstructor(paramTypes).newInstance(args);
         } catch (Exception e) {
@@ -118,38 +156,55 @@ public final class EntityMaterializerGenerator {
             if (mapping.isRelationship() || mapping.columnPosition() < 0) {
                 continue;
             }
-            try {
-                Field field = entityClass.getDeclaredField(mapping.name());
-                if (!Modifier.isPublic(field.getModifiers())) {
-                    continue;
-                }
-                TypeConverter<?, ?> converter = io.memris.core.converter.TypeConverterRegistry.getInstance()
-                        .getFieldConverter(metadata.entityClass(), mapping.name());
-                if (converter == null) {
-                    converter = metadata.converters().get(mapping.name());
-                }
-                result.add(new FieldInfo(mapping, field, converter));
-            } catch (NoSuchFieldException ignored) {
-                // Skip fields not present
+            Field directField = resolveDirectField(entityClass, mapping.name());
+            ColumnAccessPlan plan = directField == null ? metadata.columnAccessPlan(mapping.name()) : null;
+            TypeConverter<?, ?> converter = TypeConverterRegistry.getInstance()
+                    .getFieldConverter(metadata.entityClass(), mapping.name());
+            if (converter == null) {
+                converter = metadata.converters().get(mapping.name());
             }
+            result.add(new FieldInfo(mapping, directField, plan, converter));
         }
         return result;
+    }
+
+    private static Field resolveDirectField(Class<?> entityClass, String propertyName) {
+        if (propertyName == null || propertyName.indexOf('.') >= 0) {
+            return null;
+        }
+        try {
+            Field field = entityClass.getDeclaredField(propertyName);
+            return Modifier.isPublic(field.getModifiers()) ? field : null;
+        } catch (NoSuchFieldException ignored) {
+            return null;
+        }
     }
 
     private static String converterFieldName(int index) {
         return "c" + index;
     }
 
+    private static String planFieldName(int index) {
+        return "p" + index;
+    }
+
     private static final class FieldInfo {
         final FieldMapping mapping;
         final Field field;
+        final ColumnAccessPlan plan;
         final TypeConverter<?, ?> converter;
         int converterIndex = -1;
+        int planIndex = -1;
 
-        FieldInfo(FieldMapping mapping, Field field, TypeConverter<?, ?> converter) {
+        FieldInfo(FieldMapping mapping, Field field, ColumnAccessPlan plan, TypeConverter<?, ?> converter) {
             this.mapping = mapping;
             this.field = field;
+            this.plan = plan;
             this.converter = converter;
+        }
+
+        Class<?> targetType() {
+            return field != null ? field.getType() : mapping.javaType();
         }
     }
 
@@ -211,8 +266,35 @@ public final class EntityMaterializerGenerator {
                 int objVar) {
             FieldMapping mapping = info.mapping;
             Field field = info.field;
-            Class<?> fieldType = field.getType();
+            Class<?> fieldType = info.targetType();
             int colIdx = mapping.columnPosition();
+
+            if (info.plan != null) {
+                emitStorageAsObjectNullable(mv, mapping.typeCode(), tableVar, colIdx, objVar);
+                if (info.converter != null) {
+                    mv.visitVarInsn(Opcodes.ALOAD, 0);
+                    mv.visitFieldInsn(Opcodes.GETFIELD, materializerInternal, converterFieldName(info.converterIndex),
+                            "Lio/memris/core/converter/TypeConverter;");
+                    mv.visitVarInsn(Opcodes.ALOAD, objVar);
+                    mv.visitMethodInsn(Opcodes.INVOKESTATIC,
+                            Type.getInternalName(EntityMaterializerGenerator.class),
+                            "convertOrNull",
+                            "(Lio/memris/core/converter/TypeConverter;Ljava/lang/Object;)Ljava/lang/Object;",
+                            false);
+                    mv.visitVarInsn(Opcodes.ASTORE, objVar);
+                }
+                mv.visitVarInsn(Opcodes.ALOAD, 0);
+                mv.visitFieldInsn(Opcodes.GETFIELD, materializerInternal, planFieldName(info.planIndex),
+                        "Lio/memris/core/ColumnAccessPlan;");
+                mv.visitVarInsn(Opcodes.ALOAD, entityVar);
+                mv.visitVarInsn(Opcodes.ALOAD, objVar);
+                mv.visitMethodInsn(Opcodes.INVOKESTATIC,
+                        Type.getInternalName(EntityMaterializerGenerator.class),
+                        "setWithPlanIfPresent",
+                        "(Lio/memris/core/ColumnAccessPlan;Ljava/lang/Object;Ljava/lang/Object;)V",
+                        false);
+                return;
+            }
 
             if (info.converter != null) {
                 emitStorageAsObject(mv, mapping.typeCode(), tableInternal, tableVar, colIdx, objVar, intVar, longVar);
@@ -247,6 +329,37 @@ public final class EntityMaterializerGenerator {
             mv.visitVarInsn(Opcodes.ALOAD, entityVar);
             emitLoadForField(mv, mapping.typeCode(), fieldType, intVar, longVar, doubleVar, floatVar, objVar);
             mv.visitFieldInsn(Opcodes.PUTFIELD, entityInternal, field.getName(), Type.getDescriptor(fieldType));
+        }
+
+        private void emitStorageAsObjectNullable(MethodVisitor mv, byte typeCode, int tableVar, int colIdx, int objVar) {
+            String owner = Type.getInternalName(EntityMaterializerGenerator.class);
+            String methodName = switch (typeCode) {
+                case TypeCodes.TYPE_LONG,
+                        TypeCodes.TYPE_INSTANT,
+                        TypeCodes.TYPE_LOCAL_DATE,
+                        TypeCodes.TYPE_LOCAL_DATE_TIME,
+                        TypeCodes.TYPE_DATE -> "readBoxedLong";
+                case TypeCodes.TYPE_INT -> "readBoxedInt";
+                case TypeCodes.TYPE_STRING,
+                        TypeCodes.TYPE_BIG_DECIMAL,
+                        TypeCodes.TYPE_BIG_INTEGER -> "readStringIfPresent";
+                case TypeCodes.TYPE_BOOLEAN -> "readBoxedBoolean";
+                case TypeCodes.TYPE_BYTE -> "readBoxedByte";
+                case TypeCodes.TYPE_SHORT -> "readBoxedShort";
+                case TypeCodes.TYPE_CHAR -> "readBoxedChar";
+                case TypeCodes.TYPE_FLOAT -> "readBoxedFloat";
+                case TypeCodes.TYPE_DOUBLE -> "readBoxedDouble";
+                default -> throw new IllegalStateException("Unknown type code: " + typeCode);
+            };
+            mv.visitVarInsn(Opcodes.ALOAD, tableVar);
+            pushInt(mv, colIdx);
+            mv.visitVarInsn(Opcodes.ILOAD, 2);
+            mv.visitMethodInsn(Opcodes.INVOKESTATIC,
+                    owner,
+                    methodName,
+                    "(Lio/memris/storage/GeneratedTable;II)Ljava/lang/Object;",
+                    false);
+            mv.visitVarInsn(Opcodes.ASTORE, objVar);
         }
 
         private void emitReadBoxed(MethodVisitor mv, byte typeCode, int tableVar, int colIdx, int objVar) {
@@ -575,6 +688,16 @@ public final class EntityMaterializerGenerator {
         return typed.fromStorage(value);
     }
 
+    public static void setWithPlanIfPresent(ColumnAccessPlan plan, Object root, Object value) {
+        if (value == null) {
+            return;
+        }
+        if (plan == null || root == null) {
+            return;
+        }
+        plan.set(root, value);
+    }
+
     public static Object readBoxedLong(io.memris.storage.GeneratedTable table, int columnIndex, int rowIndex) {
         if (!table.isPresent(columnIndex, rowIndex)) {
             return null;
@@ -629,5 +752,88 @@ public final class EntityMaterializerGenerator {
             return null;
         }
         return Double.valueOf(FloatEncoding.sortableLongToDouble(table.readLong(columnIndex, rowIndex)));
+    }
+
+    public static Object readStringIfPresent(io.memris.storage.GeneratedTable table, int columnIndex, int rowIndex) {
+        if (!table.isPresent(columnIndex, rowIndex)) {
+            return null;
+        }
+        return table.readString(columnIndex, rowIndex);
+    }
+
+    private static final class ShapeKey {
+        private final ClassLoader classLoader;
+        private final Class<?> entityClass;
+        private final String columnSignature;
+        private final String converterSignature;
+
+        private ShapeKey(ClassLoader classLoader, Class<?> entityClass, String columnSignature,
+                String converterSignature) {
+            this.classLoader = classLoader;
+            this.entityClass = entityClass;
+            this.columnSignature = columnSignature;
+            this.converterSignature = converterSignature;
+        }
+
+        static ShapeKey from(EntityMetadata<?> metadata) {
+            var fields = metadata.fields().stream()
+                    .filter(mapping -> mapping.columnPosition() >= 0 && !mapping.isRelationship())
+                    .sorted(java.util.Comparator.comparingInt(FieldMapping::columnPosition))
+                    .toList();
+            var columnBuilder = new StringBuilder(fields.size() * 48);
+            var converterBuilder = new StringBuilder(fields.size() * 32);
+            for (var mapping : fields) {
+                columnBuilder.append(mapping.columnPosition())
+                        .append(':')
+                        .append(mapping.name())
+                        .append(':')
+                        .append(mapping.typeCode())
+                        .append(':')
+                        .append(mapping.javaType().getName())
+                        .append('|');
+                var converter = resolveConverter(metadata, mapping.name());
+                converterBuilder.append(mapping.columnPosition())
+                        .append(':')
+                        .append(System.identityHashCode(converter))
+                        .append('|');
+            }
+            return new ShapeKey(
+                    metadata.entityClass().getClassLoader(),
+                    metadata.entityClass(),
+                    columnBuilder.toString(),
+                    converterBuilder.toString());
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) {
+                return true;
+            }
+            if (!(o instanceof ShapeKey other)) {
+                return false;
+            }
+            return classLoader == other.classLoader
+                    && entityClass.equals(other.entityClass)
+                    && columnSignature.equals(other.columnSignature)
+                    && converterSignature.equals(other.converterSignature);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(
+                    System.identityHashCode(classLoader),
+                    entityClass,
+                    columnSignature,
+                    converterSignature);
+        }
+    }
+
+    private static TypeConverter<?, ?> resolveConverter(EntityMetadata<?> metadata, String propertyName) {
+        var fieldConverter = TypeConverterRegistry.getInstance()
+                .getFieldConverter(metadata.entityClass(), propertyName);
+        if (fieldConverter != null) {
+            return fieldConverter;
+        }
+        return metadata.converters().get(propertyName);
     }
 }

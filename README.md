@@ -16,6 +16,8 @@ Memris combines columnar, primitive-backed storage with ByteBuddy-generated tabl
 
 - 🚀 **100% heap-based columns** (primitive arrays) — no off-heap required
 - ⚡ **ByteBuddy-generated tables** for zero-reflection hot paths
+- 🧠 **Plan-driven embedded paths** via precompiled `ColumnAccessPlan`
+- 🔧 **Generated saver/materializer** for flat + embedded fields (no runtime reflection fallback)
 - 🎯 **Spring Data-style queries** (`findBy*`, `countBy*`, `existsBy*`)
 - 🔍 **Lightweight indexes** — hash (O(1)) and range (O(log n))
 - ☕ **Targeted for Java 21** — leverages modern language features
@@ -384,6 +386,9 @@ List<Product> findByNamePattern(@Param("pattern") String pattern);
 List<Account> findByAccountEmail(String email);
 ```
 
+> Note: nested property paths are supported for persisted field access and query predicates.
+> Nested `@Query` update assignments are intentionally unsupported.
+
 ---
 
 ## 🚀 Advanced Features
@@ -598,6 +603,13 @@ public class Course {
 ```bash
 mvn -B clean install
 ```
+
+### Performance Guardrails
+
+- Dedicated perf workflow: `.github/workflows/perf.yml`
+- Embedded-path benchmark: `io.memris.benchmarks.EmbeddedPathBenchmark`
+- Regression checker script: `scripts/check-jmh-regression.py`
+- Baseline file: `memris-core/src/jmh/resources/embedded-path-baseline.json`
 
 ---
 

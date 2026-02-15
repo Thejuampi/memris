@@ -2,6 +2,7 @@ package io.memris.runtime;
 
 import io.memris.core.FloatEncoding;
 
+import io.memris.core.ColumnAccessPlan;
 import io.memris.core.EntityMetadata;
 import io.memris.core.EntityMetadata.AuditField;
 import io.memris.core.EntityMetadata.FieldMapping;
@@ -85,8 +86,7 @@ public final class RepositoryRuntime<T> {
     private final java.util.concurrent.ConcurrentHashMap<CompiledQuery, ConditionExecutor[]> dynamicConditionExecutors;
     private final java.util.concurrent.ConcurrentHashMap<CompiledQuery, ProjectionExecutor> dynamicProjectionExecutors;
     private final Map<Class<?>, EntityRuntimeLayout> runtimeLayoutsByEntity;
-    private final FieldMapping[] fieldByColumn;
-    private final TypeConverter<?, ?>[] converterByColumn;
+    private final ColumnRuntimeDescriptor[] columnDescriptorsByColumn;
     private final int idColumnIndex;
     private final OneToManyPlan[] oneToManyPlans;
     private final ManyToManyPlan[] manyToManyPlans;
@@ -169,8 +169,9 @@ public final class RepositoryRuntime<T> {
         this.idCounter = new AtomicLong(1L);
         this.runtimeLayoutsByEntity = buildRuntimeLayouts(metadata, this.relatedMetadata);
         var rootLayout = metadata != null ? runtimeLayoutsByEntity.get(metadata.entityClass()) : null;
-        this.fieldByColumn = rootLayout != null ? rootLayout.fieldsByColumn() : new FieldMapping[0];
-        this.converterByColumn = rootLayout != null ? rootLayout.convertersByColumn() : new TypeConverter<?, ?>[0];
+        this.columnDescriptorsByColumn = rootLayout != null
+                ? rootLayout.descriptorsByColumn()
+                : new ColumnRuntimeDescriptor[0];
         this.primitiveNonNullByColumn = buildPrimitiveNonNullByColumn(rootLayout);
         this.directConditionExecutors = new java.util.concurrent.ConcurrentHashMap<>();
         this.joinDirectConditionExecutors = new java.util.concurrent.ConcurrentHashMap<>();
@@ -852,19 +853,33 @@ public final class RepositoryRuntime<T> {
                 .max()
                 .orElse(-1);
         if (maxColumnPos < 0) {
-            return new EntityRuntimeLayout(new FieldMapping[0], new TypeConverter<?, ?>[0], -1);
+            return new EntityRuntimeLayout(
+                    new FieldMapping[0],
+                    new TypeConverter<?, ?>[0],
+                    new ColumnRuntimeDescriptor[0],
+                    -1);
         }
         var fieldsByColumn = new FieldMapping[maxColumnPos + 1];
         var convertersByColumn = new TypeConverter<?, ?>[maxColumnPos + 1];
+        var descriptorsByColumn = new ColumnRuntimeDescriptor[maxColumnPos + 1];
+        var plansByColumn = entityMetadata.columnAccessPlansByColumn();
         for (var field : entityMetadata.fields()) {
             if (field.columnPosition() < 0) {
                 continue;
             }
             fieldsByColumn[field.columnPosition()] = field;
-            convertersByColumn[field.columnPosition()] = resolveConverterAtSetup(entityMetadata, field.name());
+            var converter = resolveConverterAtSetup(entityMetadata, field.name());
+            convertersByColumn[field.columnPosition()] = converter;
+            ColumnAccessPlan plan = field.columnPosition() < plansByColumn.length
+                    ? plansByColumn[field.columnPosition()]
+                    : null;
+            if (plan == null) {
+                plan = entityMetadata.columnAccessPlan(field.name());
+            }
+            descriptorsByColumn[field.columnPosition()] = new ColumnRuntimeDescriptor(field, converter, plan);
         }
         var resolvedIdColumnIndex = entityMetadata.resolveColumnPosition(entityMetadata.idColumnName());
-        return new EntityRuntimeLayout(fieldsByColumn, convertersByColumn, resolvedIdColumnIndex);
+        return new EntityRuntimeLayout(fieldsByColumn, convertersByColumn, descriptorsByColumn, resolvedIdColumnIndex);
     }
 
     private TypeConverter<?, ?> resolveConverterAtSetup(EntityMetadata<?> entityMetadata, String fieldName) {
@@ -2002,8 +2017,9 @@ public final class RepositoryRuntime<T> {
     private Object resolveUpdateAssignmentValue(CompiledQuery.CompiledUpdateAssignment update, Object[] args) {
         var columnIndex = update.columnIndex();
         Object value = update.argumentIndex() < args.length ? args[update.argumentIndex()] : null;
-        if (columnIndex >= 0 && columnIndex < converterByColumn.length) {
-            var converter = converterByColumn[columnIndex];
+        var descriptor = descriptorForColumn(columnIndex);
+        if (descriptor != null) {
+            var converter = descriptor.converter();
             if (converter != null) {
                 @SuppressWarnings("unchecked")
                 var typed = (TypeConverter<Object, Object>) converter;
@@ -2015,6 +2031,13 @@ public final class RepositoryRuntime<T> {
 
     private Object readStorageValue(GeneratedTable table, int columnIndex, int rowIndex) {
         return storageReadersByColumn[columnIndex].read(table, rowIndex);
+    }
+
+    private ColumnRuntimeDescriptor descriptorForColumn(int columnIndex) {
+        if (columnIndex < 0 || columnIndex >= columnDescriptorsByColumn.length) {
+            return null;
+        }
+        return columnDescriptorsByColumn[columnIndex];
     }
 
     private int resolveRowIndexById(GeneratedTable table, Object idValue) {
@@ -2036,7 +2059,7 @@ public final class RepositoryRuntime<T> {
         if (indexFieldReaders == null || indexFieldReaders.length == 0) {
             return new Object[0];
         }
-        Object[] indexValues = new Object[fieldByColumn.length];
+        Object[] indexValues = new Object[columnDescriptorsByColumn.length];
         GeneratedTable table = plan.table();
         for (var reader : indexFieldReaders) {
             indexValues[reader.columnIndex] = reader.reader.read(table, rowIndex);
@@ -2106,14 +2129,14 @@ public final class RepositoryRuntime<T> {
             return new IndexFieldReader[0];
         }
         var layout = runtimeLayoutsByEntity.get(entityMetadata.entityClass());
-        var converters = layout != null ? layout.convertersByColumn() : new TypeConverter<?, ?>[0];
+        var descriptors = layout != null ? layout.descriptorsByColumn() : new ColumnRuntimeDescriptor[0];
         var readers = new ArrayList<IndexFieldReader>(indexedColumns.size());
         for (var field : entityMetadata.fields()) {
             if (field.columnPosition() < 0 || !indexedColumns.contains(field.columnPosition())) {
                 continue;
             }
-            TypeConverter<?, ?> converter = field.columnPosition() < converters.length
-                    ? converters[field.columnPosition()]
+            TypeConverter<?, ?> converter = field.columnPosition() < descriptors.length && descriptors[field.columnPosition()] != null
+                    ? descriptors[field.columnPosition()].converter()
                     : null;
             IndexValueReader reader = buildIndexValueReader(field, converter);
             readers.add(new IndexFieldReader(field.columnPosition(), field.name(), reader));
@@ -3858,7 +3881,14 @@ public final class RepositoryRuntime<T> {
     private record EntityRuntimeLayout(
             FieldMapping[] fieldsByColumn,
             TypeConverter<?, ?>[] convertersByColumn,
+            ColumnRuntimeDescriptor[] descriptorsByColumn,
             int idColumnIndex) {
+    }
+
+    private record ColumnRuntimeDescriptor(
+            FieldMapping field,
+            TypeConverter<?, ?> converter,
+            ColumnAccessPlan plan) {
     }
 
     private record OneToManyPlan(

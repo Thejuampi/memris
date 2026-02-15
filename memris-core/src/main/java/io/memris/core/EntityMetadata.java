@@ -52,6 +52,8 @@ public class EntityMetadata<T> {
     // O(1) position lookups - built at metadata creation time
     private final Map<String, Integer> propertyToColumnPosition;
     private final Map<String, Integer> columnNameToColumnPosition;
+    private final Map<String, ColumnAccessPlan> columnAccessPlansByPath;
+    private final ColumnAccessPlan[] columnAccessPlansByColumn;
 
     public EntityMetadata(
         Class<T> entityClass,
@@ -69,6 +71,45 @@ public class EntityMetadata<T> {
         Map<String, MethodHandle> fieldGetters,
         Map<String, MethodHandle> fieldSetters,
         boolean isRecord
+    ) {
+        this(
+                entityClass,
+                entityConstructor,
+                idColumnName,
+                fields,
+                foreignKeyColumns,
+                converters,
+                fieldConverters,
+                indexDefinitions,
+                prePersistHandle,
+                postLoadHandle,
+                preUpdateHandle,
+                auditFields,
+                fieldGetters,
+                fieldSetters,
+                isRecord,
+                null,
+                null);
+    }
+
+    public EntityMetadata(
+        Class<T> entityClass,
+        Constructor<T> entityConstructor,
+        String idColumnName,
+        List<FieldMapping> fields,
+        Set<String> foreignKeyColumns,
+        Map<String, TypeConverter<?, ?>> converters,
+        Map<String, TypeConverter<?, ?>> fieldConverters,
+        List<IndexDefinition> indexDefinitions,
+        MethodHandle prePersistHandle,
+        MethodHandle postLoadHandle,
+        MethodHandle preUpdateHandle,
+        List<AuditField> auditFields,
+        Map<String, MethodHandle> fieldGetters,
+        Map<String, MethodHandle> fieldSetters,
+        boolean isRecord,
+        Map<String, ColumnAccessPlan> columnAccessPlansByPath,
+        ColumnAccessPlan[] columnAccessPlansByColumn
     ) {
         this.entityClass = entityClass;
         this.entityConstructor = entityConstructor;
@@ -99,6 +140,12 @@ public class EntityMetadata<T> {
         }
         this.propertyToColumnPosition = Map.copyOf(propertyMap); // Immutable copy
         this.columnNameToColumnPosition = Map.copyOf(columnMap); // Immutable copy
+        this.columnAccessPlansByPath = columnAccessPlansByPath != null
+                ? Map.copyOf(columnAccessPlansByPath)
+                : Map.of();
+        this.columnAccessPlansByColumn = columnAccessPlansByColumn != null
+                ? columnAccessPlansByColumn.clone()
+                : new ColumnAccessPlan[0];
     }
 
     // Accessor methods (for record-like API)
@@ -117,6 +164,25 @@ public class EntityMetadata<T> {
     public Map<String, MethodHandle> fieldGetters() { return fieldGetters; }
     public Map<String, MethodHandle> fieldSetters() { return fieldSetters; }
     public boolean isRecord() { return isRecord; }
+    public ColumnAccessPlan[] columnAccessPlansByColumn() { return columnAccessPlansByColumn.clone(); }
+
+    public ColumnAccessPlan columnAccessPlan(String propertyPath) {
+        ColumnAccessPlan plan = columnAccessPlansByPath.get(propertyPath);
+        if (plan != null) {
+            return plan;
+        }
+
+        for (FieldMapping mapping : fields) {
+            if (mapping.name().equals(propertyPath)
+                    || (mapping.columnName() != null && mapping.columnName().equals(propertyPath))) {
+                if (mapping.columnPosition() < 0) {
+                    break;
+                }
+                return ColumnAccessPlan.compile(entityClass, mapping);
+            }
+        }
+        throw new IllegalArgumentException("Column access plan not found: " + propertyPath);
+    }
 
     /**
      * Returns the column position for a property path.

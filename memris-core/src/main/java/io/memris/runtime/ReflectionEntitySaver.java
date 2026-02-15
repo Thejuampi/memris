@@ -12,8 +12,11 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Reflection-based saver used for entities with flattened embedded paths.
+ * Compatibility wrapper for path-aware saving.
+ * <p>
+ * Prefer {@link io.memris.repository.EntitySaverGenerator} in runtime code paths.
  */
+@Deprecated(forRemoval = false)
 public final class ReflectionEntitySaver<T> implements EntitySaver<T, Object> {
 
     private final PropertyPathAccessor idAccessor;

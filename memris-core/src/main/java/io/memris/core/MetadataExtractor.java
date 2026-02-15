@@ -130,7 +130,10 @@ public final class MetadataExtractor {
             }
 
             handleClassLevelIndexAnnotations(entityClass, fields, indexDefinitions);
-            
+
+            var columnAccessPlansByPath = buildColumnAccessPlansByPath(entityClass, fields);
+            var columnAccessPlansByColumn = buildColumnAccessPlansByColumn(fields, columnAccessPlansByPath);
+             
             // Build MethodHandles for field access (for public fields)
         var fieldGetters = new HashMap<String, MethodHandle>();
         var fieldSetters = new HashMap<String, MethodHandle>();
@@ -179,11 +182,56 @@ public final class MetadataExtractor {
                 prePersistHandle, postLoadHandle, preUpdateHandle,
                 List.copyOf(auditFields),
                 fieldGetters, fieldSetters,
-                entityClass.isRecord()
+                entityClass.isRecord(),
+                columnAccessPlansByPath,
+                columnAccessPlansByColumn
             );
         } catch (NoSuchMethodException | SecurityException e) {
             throw new RuntimeException("Failed to extract metadata for " + entityClass.getName(), e);
         }
+    }
+
+    private static Map<String, ColumnAccessPlan> buildColumnAccessPlansByPath(
+            Class<?> entityClass,
+            List<FieldMapping> fields) {
+        var plans = new HashMap<String, ColumnAccessPlan>(fields.size() * 2);
+        for (var mapping : fields) {
+            if (mapping.columnPosition() < 0) {
+                continue;
+            }
+            var plan = ColumnAccessPlan.compile(entityClass, mapping);
+            plans.put(mapping.name(), plan);
+            if (mapping.columnName() != null && !mapping.columnName().isBlank()) {
+                plans.putIfAbsent(mapping.columnName(), plan);
+            }
+        }
+        return Map.copyOf(plans);
+    }
+
+    private static ColumnAccessPlan[] buildColumnAccessPlansByColumn(
+            List<FieldMapping> fields,
+            Map<String, ColumnAccessPlan> byPath) {
+        int maxColumn = -1;
+        for (var mapping : fields) {
+            if (mapping.columnPosition() > maxColumn) {
+                maxColumn = mapping.columnPosition();
+            }
+        }
+        if (maxColumn < 0) {
+            return new ColumnAccessPlan[0];
+        }
+
+        var byColumn = new ColumnAccessPlan[maxColumn + 1];
+        for (var mapping : fields) {
+            if (mapping.columnPosition() < 0) {
+                continue;
+            }
+            var plan = byPath.get(mapping.name());
+            if (plan != null) {
+                byColumn[mapping.columnPosition()] = plan;
+            }
+        }
+        return byColumn;
     }
     
     /**
