@@ -6,6 +6,7 @@ import io.memris.core.ManyToMany;
 import io.memris.core.ManyToOne;
 import io.memris.core.OneToMany;
 import io.memris.core.OneToOne;
+import io.memris.core.TypeCodes;
 import io.memris.repository.RepositoryMethodIntrospector.MethodKey;
 
 import java.lang.reflect.Field;
@@ -188,7 +189,7 @@ public final class QueryMethodLexer {
                         field.isAnnotationPresent(ManyToMany.class);
 
                 // Embedded/value-object traversal support
-                boolean isEmbedded = false;
+                boolean isEmbedded = isEmbeddableType(fieldType);
 
                 // Entity traversal support (type-level annotation)
                 boolean isEntityType = fieldType.isAnnotationPresent(Entity.class);
@@ -230,6 +231,20 @@ public final class QueryMethodLexer {
             return null;
         }
         return fieldType;
+    }
+
+    private static boolean isEmbeddableType(Class<?> fieldType) {
+        if (fieldType == null
+                || fieldType.isPrimitive()
+                || fieldType.isEnum()
+                || fieldType.isArray()
+                || fieldType.getName().startsWith("java.")) {
+            return false;
+        }
+        if (Collection.class.isAssignableFrom(fieldType) || Map.class.isAssignableFrom(fieldType)) {
+            return false;
+        }
+        return !TypeCodes.isSupported(fieldType);
     }
 
     public static List<QueryMethodToken> tokenize(String methodName) {

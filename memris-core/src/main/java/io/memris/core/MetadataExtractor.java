@@ -117,23 +117,15 @@ public final class MetadataExtractor {
                     );
                     fields.add(relationshipMapping);
                 } else {
-                    // Regular field
-                    TypeConverter<?, ?> converter = TypeConverterRegistry.getInstance().getConverter(field.getType());
-                    Class<?> storageType = converter != null ? converter.storageType() : field.getType();
-                    byte typeCode = resolveTypeCode(field.getType(), storageType);
-                    if (converter != null) {
-                        converters.put(field.getName(), converter);
-                    }
-                    String columnName = field.getName();
-                    handleFieldIndexAnnotations(field, colPos, typeCode, indexDefinitions);
-                    fields.add(new FieldMapping(
-                        field.getName(),
-                        columnName,
-                        field.getType(),
-                        storageType,
-                        colPos++,
-                        typeCode
-                    ));
+                    colPos = appendFieldMappings(
+                            field,
+                            field.getName(),
+                            field.getName(),
+                            colPos,
+                            fields,
+                            converters,
+                            indexDefinitions,
+                            new HashSet<>());
                 }
             }
 
@@ -444,16 +436,128 @@ public final class MetadataExtractor {
         return "id";
     }
 
-    private static void handleFieldIndexAnnotations(Field field, int columnPosition, byte typeCode,
+    private static int appendFieldMappings(Field field,
+            String propertyName,
+            String columnName,
+            int columnPosition,
+            List<FieldMapping> fields,
+            Map<String, TypeConverter<?, ?>> converters,
+            List<IndexDefinition> indexDefinitions,
+            Set<Class<?>> embeddingPath) {
+        TypeConverter<?, ?> converter = TypeConverterRegistry.getInstance().getConverter(field.getType());
+        Class<?> storageType = converter != null ? converter.storageType() : field.getType();
+        if (!shouldFlattenEmbedded(field.getType(), storageType, converter)) {
+            byte typeCode = resolveTypeCode(field.getType(), storageType);
+            if (converter != null) {
+                converters.put(propertyName, converter);
+            }
+            handleFieldIndexAnnotations(field, propertyName, columnPosition, typeCode, indexDefinitions);
+            fields.add(new FieldMapping(
+                    propertyName,
+                    columnName,
+                    field.getType(),
+                    storageType,
+                    columnPosition,
+                    typeCode,
+                    false,
+                    RelationshipType.NONE,
+                    null,
+                    null,
+                    null,
+                    null,
+                    false,
+                    propertyName.indexOf('.') >= 0));
+            return columnPosition + 1;
+        }
+
+        return flattenEmbeddedFieldMappings(
+                field.getType(),
+                propertyName,
+                columnName,
+                columnPosition,
+                fields,
+                converters,
+                indexDefinitions,
+                embeddingPath);
+    }
+
+    private static int flattenEmbeddedFieldMappings(Class<?> embeddedType,
+            String propertyPrefix,
+            String columnPrefix,
+            int columnPosition,
+            List<FieldMapping> fields,
+            Map<String, TypeConverter<?, ?>> converters,
+            List<IndexDefinition> indexDefinitions,
+            Set<Class<?>> embeddingPath) {
+        if (!embeddingPath.add(embeddedType)) {
+            throw new IllegalArgumentException("Circular embedded path detected at " + embeddedType.getName());
+        }
+
+        int current = columnPosition;
+        for (Field nestedField : embeddedType.getDeclaredFields()) {
+            if (java.lang.reflect.Modifier.isStatic(nestedField.getModifiers())) {
+                continue;
+            }
+            if (hasRelationshipAnnotation(nestedField)) {
+                throw new IllegalArgumentException(
+                        "Embedded field cannot declare relationship annotations: "
+                                + embeddedType.getName() + "#" + nestedField.getName());
+            }
+
+            String nestedProperty = propertyPrefix + "." + nestedField.getName();
+            String nestedColumn = columnPrefix + "_" + nestedField.getName();
+            current = appendFieldMappings(
+                    nestedField,
+                    nestedProperty,
+                    nestedColumn,
+                    current,
+                    fields,
+                    converters,
+                    indexDefinitions,
+                    embeddingPath);
+        }
+
+        embeddingPath.remove(embeddedType);
+        return current;
+    }
+
+    private static boolean hasRelationshipAnnotation(Field field) {
+        return field.getAnnotation(ManyToOne.class) != null
+                || field.getAnnotation(OneToOne.class) != null
+                || field.getAnnotation(OneToMany.class) != null
+                || field.getAnnotation(ManyToMany.class) != null;
+    }
+
+    private static boolean shouldFlattenEmbedded(Class<?> javaType,
+            Class<?> storageType,
+            TypeConverter<?, ?> converter) {
+        if (converter != null || javaType == null) {
+            return false;
+        }
+        if (javaType.isPrimitive()
+                || javaType.isEnum()
+                || javaType.isArray()
+                || Collection.class.isAssignableFrom(javaType)
+                || Map.class.isAssignableFrom(javaType)
+                || javaType.getName().startsWith("java.")) {
+            return false;
+        }
+        return !TypeCodes.isSupported(storageType);
+    }
+
+    private static void handleFieldIndexAnnotations(Field field,
+            String propertyName,
+            int columnPosition,
+            byte typeCode,
             List<IndexDefinition> indexDefinitions) {
         var index = field.getAnnotation(Index.class);
         if (index == null) {
             return;
         }
-        var name = index.name() != null && !index.name().isBlank() ? index.name() : field.getName();
+        var name = index.name() != null && !index.name().isBlank() ? index.name() : propertyName;
         indexDefinitions.add(new IndexDefinition(
                 name,
-                new String[] { field.getName() },
+                new String[] { propertyName },
                 new int[] { columnPosition },
                 new byte[] { typeCode },
                 index.type(),
