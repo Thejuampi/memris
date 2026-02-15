@@ -36,20 +36,20 @@ Add the library from Maven Central:
 <dependency>
   <groupId>io.github.thejuampi</groupId>
   <artifactId>memris</artifactId>
-  <version>0.1.10</version>
+  <version>0.2.0</version>
 </dependency>
 ```
 
 ### Gradle (Groovy)
 
 ```groovy
-implementation 'io.github.thejuampi:memris:0.1.10'
+implementation 'io.github.thejuampi:memris:0.2.0'
 ```
 
 ### Gradle (Kotlin)
 
 ```kotlin
-implementation("io.github.thejuampi:memris:0.1.10")
+implementation("io.github.thejuampi:memris:0.2.0")
 ```
 
 ---
@@ -103,6 +103,7 @@ import java.util.List;
 import java.util.Optional;
 
 public interface UserRepository extends MemrisRepository<User> {
+    User save(User user);
     
     Optional<User> findByEmail(String email);
     
@@ -125,7 +126,7 @@ import io.memris.core.MemrisArena;
 import io.memris.core.MemrisConfiguration;
 
 public class Main {
-    static void main(String[] args) throws Exception {
+    public static void main(String[] args) throws Exception {
         // Option 1: Default configuration
         MemrisRepositoryFactory factory = new MemrisRepositoryFactory();
         
@@ -158,7 +159,7 @@ public class Main {
 | Scenario | Why Memris? |
 |----------|-------------|
 | **High-throughput applications** | O(1) hash index lookups and columnar scans |
-| **Low-latency requirements** | Zero reflection in hot paths, ~1ns ByteBuddy overhead |
+| **Low-latency requirements** | Generated hot paths with minimal dispatch overhead |
 | **In-memory caching** | 100% heap-based, no external dependencies |
 | **Spring Data migration** | Familiar query method patterns, easy to learn |
 | **Concurrent workloads** | Multi-reader, multi-writer with SeqLock coordination |

@@ -49,6 +49,8 @@ import java.util.List;
 import java.util.Optional;
 
 public interface CustomerRepository extends MemrisRepository<Customer> {
+    Customer save(Customer customer);
+    List<Customer> findAll();
     Optional<Customer> findById(Long id);
     List<Customer> findByLastName(String lastName);
     List<Customer> findByAgeGreaterThan(int age);
@@ -98,7 +100,7 @@ public class QuickStart {
 
 1. **Entity Definition**: The `@Entity` annotation marks `Customer` as a storable entity. The `@Id` annotation designates the primary key.
 
-2. **Repository Interface**: By extending `MemrisRepository<Customer>`, you get basic CRUD operations. Method names like `findByLastName` are automatically implemented using Memris's query derivation.
+2. **Repository Interface**: `MemrisRepository<Customer>` is a marker interface, so you declare the CRUD/query method signatures you use. Memris resolves those signatures at runtime, including derived methods like `findByLastName`.
 
 3. **Arena Isolation**: Each `MemrisArena` is completely isolated - it has its own tables, repositories, and indexes. Data saved in one arena is not visible in another, making arenas ideal for multi-tenant applications and test isolation.
 
@@ -110,6 +112,10 @@ Memris supports automatic query derivation from method names:
 
 ```java
 public interface CustomerRepository extends MemrisRepository<Customer> {
+    // Explicit CRUD signatures used in this guide
+    Customer save(Customer customer);
+    List<Customer> findAll();
+
     // Equality
     List<Customer> findByLastName(String lastName);
     

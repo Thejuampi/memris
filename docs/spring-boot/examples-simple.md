@@ -30,7 +30,7 @@ Basic examples for getting started with Memris and Spring Boot.
         <dependency>
             <groupId>io.github.thejuampi</groupId>
             <artifactId>memris-spring-boot-starter-3</artifactId>
-            <version>0.1.10</version>
+            <version>0.2.0</version>
         </dependency>
     </dependencies>
 </project>
@@ -41,7 +41,7 @@ Basic examples for getting started with Memris and Spring Boot.
 <dependency>
     <groupId>io.github.thejuampi</groupId>
     <artifactId>memris-spring-boot-starter-2</artifactId>
-    <version>0.1.10</version>
+    <version>0.2.0</version>
 </dependency>
 ```
 
