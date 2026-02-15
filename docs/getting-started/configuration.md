@@ -56,7 +56,7 @@ MemrisRepositoryFactory factory = new MemrisRepositoryFactory(config);
 | `tableImplementation` | BYTECODE | Table generation strategy: `BYTECODE` (ByteBuddy) or `METHOD_HANDLE` (fallback) |
 
 !!! warning "Disable Code Generation"
-    Only disable code generation if you encounter compatibility issues. The fallback MethodHandle implementation is slower (~5ns vs ~1ns overhead).
+    Only disable code generation if you encounter compatibility issues. The fallback `METHOD_HANDLE` table strategy generally has higher overhead than `BYTECODE` on hot paths.
 
 ```java
 MemrisConfiguration config = MemrisConfiguration.builder()

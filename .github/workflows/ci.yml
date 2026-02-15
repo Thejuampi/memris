@@ -13,6 +13,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Docs drift check
+        run: python3 scripts/check-docs-drift.py
+
       - name: Set up JDK 21
         uses: actions/setup-java@v4
         with:
