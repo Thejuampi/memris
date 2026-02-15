@@ -20,33 +20,37 @@ import java.util.Map;
 import static org.assertj.core.api.Assertions.assertThat;
 
 class ConditionRowEvaluatorGeneratorCoverageTest {
+    private RuntimeExecutorGenerator runtimeGenerator;
+    private ConditionRowEvaluatorGenerator conditionGenerator;
 
     @AfterEach
     void tearDown() {
-        RuntimeExecutorGenerator.setConfiguration(null);
-        RuntimeExecutorGenerator.clearCache();
-        ConditionRowEvaluatorGenerator.clearCache();
+        runtimeGenerator = new RuntimeExecutorGenerator();
+        conditionGenerator = new ConditionRowEvaluatorGenerator(runtimeGenerator);
+        runtimeGenerator.clearCache();
+        conditionGenerator.clearCache();
     }
 
     @Test
     void shouldGenerateEqNeAndNullMatchers() {
-        RuntimeExecutorGenerator.setConfiguration(MemrisConfiguration.builder().codegenEnabled(false).build());
+        runtimeGenerator = new RuntimeExecutorGenerator(MemrisConfiguration.builder().codegenEnabled(false).build());
+        conditionGenerator = new ConditionRowEvaluatorGenerator(runtimeGenerator);
         var table = new StubTable();
         table.present(0, true);
         table.stringValue(0, "Alice");
         table.intValue(1, 33);
         table.longValue(2, 44L);
 
-        var eqIgnoreCase = ConditionRowEvaluatorGenerator.generate(
+        var eqIgnoreCase = conditionGenerator.generate(
                 CompiledQuery.CompiledCondition.of(0, TypeCodes.TYPE_STRING, LogicalQuery.Operator.IGNORE_CASE_EQ, 0),
                 false);
-        var neInt = ConditionRowEvaluatorGenerator.generate(
+        var neInt = conditionGenerator.generate(
                 CompiledQuery.CompiledCondition.of(1, TypeCodes.TYPE_INT, LogicalQuery.Operator.NE, 0),
                 false);
-        var isNull = ConditionRowEvaluatorGenerator.generate(
+        var isNull = conditionGenerator.generate(
                 CompiledQuery.CompiledCondition.of(0, TypeCodes.TYPE_STRING, LogicalQuery.Operator.IS_NULL, 0),
                 false);
-        var notNullPrimitive = ConditionRowEvaluatorGenerator.generate(
+        var notNullPrimitive = conditionGenerator.generate(
                 CompiledQuery.CompiledCondition.of(2, TypeCodes.TYPE_LONG, LogicalQuery.Operator.NOT_NULL, 0),
                 true);
 
@@ -60,7 +64,8 @@ class ConditionRowEvaluatorGeneratorCoverageTest {
 
     @Test
     void shouldGenerateRangeBetweenAndInMatchersAcrossTypes() {
-        RuntimeExecutorGenerator.setConfiguration(MemrisConfiguration.builder().codegenEnabled(false).build());
+        runtimeGenerator = new RuntimeExecutorGenerator(MemrisConfiguration.builder().codegenEnabled(false).build());
+        conditionGenerator = new ConditionRowEvaluatorGenerator(runtimeGenerator);
         var table = new StubTable();
         table.present(0, true);
         table.present(1, true);
@@ -69,22 +74,22 @@ class ConditionRowEvaluatorGeneratorCoverageTest {
         table.longValue(1, 1_000L);
         table.stringValue(2, "x");
 
-        var gt = ConditionRowEvaluatorGenerator.generate(
+        var gt = conditionGenerator.generate(
                 CompiledQuery.CompiledCondition.of(0, TypeCodes.TYPE_INT, LogicalQuery.Operator.GT, 0),
                 false);
-        var before = ConditionRowEvaluatorGenerator.generate(
+        var before = conditionGenerator.generate(
                 CompiledQuery.CompiledCondition.of(1, TypeCodes.TYPE_LONG, LogicalQuery.Operator.BEFORE, 0),
                 false);
-        var between = ConditionRowEvaluatorGenerator.generate(
+        var between = conditionGenerator.generate(
                 CompiledQuery.CompiledCondition.of(0, TypeCodes.TYPE_INT, LogicalQuery.Operator.BETWEEN, 0),
                 false);
-        var inString = ConditionRowEvaluatorGenerator.generate(
+        var inString = conditionGenerator.generate(
                 CompiledQuery.CompiledCondition.of(2, TypeCodes.TYPE_STRING, LogicalQuery.Operator.IN, 0),
                 false);
-        var inLong = ConditionRowEvaluatorGenerator.generate(
+        var inLong = conditionGenerator.generate(
                 CompiledQuery.CompiledCondition.of(1, TypeCodes.TYPE_LONG, LogicalQuery.Operator.IN, 0),
                 false);
-        var notInInt = ConditionRowEvaluatorGenerator.generate(
+        var notInInt = conditionGenerator.generate(
                 CompiledQuery.CompiledCondition.of(0, TypeCodes.TYPE_INT, LogicalQuery.Operator.NOT_IN, 0),
                 false);
 
@@ -98,12 +103,13 @@ class ConditionRowEvaluatorGeneratorCoverageTest {
 
     @Test
     void shouldHandleUnsupportedOperatorCachingAndCodegenPath() {
-        RuntimeExecutorGenerator.setConfiguration(MemrisConfiguration.builder().codegenEnabled(true).build());
+        runtimeGenerator = new RuntimeExecutorGenerator(MemrisConfiguration.builder().codegenEnabled(true).build());
+        conditionGenerator = new ConditionRowEvaluatorGenerator(runtimeGenerator);
         var table = new StubTable();
         table.present(0, true);
         table.stringValue(0, "A");
 
-        var unsupported = ConditionRowEvaluatorGenerator.generate(
+        var unsupported = conditionGenerator.generate(
                 CompiledQuery.CompiledCondition.of(0, TypeCodes.TYPE_STRING, LogicalQuery.Operator.CONTAINING, 0),
                 false);
         assertThat(unsupported).isNull();
@@ -114,8 +120,8 @@ class ConditionRowEvaluatorGeneratorCoverageTest {
                 0,
                 false,
                 LogicalQuery.Combinator.AND);
-        var first = ConditionRowEvaluatorGenerator.generate(keyCondition, false);
-        var second = ConditionRowEvaluatorGenerator.generate(keyCondition, false);
+        var first = conditionGenerator.generate(keyCondition, false);
+        var second = conditionGenerator.generate(keyCondition, false);
 
         assertThat(first).isSameAs(second);
         assertThat(first.matches(table, 0, new Object[] { "A" })).isTrue();
@@ -124,7 +130,8 @@ class ConditionRowEvaluatorGeneratorCoverageTest {
 
     @Test
     void shouldDecodeInArgumentsAcrossArrayAndTemporalShapes() {
-        RuntimeExecutorGenerator.setConfiguration(MemrisConfiguration.builder().codegenEnabled(false).build());
+        runtimeGenerator = new RuntimeExecutorGenerator(MemrisConfiguration.builder().codegenEnabled(false).build());
+        conditionGenerator = new ConditionRowEvaluatorGenerator(runtimeGenerator);
         var table = new StubTable();
         table.present(0, true);
         table.present(1, true);
@@ -135,22 +142,22 @@ class ConditionRowEvaluatorGeneratorCoverageTest {
         table.longValue(2, 10L);
         table.stringValue(3, "a");
 
-        var inBoolean = ConditionRowEvaluatorGenerator.generate(
+        var inBoolean = conditionGenerator.generate(
                 CompiledQuery.CompiledCondition.of(0, TypeCodes.TYPE_BOOLEAN, LogicalQuery.Operator.IN, 0),
                 false);
-        var inChar = ConditionRowEvaluatorGenerator.generate(
+        var inChar = conditionGenerator.generate(
                 CompiledQuery.CompiledCondition.of(1, TypeCodes.TYPE_CHAR, LogicalQuery.Operator.IN, 0),
                 false);
-        var inInstant = ConditionRowEvaluatorGenerator.generate(
+        var inInstant = conditionGenerator.generate(
                 CompiledQuery.CompiledCondition.of(2, TypeCodes.TYPE_INSTANT, LogicalQuery.Operator.IN, 0),
                 false);
-        var inDate = ConditionRowEvaluatorGenerator.generate(
+        var inDate = conditionGenerator.generate(
                 CompiledQuery.CompiledCondition.of(2, TypeCodes.TYPE_DATE, LogicalQuery.Operator.IN, 0),
                 false);
-        var inDouble = ConditionRowEvaluatorGenerator.generate(
+        var inDouble = conditionGenerator.generate(
                 CompiledQuery.CompiledCondition.of(2, TypeCodes.TYPE_DOUBLE, LogicalQuery.Operator.IN, 0),
                 false);
-        var inString = ConditionRowEvaluatorGenerator.generate(
+        var inString = conditionGenerator.generate(
                 CompiledQuery.CompiledCondition.of(3, TypeCodes.TYPE_STRING, LogicalQuery.Operator.IN, 0),
                 false);
 
@@ -162,17 +169,17 @@ class ConditionRowEvaluatorGeneratorCoverageTest {
         table.longValue(2, io.memris.core.FloatEncoding.doubleToSortableLong(2.5d));
         assertThat(inDouble.matches(table, 0, new Object[] { new Object[] { 2.5d } })).isTrue();
 
-        assertThat(ConditionRowEvaluatorGenerator.generate(
+        assertThat(conditionGenerator.generate(
                 CompiledQuery.CompiledCondition.of(2, TypeCodes.TYPE_LOCAL_DATE, LogicalQuery.Operator.IN, 0),
                 false).matches(table, 0, new Object[] { new Object[] { LocalDate.ofEpochDay(3) } })).isFalse();
         table.longValue(2, LocalDate.ofEpochDay(3).toEpochDay());
-        assertThat(ConditionRowEvaluatorGenerator.generate(
+        assertThat(conditionGenerator.generate(
                 CompiledQuery.CompiledCondition.of(2, TypeCodes.TYPE_LOCAL_DATE, LogicalQuery.Operator.IN, 0),
                 false).matches(table, 0, new Object[] { new Object[] { LocalDate.ofEpochDay(3) } })).isTrue();
 
         LocalDateTime ldt = LocalDateTime.ofEpochSecond(2, 0, ZoneOffset.UTC);
         table.longValue(2, ldt.toInstant(ZoneOffset.UTC).toEpochMilli());
-        assertThat(ConditionRowEvaluatorGenerator.generate(
+        assertThat(conditionGenerator.generate(
                 CompiledQuery.CompiledCondition.of(2, TypeCodes.TYPE_LOCAL_DATE_TIME, LogicalQuery.Operator.IN, 0),
                 false).matches(table, 0, new Object[] { new Object[] { ldt } })).isTrue();
 
@@ -336,3 +343,5 @@ class ConditionRowEvaluatorGeneratorCoverageTest {
         }
     }
 }
+
+

@@ -25,13 +25,32 @@ import io.memris.storage.SelectionImpl;
  * <li>Null checks: IS_NULL, IS_NOT_NULL</li>
  * </ul>
  */
-public record HeapRuntimeKernel(GeneratedTable table, TypeHandlerRegistry handlerRegistry) {
+public record HeapRuntimeKernel(
+        GeneratedTable table,
+        TypeHandlerRegistry handlerRegistry,
+        RuntimeExecutorGenerator runtimeExecutorGenerator) {
 
     /**
      * Create a kernel with the default handler registry.
      */
     public HeapRuntimeKernel(GeneratedTable table) {
-        this(table, TypeHandlerRegistry.getDefault());
+        this(table, TypeHandlerRegistry.getDefault(), new RuntimeExecutorGenerator());
+    }
+
+    /**
+     * Create a kernel with the default handler registry and custom codegen
+     * generator.
+     */
+    public HeapRuntimeKernel(GeneratedTable table, RuntimeExecutorGenerator runtimeExecutorGenerator) {
+        this(table, TypeHandlerRegistry.getDefault(), runtimeExecutorGenerator);
+    }
+
+    /**
+     * Create a kernel with a custom handler registry.
+     * Uses an internal runtime executor generator.
+     */
+    public HeapRuntimeKernel(GeneratedTable table, TypeHandlerRegistry handlerRegistry) {
+        this(table, handlerRegistry, new RuntimeExecutorGenerator());
     }
 
     /**
@@ -39,6 +58,9 @@ public record HeapRuntimeKernel(GeneratedTable table, TypeHandlerRegistry handle
      * Use this for testing or when you need custom type handlers.
      */
     public HeapRuntimeKernel {
+        if (runtimeExecutorGenerator == null) {
+            throw new IllegalArgumentException("runtimeExecutorGenerator required");
+        }
     }
 
     public long rowCount() {
@@ -98,7 +120,7 @@ public record HeapRuntimeKernel(GeneratedTable table, TypeHandlerRegistry handle
 
         if (operator == LogicalQuery.Operator.BETWEEN) {
             var typeCode = cc.typeCode();
-            return RuntimeExecutorGenerator.generateBetweenExecutor(columnIndex, typeCode)
+            return runtimeExecutorGenerator.generateBetweenExecutor(columnIndex, typeCode)
                     .execute(table, cc.argumentIndex(), args);
         }
 
@@ -118,7 +140,7 @@ public record HeapRuntimeKernel(GeneratedTable table, TypeHandlerRegistry handle
     }
 
     private Selection executeInList(int columnIndex, byte typeCode, Object value) {
-        return RuntimeExecutorGenerator.generateInListExecutor(columnIndex, typeCode)
+        return runtimeExecutorGenerator.generateInListExecutor(columnIndex, typeCode)
                 .execute(table, value);
     }
 

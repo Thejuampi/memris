@@ -82,17 +82,18 @@ mvn.cmd -q -e -pl memris-core test -Dtest=ClassName#methodName
 
 **Benefits:**
 - Eliminates TypeCode switch on hot paths
-- Global cache for reuse across repositories
+- Per-arena cache for reuse across repositories in the same arena
+- No static mutable registry or cross-arena cache sharing
 - Feature toggle: `-Dmemris.codegen.enabled=false` to disable
 
 **Usage:**
-Generated automatically at runtime and cached globally. No manual configuration needed.
+Generated automatically at runtime and cached by each arena-owned emitter. No manual configuration needed.
 
 ### Embedded Path Generation
 
 - Embedded/dotted persisted paths are compiled once into `ColumnAccessPlan`.
 - `EntitySaverGenerator` and `EntityMaterializerGenerator` always generate runtime accessors (no reflection strategy fallback).
-- Generated saver/materializer instances are cached by entity shape (classloader + column/converter signature).
+- Generated saver/materializer instances are cached by entity shape (classloader + column/converter signature) per arena.
 
 ## Code Style Guidelines
 
@@ -324,6 +325,27 @@ python scripts/check-jmh-regression.py \
   --embedded-threshold 0.15
 ```
 
+### Thread-Safety Guardrails
+
+- Dedicated workflow: `.github/workflows/thread-safety.yml`
+- Runs a focused concurrency/codegen suite with forked JVMs and parallel class execution.
+
+Run locally (bash):
+```bash
+mvn -q -pl memris-core test \
+  -Dtest=MemrisArenaConcurrencyTest,RuntimeExecutorGeneratorConcurrencyTest,ConditionRowEvaluatorGeneratorConcurrencyTest,EntitySaverGeneratorCacheTest,EntityMaterializerGeneratorCacheTest,RuntimeExecutorGeneratorArenaIsolationTest \
+  -DforkCount=2 \
+  -DreuseForks=false \
+  -Djunit.jupiter.execution.parallel.enabled=true \
+  -Djunit.jupiter.execution.parallel.mode.default=same_thread \
+  -Djunit.jupiter.execution.parallel.mode.classes.default=concurrent
+```
+
+Run locally (PowerShell):
+```powershell
+mvn --% -q -pl memris-core test -Dtest=MemrisArenaConcurrencyTest,RuntimeExecutorGeneratorConcurrencyTest,ConditionRowEvaluatorGeneratorConcurrencyTest,EntitySaverGeneratorCacheTest,EntityMaterializerGeneratorCacheTest,RuntimeExecutorGeneratorArenaIsolationTest -DforkCount=2 -DreuseForks=false -Djunit.jupiter.execution.parallel.enabled=true -Djunit.jupiter.execution.parallel.mode.default=same_thread -Djunit.jupiter.execution.parallel.mode.classes.default=concurrent
+```
+
 ### Benchmark Baseline (2026-02-01)
 
 Environment: Java 21, Windows 11, Single-threaded
@@ -424,6 +446,7 @@ When implementing join tables (@OneToMany, @ManyToMany):
 - **Multi-writer**: Thread-safe row writes coordinated by per-row seqlock
 - **Read-write**: Best-effort isolation (seqlock for rows, no MVCC)
 - **Isolation**: Best-effort (no transactions)
+- **Arena lifecycle**: Thread-safe fail-fast close; `close()` is terminal for the arena
 
 ### When to Use External Synchronization
 
@@ -438,6 +461,7 @@ Use external synchronization only when you need strict index/row atomicity acros
 2. Use single-writer thread pattern for writes
 3. Partition repositories by entity type for isolation
 4. Avoid concurrent saves to same table
+5. Do not reuse an arena after calling `close()`
 
 ### Current Limitations
 

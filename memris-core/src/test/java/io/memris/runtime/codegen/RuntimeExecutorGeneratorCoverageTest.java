@@ -22,31 +22,32 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class RuntimeExecutorGeneratorCoverageTest {
+    private RuntimeExecutorGenerator generator;
 
     @AfterEach
     void tearDown() {
         System.clearProperty(RuntimeExecutorGenerator.CODEGEN_ENABLED_PROPERTY);
-        RuntimeExecutorGenerator.setConfiguration(null);
-        RuntimeExecutorGenerator.clearCache();
+        generator = new RuntimeExecutorGenerator();
+        generator.clearCache();
     }
 
     @Test
     void shouldHonorConfigurationAndSystemPropertyForEnablement() {
-        RuntimeExecutorGenerator.setConfiguration(null);
+        generator = new RuntimeExecutorGenerator();
         System.setProperty(RuntimeExecutorGenerator.CODEGEN_ENABLED_PROPERTY, "false");
-        assertThat(RuntimeExecutorGenerator.isEnabled()).isFalse();
+        assertThat(generator.isEnabled()).isFalse();
 
         System.setProperty(RuntimeExecutorGenerator.CODEGEN_ENABLED_PROPERTY, "true");
-        assertThat(RuntimeExecutorGenerator.isEnabled()).isTrue();
+        assertThat(generator.isEnabled()).isTrue();
 
-        RuntimeExecutorGenerator.setConfiguration(MemrisConfiguration.builder().codegenEnabled(false).build());
-        assertThat(RuntimeExecutorGenerator.isEnabled()).isFalse();
+        generator = new RuntimeExecutorGenerator(MemrisConfiguration.builder().codegenEnabled(false).build());
+        assertThat(generator.isEnabled()).isFalse();
     }
 
     @Test
     void shouldExecuteFieldValueAndStorageReadersInFallbackMode() {
-        RuntimeExecutorGenerator.setConfiguration(MemrisConfiguration.builder().codegenEnabled(false).build());
-        RuntimeExecutorGenerator.clearCache();
+        generator = new RuntimeExecutorGenerator(MemrisConfiguration.builder().codegenEnabled(false).build());
+        generator.clearCache();
 
         var table = new RecordingTable();
         table.present(0, true);
@@ -58,55 +59,55 @@ class RuntimeExecutorGeneratorCoverageTest {
 
         TypeConverter<String, String> converter = new PrefixConverter();
 
-        assertThat(RuntimeExecutorGenerator.generateFieldValueReader(0, TypeCodes.TYPE_STRING, converter)
+        assertThat(generator.generateFieldValueReader(0, TypeCodes.TYPE_STRING, converter)
                 .read(table, 0)).isEqualTo("converted:abc");
-        assertThat(RuntimeExecutorGenerator.generateFieldValueReader(1, TypeCodes.TYPE_LONG, null)
+        assertThat(generator.generateFieldValueReader(1, TypeCodes.TYPE_LONG, null)
                 .read(table, 0)).isEqualTo(99L);
-        assertThat(RuntimeExecutorGenerator.generateFieldValueReader(1, TypeCodes.TYPE_INSTANT, null)
+        assertThat(generator.generateFieldValueReader(1, TypeCodes.TYPE_INSTANT, null)
                 .read(table, 0)).isEqualTo(99L);
-        assertThat(RuntimeExecutorGenerator.generateFieldValueReader(2, TypeCodes.TYPE_INT, null)
+        assertThat(generator.generateFieldValueReader(2, TypeCodes.TYPE_INT, null)
                 .read(table, 0)).isEqualTo(7);
-        assertThat(RuntimeExecutorGenerator.generateFieldValueReader(2, TypeCodes.TYPE_BOOLEAN, null)
+        assertThat(generator.generateFieldValueReader(2, TypeCodes.TYPE_BOOLEAN, null)
                 .read(table, 0)).isEqualTo(true);
-        assertThat(RuntimeExecutorGenerator.generateFieldValueReader(2, TypeCodes.TYPE_BYTE, null)
+        assertThat(generator.generateFieldValueReader(2, TypeCodes.TYPE_BYTE, null)
                 .read(table, 0)).isEqualTo((byte) 7);
-        assertThat(RuntimeExecutorGenerator.generateFieldValueReader(2, TypeCodes.TYPE_SHORT, null)
+        assertThat(generator.generateFieldValueReader(2, TypeCodes.TYPE_SHORT, null)
                 .read(table, 0)).isEqualTo((short) 7);
-        assertThat(RuntimeExecutorGenerator.generateFieldValueReader(2, TypeCodes.TYPE_CHAR, null)
+        assertThat(generator.generateFieldValueReader(2, TypeCodes.TYPE_CHAR, null)
                 .read(table, 0)).isEqualTo((char) 7);
 
         table.intValue(2, FloatEncoding.floatToSortableInt(1.5f));
-        assertThat(RuntimeExecutorGenerator.generateFieldValueReader(2, TypeCodes.TYPE_FLOAT, null)
+        assertThat(generator.generateFieldValueReader(2, TypeCodes.TYPE_FLOAT, null)
                 .read(table, 0)).isEqualTo(1.5f);
 
         table.longValue(1, FloatEncoding.doubleToSortableLong(2.5d));
-        assertThat(RuntimeExecutorGenerator.generateFieldValueReader(1, TypeCodes.TYPE_DOUBLE, null)
+        assertThat(generator.generateFieldValueReader(1, TypeCodes.TYPE_DOUBLE, null)
                 .read(table, 0)).isEqualTo(2.5d);
 
-        assertThat(RuntimeExecutorGenerator.generateFieldValueReader(2, (byte) 127, null).read(table, 0))
+        assertThat(generator.generateFieldValueReader(2, (byte) 127, null).read(table, 0))
                 .isEqualTo(table.readInt(2, 0));
 
         table.present(0, false);
-        assertThat(RuntimeExecutorGenerator.generateFieldValueReader(0, TypeCodes.TYPE_STRING, null).read(table, 0))
+        assertThat(generator.generateFieldValueReader(0, TypeCodes.TYPE_STRING, null).read(table, 0))
                 .isNull();
 
         table.stringValue(0, "raw");
         table.longValue(1, 123L);
         table.intValue(2, 42);
-        assertThat(RuntimeExecutorGenerator.generateStorageValueReader(0, TypeCodes.TYPE_STRING).read(table, 0))
+        assertThat(generator.generateStorageValueReader(0, TypeCodes.TYPE_STRING).read(table, 0))
                 .isEqualTo("raw");
-        assertThat(RuntimeExecutorGenerator.generateStorageValueReader(1, TypeCodes.TYPE_LONG).read(table, 0))
+        assertThat(generator.generateStorageValueReader(1, TypeCodes.TYPE_LONG).read(table, 0))
                 .isEqualTo(123L);
-        assertThat(RuntimeExecutorGenerator.generateStorageValueReader(2, TypeCodes.TYPE_INT).read(table, 0))
+        assertThat(generator.generateStorageValueReader(2, TypeCodes.TYPE_INT).read(table, 0))
                 .isEqualTo(42);
-        assertThat(RuntimeExecutorGenerator.generateStorageValueReader(2, (byte) 99).read(table, 0))
+        assertThat(generator.generateStorageValueReader(2, (byte) 99).read(table, 0))
                 .isEqualTo(42);
     }
 
     @Test
     void shouldExecuteFkReadersAndTargetResolversInFallbackMode() {
-        RuntimeExecutorGenerator.setConfiguration(MemrisConfiguration.builder().codegenEnabled(false).build());
-        RuntimeExecutorGenerator.clearCache();
+        generator = new RuntimeExecutorGenerator(MemrisConfiguration.builder().codegenEnabled(false).build());
+        generator.clearCache();
 
         var table = new RecordingTable();
         table.present(0, true);
@@ -117,24 +118,24 @@ class RuntimeExecutorGeneratorCoverageTest {
         table.longValue(2, 33L);
         table.intValue(2, 33);
 
-        assertThat(RuntimeExecutorGenerator.generateFkReader(0, TypeCodes.TYPE_STRING).read(table, 0))
+        assertThat(generator.generateFkReader(0, TypeCodes.TYPE_STRING).read(table, 0))
                 .isEqualTo("id-1");
-        assertThat(RuntimeExecutorGenerator.generateFkReader(1, TypeCodes.TYPE_LONG).read(table, 0))
+        assertThat(generator.generateFkReader(1, TypeCodes.TYPE_LONG).read(table, 0))
                 .isEqualTo(77L);
-        assertThat(RuntimeExecutorGenerator.generateFkReader(2, TypeCodes.TYPE_INT).read(table, 0))
+        assertThat(generator.generateFkReader(2, TypeCodes.TYPE_INT).read(table, 0))
                 .isEqualTo(33);
-        assertThat(RuntimeExecutorGenerator.generateFkReader(2, (byte) 127).read(table, 0))
+        assertThat(generator.generateFkReader(2, (byte) 127).read(table, 0))
                 .isEqualTo(33L);
 
         table.lookupByIdStringResult = Selection.pack(15, 1);
-        var idStringResolver = RuntimeExecutorGenerator.generateTargetRowResolver(true, TypeCodes.TYPE_STRING, 1);
+        var idStringResolver = generator.generateTargetRowResolver(true, TypeCodes.TYPE_STRING, 1);
         assertThat(idStringResolver.resolve(table, "id-1")).isEqualTo(15);
         assertThat(idStringResolver.resolve(table, null)).isEqualTo(-1);
 
         table.lookupByIdResult = Selection.pack(19, 1);
-        var idLongResolver = RuntimeExecutorGenerator.generateTargetRowResolver(true, TypeCodes.TYPE_LONG, 1);
-        var idIntResolver = RuntimeExecutorGenerator.generateTargetRowResolver(true, TypeCodes.TYPE_INT, 1);
-        var idDefaultResolver = RuntimeExecutorGenerator.generateTargetRowResolver(true, (byte) 90, 1);
+        var idLongResolver = generator.generateTargetRowResolver(true, TypeCodes.TYPE_LONG, 1);
+        var idIntResolver = generator.generateTargetRowResolver(true, TypeCodes.TYPE_INT, 1);
+        var idDefaultResolver = generator.generateTargetRowResolver(true, (byte) 90, 1);
         assertThat(idLongResolver.resolve(table, 99L)).isEqualTo(19);
         assertThat(idIntResolver.resolve(table, 99)).isEqualTo(19);
         assertThat(idDefaultResolver.resolve(table, 99)).isEqualTo(19);
@@ -142,10 +143,10 @@ class RuntimeExecutorGeneratorCoverageTest {
         table.scanEqualsStringResult = new int[] { 8, 9 };
         table.scanEqualsLongResult = new int[] { 6 };
         table.scanEqualsIntResult = new int[] { 5 };
-        var stringResolver = RuntimeExecutorGenerator.generateTargetRowResolver(false, TypeCodes.TYPE_STRING, 0);
-        var longResolver = RuntimeExecutorGenerator.generateTargetRowResolver(false, TypeCodes.TYPE_LONG, 1);
-        var intResolver = RuntimeExecutorGenerator.generateTargetRowResolver(false, TypeCodes.TYPE_INT, 2);
-        var defaultResolver = RuntimeExecutorGenerator.generateTargetRowResolver(false, (byte) 90, 1);
+        var stringResolver = generator.generateTargetRowResolver(false, TypeCodes.TYPE_STRING, 0);
+        var longResolver = generator.generateTargetRowResolver(false, TypeCodes.TYPE_LONG, 1);
+        var intResolver = generator.generateTargetRowResolver(false, TypeCodes.TYPE_INT, 2);
+        var defaultResolver = generator.generateTargetRowResolver(false, (byte) 90, 1);
         assertThat(stringResolver.resolve(table, "id-1")).isEqualTo(8);
         assertThat(longResolver.resolve(table, 77L)).isEqualTo(6);
         assertThat(intResolver.resolve(table, 33)).isEqualTo(5);
@@ -155,8 +156,8 @@ class RuntimeExecutorGeneratorCoverageTest {
 
     @Test
     void shouldExecuteGroupingBetweenAndInExecutorsInFallbackMode() {
-        RuntimeExecutorGenerator.setConfiguration(MemrisConfiguration.builder().codegenEnabled(false).build());
-        RuntimeExecutorGenerator.clearCache();
+        generator = new RuntimeExecutorGenerator(MemrisConfiguration.builder().codegenEnabled(false).build());
+        generator.clearCache();
 
         var table = new RecordingTable();
         table.present(0, true);
@@ -166,54 +167,54 @@ class RuntimeExecutorGeneratorCoverageTest {
         table.longValue(1, 123L);
         table.intValue(2, 65);
 
-        assertThat(RuntimeExecutorGenerator.generateGroupingValueReader(0, TypeCodes.TYPE_STRING).read(table, 0))
+        assertThat(generator.generateGroupingValueReader(0, TypeCodes.TYPE_STRING).read(table, 0))
                 .isEqualTo("x");
-        assertThat(RuntimeExecutorGenerator.generateGroupingValueReader(1, TypeCodes.TYPE_LONG).read(table, 0))
+        assertThat(generator.generateGroupingValueReader(1, TypeCodes.TYPE_LONG).read(table, 0))
                 .isEqualTo(123L);
-        assertThat(RuntimeExecutorGenerator.generateGroupingValueReader(2, TypeCodes.TYPE_INT).read(table, 0))
+        assertThat(generator.generateGroupingValueReader(2, TypeCodes.TYPE_INT).read(table, 0))
                 .isEqualTo(65);
-        assertThat(RuntimeExecutorGenerator.generateGroupingValueReader(2, TypeCodes.TYPE_BOOLEAN).read(table, 0))
+        assertThat(generator.generateGroupingValueReader(2, TypeCodes.TYPE_BOOLEAN).read(table, 0))
                 .isEqualTo(true);
-        assertThat(RuntimeExecutorGenerator.generateGroupingValueReader(2, TypeCodes.TYPE_BYTE).read(table, 0))
+        assertThat(generator.generateGroupingValueReader(2, TypeCodes.TYPE_BYTE).read(table, 0))
                 .isEqualTo((byte) 65);
-        assertThat(RuntimeExecutorGenerator.generateGroupingValueReader(2, TypeCodes.TYPE_SHORT).read(table, 0))
+        assertThat(generator.generateGroupingValueReader(2, TypeCodes.TYPE_SHORT).read(table, 0))
                 .isEqualTo((short) 65);
-        assertThat(RuntimeExecutorGenerator.generateGroupingValueReader(2, TypeCodes.TYPE_CHAR).read(table, 0))
+        assertThat(generator.generateGroupingValueReader(2, TypeCodes.TYPE_CHAR).read(table, 0))
                 .isEqualTo('A');
 
         table.intValue(2, FloatEncoding.floatToSortableInt(1.25f));
         table.longValue(1, FloatEncoding.doubleToSortableLong(3.5d));
-        assertThat(RuntimeExecutorGenerator.generateGroupingValueReader(2, TypeCodes.TYPE_FLOAT).read(table, 0))
+        assertThat(generator.generateGroupingValueReader(2, TypeCodes.TYPE_FLOAT).read(table, 0))
                 .isEqualTo(1.25f);
-        assertThat(RuntimeExecutorGenerator.generateGroupingValueReader(1, TypeCodes.TYPE_DOUBLE).read(table, 0))
+        assertThat(generator.generateGroupingValueReader(1, TypeCodes.TYPE_DOUBLE).read(table, 0))
                 .isEqualTo(3.5d);
-        assertThat(RuntimeExecutorGenerator.generateGroupingValueReader(2, (byte) 100).read(table, 0))
+        assertThat(generator.generateGroupingValueReader(2, (byte) 100).read(table, 0))
                 .isEqualTo(table.readInt(2, 0));
 
         table.scanBetweenLongResult = new int[] { 2, 4 };
         table.scanBetweenIntResult = new int[] { 1, 3 };
-        assertThat(rows(RuntimeExecutorGenerator.generateBetweenExecutor(1, TypeCodes.TYPE_LONG)
+        assertThat(rows(generator.generateBetweenExecutor(1, TypeCodes.TYPE_LONG)
                 .execute(table, 0, new Object[] { 10L, 30L }))).containsExactly(2, 4);
-        assertThat(rows(RuntimeExecutorGenerator.generateBetweenExecutor(2, TypeCodes.TYPE_INT)
+        assertThat(rows(generator.generateBetweenExecutor(2, TypeCodes.TYPE_INT)
                 .execute(table, 0, new Object[] { 1, 2 }))).containsExactly(1, 3);
-        assertThat(rows(RuntimeExecutorGenerator.generateBetweenExecutor(2, TypeCodes.TYPE_CHAR)
+        assertThat(rows(generator.generateBetweenExecutor(2, TypeCodes.TYPE_CHAR)
                 .execute(table, 0, new Object[] { 'A', "C" }))).containsExactly(1, 3);
-        assertThat(rows(RuntimeExecutorGenerator.generateBetweenExecutor(2, TypeCodes.TYPE_FLOAT)
+        assertThat(rows(generator.generateBetweenExecutor(2, TypeCodes.TYPE_FLOAT)
                 .execute(table, 0, new Object[] { 1.0f, 2.0f }))).containsExactly(1, 3);
-        assertThat(rows(RuntimeExecutorGenerator.generateBetweenExecutor(1, TypeCodes.TYPE_DOUBLE)
+        assertThat(rows(generator.generateBetweenExecutor(1, TypeCodes.TYPE_DOUBLE)
                 .execute(table, 0, new Object[] { 1.0d, 2.0d }))).containsExactly(2, 4);
 
         var temporalArgs = new Object[] {
                 LocalDate.of(2024, 1, 1),
                 LocalDate.of(2024, 12, 31)
         };
-        assertThat(rows(RuntimeExecutorGenerator.generateBetweenExecutor(1, TypeCodes.TYPE_LOCAL_DATE)
+        assertThat(rows(generator.generateBetweenExecutor(1, TypeCodes.TYPE_LOCAL_DATE)
                 .execute(table, 0, temporalArgs))).containsExactly(2, 4);
 
-        assertThatThrownBy(() -> RuntimeExecutorGenerator.generateBetweenExecutor(2, TypeCodes.TYPE_INT)
+        assertThatThrownBy(() -> generator.generateBetweenExecutor(2, TypeCodes.TYPE_INT)
                 .execute(table, 0, new Object[] { 1 }))
                         .isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> RuntimeExecutorGenerator.generateBetweenExecutor(2, TypeCodes.TYPE_STRING)
+        assertThatThrownBy(() -> generator.generateBetweenExecutor(2, TypeCodes.TYPE_STRING)
                 .execute(table, 0, new Object[] { "a", "b" }))
                         .isInstanceOf(UnsupportedOperationException.class);
 
@@ -221,33 +222,33 @@ class RuntimeExecutorGeneratorCoverageTest {
         table.scanInLongResult = new int[] { 6 };
         table.scanInIntResult = new int[] { 5 };
 
-        assertThat(rows(RuntimeExecutorGenerator.generateInListExecutor(0, TypeCodes.TYPE_STRING)
+        assertThat(rows(generator.generateInListExecutor(0, TypeCodes.TYPE_STRING)
                 .execute(table, List.of("x", "y")))).containsExactly(7);
-        assertThat(rows(RuntimeExecutorGenerator.generateInListExecutor(1, TypeCodes.TYPE_LONG)
+        assertThat(rows(generator.generateInListExecutor(1, TypeCodes.TYPE_LONG)
                 .execute(table, new Object[] { 1L, 2L }))).containsExactly(6);
-        assertThat(rows(RuntimeExecutorGenerator.generateInListExecutor(1, TypeCodes.TYPE_DATE)
+        assertThat(rows(generator.generateInListExecutor(1, TypeCodes.TYPE_DATE)
                 .execute(table, new Date[] { new Date(10), new Date(20) }))).containsExactly(6);
-        assertThat(rows(RuntimeExecutorGenerator.generateInListExecutor(2, TypeCodes.TYPE_INT)
+        assertThat(rows(generator.generateInListExecutor(2, TypeCodes.TYPE_INT)
                 .execute(table, new int[] { 1, 2 }))).containsExactly(5);
-        assertThat(rows(RuntimeExecutorGenerator.generateInListExecutor(2, TypeCodes.TYPE_CHAR)
+        assertThat(rows(generator.generateInListExecutor(2, TypeCodes.TYPE_CHAR)
                 .execute(table, new char[] { 'A', 'B' }))).containsExactly(5);
-        assertThat(rows(RuntimeExecutorGenerator.generateInListExecutor(2, TypeCodes.TYPE_BOOLEAN)
+        assertThat(rows(generator.generateInListExecutor(2, TypeCodes.TYPE_BOOLEAN)
                 .execute(table, new boolean[] { true, false }))).containsExactly(5);
-        assertThat(rows(RuntimeExecutorGenerator.generateInListExecutor(2, TypeCodes.TYPE_FLOAT)
+        assertThat(rows(generator.generateInListExecutor(2, TypeCodes.TYPE_FLOAT)
                 .execute(table, new float[] { 1.0f, 2.0f }))).containsExactly(5);
-        assertThat(rows(RuntimeExecutorGenerator.generateInListExecutor(2, TypeCodes.TYPE_INT)
+        assertThat(rows(generator.generateInListExecutor(2, TypeCodes.TYPE_INT)
                 .execute(table, null))).isEmpty();
-        assertThat(rows(RuntimeExecutorGenerator.generateInListExecutor(0, TypeCodes.TYPE_STRING)
+        assertThat(rows(generator.generateInListExecutor(0, TypeCodes.TYPE_STRING)
                 .execute(table, "x"))).containsExactly(7);
-        assertThatThrownBy(() -> RuntimeExecutorGenerator.generateInListExecutor(2, (byte) 111)
+        assertThatThrownBy(() -> generator.generateInListExecutor(2, (byte) 111)
                 .execute(table, List.of(1, 2)))
                         .isInstanceOf(UnsupportedOperationException.class);
     }
 
     @Test
     void shouldExecuteGeneratedExecutorsWhenCodegenEnabled() {
-        RuntimeExecutorGenerator.setConfiguration(MemrisConfiguration.builder().codegenEnabled(true).build());
-        RuntimeExecutorGenerator.clearCache();
+        generator = new RuntimeExecutorGenerator(MemrisConfiguration.builder().codegenEnabled(true).build());
+        generator.clearCache();
 
         var table = new RecordingTable();
         table.present(0, true);
@@ -266,63 +267,63 @@ class RuntimeExecutorGeneratorCoverageTest {
         table.scanInLongResult = new int[] { 7 };
         table.scanInStringResult = new int[] { 6 };
 
-        assertThat(RuntimeExecutorGenerator.generateFieldValueReader(0, TypeCodes.TYPE_STRING, null)
+        assertThat(generator.generateFieldValueReader(0, TypeCodes.TYPE_STRING, null)
                 .read(table, 0)).isEqualTo("codegen");
-        assertThat(RuntimeExecutorGenerator.generateFkReader(1, TypeCodes.TYPE_LONG).read(table, 0))
+        assertThat(generator.generateFkReader(1, TypeCodes.TYPE_LONG).read(table, 0))
                 .isEqualTo(777L);
-        assertThat(RuntimeExecutorGenerator.generateTargetRowResolver(true, TypeCodes.TYPE_LONG, 0)
+        assertThat(generator.generateTargetRowResolver(true, TypeCodes.TYPE_LONG, 0)
                 .resolve(table, 777L)).isEqualTo(3);
-        assertThat(RuntimeExecutorGenerator.generateGroupingValueReader(2, TypeCodes.TYPE_INT).read(table, 0))
+        assertThat(generator.generateGroupingValueReader(2, TypeCodes.TYPE_INT).read(table, 0))
                 .isEqualTo(42);
-        assertThat(rows(RuntimeExecutorGenerator.generateBetweenExecutor(2, TypeCodes.TYPE_INT)
+        assertThat(rows(generator.generateBetweenExecutor(2, TypeCodes.TYPE_INT)
                 .execute(table, 0, new Object[] { 1, 2 }))).containsExactly(9);
-        assertThat(rows(RuntimeExecutorGenerator.generateBetweenExecutor(1, TypeCodes.TYPE_LONG)
+        assertThat(rows(generator.generateBetweenExecutor(1, TypeCodes.TYPE_LONG)
                 .execute(table, 0, new Object[] { 1L, 2L }))).containsExactly(10);
-        assertThat(rows(RuntimeExecutorGenerator.generateBetweenExecutor(2, TypeCodes.TYPE_CHAR)
+        assertThat(rows(generator.generateBetweenExecutor(2, TypeCodes.TYPE_CHAR)
                 .execute(table, 0, new Object[] { 'A', "C" }))).containsExactly(9);
-        assertThat(rows(RuntimeExecutorGenerator.generateBetweenExecutor(2, TypeCodes.TYPE_FLOAT)
+        assertThat(rows(generator.generateBetweenExecutor(2, TypeCodes.TYPE_FLOAT)
                 .execute(table, 0, new Object[] { 1.0f, 2.0f }))).containsExactly(9);
-        assertThat(rows(RuntimeExecutorGenerator.generateBetweenExecutor(1, TypeCodes.TYPE_DOUBLE)
+        assertThat(rows(generator.generateBetweenExecutor(1, TypeCodes.TYPE_DOUBLE)
                 .execute(table, 0, new Object[] { 1.0d, 2.0d }))).containsExactly(10);
-        assertThat(rows(RuntimeExecutorGenerator.generateBetweenExecutor(1, TypeCodes.TYPE_LOCAL_DATE)
+        assertThat(rows(generator.generateBetweenExecutor(1, TypeCodes.TYPE_LOCAL_DATE)
                 .execute(table, 0, new Object[] { LocalDate.of(2024, 1, 1), LocalDate.of(2024, 1, 31) })))
                         .containsExactly(10);
-        assertThatThrownBy(() -> RuntimeExecutorGenerator.generateBetweenExecutor(0, TypeCodes.TYPE_STRING)
+        assertThatThrownBy(() -> generator.generateBetweenExecutor(0, TypeCodes.TYPE_STRING)
                 .execute(table, 0, new Object[] { "a", "b" }))
                         .isInstanceOf(UnsupportedOperationException.class);
 
-        assertThat(RuntimeExecutorGenerator.generateGroupingValueReader(0, TypeCodes.TYPE_STRING).read(table, 0))
+        assertThat(generator.generateGroupingValueReader(0, TypeCodes.TYPE_STRING).read(table, 0))
                 .isEqualTo("codegen");
-        assertThat(RuntimeExecutorGenerator.generateGroupingValueReader(1, TypeCodes.TYPE_LONG).read(table, 0))
+        assertThat(generator.generateGroupingValueReader(1, TypeCodes.TYPE_LONG).read(table, 0))
                 .isEqualTo(777L);
-        assertThat(RuntimeExecutorGenerator.generateGroupingValueReader(2, TypeCodes.TYPE_BOOLEAN).read(table, 0))
+        assertThat(generator.generateGroupingValueReader(2, TypeCodes.TYPE_BOOLEAN).read(table, 0))
                 .isEqualTo(true);
-        assertThat(RuntimeExecutorGenerator.generateGroupingValueReader(2, TypeCodes.TYPE_BYTE).read(table, 0))
+        assertThat(generator.generateGroupingValueReader(2, TypeCodes.TYPE_BYTE).read(table, 0))
                 .isEqualTo((byte) 42);
-        assertThat(RuntimeExecutorGenerator.generateGroupingValueReader(2, TypeCodes.TYPE_SHORT).read(table, 0))
+        assertThat(generator.generateGroupingValueReader(2, TypeCodes.TYPE_SHORT).read(table, 0))
                 .isEqualTo((short) 42);
-        assertThat(RuntimeExecutorGenerator.generateGroupingValueReader(2, TypeCodes.TYPE_CHAR).read(table, 0))
+        assertThat(generator.generateGroupingValueReader(2, TypeCodes.TYPE_CHAR).read(table, 0))
                 .isEqualTo('*');
         table.intValue(2, FloatEncoding.floatToSortableInt(1.75f));
         table.longValue(1, FloatEncoding.doubleToSortableLong(2.25d));
-        assertThat(RuntimeExecutorGenerator.generateGroupingValueReader(2, TypeCodes.TYPE_FLOAT).read(table, 0))
+        assertThat(generator.generateGroupingValueReader(2, TypeCodes.TYPE_FLOAT).read(table, 0))
                 .isEqualTo(1.75f);
-        assertThat(RuntimeExecutorGenerator.generateGroupingValueReader(1, TypeCodes.TYPE_DOUBLE).read(table, 0))
+        assertThat(generator.generateGroupingValueReader(1, TypeCodes.TYPE_DOUBLE).read(table, 0))
                 .isEqualTo(2.25d);
-        assertThat(RuntimeExecutorGenerator.generateGroupingValueReader(2, (byte) 101).read(table, 0))
+        assertThat(generator.generateGroupingValueReader(2, (byte) 101).read(table, 0))
                 .isEqualTo(table.readInt(2, 0));
 
-        assertThat(rows(RuntimeExecutorGenerator.generateInListExecutor(2, TypeCodes.TYPE_INT)
+        assertThat(rows(generator.generateInListExecutor(2, TypeCodes.TYPE_INT)
                 .execute(table, new int[] { 1, 2 }))).containsExactly(8);
-        assertThat(rows(RuntimeExecutorGenerator.generateInListExecutor(1, TypeCodes.TYPE_LONG)
+        assertThat(rows(generator.generateInListExecutor(1, TypeCodes.TYPE_LONG)
                 .execute(table, new long[] { 1L, 2L }))).containsExactly(7);
-        assertThat(rows(RuntimeExecutorGenerator.generateInListExecutor(0, TypeCodes.TYPE_STRING)
+        assertThat(rows(generator.generateInListExecutor(0, TypeCodes.TYPE_STRING)
                 .execute(table, new String[] { "codegen" }))).containsExactly(6);
-        assertThatThrownBy(() -> RuntimeExecutorGenerator.generateInListExecutor(0, (byte) 111)
+        assertThatThrownBy(() -> generator.generateInListExecutor(0, (byte) 111)
                 .execute(table, List.of(1)))
                         .isInstanceOf(UnsupportedOperationException.class);
 
-        assertThat(RuntimeExecutorGenerator.generateStorageValueReader(1, TypeCodes.TYPE_LONG).read(table, 0))
+        assertThat(generator.generateStorageValueReader(1, TypeCodes.TYPE_LONG).read(table, 0))
                 .isEqualTo(table.readLong(1, 0));
     }
 
@@ -633,3 +634,4 @@ class RuntimeExecutorGeneratorCoverageTest {
         }
     }
 }
+
