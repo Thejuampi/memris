@@ -3,17 +3,19 @@
 
 from __future__ import annotations
 
+
 import fnmatch
 import os
 import re
 import sys
 from pathlib import Path
+from typing import List, Tuple
 
 
 ROOT = Path(__file__).resolve().parents[1]
 
 # Empty by default; set DOCS_DRIFT_ALLOWLIST to comma-separated globs when needed.
-ALLOWLIST_GLOBS: list[str] = []
+ALLOWLIST_GLOBS: List[str] = []
 ALLOWLIST_GLOBS.extend(
     glob.strip()
     for glob in os.getenv("DOCS_DRIFT_ALLOWLIST", "").split(",")
@@ -39,7 +41,7 @@ RULES = (
 )
 
 
-def iter_targets() -> list[Path]:
+def iter_targets() -> List[Path]:
     targets = [ROOT / "README.md"]
     targets.extend(sorted((ROOT / "docs").rglob("*.md")))
     return targets
@@ -51,7 +53,7 @@ def is_allowlisted(path: Path) -> bool:
 
 
 def main() -> int:
-    findings: list[tuple[str, int, str, str]] = []
+    findings: List[Tuple[str, int, str, str]] = []
     targets = iter_targets()
 
     for path in targets:
