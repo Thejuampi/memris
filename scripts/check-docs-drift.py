@@ -8,6 +8,7 @@ import fnmatch
 import os
 import re
 import sys
+import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import List, Tuple
 
@@ -22,12 +23,82 @@ ALLOWLIST_GLOBS.extend(
     if glob.strip()
 )
 
-RULES = (
-    (
+SEMVER_RE = re.compile(r"^(\d+)\.(\d+)\.(\d+)(?:[-+].*)?$")
+
+
+def parse_semver(raw_version: str) -> tuple[str, tuple[int, int, int]] | None:
+    """Parse a semver-like string and normalize to major.minor.patch."""
+    match = SEMVER_RE.match(raw_version.strip())
+    if not match:
+        return None
+    major, minor, patch = (int(match.group(1)), int(match.group(2)), int(match.group(3)))
+    return f"{major}.{minor}.{patch}", (major, minor, patch)
+
+
+def baseline_version_from_pom() -> str | None:
+    pom_path = ROOT / "pom.xml"
+    if not pom_path.exists():
+        return None
+    try:
+        root = ET.parse(pom_path).getroot()
+    except ET.ParseError:
+        return None
+
+    namespace = {"m": "http://maven.apache.org/POM/4.0.0"}
+    version = root.findtext("m:version", namespaces=namespace)
+    if version is None:
+        return None
+    parsed = parse_semver(version)
+    return parsed[0] if parsed else None
+
+
+def resolve_docs_baseline_version() -> str | None:
+    env_value = os.getenv("DOCS_BASELINE_VERSION")
+    if env_value:
+        parsed = parse_semver(env_value)
+        if not parsed:
+            raise SystemExit(
+                "Invalid DOCS_BASELINE_VERSION: expected semantic version (e.g. 0.2.0)"
+            )
+        return parsed[0]
+    return baseline_version_from_pom()
+
+
+def stale_version_rule() -> tuple[str, re.Pattern[str], str] | None:
+    baseline = resolve_docs_baseline_version()
+    stale_overrides = [
+        item.strip()
+        for item in os.getenv("DOCS_STALE_VERSIONS", "").split(",")
+        if item.strip()
+    ]
+
+    pattern: str | None = None
+    if stale_overrides:
+        escaped = "|".join(re.escape(v) for v in stale_overrides)
+        pattern = rf"\b(?:{escaped})\b"
+    elif baseline:
+        parsed = parse_semver(baseline)
+        if parsed:
+            _, (major, minor, _) = parsed
+            if minor > 0:
+                # For baseline X.Y.Z, flag stale literals from X.(Y-1).*
+                pattern = rf"\b{major}\.{minor - 1}\.\d+\b"
+            elif major > 0:
+                # For baseline X.0.Z, flag stale literals from (X-1).*.*
+                pattern = rf"\b{major - 1}\.\d+\.\d+\b"
+
+    if not pattern:
+        return None
+
+    baseline_note = baseline or "configured baseline"
+    return (
         "stale-version",
-        re.compile(r"\b0\.1\.10\b"),
-        "stale version literal detected (expected docs baseline: 0.2.0)",
-    ),
+        re.compile(pattern),
+        f"stale version literal detected (expected docs baseline: {baseline_note})",
+    )
+
+
+RULES = [
     (
         "invalid-memrisrepository-arity",
         re.compile(r"MemrisRepository<[^>\n]+,\s*[^>\n]+>"),
@@ -38,7 +109,12 @@ RULES = (
         re.compile(r"@Index\(\s*IndexType\."),
         "invalid @Index syntax; use @Index(type = Index.IndexType.X)",
     ),
-)
+]
+
+stale_rule = stale_version_rule()
+if stale_rule is not None:
+    RULES.insert(0, stale_rule)
+RULES = tuple(RULES)
 
 
 def iter_targets() -> List[Path]:

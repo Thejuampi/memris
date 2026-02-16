@@ -1,6 +1,6 @@
 package io.memris.spring.boot.autoconfigure;
 
-import io.memris.core.MemrisArena;
+import io.memris.repository.MemrisArena;
 
 /**
  * Provides access to Memris arenas configured in the Spring context.

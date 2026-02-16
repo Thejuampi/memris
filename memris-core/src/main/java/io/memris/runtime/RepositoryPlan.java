@@ -35,6 +35,7 @@ public final class RepositoryPlan<T> {
     private final java.util.Map<Class<?>, HeapRuntimeKernel> kernelsByEntity;
     private final java.util.Map<Class<?>, EntityMaterializer<?>> materializersByEntity;
     private final java.util.Map<String, SimpleTable> joinTables;
+    private final JoinRuntimeBinding[][] joinRuntimeByQuery;
     private final EntitySaver<T, ?> entitySaver;
     private final IdLookup idLookup;
     private final java.util.IdentityHashMap<CompiledQuery, Integer> queryIndexByInstance;
@@ -56,6 +57,7 @@ public final class RepositoryPlan<T> {
         this.kernelsByEntity = builder.kernelsByEntity;
         this.materializersByEntity = builder.materializersByEntity;
         this.joinTables = builder.joinTables;
+        this.joinRuntimeByQuery = builder.joinRuntimeByQuery;
         this.entitySaver = builder.entitySaver;
         this.idLookup = builder.idLookup;
         this.queryIndexByInstance = new java.util.IdentityHashMap<>();
@@ -142,6 +144,14 @@ public final class RepositoryPlan<T> {
         return joinTables;
     }
 
+    public JoinRuntimeBinding[] joinRuntimeFor(CompiledQuery query) {
+        Integer index = queryIndexByInstance.get(query);
+        if (index == null || joinRuntimeByQuery == null || index >= joinRuntimeByQuery.length) {
+            return null;
+        }
+        return joinRuntimeByQuery[index];
+    }
+
     public EntitySaver<T, ?> entitySaver() {
         return entitySaver;
     }
@@ -172,6 +182,7 @@ public final class RepositoryPlan<T> {
             java.util.Map<Class<?>, HeapRuntimeKernel> kernelsByEntity,
             java.util.Map<Class<?>, EntityMaterializer<?>> materializersByEntity,
             java.util.Map<String, SimpleTable> joinTables,
+            JoinRuntimeBinding[][] joinRuntimeByQuery,
             EntitySaver<T, ?> entitySaver,
             IdLookup idLookup) {
         return fromGeneratedTable(
@@ -193,6 +204,7 @@ public final class RepositoryPlan<T> {
                 kernelsByEntity,
                 materializersByEntity,
                 joinTables,
+                joinRuntimeByQuery,
                 entitySaver,
                 idLookup,
                 new RuntimeExecutorGenerator());
@@ -221,6 +233,7 @@ public final class RepositoryPlan<T> {
             java.util.Map<Class<?>, HeapRuntimeKernel> kernelsByEntity,
             java.util.Map<Class<?>, EntityMaterializer<?>> materializersByEntity,
             java.util.Map<String, SimpleTable> joinTables,
+            JoinRuntimeBinding[][] joinRuntimeByQuery,
             EntitySaver<T, ?> entitySaver,
             IdLookup idLookup,
             RuntimeExecutorGenerator runtimeExecutorGenerator) {
@@ -244,6 +257,7 @@ public final class RepositoryPlan<T> {
                 .kernelsByEntity(kernelsByEntity)
                 .materializersByEntity(materializersByEntity)
                 .joinTables(joinTables)
+                .joinRuntimeByQuery(joinRuntimeByQuery)
                 .entitySaver(entitySaver)
                 .idLookup(idLookup)
                 .build();
@@ -270,6 +284,7 @@ public final class RepositoryPlan<T> {
         private java.util.Map<Class<?>, HeapRuntimeKernel> kernelsByEntity = java.util.Map.of();
         private java.util.Map<Class<?>, EntityMaterializer<?>> materializersByEntity = java.util.Map.of();
         private java.util.Map<String, SimpleTable> joinTables = java.util.Map.of();
+        private JoinRuntimeBinding[][] joinRuntimeByQuery = new JoinRuntimeBinding[0][];
         private EntitySaver<T, ?> entitySaver;
         private IdLookup idLookup;
 
@@ -350,6 +365,11 @@ public final class RepositoryPlan<T> {
 
         public Builder<T> joinTables(java.util.Map<String, SimpleTable> joinTables) {
             this.joinTables = joinTables;
+            return this;
+        }
+
+        public Builder<T> joinRuntimeByQuery(JoinRuntimeBinding[][] joinRuntimeByQuery) {
+            this.joinRuntimeByQuery = joinRuntimeByQuery;
             return this;
         }
 

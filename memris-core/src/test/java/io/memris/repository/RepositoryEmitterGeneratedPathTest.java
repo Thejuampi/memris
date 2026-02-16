@@ -4,7 +4,7 @@ import io.memris.core.Entity;
 import io.memris.core.EntityMetadata;
 import io.memris.core.EntityMetadataProvider;
 import io.memris.core.Id;
-import io.memris.core.MemrisArena;
+import io.memris.repository.MemrisArena;
 import io.memris.core.MetadataExtractor;
 import io.memris.runtime.EntityMaterializer;
 import io.memris.runtime.ReflectionEntityMaterializer;

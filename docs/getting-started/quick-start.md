@@ -62,7 +62,7 @@ public interface CustomerRepository extends MemrisRepository<Customer> {
 
 ```java
 import io.memris.repository.MemrisRepositoryFactory;
-import io.memris.core.MemrisArena;
+import io.memris.repository.MemrisArena;
 
 public class QuickStart {
     public static void main(String[] args) {
@@ -148,7 +148,7 @@ Each `MemrisArena` is a completely isolated data space with its own tables, repo
 
 ```java
 import io.memris.repository.MemrisRepositoryFactory;
-import io.memris.core.MemrisArena;
+import io.memris.repository.MemrisArena;
 
 // Factory creates isolated arenas
 MemrisRepositoryFactory factory = new MemrisRepositoryFactory();

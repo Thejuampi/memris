@@ -13,7 +13,7 @@
     <description>Spring Boot starter for Memris (Boot 3 / Spring 6)</description>
 
     <properties>
-        <spring.boot.version>3.2.2</spring.boot.version>
+        <spring.boot.version>${spring.boot.3.version}</spring.boot.version>
     </properties>
 
     <dependencies>

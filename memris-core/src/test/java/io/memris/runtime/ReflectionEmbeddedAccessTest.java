@@ -3,7 +3,7 @@ package io.memris.runtime;
 import io.memris.core.Entity;
 import io.memris.core.Id;
 import io.memris.core.ManyToOne;
-import io.memris.core.MemrisArena;
+import io.memris.repository.MemrisArena;
 import io.memris.core.MetadataExtractor;
 import io.memris.repository.MemrisRepositoryFactory;
 import io.memris.storage.GeneratedTable;

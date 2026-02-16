@@ -1,7 +1,7 @@
 package io.memris.benchmarks;
 
 import io.memris.core.Index;
-import io.memris.core.MemrisArena;
+import io.memris.repository.MemrisArena;
 import io.memris.core.MemrisConfiguration;
 import io.memris.repository.MemrisRepositoryFactory;
 import io.memris.runtime.TestEntity;

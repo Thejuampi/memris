@@ -1,6 +1,6 @@
 package io.memris.runtime;
 
-import io.memris.core.MemrisArena;
+import io.memris.repository.MemrisArena;
 import io.memris.repository.MemrisRepositoryFactory;
 import io.memris.runtime.IndexedEntity;
 import io.memris.runtime.IndexedEntityRepository;

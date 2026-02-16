@@ -2,7 +2,6 @@ package io.memris.repository;
 
 import io.memris.core.EntityMetadata;
 import io.memris.core.EntityMetadata.FieldMapping;
-import io.memris.core.MemrisArena;
 import io.memris.core.MemrisConfiguration;
 import io.memris.core.TypeCodes;
 import io.memris.index.HashIndex;

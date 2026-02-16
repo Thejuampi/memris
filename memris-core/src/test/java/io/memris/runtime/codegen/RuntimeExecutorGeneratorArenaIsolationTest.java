@@ -1,6 +1,6 @@
 package io.memris.runtime.codegen;
 
-import io.memris.core.MemrisArena;
+import io.memris.repository.MemrisArena;
 import io.memris.core.ManyToOne;
 import io.memris.core.JoinColumn;
 import io.memris.core.Id;

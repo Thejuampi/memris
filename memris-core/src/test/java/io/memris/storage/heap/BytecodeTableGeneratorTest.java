@@ -17,6 +17,8 @@ import static org.assertj.core.api.Assertions.fail;
  * 4. Use O(1) array access for type codes
  */
 class BytecodeTableGeneratorTest {
+        // Ownership: generated table contract (bytecode shape, direct accessors, generated scan/read behavior).
+        // Out-of-scope: interceptor branch matrices shared with MethodHandleImplementationInterceptorTest.
 
         @Test
         void generatedTableShouldSupportScanEqualsLong() throws Exception {
@@ -155,6 +157,55 @@ class BytecodeTableGeneratorTest {
                 long found = table.lookupById(42L);
 
                 assertThat(found).isEqualTo(ref);
+        }
+
+        @Test
+        void generatedTableShouldTombstoneStringIdRows() throws Exception {
+                TableMetadata metadata = new TableMetadata(
+                                "Book",
+                                "io.memris.test.Book",
+                                java.util.List.of(
+                                                new FieldMetadata("isbn", io.memris.core.TypeCodes.TYPE_STRING, true, true),
+                                                new FieldMetadata("title", io.memris.core.TypeCodes.TYPE_STRING, false, false)));
+                Class<? extends AbstractTable> tableClass = BytecodeTableGenerator.generate(metadata);
+                GeneratedTable table = (GeneratedTable) tableClass.getConstructor(int.class, int.class, int.class)
+                                .newInstance(16, 2, 1);
+
+                long ref = table.insertFrom(new Object[] { "isbn-2", "Beta" });
+                table.tombstone(ref);
+                assertThat(table.lookupByIdString("isbn-2")).isEqualTo(-1L);
+        }
+
+        @Test
+        void generatedTableShouldHandleFloatDoubleBooleanAndCharInsertPaths() throws Exception {
+                TableMetadata metadata = new TableMetadata(
+                                "Metrics",
+                                "io.memris.test.Metrics",
+                                java.util.List.of(
+                                                new FieldMetadata("id", io.memris.core.TypeCodes.TYPE_LONG, true, true),
+                                                new FieldMetadata("scoreDouble", io.memris.core.TypeCodes.TYPE_DOUBLE, false, false),
+                                                new FieldMetadata("ratioFloat", io.memris.core.TypeCodes.TYPE_FLOAT, false, false),
+                                                new FieldMetadata("enabled", io.memris.core.TypeCodes.TYPE_BOOLEAN, false, false),
+                                                new FieldMetadata("grade", io.memris.core.TypeCodes.TYPE_CHAR, false, false)));
+                Class<? extends AbstractTable> tableClass = BytecodeTableGenerator.generate(metadata);
+                GeneratedTable table = (GeneratedTable) tableClass.getConstructor(int.class, int.class, int.class)
+                                .newInstance(8, 2, 1);
+
+                long ref = table.insertFrom(new Object[] { 1L, 12.25d, 1.5f, true, 'A' });
+                int row = io.memris.storage.Selection.index(ref);
+
+                assertThat(table.readLong(0, row)).isEqualTo(1L);
+                assertThat(table.readLong(1, row)).isNotZero();
+                assertThat(table.readInt(2, row)).isNotZero();
+                assertThat(table.readInt(3, row)).isEqualTo(1);
+                assertThat(table.readInt(4, row)).isEqualTo((int) 'A');
+
+                long nullRef = table.insertFrom(new Object[] { 2L, null, null, null, null });
+                int nullRow = io.memris.storage.Selection.index(nullRef);
+                assertThat(table.isPresent(1, nullRow)).isFalse();
+                assertThat(table.isPresent(2, nullRow)).isFalse();
+                assertThat(table.isPresent(3, nullRow)).isFalse();
+                assertThat(table.isPresent(4, nullRow)).isFalse();
         }
 
         @Test

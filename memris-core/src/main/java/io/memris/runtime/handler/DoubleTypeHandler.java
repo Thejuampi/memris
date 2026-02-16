@@ -32,14 +32,40 @@ public class DoubleTypeHandler extends AbstractTypeHandler<Double> {
 
     @Override
     public Double convertValue(Object value) {
-        if (value instanceof Double) {
+        if (value == null) {
+            throw new IllegalArgumentException("Cannot convert null to Double");
+        } else if (value instanceof Double) {
             return (Double) value;
         } else if (value instanceof Number) {
             return ((Number) value).doubleValue();
+        } else if (value instanceof String) {
+            try {
+                return Double.parseDouble((String) value);
+            } catch (NumberFormatException e) {
+                throw new IllegalArgumentException(
+                        "Cannot convert " + value.getClass() + " to Double", e);
+            }
         } else {
             throw new IllegalArgumentException(
                     "Cannot convert " + value.getClass() + " to Double");
         }
+    }
+    /**
+     * Execute IN with a list of values.
+     */
+    public Selection executeIn(GeneratedTable table, int columnIndex, java.util.List<?> values) {
+        if (values == null) {
+            throw new IllegalArgumentException("IN values list cannot be null");
+        }
+        double[] arr = new double[values.size()];
+        for (int i = 0; i < values.size(); i++) {
+            Object raw = values.get(i);
+            if (raw == null) {
+                throw new IllegalArgumentException("IN values list cannot contain nulls (index " + i + ")");
+            }
+            arr[i] = convertValue(raw);
+        }
+        return executeIn(table, columnIndex, arr);
     }
 
     /**
@@ -51,6 +77,7 @@ public class DoubleTypeHandler extends AbstractTypeHandler<Double> {
 
     @Override
     protected Selection executeEquals(GeneratedTable table, int columnIndex, Double value, boolean ignoreCase) {
+        if (value == null) return createSelection(table, new int[0]);
         long longValue = doubleToLongBits(value);
         return createSelection(table, table.scanEqualsLong(columnIndex, longValue));
     }

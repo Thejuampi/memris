@@ -122,7 +122,7 @@ public interface UserRepository extends MemrisRepository<User> {
 
 ```java
 import io.memris.repository.MemrisRepositoryFactory;
-import io.memris.core.MemrisArena;
+import io.memris.repository.MemrisArena;
 import io.memris.core.MemrisConfiguration;
 
 public class Main {

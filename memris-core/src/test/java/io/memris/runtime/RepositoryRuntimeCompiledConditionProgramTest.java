@@ -4,7 +4,7 @@ import io.memris.core.Entity;
 import io.memris.core.GeneratedValue;
 import io.memris.core.Id;
 import io.memris.core.Index;
-import io.memris.core.MemrisArena;
+import io.memris.repository.MemrisArena;
 import io.memris.core.MemrisConfiguration;
 import io.memris.core.MetadataExtractor;
 import io.memris.core.TypeCodes;
@@ -254,6 +254,7 @@ class RepositoryRuntimeCompiledConditionProgramTest {
                 Map.of(Person.class, new HeapRuntimeKernel(table)),
                 Map.of(),
                 Map.of(),
+                new JoinRuntimeBinding[][] { new JoinRuntimeBinding[0] },
                 entitySaver,
                 IdLookup.forTypeCode(idTypeCode));
 
@@ -470,4 +471,3 @@ class RepositoryRuntimeCompiledConditionProgramTest {
         }
     }
 }
-

@@ -25,18 +25,45 @@ public class ByteTypeHandler extends AbstractTypeHandler<Byte> {
     
     @Override
     public Byte convertValue(Object value) {
-        if (value instanceof Byte) {
+        if (value == null) {
+            throw new IllegalArgumentException("Cannot convert null to Byte");
+        } else if (value instanceof Byte) {
             return (Byte) value;
         } else if (value instanceof Number) {
             return ((Number) value).byteValue();
+        } else if (value instanceof String) {
+            try {
+                return Byte.parseByte((String) value);
+            } catch (NumberFormatException e) {
+                throw new IllegalArgumentException(
+                    "Cannot convert " + value.getClass() + " to Byte", e);
+            }
         } else {
             throw new IllegalArgumentException(
                 "Cannot convert " + value.getClass() + " to Byte");
         }
     }
+    /**
+     * Execute IN with a list of values.
+     */
+    public Selection executeIn(GeneratedTable table, int columnIndex, java.util.List<?> values) {
+        if (values == null) {
+            throw new IllegalArgumentException("IN values list cannot be null");
+        }
+        byte[] arr = new byte[values.size()];
+        for (int i = 0; i < values.size(); i++) {
+            Object raw = values.get(i);
+            if (raw == null) {
+                throw new IllegalArgumentException("IN values list cannot contain nulls (index " + i + ")");
+            }
+            arr[i] = convertValue(raw);
+        }
+        return executeIn(table, columnIndex, arr);
+    }
     
     @Override
     protected Selection executeEquals(GeneratedTable table, int columnIndex, Byte value, boolean ignoreCase) {
+        if (value == null) return createSelection(table, new int[0]);
         return createSelection(table, table.scanEqualsInt(columnIndex, value.intValue()));
     }
     

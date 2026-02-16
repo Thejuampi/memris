@@ -237,7 +237,7 @@ public interface OrderItemRepository extends MemrisRepository<OrderItem> {
 
 ```java
 import io.memris.repository.MemrisRepositoryFactory;
-import io.memris.core.MemrisArena;
+import io.memris.repository.MemrisArena;
 
 public class ECommerceDemo {
     public static void main(String[] args) {

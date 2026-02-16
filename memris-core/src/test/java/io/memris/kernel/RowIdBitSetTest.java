@@ -284,4 +284,21 @@ class RowIdBitSetTest {
         assertThat(set.toLongArray())
                 .doesNotContain(java.util.stream.LongStream.range(0, 500).mapToObj(i -> i * 2).toArray(Long[]::new));
     }
+
+    @Test
+    void enumeratorShouldHandleSparseChunksAndExhaustion() {
+        var set = new RowIdBitSet();
+        set.add(RowId.fromLong(65));   // first chunk, non-zero second word
+        set.add(RowId.fromLong(9000)); // forces growth with intermediate null chunks
+
+        var enumerator = set.enumerator();
+        var values = new java.util.ArrayList<Long>();
+        while (enumerator.hasNext()) {
+            values.add(enumerator.nextLong());
+        }
+
+        assertThat(values).containsExactlyInAnyOrder(65L, 9000L);
+        assertThatThrownBy(enumerator::nextLong).isInstanceOf(java.util.NoSuchElementException.class);
+    }
+
 }
