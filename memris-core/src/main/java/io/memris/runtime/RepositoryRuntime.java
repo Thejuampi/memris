@@ -7,7 +7,7 @@ import io.memris.core.EntityMetadata;
 import io.memris.core.EntityMetadata.AuditField;
 import io.memris.core.EntityMetadata.FieldMapping;
 import io.memris.core.EntityMetadataProvider;
-import io.memris.core.MemrisArena;
+import io.memris.repository.MemrisArena;
 import io.memris.core.MemrisConfiguration;
 import io.memris.core.MetadataExtractor;
 import io.memris.repository.MemrisRepositoryFactory;
@@ -3566,10 +3566,13 @@ public final class RepositoryRuntime<T> {
             return baseSelection;
         }
 
+        var joinBindings = plan.joinRuntimeFor(query);
         Selection current = baseSelection;
-        for (CompiledQuery.CompiledJoin join : joins) {
-            Selection targetSelection = evaluateJoinPredicates(join, args);
-            current = join.executor().filterJoin(plan.table(), join.targetTable(), current, targetSelection);
+        for (int i = 0; i < joins.length; i++) {
+            var join = joins[i];
+            var joinBinding = requireJoinBinding(query, i, joinBindings);
+            Selection targetSelection = evaluateJoinPredicates(query, join, joinBinding, args);
+            current = joinBinding.executor().filterJoin(plan.table(), joinBinding.targetTable(), current, targetSelection);
         }
         return current;
     }
@@ -3599,16 +3602,18 @@ public final class RepositoryRuntime<T> {
         });
     }
 
-    private Selection evaluateJoinPredicates(CompiledQuery.CompiledJoin join, Object[] args) {
+    private Selection evaluateJoinPredicates(CompiledQuery query, CompiledQuery.CompiledJoin join,
+            JoinRuntimeBinding joinBinding, Object[] args) {
         CompiledQuery.CompiledJoinPredicate[] predicates = join.predicates();
         if (predicates == null || predicates.length == 0) {
             return null;
         }
 
-        var targetTable = join.targetTable();
-        var targetKernel = join.targetKernel();
+        var targetTable = joinBinding.targetTable();
+        var targetKernel = joinBinding.targetKernel();
         if (targetTable == null || targetKernel == null) {
-            return null;
+            throw new IllegalStateException("Missing target runtime for join '" + join.joinPath()
+                    + "' in query " + query.opCode());
         }
 
         Selection selection = null;
@@ -3623,14 +3628,29 @@ public final class RepositoryRuntime<T> {
 
     private void hydrateJoins(T entity, int rowIndex, CompiledQuery query) {
         CompiledQuery.CompiledJoin[] joins = query.joins();
-        if (joins == null) {
+        if (joins == null || joins.length == 0) {
             return;
         }
 
-        for (CompiledQuery.CompiledJoin join : joins) {
-            join.materializer().hydrate(entity, rowIndex, plan.table(), join.targetTable(),
-                    join.targetMaterializer());
+        var joinBindings = plan.joinRuntimeFor(query);
+        for (int i = 0; i < joins.length; i++) {
+            var joinBinding = requireJoinBinding(query, i, joinBindings);
+            joinBinding.materializer().hydrate(entity, rowIndex, plan.table(), joinBinding.targetTable(),
+                    joinBinding.targetMaterializer());
         }
+    }
+
+    private JoinRuntimeBinding requireJoinBinding(CompiledQuery query, int joinIndex,
+            JoinRuntimeBinding[] joinBindings) {
+        if (joinBindings == null || joinIndex >= joinBindings.length) {
+            throw new IllegalStateException("Missing join runtime bindings for query " + query.opCode());
+        }
+        var joinBinding = joinBindings[joinIndex];
+        if (joinBinding == null || joinBinding.executor() == null || joinBinding.materializer() == null) {
+            throw new IllegalStateException("Invalid join runtime binding at index " + joinIndex + " for query "
+                    + query.opCode());
+        }
+        return joinBinding;
     }
 
     private void hydrateCollections(T entity, int rowIndex) {

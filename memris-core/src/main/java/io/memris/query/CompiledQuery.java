@@ -239,26 +239,12 @@ public record CompiledQuery(
             byte fkTypeCode,
             LogicalQuery.Join.JoinType joinType,
             String relationshipFieldName,
-            CompiledJoinPredicate[] predicates,
-            io.memris.storage.GeneratedTable targetTable,
-            io.memris.runtime.HeapRuntimeKernel targetKernel,
-            io.memris.runtime.EntityMaterializer<?> targetMaterializer,
-            io.memris.runtime.JoinExecutor executor,
-            io.memris.runtime.JoinMaterializer materializer
+            CompiledJoinPredicate[] predicates
     ) {
         public CompiledJoin {
             if (joinPath == null || joinPath.isBlank()) {
                 throw new IllegalArgumentException("joinPath required");
             }
-        }
-
-        public CompiledJoin withRuntime(io.memris.storage.GeneratedTable targetTable,
-                                        io.memris.runtime.HeapRuntimeKernel targetKernel,
-                                        io.memris.runtime.EntityMaterializer<?> targetMaterializer,
-                                        io.memris.runtime.JoinExecutor executor,
-                                        io.memris.runtime.JoinMaterializer materializer) {
-            return new CompiledJoin(joinPath, sourceEntity, targetEntity, sourceColumnIndex, targetColumnIndex, targetColumnIsId,
-                    fkTypeCode, joinType, relationshipFieldName, predicates, targetTable, targetKernel, targetMaterializer, executor, materializer);
         }
     }
 

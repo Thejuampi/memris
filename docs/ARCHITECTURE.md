@@ -55,7 +55,7 @@ Memris is a high-performance in-memory storage engine with the following princip
 
 | Package | Purpose | Key Classes |
 |---------|---------|-------------|
-| `io.memris.core` | Annotations, types, configuration | `@Entity`, `@Id`, `@Index`, `@GeneratedValue`, `TypeCodes`, `MemrisArena`, `MemrisConfiguration` |
+| `io.memris.core` | Annotations, types, configuration | `@Entity`, `@Id`, `@Index`, `@GeneratedValue`, `TypeCodes`, `MemrisConfiguration` |
 | `io.memris.query` | Query parsing & planning | `QueryMethodLexer`, `QueryPlanner`, `CompiledQuery`, `OpCode`, `BuiltInResolver` |
 | `io.memris.runtime` | Query execution | `HeapRuntimeKernel`, `EntityMaterializer`, `EntityExtractor`, `RepositoryRuntime` |
 | `io.memris.runtime.codegen` | Runtime code generation | `RuntimeExecutorGenerator` |
@@ -63,7 +63,7 @@ Memris is a high-performance in-memory storage engine with the following princip
 | `io.memris.storage.heap` | Heap-based implementation | `TableGenerator`, `AbstractTable`, `PageColumnInt`, `PageColumnLong`, `PageColumnString`, `LongIdIndex`, `StringIdIndex`, `LockFreeFreeList` |
 | `io.memris.index` | Index implementations | `HashIndex`, `RangeIndex`, `CompositeHashIndex`, `CompositeRangeIndex`, `StringPrefixIndex`, `StringSuffixIndex` |
 | `io.memris.kernel` | Core execution primitives | `Predicate`, `RowId`, `RowIdSet`, `LongEnumerator` |
-| `io.memris.repository` | Repository + saver generation | `RepositoryEmitter`, `EntitySaverGenerator`, `MemrisRepositoryFactory`, `RepositoryMethodIntrospector` |
+| `io.memris.repository` | Repository + saver generation | `MemrisArena`, `RepositoryEmitter`, `EntitySaverGenerator`, `MemrisRepositoryFactory`, `RepositoryMethodIntrospector` |
 
 ## Layer Responsibilities
 

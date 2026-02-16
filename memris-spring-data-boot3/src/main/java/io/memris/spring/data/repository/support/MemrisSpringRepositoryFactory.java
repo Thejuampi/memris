@@ -1,6 +1,6 @@
 package io.memris.spring.data.repository.support;
 
-import io.memris.core.MemrisArena;
+import io.memris.repository.MemrisArena;
 import io.memris.repository.MemrisRepository;
 import org.springframework.data.repository.core.EntityInformation;
 import org.springframework.data.repository.core.RepositoryInformation;

@@ -87,7 +87,7 @@ Create a simple test to verify the installation:
 
 ```java
 import io.memris.repository.MemrisRepositoryFactory;
-import io.memris.core.MemrisArena;
+import io.memris.repository.MemrisArena;
 
 public class InstallationTest {
     public static void main(String[] args) {

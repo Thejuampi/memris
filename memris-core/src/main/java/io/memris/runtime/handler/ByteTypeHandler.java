@@ -29,14 +29,32 @@ public class ByteTypeHandler extends AbstractTypeHandler<Byte> {
             return (Byte) value;
         } else if (value instanceof Number) {
             return ((Number) value).byteValue();
+        } else if (value instanceof String) {
+            try {
+                return Byte.parseByte((String) value);
+            } catch (NumberFormatException e) {
+                throw new IllegalArgumentException(
+                    "Cannot convert " + value.getClass() + " to Byte", e);
+            }
         } else {
             throw new IllegalArgumentException(
                 "Cannot convert " + value.getClass() + " to Byte");
         }
     }
+    /**
+     * Execute IN with a list of values.
+     */
+    public Selection executeIn(GeneratedTable table, int columnIndex, java.util.List<?> values) {
+        byte[] arr = new byte[values.size()];
+        for (int i = 0; i < values.size(); i++) {
+            arr[i] = ((Number) values.get(i)).byteValue();
+        }
+        return executeIn(table, columnIndex, arr);
+    }
     
     @Override
     protected Selection executeEquals(GeneratedTable table, int columnIndex, Byte value, boolean ignoreCase) {
+        if (value == null) return createSelection(table, new int[0]);
         return createSelection(table, table.scanEqualsInt(columnIndex, value.intValue()));
     }
     

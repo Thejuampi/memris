@@ -2,6 +2,7 @@ package io.memris.core;
 
 import io.memris.repository.MemrisRepository;
 import io.memris.repository.MemrisRepositoryFactory;
+import io.memris.repository.MemrisArena;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;

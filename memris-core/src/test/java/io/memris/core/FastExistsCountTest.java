@@ -5,7 +5,7 @@ import io.memris.core.Query;
 import io.memris.core.Param;
 
 import io.memris.repository.MemrisRepositoryFactory;
-import io.memris.core.MemrisArena;
+import io.memris.repository.MemrisArena;
 import io.memris.repository.MemrisRepository;
 import io.memris.core.Entity;
 import io.memris.core.GeneratedValue;
@@ -18,7 +18,7 @@ import io.memris.core.GenerationType;
 import io.memris.core.Index;
 
 import io.memris.repository.MemrisRepositoryFactory;
-import io.memris.core.MemrisArena;
+import io.memris.repository.MemrisArena;
 import io.memris.repository.MemrisRepository;
 
 import org.junit.jupiter.api.AfterEach;

@@ -7,7 +7,7 @@ import io.memris.core.GeneratedValue;
 import io.memris.core.Id;
 import io.memris.core.JoinColumn;
 import io.memris.core.ManyToOne;
-import io.memris.core.MemrisArena;
+import io.memris.repository.MemrisArena;
 import io.memris.core.MemrisConfiguration;
 import io.memris.core.MetadataExtractor;
 import io.memris.core.Modifying;

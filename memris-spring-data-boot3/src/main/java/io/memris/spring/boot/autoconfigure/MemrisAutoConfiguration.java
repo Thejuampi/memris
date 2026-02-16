@@ -1,6 +1,6 @@
 package io.memris.spring.boot.autoconfigure;
 
-import io.memris.core.MemrisArena;
+import io.memris.repository.MemrisArena;
 import io.memris.core.MemrisConfiguration;
 import io.memris.repository.MemrisRepositoryFactory;
 import org.springframework.boot.autoconfigure.AutoConfiguration;

@@ -4,7 +4,6 @@ import io.memris.core.EntityMetadata;
 import io.memris.core.EntityMetadata.FieldMapping;
 import io.memris.core.MemrisConfiguration;
 import io.memris.core.Index.IndexType;
-import io.memris.core.MemrisArena;
 import io.memris.core.EntityMetadataProvider;
 import io.memris.core.TypeCodes;
 import io.memris.core.converter.TypeConverter;
@@ -27,6 +26,7 @@ import io.memris.runtime.JoinExecutorManyToMany;
 import io.memris.runtime.JoinCollectionMaterializer;
 import io.memris.runtime.JoinMaterializer;
 import io.memris.runtime.JoinMaterializerImpl;
+import io.memris.runtime.JoinRuntimeBinding;
 import io.memris.runtime.NoopJoinMaterializer;
 import io.memris.runtime.RepositoryMethodBinding;
 import io.memris.runtime.RepositoryMethodExecutor;
@@ -141,7 +141,7 @@ public final class RepositoryEmitter {
         var materializersByEntity = buildJoinMaterializers(
                 tablesByEntity, provider);
         var joinTables = buildManyToManyJoinTables(metadata, provider);
-        compiledQueries = wireJoinRuntime(compiledQueries, metadata, tablesByEntity, kernelsByEntity,
+        var joinRuntimeByQuery = buildJoinRuntimeBindings(compiledQueries, metadata, tablesByEntity, kernelsByEntity,
                 materializersByEntity, joinTables, provider);
 
         var bindings = RepositoryMethodBinding.fromQueries(compiledQueries);
@@ -197,6 +197,7 @@ public final class RepositoryEmitter {
                 kernelsByEntity,
                 materializersByEntity,
                 joinTables,
+                joinRuntimeByQuery,
                 entitySaver,
                 generateIdLookup(metadata, typeCodes),
                 runtimeExecutorGenerator);
@@ -325,7 +326,7 @@ public final class RepositoryEmitter {
         return null;
     }
 
-    private static <T> CompiledQuery[] wireJoinRuntime(
+    private static <T> JoinRuntimeBinding[][] buildJoinRuntimeBindings(
             CompiledQuery[] compiledQueries,
             EntityMetadata<T> metadata,
             Map<Class<?>, GeneratedTable> tablesByEntity,
@@ -333,15 +334,15 @@ public final class RepositoryEmitter {
             Map<Class<?>, EntityMaterializer<?>> materializersByEntity,
             Map<String, SimpleTable> joinTables,
             EntityMetadataProvider provider) {
-        var wired = new CompiledQuery[compiledQueries.length];
+        var bindingsByQuery = new JoinRuntimeBinding[compiledQueries.length][];
         for (int i = 0; i < compiledQueries.length; i++) {
             var query = compiledQueries[i];
             var joins = query.joins();
             if (joins == null || joins.length == 0) {
-                wired[i] = query;
+                bindingsByQuery[i] = new JoinRuntimeBinding[0];
                 continue;
             }
-            var updated = new CompiledQuery.CompiledJoin[joins.length];
+            var bindings = new JoinRuntimeBinding[joins.length];
             for (int j = 0; j < joins.length; j++) {
                 var join = joins[j];
                 var targetTable = tablesByEntity.get(join.targetEntity());
@@ -353,11 +354,11 @@ public final class RepositoryEmitter {
                 var executor = buildJoinExecutor(metadata, targetMetadata, join, fieldMapping, joinTables, provider);
                 var setter = metadata.fieldSetters().get(join.relationshipFieldName());
                 var materializer = buildJoinMaterializer(fieldMapping, join, setter, postLoadHandle);
-                updated[j] = join.withRuntime(targetTable, targetKernel, targetMaterializer, executor, materializer);
+                bindings[j] = new JoinRuntimeBinding(targetTable, targetKernel, targetMaterializer, executor, materializer);
             }
-            wired[i] = query.withJoins(updated);
+            bindingsByQuery[i] = bindings;
         }
-        return wired;
+        return bindingsByQuery;
     }
 
     private static JoinExecutor buildJoinExecutor(EntityMetadata<?> metadata,

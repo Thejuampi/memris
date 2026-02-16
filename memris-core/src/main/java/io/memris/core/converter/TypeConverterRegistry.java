@@ -31,7 +31,6 @@ public final class TypeConverterRegistry {
         return INSTANCE;
     }
 
-    @SuppressWarnings("unchecked")
     private void registerDefaults() {
         // Primitive and boxed types - direct mapping
         register(new IdentityConverter<>(int.class, int.class));

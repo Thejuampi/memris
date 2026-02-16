@@ -1,6 +1,6 @@
 package io.memris.runtime;
 
-import io.memris.core.MemrisArena;
+import io.memris.repository.MemrisArena;
 import io.memris.repository.MemrisRepositoryFactory;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;

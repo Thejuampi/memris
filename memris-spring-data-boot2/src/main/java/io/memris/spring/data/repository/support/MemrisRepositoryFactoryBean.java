@@ -1,6 +1,6 @@
 package io.memris.spring.data.repository.support;
 
-import io.memris.core.MemrisArena;
+import io.memris.repository.MemrisArena;
 import io.memris.spring.boot.autoconfigure.MemrisArenaProvider;
 import org.springframework.beans.factory.BeanFactory;
 import org.springframework.beans.factory.BeanFactoryAware;

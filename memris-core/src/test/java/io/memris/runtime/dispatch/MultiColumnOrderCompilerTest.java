@@ -1,6 +1,6 @@
 package io.memris.runtime.dispatch;
 
-import io.memris.core.MemrisArena;
+import io.memris.repository.MemrisArena;
 import io.memris.core.MetadataExtractor;
 import io.memris.query.CompiledQuery;
 import io.memris.repository.MemrisRepositoryFactory;

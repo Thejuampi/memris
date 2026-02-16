@@ -152,4 +152,27 @@ class PageColumnLongTest {
 
         assertThat(matches).containsExactly(1, 2, 3);
     }
+
+    @Test
+    void scanGreaterThanOrEqualAndLessThanOrEqual() {
+        PageColumnLong column = new PageColumnLong(4, 2);
+        column.set(0, 5L);
+        column.set(1, 10L);
+        column.set(2, 15L);
+        column.set(3, 20L);
+        column.publish(4);
+
+        assertThat(column.scanGreaterThanOrEqual(10L, 4)).containsExactly(1, 2, 3);
+        assertThat(column.scanLessThanOrEqual(10L, 4)).containsExactly(0, 1);
+    }
+
+    @Test
+    void twoArgConstructorCreatesPagedCapacity() {
+        PageColumnLong column = new PageColumnLong(8, 3);
+
+        assertThat(column.capacity()).isEqualTo(24);
+        column.set(15, 123L);
+        column.publish(16);
+        assertThat(column.get(15)).isEqualTo(123L);
+    }
 }

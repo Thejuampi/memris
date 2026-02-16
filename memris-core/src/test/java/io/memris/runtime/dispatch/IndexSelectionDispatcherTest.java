@@ -51,4 +51,92 @@ class IndexSelectionDispatcherTest {
 
         assertThat(rows).containsExactlyInAnyOrder(7, 8);
     }
+
+    @Test
+    @DisplayName("should return null for null-check operators and invalid argument indexes")
+    void shouldReturnNullForNullChecksAndInvalidArgumentIndexes() {
+        var isNull = CompiledQuery.CompiledCondition.of(0,
+                TypeCodes.TYPE_STRING,
+                LogicalQuery.Operator.IS_NULL,
+                0,
+                false,
+                LogicalQuery.Combinator.AND);
+        var notNull = CompiledQuery.CompiledCondition.of(0,
+                TypeCodes.TYPE_STRING,
+                LogicalQuery.Operator.NOT_NULL,
+                0,
+                false,
+                LogicalQuery.Combinator.AND);
+        var badIndex = CompiledQuery.CompiledCondition.of(0,
+                TypeCodes.TYPE_INT,
+                LogicalQuery.Operator.EQ,
+                2,
+                false,
+                LogicalQuery.Combinator.AND);
+
+        assertThat(IndexSelectionDispatcher.selectRows(isNull, new Object[] { "x" }, (op, val) -> new int[] { 1 }, val -> new int[] { 2 }))
+                .isNull();
+        assertThat(IndexSelectionDispatcher.selectRows(notNull, new Object[] { "x" }, (op, val) -> new int[] { 1 }, val -> new int[] { 2 }))
+                .isNull();
+        assertThat(IndexSelectionDispatcher.selectRows(badIndex, new Object[] { "x" }, (op, val) -> new int[] { 1 }, val -> new int[] { 2 }))
+                .isNull();
+    }
+
+    @Test
+    @DisplayName("should return null for between with missing upper bound and unsupported operators")
+    void shouldReturnNullForMissingBetweenArgAndUnsupportedOperator() {
+        var between = CompiledQuery.CompiledCondition.of(1,
+                TypeCodes.TYPE_LONG,
+                LogicalQuery.Operator.BETWEEN,
+                0,
+                false,
+                LogicalQuery.Combinator.AND);
+
+        var unsupported = CompiledQuery.CompiledCondition.of(1,
+                TypeCodes.TYPE_STRING,
+                LogicalQuery.Operator.CONTAINING,
+                0,
+                false,
+                LogicalQuery.Combinator.AND);
+
+        assertThat(IndexSelectionDispatcher.selectRows(between,
+                new Object[] { 10L },
+                (operator, value) -> new int[] { 4 },
+                value -> new int[] { 5 })).isNull();
+
+        assertThat(IndexSelectionDispatcher.selectRows(unsupported,
+                new Object[] { "a" },
+                (operator, value) -> new int[] { 4 },
+                value -> new int[] { 5 })).isNull();
+    }
+
+    @Test
+    @DisplayName("should dispatch eq/gt/lte via index query")
+    void shouldDispatchComparisonOperatorsViaIndexQuery() {
+        var eq = CompiledQuery.CompiledCondition.of(0,
+                TypeCodes.TYPE_INT,
+                LogicalQuery.Operator.EQ,
+                0,
+                false,
+                LogicalQuery.Combinator.AND);
+        var gt = CompiledQuery.CompiledCondition.of(0,
+                TypeCodes.TYPE_INT,
+                LogicalQuery.Operator.GT,
+                0,
+                false,
+                LogicalQuery.Combinator.AND);
+        var lte = CompiledQuery.CompiledCondition.of(0,
+                TypeCodes.TYPE_INT,
+                LogicalQuery.Operator.LTE,
+                0,
+                false,
+                LogicalQuery.Combinator.AND);
+
+        assertThat(IndexSelectionDispatcher.selectRows(eq, new Object[] { 10 }, (op, value) -> op == LogicalQuery.Operator.EQ ? new int[] { 1 } : null, v -> null))
+                .containsExactly(1);
+        assertThat(IndexSelectionDispatcher.selectRows(gt, new Object[] { 10 }, (op, value) -> op == LogicalQuery.Operator.GT ? new int[] { 2 } : null, v -> null))
+                .containsExactly(2);
+        assertThat(IndexSelectionDispatcher.selectRows(lte, new Object[] { 10 }, (op, value) -> op == LogicalQuery.Operator.LTE ? new int[] { 3 } : null, v -> null))
+                .containsExactly(3);
+    }
 }

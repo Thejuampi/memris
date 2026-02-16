@@ -36,10 +36,27 @@ public class DoubleTypeHandler extends AbstractTypeHandler<Double> {
             return (Double) value;
         } else if (value instanceof Number) {
             return ((Number) value).doubleValue();
+        } else if (value instanceof String) {
+            try {
+                return Double.parseDouble((String) value);
+            } catch (NumberFormatException e) {
+                throw new IllegalArgumentException(
+                        "Cannot convert " + value.getClass() + " to Double", e);
+            }
         } else {
             throw new IllegalArgumentException(
                     "Cannot convert " + value.getClass() + " to Double");
         }
+    }
+    /**
+     * Execute IN with a list of values.
+     */
+    public Selection executeIn(GeneratedTable table, int columnIndex, java.util.List<?> values) {
+        double[] arr = new double[values.size()];
+        for (int i = 0; i < values.size(); i++) {
+            arr[i] = ((Number) values.get(i)).doubleValue();
+        }
+        return executeIn(table, columnIndex, arr);
     }
 
     /**
@@ -51,6 +68,7 @@ public class DoubleTypeHandler extends AbstractTypeHandler<Double> {
 
     @Override
     protected Selection executeEquals(GeneratedTable table, int columnIndex, Double value, boolean ignoreCase) {
+        if (value == null) return createSelection(table, new int[0]);
         long longValue = doubleToLongBits(value);
         return createSelection(table, table.scanEqualsLong(columnIndex, longValue));
     }

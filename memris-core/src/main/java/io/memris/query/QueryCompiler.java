@@ -346,12 +346,7 @@ public class QueryCompiler {
                     fkTypeCode,
                     joinType,
                     segment,
-                    new CompiledQuery.CompiledJoinPredicate[0],
-                    null,
-                    null,
-                    null,
-                    null,
-                    null
+                    new CompiledQuery.CompiledJoinPredicate[0]
                 ));
             }
 
@@ -416,12 +411,7 @@ public class QueryCompiler {
                 join.fkTypeCode(),
                 join.joinType(),
                 join.relationshipFieldName(),
-                predArray,
-                join.targetTable(),
-                join.targetKernel(),
-                join.targetMaterializer(),
-                join.executor(),
-                join.materializer()
+                predArray
             ));
         }
 
@@ -525,12 +515,7 @@ public class QueryCompiler {
                     fkTypeCode,
                     joinType,
                     segment,
-                    new CompiledQuery.CompiledJoinPredicate[0],
-                    null,
-                    null,
-                    null,
-                    null,
-                    null
+                    new CompiledQuery.CompiledJoinPredicate[0]
                 ));
             }
 

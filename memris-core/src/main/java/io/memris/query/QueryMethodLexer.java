@@ -7,7 +7,6 @@ import io.memris.core.ManyToOne;
 import io.memris.core.OneToMany;
 import io.memris.core.OneToOne;
 import io.memris.core.TypeCodes;
-import io.memris.repository.RepositoryMethodIntrospector.MethodKey;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.ParameterizedType;

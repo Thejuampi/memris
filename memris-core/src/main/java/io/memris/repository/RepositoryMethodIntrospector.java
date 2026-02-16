@@ -1,10 +1,11 @@
 package io.memris.repository;
 
+import io.memris.query.MethodKey;
+
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.util.Arrays;
 import java.util.Comparator;
-import java.util.List;
 
 /**
  * Shared utility for deterministic method extraction and ordering from repository interfaces.
@@ -127,69 +128,6 @@ public final class RepositoryMethodIntrospector {
      * for exact signature matching (handles overloads correctly).
      */
     public static MethodKey methodKeyOf(Method method) {
-        return new MethodKey(method.getName(), List.of(method.getParameterTypes()));
-    }
-
-    /**
-     * Method key for exact signature matching.
-     * <p>
-     * Used for built-in operation lookup to correctly handle overloads.
-     */
-    public record MethodKey(String name, List<Class<?>> parameterTypes) {
-
-        /**
-         * Create a MethodKey from a Method.
-         */
-        public static MethodKey of(Method method) {
-            return new MethodKey(method.getName(), List.of(method.getParameterTypes()));
-        }
-
-        /**
-         * Get the method name.
-         */
-        public String methodName() {
-            return name;
-        }
-
-        /**
-         * Check if this key matches the given method.
-         * <p>
-         * Uses isAssignableFrom() to handle subtype relationships.
-         * This allows findById(Long.class) to match a key defined with Object.class.
-         * <p>
-         * Special handling for IdParam marker: matches any valid ID type
-         * (non-primitive, non-Iterable, non-array).
-         */
-        public boolean matches(Method method) {
-            if (!name.equals(method.getName())) {
-                return false;
-            }
-
-            var paramTypes = method.getParameterTypes();
-            if (parameterTypes.size() != paramTypes.length) {
-                return false;
-            }
-
-            for (int i = 0; i < paramTypes.length; i++) {
-                var expected = parameterTypes.get(i);
-                var actual = paramTypes[i];
-
-                // Special handling for IdParam marker
-                if (expected == io.memris.query.IdParam.class) {
-                    if (!io.memris.query.IdParam.isValidIdType(actual)) {
-                        return false;
-                    }
-                    // Valid ID type matches - continue to next parameter
-                    continue;
-                }
-
-                // Regular isAssignableFrom matching
-                if (!expected.isAssignableFrom(actual)) {
-                    return false;
-                }
-            }
-
-            return true;
-        }
+        return MethodKey.of(method);
     }
 }

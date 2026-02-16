@@ -3,7 +3,7 @@ package io.memris.runtime;
 import io.memris.core.EntityMetadata;
 import io.memris.core.EntityMetadataProvider;
 import io.memris.core.MetadataExtractor;
-import io.memris.core.MemrisArena;
+import io.memris.repository.MemrisArena;
 import io.memris.query.CompiledQuery;
 import io.memris.repository.MemrisRepositoryFactory;
 import io.memris.runtime.codegen.RuntimeExecutorGenerator;

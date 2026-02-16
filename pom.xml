@@ -38,28 +38,50 @@
     </scm>
 
     <properties>
+        <!-- Java and build -->
         <java.version>21</java.version>
+        <maven.compiler.plugin.version>3.15.0</maven.compiler.plugin.version>
         <maven.compiler.source>21</maven.compiler.source>
         <maven.compiler.target>21</maven.compiler.target>
+        <maven.deploy.plugin.version>3.1.4</maven.deploy.plugin.version>
+        <maven.gpg.plugin.version>3.2.8</maven.gpg.plugin.version>
+        <maven.javadoc.plugin.version>3.12.0</maven.javadoc.plugin.version>
+        <maven.release.plugin.version>3.3.1</maven.release.plugin.version>
+        <maven.source.plugin.version>3.4.0</maven.source.plugin.version>
+        <maven.surefire.plugin.version>3.5.4</maven.surefire.plugin.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 
+        <!-- Dependency versions -->
         <archunit.version>1.2.1</archunit.version>
         <assertj.version>3.24.2</assertj.version>
         <bytebuddy.version>1.18.4</bytebuddy.version>
+        <checkstyle.version>3.6.0</checkstyle.version>
+        <dependency-check.version>12.1.0</dependency-check.version>
+        <error_prone.version>2.24.1</error_prone.version>
+        <jacoco.maven.plugin.version>0.8.14</jacoco.maven.plugin.version>
+        <jakarta.persistence.version>3.1.0</jakarta.persistence.version>
+        <jmh.maven.plugin.version>0.2.2</jmh.maven.plugin.version>
         <jmh.plugin.version>0.2.2</jmh.plugin.version>
         <jmh.version>1.37</jmh.version>
         <junit.version>5.10.1</junit.version>
         <lombok.version>1.18.36</lombok.version>
-        <roaringbitmap.version>1.0.0</roaringbitmap.version>
-        <sparsebitset.version>1.2</sparsebitset.version>
-
-        <!-- Code Quality Tools -->
-        <checkstyle.version>3.6.0</checkstyle.version>
-        <dependency-check.version>12.1.0</dependency-check.version>
-        <error_prone.version>2.24.1</error_prone.version>
         <modernizer.version>3.2.0</modernizer.version>
         <pmd.version>3.28.0</pmd.version>
+        <roaringbitmap.version>1.0.0</roaringbitmap.version>
+        <slf4j.1.version>1.7.36</slf4j.1.version>
+        <slf4j.2.version>2.0.11</slf4j.2.version>
+        <sparsebitset.version>1.2</sparsebitset.version>
         <spotbugs.version>4.9.8.2</spotbugs.version>
+
+        <!-- Spring and related versions for all modules -->
+        <javax.persistence.version>2.2</javax.persistence.version>
+        <spring.boot.2.version>2.7.18</spring.boot.2.version>
+        <spring.boot.3.version>3.2.2</spring.boot.3.version>
+        <spring.data.2.version>2.7.18</spring.data.2.version>
+        <spring.data.3.version>3.2.2</spring.data.3.version>
+        <spring.framework.5.version>5.3.33</spring.framework.5.version>
+        <spring.framework.6.version>6.1.3</spring.framework.6.version>
+        <!-- Add more as needed for other modules -->
     </properties>
 
     <modules>
@@ -72,7 +94,12 @@
 
     <dependencyManagement>
         <dependencies>
-            <!-- Core -->
+            <!-- Core (A-Z) -->
+            <dependency>
+                <groupId>com.zaxxer</groupId>
+                <artifactId>SparseBitSet</artifactId>
+                <version>${sparsebitset.version}</version>
+            </dependency>
             <dependency>
                 <groupId>net.bytebuddy</groupId>
                 <artifactId>byte-buddy</artifactId>
@@ -89,13 +116,8 @@
                 <artifactId>RoaringBitmap</artifactId>
                 <version>${roaringbitmap.version}</version>
             </dependency>
-            <dependency>
-                <groupId>com.zaxxer</groupId>
-                <artifactId>SparseBitSet</artifactId>
-                <version>${sparsebitset.version}</version>
-            </dependency>
 
-            <!-- Testing and benchmarks -->
+            <!-- Testing and benchmarks (A-Z) -->
             <dependency>
                 <groupId>org.assertj</groupId>
                 <artifactId>assertj-core</artifactId>
@@ -135,7 +157,7 @@
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-compiler-plugin</artifactId>
-                    <version>3.15.0</version>
+                    <version>${maven.compiler.plugin.version}</version>
                     <configuration>
                         <source>${java.version}</source>
                         <target>${java.version}</target>
@@ -173,36 +195,62 @@
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-surefire-plugin</artifactId>
-                    <version>3.5.4</version>
+                    <version>${maven.surefire.plugin.version}</version>
                     <configuration>
-                        <argLine>--enable-native-access=ALL-UNNAMED</argLine>
+                        <argLine>@{argLine} --enable-native-access=ALL-UNNAMED</argLine>
                     </configuration>
                 </plugin>
                 <plugin>
                     <groupId>pw.krejci</groupId>
                     <artifactId>jmh-maven-plugin</artifactId>
-                    <version>${jmh.plugin.version}</version>
+                    <version>${jmh.maven.plugin.version}</version>
+                </plugin>
+                <!-- JaCoCo - Code Coverage Plugin (version/config managed by parent) -->
+                <plugin>
+                    <groupId>org.jacoco</groupId>
+                    <artifactId>jacoco-maven-plugin</artifactId>
+                    <version>${jacoco.maven.plugin.version}</version>
+                    <configuration>
+                        <excludes>
+                            <exclude>io/memris/storage/generated/**/*</exclude>
+                        </excludes>
+                    </configuration>
+                    <executions>
+                        <execution>
+                            <id>prepare-agent</id>
+                            <goals>
+                                <goal>prepare-agent</goal>
+                            </goals>
+                        </execution>
+                        <execution>
+                            <id>report</id>
+                            <phase>verify</phase>
+                            <goals>
+                                <goal>report</goal>
+                            </goals>
+                        </execution>
+                    </executions>
                 </plugin>
 
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-source-plugin</artifactId>
-                    <version>3.3.1</version>
+                    <version>${maven.source.plugin.version}</version>
                 </plugin>
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-javadoc-plugin</artifactId>
-                    <version>3.11.2</version>
+                    <version>${maven.javadoc.plugin.version}</version>
                 </plugin>
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-gpg-plugin</artifactId>
-                    <version>3.2.7</version>
+                    <version>${maven.gpg.plugin.version}</version>
                 </plugin>
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-release-plugin</artifactId>
-                    <version>3.1.1</version>
+                    <version>${maven.release.plugin.version}</version>
                     <configuration>
                         <autoVersionSubmodules>true</autoVersionSubmodules>
                         <tagNameFormat>v@{project.version}</tagNameFormat>
@@ -214,7 +262,7 @@
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-deploy-plugin</artifactId>
-                    <version>3.1.2</version>
+                    <version>${maven.deploy.plugin.version}</version>
                     <configuration>
                         <skip>true</skip>
                     </configuration>
@@ -222,7 +270,7 @@
                 <plugin>
                     <groupId>org.sonatype.central</groupId>
                     <artifactId>central-publishing-maven-plugin</artifactId>
-                    <version>0.10.0</version>
+                    <version>0.10.0</version> <!-- No update listed, keep -->
                     <extensions>true</extensions>
                     <configuration>
                         <publishingServerId>central</publishingServerId>
@@ -234,7 +282,7 @@
                 <plugin>
                     <groupId>org.gaul</groupId>
                     <artifactId>modernizer-maven-plugin</artifactId>
-                    <version>${modernizer.version}</version>
+                    <version>3.2.0</version> <!-- Latest as of report, keep -->
                     <configuration>
                         <javaVersion>${java.version}</javaVersion>
                     </configuration>
@@ -254,7 +302,7 @@
                 <plugin>
                     <groupId>com.github.spotbugs</groupId>
                     <artifactId>spotbugs-maven-plugin</artifactId>
-                    <version>${spotbugs.version}</version>
+                    <version>4.9.8.2</version> <!-- Latest as of report, keep -->
                     <configuration>
                         <effort>Max</effort>
                         <threshold>Medium</threshold>
@@ -278,7 +326,7 @@
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-checkstyle-plugin</artifactId>
-                    <version>${checkstyle.version}</version>
+                    <version>3.6.0</version> <!-- Latest as of report, keep -->
                     <configuration>
                         <configLocation>${maven.multiModuleProjectDirectory}/checkstyle.xml</configLocation>
                         <consoleOutput>true</consoleOutput>
@@ -310,7 +358,7 @@
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-pmd-plugin</artifactId>
-                    <version>${pmd.version}</version>
+                    <version>3.28.0</version> <!-- Latest as of report, keep -->
                     <configuration>
                         <rulesets>
                             <ruleset>${maven.multiModuleProjectDirectory}/pmd-rules.xml</ruleset>
@@ -376,10 +424,46 @@
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-pmd-plugin</artifactId>
             </plugin>
+            <!-- JaCoCo - Code Coverage Plugin (inherits config from parent) -->
+            <plugin>
+                <groupId>org.jacoco</groupId>
+                <artifactId>jacoco-maven-plugin</artifactId>
+            </plugin>
         </plugins>
     </build>
 
     <profiles>
+        <profile>
+            <id>jacoco-aggregate</id>
+            <activation>
+                <file>
+                    <exists>${project.basedir}/memris-core/pom.xml</exists>
+                </file>
+            </activation>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.jacoco</groupId>
+                        <artifactId>jacoco-maven-plugin</artifactId>
+                        <executions>
+                            <execution>
+                                <id>report-aggregate</id>
+                                <phase>verify</phase>
+                                <goals>
+                                    <goal>report-aggregate</goal>
+                                </goals>
+                                <configuration>
+                                    <dataFileIncludes>
+                                        <dataFileInclude>**/target/jacoco.exec</dataFileInclude>
+                                    </dataFileIncludes>
+                                    <outputDirectory>${project.reporting.outputDirectory}/jacoco-aggregate</outputDirectory>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
         <profile>
             <id>release</id>
             <build>

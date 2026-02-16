@@ -211,7 +211,7 @@ Inject arenas using `MemrisArenaProvider`:
 
 ```java
 import io.memris.spring.boot.autoconfigure.MemrisArenaProvider;
-import io.memris.core.MemrisArena;
+import io.memris.repository.MemrisArena;
 
 @Service
 public class AnalyticsService {
@@ -247,7 +247,7 @@ Create tenant-specific arenas programmatically:
 
 ```java
 import io.memris.repository.MemrisRepositoryFactory;
-import io.memris.core.MemrisArena;
+import io.memris.repository.MemrisArena;
 
 @Service
 public class TenantService {
@@ -269,7 +269,7 @@ Create a fresh arena for each test to ensure complete isolation:
 
 ```java
 import io.memris.repository.MemrisRepositoryFactory;
-import io.memris.core.MemrisArena;
+import io.memris.repository.MemrisArena;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.AfterEach;
 

@@ -8,7 +8,7 @@ import java.util.Map;
 
 import org.junit.jupiter.api.Test;
 
-import io.memris.repository.RepositoryMethodIntrospector.MethodKey;
+import io.memris.query.MethodKey;
 import io.memris.query.BuiltInResolver;
 import io.memris.query.OpCode;
 

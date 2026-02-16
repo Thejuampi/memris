@@ -1,8 +1,7 @@
-package io.memris.core;
+package io.memris.repository;
 
-import io.memris.repository.RepositoryEmitter;
-import io.memris.repository.MemrisRepository;
-import io.memris.repository.MemrisRepositoryFactory;
+import io.memris.core.MemrisConfiguration;
+import io.memris.storage.GeneratedTable;
 
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -33,7 +32,7 @@ public final class MemrisArena implements AutoCloseable {
     private final RepositoryEmitter repositoryEmitter;
 
     // Arena-scoped state
-    private final ConcurrentMap<Class<?>, io.memris.storage.GeneratedTable> tables = new ConcurrentHashMap<>();
+    private final ConcurrentMap<Class<?>, GeneratedTable> tables = new ConcurrentHashMap<>();
     private final ConcurrentMap<Class<?>, Map<String, Object>> indexes = new ConcurrentHashMap<>();
     private final ConcurrentMap<Class<?>, AtomicLong> numericIdCounters = new ConcurrentHashMap<>();
     private final ConcurrentMap<Class<?>, Object> repositories = new ConcurrentHashMap<>();
@@ -144,7 +143,7 @@ public final class MemrisArena implements AutoCloseable {
      * @param <T>         the entity type
      * @return the generated table
      */
-    public <T> io.memris.storage.GeneratedTable getOrCreateTable(Class<T> entityClass) {
+    public <T> GeneratedTable getOrCreateTable(Class<T> entityClass) {
         var readLock = lifecycleLock.readLock();
         readLock.lock();
         try {
@@ -161,7 +160,7 @@ public final class MemrisArena implements AutoCloseable {
      * @param entityClass the entity class
      * @return the table, or null if not created
      */
-    public io.memris.storage.GeneratedTable getTable(Class<?> entityClass) {
+    public GeneratedTable getTable(Class<?> entityClass) {
         var readLock = lifecycleLock.readLock();
         readLock.lock();
         try {

@@ -2,7 +2,7 @@ package io.memris.benchmarks;
 
 import io.memris.core.Entity;
 import io.memris.core.Id;
-import io.memris.core.MemrisArena;
+import io.memris.repository.MemrisArena;
 import io.memris.repository.MemrisRepository;
 import io.memris.repository.MemrisRepositoryFactory;
 import org.openjdk.jmh.annotations.Benchmark;

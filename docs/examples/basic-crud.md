@@ -63,7 +63,7 @@ public interface ProductRepository extends MemrisRepository<Product> {
 
 ```java
 import io.memris.repository.MemrisRepositoryFactory;
-import io.memris.core.MemrisArena;
+import io.memris.repository.MemrisArena;
 import java.util.List;
 import java.util.Optional;
 
@@ -134,7 +134,7 @@ public class ProductService {
 
 ```java
 import io.memris.repository.MemrisRepositoryFactory;
-import io.memris.core.MemrisArena;
+import io.memris.repository.MemrisArena;
 import java.util.List;
 import java.util.Optional;
 

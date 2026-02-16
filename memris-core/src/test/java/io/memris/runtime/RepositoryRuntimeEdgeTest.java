@@ -2,7 +2,7 @@ package io.memris.runtime;
 
 import io.memris.repository.MemrisRepositoryFactory;
 import io.memris.repository.MemrisRepository;
-import io.memris.core.MemrisArena;
+import io.memris.repository.MemrisArena;
 import io.memris.core.Modifying;
 import io.memris.core.Param;
 import io.memris.core.Query;
