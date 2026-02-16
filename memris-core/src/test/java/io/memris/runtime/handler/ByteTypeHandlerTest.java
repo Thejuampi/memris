@@ -117,11 +117,21 @@ class ByteTypeHandlerTest {
     void executeIn() {
         ByteTypeHandler handler = new ByteTypeHandler();
         TestTable table = new TestTable((byte)1, (byte)2, (byte)3, (byte)2);
-        Selection sel = handler.executeIn(table, 0, Arrays.asList("1", (byte)3));
+        Selection sel = handler.executeIn(table, 0, Arrays.asList((byte)1, (byte)3));
         assertThat(sel.size()).isEqualTo(2);
         int[] rows2 = sel.toIntArray();
         assertThat(rows2[0]).isEqualTo(0);
         assertThat(rows2[1]).isEqualTo(2);
+    }
+
+    @Test
+    @DisplayName("executeIn list rejects incompatible element types")
+    void executeInRejectsIncompatibleElements() {
+        ByteTypeHandler handler = new ByteTypeHandler();
+        TestTable table = new TestTable((byte)1, (byte)2);
+        assertThatThrownBy(() -> handler.executeIn(table, 0, Arrays.asList("1", (byte)2)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("must be java.lang.Byte");
     }
 
     @Test

@@ -57,66 +57,71 @@ class ConditionArgDecodersTest {
     }
 
     @Test
-    void toLongArrayShouldHandlePrimitiveArraysObjectArraysIterableAndScalar() {
+    void toLongArrayShouldEnforceStrictElementTypes() {
         assertThat(ConditionArgDecoders.toLongArray(TypeCodes.TYPE_LONG, null)).isEmpty();
         assertThat(ConditionArgDecoders.toLongArray(TypeCodes.TYPE_LONG, new long[] { 1L, 2L }))
                 .containsExactly(1L, 2L);
-        assertThat(ConditionArgDecoders.toLongArray(TypeCodes.TYPE_LONG, new int[] { 3, 4 }))
+        assertThat(ConditionArgDecoders.toLongArray(TypeCodes.TYPE_LONG, new Object[] { 3L, 4L }))
                 .containsExactly(3L, 4L);
-        assertThat(ConditionArgDecoders.toLongArray(TypeCodes.TYPE_LONG, new short[] { 5, 6 }))
+        assertThat(ConditionArgDecoders.toLongArray(TypeCodes.TYPE_LONG, List.of(5L, 6L)))
                 .containsExactly(5L, 6L);
-        assertThat(ConditionArgDecoders.toLongArray(TypeCodes.TYPE_LONG, new byte[] { 7, 8 }))
-                .containsExactly(7L, 8L);
+        assertThat(ConditionArgDecoders.toLongArray(TypeCodes.TYPE_LONG, 7L)).containsExactly(7L);
 
-        var doubles = ConditionArgDecoders.toLongArray(TypeCodes.TYPE_DOUBLE, new double[] { 1.25d, 2.5d });
-        assertThat(doubles).containsExactly(
+        assertThat(ConditionArgDecoders.toLongArray(TypeCodes.TYPE_DOUBLE, new double[] { 1.25d, 2.5d }))
+                .containsExactly(
                 FloatEncoding.doubleToSortableLong(1.25d),
                 FloatEncoding.doubleToSortableLong(2.5d));
+        assertThat(ConditionArgDecoders.toLongArray(TypeCodes.TYPE_INSTANT,
+                List.of(Instant.ofEpochMilli(1), Instant.ofEpochMilli(2))))
+                        .containsExactly(1L, 2L);
 
-        var floats = ConditionArgDecoders.toLongArray(TypeCodes.TYPE_DOUBLE, new float[] { 1.5f });
-        assertThat(floats).containsExactly(FloatEncoding.doubleToSortableLong(1.5d));
-
-        var objects = ConditionArgDecoders.toLongArray(TypeCodes.TYPE_LONG, new Object[] { 9, 10L });
-        assertThat(objects).containsExactly(9L, 10L);
-
-        Iterable<Object> iterable = List.of((Object) 11, 12L);
-        assertThat(ConditionArgDecoders.toLongArray(TypeCodes.TYPE_LONG, iterable)).containsExactly(11L, 12L);
-        assertThat(ConditionArgDecoders.toLongArray(TypeCodes.TYPE_LONG, 13)).containsExactly(13L);
+        assertThatThrownBy(() -> ConditionArgDecoders.toLongArray(TypeCodes.TYPE_LONG, new int[] { 1, 2 }))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> ConditionArgDecoders.toLongArray(TypeCodes.TYPE_DOUBLE, new float[] { 1.5f }))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> ConditionArgDecoders.toLongArray(TypeCodes.TYPE_LONG, Arrays.asList(1L, null)))
+                .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
-    void toIntArrayShouldHandlePrimitiveArraysObjectArraysIterableAndScalar() {
+    void toIntArrayShouldEnforceStrictElementTypes() {
         assertThat(ConditionArgDecoders.toIntArray(TypeCodes.TYPE_INT, null)).isEmpty();
         assertThat(ConditionArgDecoders.toIntArray(TypeCodes.TYPE_INT, new int[] { 1, 2 }))
                 .containsExactly(1, 2);
-        assertThat(ConditionArgDecoders.toIntArray(TypeCodes.TYPE_INT, new byte[] { 3, 4 }))
+        assertThat(ConditionArgDecoders.toIntArray(TypeCodes.TYPE_BYTE, new byte[] { 3, 4 }))
                 .containsExactly(3, 4);
-        assertThat(ConditionArgDecoders.toIntArray(TypeCodes.TYPE_INT, new short[] { 5, 6 }))
+        assertThat(ConditionArgDecoders.toIntArray(TypeCodes.TYPE_SHORT, new short[] { 5, 6 }))
                 .containsExactly(5, 6);
-        assertThat(ConditionArgDecoders.toIntArray(TypeCodes.TYPE_INT, new char[] { 'A', 'B' }))
+        assertThat(ConditionArgDecoders.toIntArray(TypeCodes.TYPE_CHAR, new char[] { 'A', 'B' }))
                 .containsExactly((int) 'A', (int) 'B');
         assertThat(ConditionArgDecoders.toIntArray(TypeCodes.TYPE_BOOLEAN, new boolean[] { true, false, true }))
                 .containsExactly(1, 0, 1);
         assertThat(ConditionArgDecoders.toIntArray(TypeCodes.TYPE_FLOAT, new float[] { 1.5f }))
                 .containsExactly(FloatEncoding.floatToSortableInt(1.5f));
-        assertThat(ConditionArgDecoders.toIntArray(TypeCodes.TYPE_INT, new long[] { 7L, 8L }))
-                .containsExactly(7, 8);
-        assertThat(ConditionArgDecoders.toIntArray(TypeCodes.TYPE_INT, new Object[] { 9, 10L }))
+        assertThat(ConditionArgDecoders.toIntArray(TypeCodes.TYPE_INT, new Object[] { 9, 10 }))
                 .containsExactly(9, 10);
+        assertThat(ConditionArgDecoders.toIntArray(TypeCodes.TYPE_INT, List.of(11, 12)))
+                .containsExactly(11, 12);
+        assertThat(ConditionArgDecoders.toIntArray(TypeCodes.TYPE_INT, 13)).containsExactly(13);
 
-        Iterable<Object> iterable = List.of((Object) 11, 12);
-        assertThat(ConditionArgDecoders.toIntArray(TypeCodes.TYPE_INT, iterable)).containsExactly(11, 12);
-        assertThat(ConditionArgDecoders.toIntArray(TypeCodes.TYPE_INT, 13L)).containsExactly(13);
+        assertThatThrownBy(() -> ConditionArgDecoders.toIntArray(TypeCodes.TYPE_INT, new byte[] { 1, 2 }))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> ConditionArgDecoders.toIntArray(TypeCodes.TYPE_INT, new long[] { 1L, 2L }))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> ConditionArgDecoders.toIntArray(TypeCodes.TYPE_INT, Arrays.asList(1, null)))
+                .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
-    void toStringArrayShouldHandleNullArrayObjectArrayIterableAndScalar() {
+    void toStringArrayShouldEnforceStrictElementTypes() {
         assertThat(ConditionArgDecoders.toStringArray(null)).isEmpty();
         assertThat(ConditionArgDecoders.toStringArray(new String[] { "a", "b" })).containsExactly("a", "b");
-        assertThat(ConditionArgDecoders.toStringArray(new Object[] { "x", 1, null })).containsExactly("x", "1", null);
+        assertThat(ConditionArgDecoders.toStringArray(List.of("x", "y"))).containsExactly("x", "y");
+        assertThat(ConditionArgDecoders.toStringArray("z")).containsExactly("z");
 
-        Iterable<Object> iterable = Arrays.asList((Object) "y", 2, null);
-        assertThat(ConditionArgDecoders.toStringArray(iterable)).containsExactly("y", "2", null);
-        assertThat(ConditionArgDecoders.toStringArray(99)).containsExactly("99");
+        assertThatThrownBy(() -> ConditionArgDecoders.toStringArray(new Object[] { "x", 1 }))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> ConditionArgDecoders.toStringArray(Arrays.asList("y", null)))
+                .isInstanceOf(IllegalArgumentException.class);
     }
 }

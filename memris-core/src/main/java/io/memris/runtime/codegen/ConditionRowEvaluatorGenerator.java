@@ -1,20 +1,15 @@
 package io.memris.runtime.codegen;
 
-import io.memris.core.FloatEncoding;
 import io.memris.core.TypeCodes;
 import io.memris.query.CompiledQuery;
 import io.memris.query.LogicalQuery;
+import io.memris.runtime.InArgumentDecoder;
 import io.memris.storage.GeneratedTable;
 import net.bytebuddy.ByteBuddy;
 import net.bytebuddy.dynamic.DynamicType;
 import net.bytebuddy.implementation.MethodDelegation;
 import net.bytebuddy.implementation.bind.annotation.RuntimeType;
 
-import java.time.Instant;
-import java.time.LocalDate;
-import java.time.LocalDateTime;
-import java.time.ZoneOffset;
-import java.util.Date;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -182,7 +177,8 @@ public final class ConditionRowEvaluatorGenerator {
         return switch (typeCode) {
             case TypeCodes.TYPE_STRING,
                     TypeCodes.TYPE_BIG_DECIMAL,
-                    TypeCodes.TYPE_BIG_INTEGER -> new InStringMatcher(columnIndex, argumentIndex, primitiveNonNull);
+                    TypeCodes.TYPE_BIG_INTEGER -> new InStringMatcher(columnIndex, argumentIndex, typeCode,
+                            primitiveNonNull);
             case TypeCodes.TYPE_LONG,
                     TypeCodes.TYPE_INSTANT,
                     TypeCodes.TYPE_LOCAL_DATE,
@@ -466,18 +462,20 @@ public final class ConditionRowEvaluatorGenerator {
     public static final class InStringMatcher implements MatcherDelegate {
         private final int columnIndex;
         private final int argumentIndex;
+        private final byte typeCode;
         private final boolean primitiveNonNull;
 
-        private InStringMatcher(int columnIndex, int argumentIndex, boolean primitiveNonNull) {
+        private InStringMatcher(int columnIndex, int argumentIndex, byte typeCode, boolean primitiveNonNull) {
             this.columnIndex = columnIndex;
             this.argumentIndex = argumentIndex;
+            this.typeCode = typeCode;
             this.primitiveNonNull = primitiveNonNull;
         }
 
         @Override
         @RuntimeType
         public boolean matches(GeneratedTable table, int rowIndex, Object[] args) {
-            var values = toStringArray(argAt(args, argumentIndex));
+            var values = InArgumentDecoder.toStringArrayStrict(typeCode, argAt(args, argumentIndex));
             if (values.length == 0) {
                 return false;
             }
@@ -510,7 +508,7 @@ public final class ConditionRowEvaluatorGenerator {
         @Override
         @RuntimeType
         public boolean matches(GeneratedTable table, int rowIndex, Object[] args) {
-            var values = toLongArray(typeCode, argAt(args, argumentIndex));
+            var values = InArgumentDecoder.toLongArrayStrict(typeCode, argAt(args, argumentIndex));
             if (values.length == 0) {
                 return false;
             }
@@ -543,7 +541,7 @@ public final class ConditionRowEvaluatorGenerator {
         @Override
         @RuntimeType
         public boolean matches(GeneratedTable table, int rowIndex, Object[] args) {
-            var values = toIntArray(typeCode, argAt(args, argumentIndex));
+            var values = InArgumentDecoder.toIntArrayStrict(typeCode, argAt(args, argumentIndex));
             if (values.length == 0) {
                 return false;
             }
@@ -568,110 +566,11 @@ public final class ConditionRowEvaluatorGenerator {
     }
 
     private static long toLong(byte typeCode, Object value) {
-        return switch (typeCode) {
-            case TypeCodes.TYPE_INSTANT -> ((Instant) value).toEpochMilli();
-            case TypeCodes.TYPE_LOCAL_DATE -> ((LocalDate) value).toEpochDay();
-            case TypeCodes.TYPE_LOCAL_DATE_TIME -> ((LocalDateTime) value).toInstant(ZoneOffset.UTC).toEpochMilli();
-            case TypeCodes.TYPE_DATE -> ((Date) value).getTime();
-            case TypeCodes.TYPE_DOUBLE -> FloatEncoding.doubleToSortableLong(((Number) value).doubleValue());
-            default -> ((Number) value).longValue();
-        };
+        return InArgumentDecoder.toLongStorageValue(typeCode, value);
     }
 
     private static int toInt(byte typeCode, Object value) {
-        return switch (typeCode) {
-            case TypeCodes.TYPE_BOOLEAN -> Boolean.TRUE.equals(value) ? 1 : 0;
-            case TypeCodes.TYPE_CHAR -> (value instanceof Character c) ? c : value.toString().charAt(0);
-            case TypeCodes.TYPE_FLOAT -> FloatEncoding.floatToSortableInt(((Number) value).floatValue());
-            default -> ((Number) value).intValue();
-        };
-    }
-
-    private static long[] toLongArray(byte typeCode, Object value) {
-        if (value == null) {
-            return new long[0];
-        }
-        if (value instanceof long[] longs) {
-            return longs;
-        }
-        if (value instanceof int[] ints) {
-            var result = new long[ints.length];
-            for (var i = 0; i < ints.length; i++) {
-                result[i] = ints[i];
-            }
-            return result;
-        }
-        if (value instanceof Object[] objects) {
-            var result = new long[objects.length];
-            for (var i = 0; i < objects.length; i++) {
-                result[i] = toLong(typeCode, objects[i]);
-            }
-            return result;
-        }
-        if (value instanceof Iterable<?> iterable) {
-            var values = new java.util.ArrayList<Long>();
-            for (var item : iterable) {
-                values.add(toLong(typeCode, item));
-            }
-            var result = new long[values.size()];
-            for (var i = 0; i < values.size(); i++) {
-                result[i] = values.get(i);
-            }
-            return result;
-        }
-        return new long[] { toLong(typeCode, value) };
-    }
-
-    private static int[] toIntArray(byte typeCode, Object value) {
-        if (value == null) {
-            return new int[0];
-        }
-        if (value instanceof int[] ints) {
-            return ints;
-        }
-        if (value instanceof Object[] objects) {
-            var result = new int[objects.length];
-            for (var i = 0; i < objects.length; i++) {
-                result[i] = toInt(typeCode, objects[i]);
-            }
-            return result;
-        }
-        if (value instanceof Iterable<?> iterable) {
-            var values = new java.util.ArrayList<Integer>();
-            for (var item : iterable) {
-                values.add(toInt(typeCode, item));
-            }
-            var result = new int[values.size()];
-            for (var i = 0; i < values.size(); i++) {
-                result[i] = values.get(i);
-            }
-            return result;
-        }
-        return new int[] { toInt(typeCode, value) };
-    }
-
-    private static String[] toStringArray(Object value) {
-        if (value == null) {
-            return new String[0];
-        }
-        if (value instanceof String[] strings) {
-            return strings;
-        }
-        if (value instanceof Object[] objects) {
-            var result = new String[objects.length];
-            for (var i = 0; i < objects.length; i++) {
-                result[i] = objects[i] != null ? objects[i].toString() : null;
-            }
-            return result;
-        }
-        if (value instanceof Iterable<?> iterable) {
-            var values = new java.util.ArrayList<String>();
-            for (var item : iterable) {
-                values.add(item != null ? item.toString() : null);
-            }
-            return values.toArray(String[]::new);
-        }
-        return new String[] { value.toString() };
+        return InArgumentDecoder.toIntStorageValue(typeCode, value);
     }
 
     public void clearCache() {

@@ -212,7 +212,8 @@ public final class ConditionProgramCompiler {
                                         TypeCodes.TYPE_BIG_INTEGER ->
                                 (table, kernel, args) -> selectionFromRows(table,
                                                 table.scanInString(columnIndex,
-                                                                ConditionArgDecoders.toStringArray(ConditionArgDecoders
+                                                                ConditionArgDecoders.toStringArray(typeCode,
+                                                                                ConditionArgDecoders
                                                                                 .argAt(args, argumentIndex))));
                         case TypeCodes.TYPE_LONG,
                                         TypeCodes.TYPE_INSTANT,

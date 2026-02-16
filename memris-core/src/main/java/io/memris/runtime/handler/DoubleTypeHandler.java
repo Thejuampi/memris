@@ -3,6 +3,7 @@ package io.memris.runtime.handler;
 import io.memris.core.FloatEncoding;
 import io.memris.core.TypeCodes;
 import io.memris.runtime.AbstractTypeHandler;
+import io.memris.runtime.InArgumentDecoder;
 import io.memris.storage.GeneratedTable;
 import io.memris.storage.Selection;
 
@@ -54,18 +55,8 @@ public class DoubleTypeHandler extends AbstractTypeHandler<Double> {
      * Execute IN with a list of values.
      */
     public Selection executeIn(GeneratedTable table, int columnIndex, java.util.List<?> values) {
-        if (values == null) {
-            throw new IllegalArgumentException("IN values list cannot be null");
-        }
-        double[] arr = new double[values.size()];
-        for (int i = 0; i < values.size(); i++) {
-            Object raw = values.get(i);
-            if (raw == null) {
-                throw new IllegalArgumentException("IN values list cannot contain nulls (index " + i + ")");
-            }
-            arr[i] = convertValue(raw);
-        }
-        return executeIn(table, columnIndex, arr);
+        long[] bits = InArgumentDecoder.toLongArrayStrict(TypeCodes.TYPE_DOUBLE, values);
+        return createSelection(table, table.scanInLong(columnIndex, bits));
     }
 
     /**

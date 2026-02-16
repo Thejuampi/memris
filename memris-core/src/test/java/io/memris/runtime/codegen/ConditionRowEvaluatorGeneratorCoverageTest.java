@@ -18,6 +18,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class ConditionRowEvaluatorGeneratorCoverageTest {
     private RuntimeExecutorGenerator runtimeGenerator;
@@ -145,6 +146,15 @@ class ConditionRowEvaluatorGeneratorCoverageTest {
         var inBoolean = conditionGenerator.generate(
                 CompiledQuery.CompiledCondition.of(0, TypeCodes.TYPE_BOOLEAN, LogicalQuery.Operator.IN, 0),
                 false);
+        var inByte = conditionGenerator.generate(
+                CompiledQuery.CompiledCondition.of(0, TypeCodes.TYPE_BYTE, LogicalQuery.Operator.IN, 0),
+                false);
+        var inShort = conditionGenerator.generate(
+                CompiledQuery.CompiledCondition.of(0, TypeCodes.TYPE_SHORT, LogicalQuery.Operator.IN, 0),
+                false);
+        var inFloat = conditionGenerator.generate(
+                CompiledQuery.CompiledCondition.of(0, TypeCodes.TYPE_FLOAT, LogicalQuery.Operator.IN, 0),
+                false);
         var inChar = conditionGenerator.generate(
                 CompiledQuery.CompiledCondition.of(1, TypeCodes.TYPE_CHAR, LogicalQuery.Operator.IN, 0),
                 false);
@@ -161,13 +171,18 @@ class ConditionRowEvaluatorGeneratorCoverageTest {
                 CompiledQuery.CompiledCondition.of(3, TypeCodes.TYPE_STRING, LogicalQuery.Operator.IN, 0),
                 false);
 
-        assertThat(inBoolean.matches(table, 0, new Object[] { new Object[] { true, false } })).isTrue();
-        assertThat(inChar.matches(table, 0, new Object[] { List.of('A', "C") })).isTrue();
+        assertThat(inBoolean.matches(table, 0, new Object[] { new boolean[] { true, false } })).isTrue();
+        assertThat(inByte.matches(table, 0, new Object[] { new byte[] { 1, 2 } })).isTrue();
+        assertThat(inShort.matches(table, 0, new Object[] { new short[] { 1, 2 } })).isTrue();
+        table.intValue(0, io.memris.core.FloatEncoding.floatToSortableInt(1.5f));
+        assertThat(inFloat.matches(table, 0, new Object[] { new float[] { 1.5f, 2.0f } })).isTrue();
+        table.intValue(0, 1);
+        assertThat(inChar.matches(table, 0, new Object[] { new char[] { 'A', 'C' } })).isTrue();
         assertThat(inInstant.matches(table, 0, new Object[] { new Object[] { Instant.ofEpochMilli(10L) } })).isTrue();
         assertThat(inDate.matches(table, 0, new Object[] { List.of(new Date(10L)) })).isTrue();
 
         table.longValue(2, io.memris.core.FloatEncoding.doubleToSortableLong(2.5d));
-        assertThat(inDouble.matches(table, 0, new Object[] { new Object[] { 2.5d } })).isTrue();
+        assertThat(inDouble.matches(table, 0, new Object[] { new double[] { 2.5d, 3.0d } })).isTrue();
 
         assertThat(conditionGenerator.generate(
                 CompiledQuery.CompiledCondition.of(2, TypeCodes.TYPE_LOCAL_DATE, LogicalQuery.Operator.IN, 0),
@@ -184,7 +199,10 @@ class ConditionRowEvaluatorGeneratorCoverageTest {
                 false).matches(table, 0, new Object[] { new Object[] { ldt } })).isTrue();
 
         assertThat(inString.matches(table, 0, new Object[] { new String[] { "a" } })).isTrue();
-        assertThat(inString.matches(table, 0, new Object[] { new Object[] { "a", null } })).isTrue();
+        assertThatThrownBy(() -> inString.matches(table, 0, new Object[] { new Object[] { "a", null } }))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> inChar.matches(table, 0, new Object[] { List.of('A', "C") }))
+                .isInstanceOf(IllegalArgumentException.class);
     }
 
     private static final class StubTable implements GeneratedTable {
