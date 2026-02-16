@@ -95,6 +95,9 @@ class ByteTypeHandlerTest {
             .isInstanceOf(IllegalArgumentException.class)
             .hasMessageContaining("Cannot convert");
         assertThatThrownBy(() -> handler.convertValue(new Object())).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> handler.convertValue(null))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("Cannot convert null");
     }
 
     @Test
@@ -114,7 +117,7 @@ class ByteTypeHandlerTest {
     void executeIn() {
         ByteTypeHandler handler = new ByteTypeHandler();
         TestTable table = new TestTable((byte)1, (byte)2, (byte)3, (byte)2);
-        Selection sel = handler.executeIn(table, 0, Arrays.asList((byte)1, (byte)3));
+        Selection sel = handler.executeIn(table, 0, Arrays.asList("1", (byte)3));
         assertThat(sel.size()).isEqualTo(2);
         int[] rows2 = sel.toIntArray();
         assertThat(rows2[0]).isEqualTo(0);
@@ -128,6 +131,16 @@ class ByteTypeHandlerTest {
         TestTable table = new TestTable((byte)1, (byte)2);
         Selection sel = handler.executeIn(table, 0, Collections.emptyList());
         assertThat(sel.size()).isZero();
+    }
+
+    @Test
+    @DisplayName("executeIn list rejects null elements with clear message")
+    void executeInRejectsNullElements() {
+        ByteTypeHandler handler = new ByteTypeHandler();
+        TestTable table = new TestTable((byte)1, (byte)2);
+        assertThatThrownBy(() -> handler.executeIn(table, 0, Arrays.asList((byte)1, null)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("cannot contain nulls");
     }
 
     @Test

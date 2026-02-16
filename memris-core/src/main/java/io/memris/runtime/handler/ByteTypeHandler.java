@@ -25,7 +25,9 @@ public class ByteTypeHandler extends AbstractTypeHandler<Byte> {
     
     @Override
     public Byte convertValue(Object value) {
-        if (value instanceof Byte) {
+        if (value == null) {
+            throw new IllegalArgumentException("Cannot convert null to Byte");
+        } else if (value instanceof Byte) {
             return (Byte) value;
         } else if (value instanceof Number) {
             return ((Number) value).byteValue();
@@ -45,9 +47,16 @@ public class ByteTypeHandler extends AbstractTypeHandler<Byte> {
      * Execute IN with a list of values.
      */
     public Selection executeIn(GeneratedTable table, int columnIndex, java.util.List<?> values) {
+        if (values == null) {
+            throw new IllegalArgumentException("IN values list cannot be null");
+        }
         byte[] arr = new byte[values.size()];
         for (int i = 0; i < values.size(); i++) {
-            arr[i] = ((Number) values.get(i)).byteValue();
+            Object raw = values.get(i);
+            if (raw == null) {
+                throw new IllegalArgumentException("IN values list cannot contain nulls (index " + i + ")");
+            }
+            arr[i] = convertValue(raw);
         }
         return executeIn(table, columnIndex, arr);
     }

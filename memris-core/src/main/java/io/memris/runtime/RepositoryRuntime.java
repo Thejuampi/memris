@@ -3646,7 +3646,12 @@ public final class RepositoryRuntime<T> {
             throw new IllegalStateException("Missing join runtime bindings for query " + query.opCode());
         }
         var joinBinding = joinBindings[joinIndex];
-        if (joinBinding == null || joinBinding.executor() == null || joinBinding.materializer() == null) {
+        if (joinBinding == null
+                || joinBinding.executor() == null
+                || joinBinding.materializer() == null
+                || joinBinding.targetTable() == null
+                || joinBinding.targetKernel() == null
+                || joinBinding.targetMaterializer() == null) {
             throw new IllegalStateException("Invalid join runtime binding at index " + joinIndex + " for query "
                     + query.opCode());
         }
