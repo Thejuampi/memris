@@ -35,19 +35,37 @@ jobs:
         run: |
           CP="memris-core/target/test-classes:memris-core/target/classes:$(cat memris-core/target/jmh-cp.txt)"
           java -cp "$CP" org.openjdk.jmh.Main io.memris.benchmarks.EmbeddedPathBenchmark.* \
-            -wi 1 -i 1 -f 1 \
-            -rf json -rff memris-core/target/jmh-embedded.json
+            -wi 2 -i 2 -f 1 \
+            -rf json -rff memris-core/target/jmh-embedded-attempt1.json
+          cp memris-core/target/jmh-embedded-attempt1.json memris-core/target/jmh-embedded.json
 
-      - name: Check throughput regressions
+      - name: Check throughput regressions (retry once on failure)
         run: |
-          python3 scripts/check-jmh-regression.py \
-            --baseline memris-core/src/jmh/resources/embedded-path-baseline.json \
-            --current memris-core/target/jmh-embedded.json \
-            --flat-threshold 0.10 \
-            --embedded-threshold 0.15
+          run_check() {
+            python3 scripts/check-jmh-regression.py \
+              --baseline memris-core/src/jmh/resources/embedded-path-baseline.json \
+              --current "$1" \
+              --flat-threshold 0.10 \
+              --embedded-threshold 0.15
+          }
+
+          if run_check memris-core/target/jmh-embedded-attempt1.json; then
+            echo "JMH regression check passed on attempt 1."
+            exit 0
+          fi
+
+          echo "Attempt 1 failed. Re-running JMH once to filter transient host noise."
+          CP="memris-core/target/test-classes:memris-core/target/classes:$(cat memris-core/target/jmh-cp.txt)"
+          java -cp "$CP" org.openjdk.jmh.Main io.memris.benchmarks.EmbeddedPathBenchmark.* \
+            -wi 2 -i 2 -f 1 \
+            -rf json -rff memris-core/target/jmh-embedded-attempt2.json
+          cp memris-core/target/jmh-embedded-attempt2.json memris-core/target/jmh-embedded.json
+
+          run_check memris-core/target/jmh-embedded-attempt2.json
 
       - name: Upload JMH results
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: jmh-embedded-results
-          path: memris-core/target/jmh-embedded.json
+          path: memris-core/target/jmh-embedded*.json

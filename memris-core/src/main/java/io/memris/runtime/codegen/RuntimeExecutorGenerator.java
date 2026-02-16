@@ -3,6 +3,7 @@ package io.memris.runtime.codegen;
 import io.memris.core.FloatEncoding;
 import io.memris.core.TypeCodes;
 import io.memris.core.converter.TypeConverter;
+import io.memris.runtime.InArgumentDecoder;
 import io.memris.storage.GeneratedTable;
 import io.memris.storage.Selection;
 import io.memris.storage.SelectionImpl;
@@ -1151,7 +1152,7 @@ public final class RuntimeExecutorGenerator {
     private static Object createInListExecutorInterceptor(int columnIndex, byte typeCode) {
         return switch (typeCode) {
             case TypeCodes.TYPE_STRING, TypeCodes.TYPE_BIG_DECIMAL, TypeCodes.TYPE_BIG_INTEGER ->
-                new StringInListExecutor(columnIndex);
+                new StringInListExecutor(columnIndex, typeCode);
             case TypeCodes.TYPE_LONG, TypeCodes.TYPE_INSTANT, TypeCodes.TYPE_LOCAL_DATE,
                     TypeCodes.TYPE_LOCAL_DATE_TIME, TypeCodes.TYPE_DATE, TypeCodes.TYPE_DOUBLE ->
                 new LongInListExecutor(columnIndex, typeCode);
@@ -1164,9 +1165,11 @@ public final class RuntimeExecutorGenerator {
 
     public static class StringInListExecutor {
         private final int columnIndex;
+        private final byte typeCode;
 
-        public StringInListExecutor(int columnIndex) {
+        public StringInListExecutor(int columnIndex, byte typeCode) {
             this.columnIndex = columnIndex;
+            this.typeCode = typeCode;
         }
 
         @RuntimeType
@@ -1174,7 +1177,7 @@ public final class RuntimeExecutorGenerator {
             if (value == null) {
                 return SelectionImpl.EMPTY;
             }
-            return SelectionImpl.fromScanIndices(table, table.scanInString(columnIndex, toStringArray(value)));
+            return SelectionImpl.fromScanIndices(table, table.scanInString(columnIndex, toStringArray(typeCode, value)));
         }
     }
 
@@ -1234,7 +1237,8 @@ public final class RuntimeExecutorGenerator {
                     if (value == null) {
                         return SelectionImpl.EMPTY;
                     }
-                    return SelectionImpl.fromScanIndices(table, table.scanInString(columnIndex, toStringArray(value)));
+                    return SelectionImpl.fromScanIndices(table,
+                            table.scanInString(columnIndex, toStringArray(typeCode, value)));
                 };
             case TypeCodes.TYPE_LONG, TypeCodes.TYPE_INSTANT, TypeCodes.TYPE_LOCAL_DATE,
                     TypeCodes.TYPE_LOCAL_DATE_TIME, TypeCodes.TYPE_DATE, TypeCodes.TYPE_DOUBLE ->
@@ -1266,176 +1270,33 @@ public final class RuntimeExecutorGenerator {
     // ========================================================================
 
     private static long[] toLongArray(byte typeCode, Object value) {
-        if (value instanceof long[] longs) {
-            return longs;
-        }
-        if (value instanceof int[] ints) {
-            long[] result = new long[ints.length];
-            for (int i = 0; i < ints.length; i++) {
-                result[i] = ints[i];
-            }
-            return result;
-        }
-        if (value instanceof Object[] objects) {
-            long[] result = new long[objects.length];
-            for (int i = 0; i < objects.length; i++) {
-                result[i] = convertToLong(typeCode, objects[i]);
-            }
-            return result;
-        }
-        if (value instanceof java.util.Collection<?> col) {
-            long[] result = new long[col.size()];
-            int i = 0;
-            for (Object item : col) {
-                result[i++] = convertToLong(typeCode, item);
-            }
-            return result;
-        }
-        if (value instanceof Iterable<?> iterable) {
-            // Rare path: non-Collection Iterable — must count first
-            int size = 0;
-            for (Object ignored : iterable) {
-                size++;
-            }
-            long[] result = new long[size];
-            int i = 0;
-            for (Object item : iterable) {
-                result[i++] = convertToLong(typeCode, item);
-            }
-            return result;
-        }
-        return new long[] { convertToLong(typeCode, value) };
+        return InArgumentDecoder.toLongArrayStrict(typeCode, value);
     }
 
     private static int[] toIntArray(byte typeCode, Object value) {
-        if (value instanceof int[] ints) {
-            return ints;
-        }
-        if (value instanceof byte[] bytes) {
-            int[] result = new int[bytes.length];
-            for (int i = 0; i < bytes.length; i++) {
-                result[i] = convertToInt(typeCode, bytes[i]);
-            }
-            return result;
-        }
-        if (value instanceof short[] shorts) {
-            int[] result = new int[shorts.length];
-            for (int i = 0; i < shorts.length; i++) {
-                result[i] = convertToInt(typeCode, shorts[i]);
-            }
-            return result;
-        }
-        if (value instanceof char[] chars) {
-            int[] result = new int[chars.length];
-            for (int i = 0; i < chars.length; i++) {
-                result[i] = convertToInt(typeCode, chars[i]);
-            }
-            return result;
-        }
-        if (value instanceof boolean[] bools) {
-            int[] result = new int[bools.length];
-            for (int i = 0; i < bools.length; i++) {
-                result[i] = convertToInt(typeCode, bools[i]);
-            }
-            return result;
-        }
-        if (value instanceof float[] floats) {
-            int[] result = new int[floats.length];
-            for (int i = 0; i < floats.length; i++) {
-                result[i] = convertToInt(typeCode, floats[i]);
-            }
-            return result;
-        }
-        if (value instanceof Object[] objects) {
-            int[] result = new int[objects.length];
-            for (int i = 0; i < objects.length; i++) {
-                result[i] = convertToInt(typeCode, objects[i]);
-            }
-            return result;
-        }
-        if (value instanceof java.util.Collection<?> col) {
-            int[] result = new int[col.size()];
-            int i = 0;
-            for (Object item : col) {
-                result[i++] = convertToInt(typeCode, item);
-            }
-            return result;
-        }
-        if (value instanceof Iterable<?> iterable) {
-            // Rare path: non-Collection Iterable — must count first
-            int size = 0;
-            for (Object ignored : iterable) {
-                size++;
-            }
-            int[] result = new int[size];
-            int i = 0;
-            for (Object item : iterable) {
-                result[i++] = convertToInt(typeCode, item);
-            }
-            return result;
-        }
-        return new int[] { convertToInt(typeCode, value) };
+        return InArgumentDecoder.toIntArrayStrict(typeCode, value);
+    }
+
+    private static String[] toStringArray(byte typeCode, Object value) {
+        return InArgumentDecoder.toStringArrayStrict(typeCode, value);
     }
 
     private static String[] toStringArray(Object value) {
-        if (value instanceof String[] strings) {
-            return strings;
-        }
-        if (value instanceof Object[] objects) {
-            String[] result = new String[objects.length];
-            for (int i = 0; i < objects.length; i++) {
-                result[i] = objects[i] != null ? objects[i].toString() : null;
-            }
-            return result;
-        }
-        if (value instanceof java.util.Collection<?> col) {
-            String[] result = new String[col.size()];
-            int i = 0;
-            for (Object item : col) {
-                result[i++] = item != null ? item.toString() : null;
-            }
-            return result;
-        }
-        if (value instanceof Iterable<?> iterable) {
-            // Rare path: non-Collection Iterable — must count first
-            int size = 0;
-            for (Object ignored : iterable) {
-                size++;
-            }
-            String[] result = new String[size];
-            int i = 0;
-            for (Object item : iterable) {
-                result[i++] = item != null ? item.toString() : null;
-            }
-            return result;
-        }
-        return new String[] { value.toString() };
+        return InArgumentDecoder.toStringArrayStrict(TypeCodes.TYPE_STRING, value);
     }
 
     private static long convertToLong(byte typeCode, Object value) {
         if (value == null) {
             return 0L;
         }
-        return switch (typeCode) {
-            case TypeCodes.TYPE_INSTANT -> ((Instant) value).toEpochMilli();
-            case TypeCodes.TYPE_LOCAL_DATE -> ((LocalDate) value).toEpochDay();
-            case TypeCodes.TYPE_LOCAL_DATE_TIME -> ((LocalDateTime) value).toInstant(ZoneOffset.UTC).toEpochMilli();
-            case TypeCodes.TYPE_DATE -> ((Date) value).getTime();
-            case TypeCodes.TYPE_DOUBLE -> FloatEncoding.doubleToSortableLong(((Number) value).doubleValue());
-            default -> ((Number) value).longValue();
-        };
+        return InArgumentDecoder.toLongStorageValue(typeCode, value);
     }
 
     private static int convertToInt(byte typeCode, Object value) {
         if (value == null) {
             return 0;
         }
-        return switch (typeCode) {
-            case TypeCodes.TYPE_BOOLEAN -> (value instanceof Boolean b && b) ? 1 : 0;
-            case TypeCodes.TYPE_CHAR -> (value instanceof Character c) ? c : (int) value.toString().charAt(0);
-            case TypeCodes.TYPE_FLOAT -> FloatEncoding.floatToSortableInt(((Number) value).floatValue());
-            default -> ((Number) value).intValue();
-        };
+        return InArgumentDecoder.toIntStorageValue(typeCode, value);
     }
 
     private static long convertToEpochLong(byte typeCode, Object value) {

@@ -185,6 +185,45 @@ class RepositoryRuntimeCompiledConditionProgramTest {
         assertThat(harness.table().scanEqualsLongCalls()).isZero();
     }
 
+    @Test
+    void shouldCompileResidualInConditionWithPrimitiveArray() throws Exception {
+        var harness = createHarness("findByNameAndPriorityIn", String.class, int[].class);
+        var runtime = harness.runtime();
+
+        runtime.saveOne(new Person("juan", LocalDate.of(1990, 1, 1), "Madrid", 1));
+        runtime.saveOne(new Person("juan", LocalDate.of(1991, 1, 1), "Bogota", 2));
+        runtime.saveOne(new Person("juan", LocalDate.of(1992, 1, 1), "Quito", 3));
+
+        @SuppressWarnings("unchecked")
+        List<Person> result = (List<Person>) runtime.find(harness.query(), new Object[] { "juan", new int[] { 1, 3 } });
+
+        assertThat(runtime.hasCompiledConditionProgram(harness.query())).isTrue();
+        assertThat(result).extracting(person -> person.city).containsExactlyInAnyOrder("Madrid", "Quito");
+    }
+
+    @Test
+    void shouldReturnSameRowsForCompiledAndFallbackExecution() throws Exception {
+        var harness = createHarness("findByNameAndPriorityIn", String.class, int[].class);
+        var runtime = harness.runtime();
+
+        runtime.saveOne(new Person("juan", LocalDate.of(1990, 1, 1), "Madrid", 1));
+        runtime.saveOne(new Person("juan", LocalDate.of(1991, 1, 1), "Bogota", 2));
+        runtime.saveOne(new Person("juan", LocalDate.of(1992, 1, 1), "Quito", 3));
+        runtime.saveOne(new Person("maria", LocalDate.of(1992, 1, 1), "Lima", 1));
+
+        @SuppressWarnings("unchecked")
+        List<Person> compiled = (List<Person>) runtime.find(harness.query(), new Object[] { "juan", new int[] { 1, 3 } });
+
+        arena.getIndexes(Person.class).clear();
+
+        @SuppressWarnings("unchecked")
+        List<Person> fallback = (List<Person>) runtime.find(harness.query(), new Object[] { "juan", new int[] { 1, 3 } });
+
+        assertThat(runtime.hasCompiledConditionProgram(harness.query())).isTrue();
+        assertThat(compiled).extracting(person -> person.city).containsExactlyInAnyOrder("Madrid", "Quito");
+        assertThat(fallback).extracting(person -> person.city).containsExactlyInAnyOrder("Madrid", "Quito");
+    }
+
     private Harness createHarness(String methodName, Class<?>... parameterTypes) throws Exception {
         var metadata = MetadataExtractor.extractEntityMetadata(Person.class);
         var baseTable = arena.getOrCreateTable(Person.class);
@@ -282,14 +321,20 @@ class RepositoryRuntimeCompiledConditionProgramTest {
         public LocalDate dateOfBirth;
         @Index(type = Index.IndexType.HASH)
         public String city;
+        public int priority;
 
         public Person() {
         }
 
         public Person(String name, LocalDate dateOfBirth, String city) {
+            this(name, dateOfBirth, city, 0);
+        }
+
+        public Person(String name, LocalDate dateOfBirth, String city, int priority) {
             this.name = name;
             this.dateOfBirth = dateOfBirth;
             this.city = city;
+            this.priority = priority;
         }
     }
 
@@ -309,6 +354,8 @@ class RepositoryRuntimeCompiledConditionProgramTest {
         List<Person> findByNameAndDateOfBirthIn(String name, Iterable<LocalDate> dateOfBirth);
 
         List<Person> findByNameIn(Iterable<String> names);
+
+        List<Person> findByNameAndPriorityIn(String name, int[] priorities);
     }
 
     private static final class CountingGeneratedTable implements GeneratedTable {

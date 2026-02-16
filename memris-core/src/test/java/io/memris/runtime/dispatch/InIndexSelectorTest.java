@@ -48,6 +48,34 @@ class InIndexSelectorTest {
         assertThat(selection).isNull();
     }
 
+    @Test
+    @DisplayName("should support primitive arrays and empty/null values")
+    void shouldSupportPrimitiveArraysAndEmptyOrNullValues() {
+        var byteSelection = InIndexSelector.select(
+                new byte[] { 1, 2 },
+                value -> ((Byte) value) == 1 ? new int[] { 1 } : new int[] { 2 },
+                InIndexSelectorTest::selectionFromRows);
+        assertThat(byteSelection.toIntArray()).containsExactlyInAnyOrder(1, 2);
+
+        var boolSelection = InIndexSelector.select(
+                new boolean[] { true, false },
+                value -> ((Boolean) value) ? new int[] { 3 } : new int[] { 4 },
+                InIndexSelectorTest::selectionFromRows);
+        assertThat(boolSelection.toIntArray()).containsExactlyInAnyOrder(3, 4);
+
+        var emptySelection = InIndexSelector.select(
+                new int[0],
+                value -> new int[] { 9 },
+                InIndexSelectorTest::selectionFromRows);
+        assertThat(emptySelection.toIntArray()).isEmpty();
+
+        var nullSelection = InIndexSelector.select(
+                null,
+                value -> new int[] { 9 },
+                InIndexSelectorTest::selectionFromRows);
+        assertThat(nullSelection.toIntArray()).isEmpty();
+    }
+
     private static Selection selectionFromRows(int[] rows) {
         var refs = new long[rows.length];
         for (var i = 0; i < rows.length; i++) {

@@ -501,7 +501,7 @@ public final class RepositoryRuntime<T> {
                 if (argumentIndex < 0 || argumentIndex >= args.length) {
                     return null;
                 }
-                return selectWithIndexForIn(fieldName, args[argumentIndex]);
+                return selectWithIndexForIn(fieldName, condition.typeCode(), args[argumentIndex]);
             };
             case BETWEEN -> args -> {
                 if (argumentIndex + 1 >= args.length) {
@@ -2419,7 +2419,7 @@ public final class RepositoryRuntime<T> {
                         operator.toPredicateOperator(),
                         value),
                 value -> {
-                    var selection = selectWithIndexForIn(fieldName, value);
+                    var selection = selectWithIndexForIn(fieldName, condition.typeCode(), value);
                     return selection == null ? null : selection.toIntArray();
                 });
 
@@ -2479,9 +2479,10 @@ public final class RepositoryRuntime<T> {
         };
     }
 
-    private Selection selectWithIndexForIn(String fieldName, Object value) {
+    private Selection selectWithIndexForIn(String fieldName, byte typeCode, Object value) {
+        var normalized = InArgumentDecoder.toIndexValuesStrict(typeCode, value);
         return InIndexSelector.select(
-                value,
+                normalized,
                 item -> queryIndex(metadata.entityClass(), fieldName, Predicate.Operator.EQ, item),
                 this::selectionFromRows);
     }

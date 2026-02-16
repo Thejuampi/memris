@@ -118,11 +118,21 @@ class DoubleTypeHandlerTest {
     void executeIn() {
         DoubleTypeHandler handler = new DoubleTypeHandler();
         TestTable table = new TestTable(1.0d, 2.0d, 3.0d, 2.0d);
-        Selection sel = handler.executeIn(table, 0, Arrays.asList("1.0", 3.0d));
+        Selection sel = handler.executeIn(table, 0, Arrays.asList(1.0d, 3.0d));
         assertThat(sel.size()).isEqualTo(2);
         int[] rows2 = sel.toIntArray();
         assertThat(rows2[0]).isEqualTo(0);
         assertThat(rows2[1]).isEqualTo(2);
+    }
+
+    @Test
+    @DisplayName("executeIn list rejects incompatible element types")
+    void executeInRejectsIncompatibleElements() {
+        DoubleTypeHandler handler = new DoubleTypeHandler();
+        TestTable table = new TestTable(1.0d, 2.0d);
+        assertThatThrownBy(() -> handler.executeIn(table, 0, Arrays.asList("1.0", 2.0d)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("must be java.lang.Double");
     }
 
     @Test

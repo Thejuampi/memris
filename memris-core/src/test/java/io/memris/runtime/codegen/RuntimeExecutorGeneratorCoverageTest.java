@@ -350,23 +350,28 @@ class RuntimeExecutorGeneratorCoverageTest {
 
         assertThat((long[]) invokePrivate("toLongArray",
                 new Class<?>[] { byte.class, Object.class },
-                new Object[] { TypeCodes.TYPE_LONG, new int[] { 1, 2 } }))
+                new Object[] { TypeCodes.TYPE_LONG, new long[] { 1L, 2L } }))
                         .containsExactly(1L, 2L);
         assertThat((long[]) invokePrivate("toLongArray",
                 new Class<?>[] { byte.class, Object.class },
                 new Object[] { TypeCodes.TYPE_LOCAL_DATE, List.of(LocalDate.of(2024, 1, 1)) }))
                         .containsExactly(LocalDate.of(2024, 1, 1).toEpochDay());
+        assertThatThrownBy(() -> invokePrivate("toLongArray",
+                new Class<?>[] { byte.class, Object.class },
+                new Object[] { TypeCodes.TYPE_LONG, new int[] { 1, 2 } }))
+                        .isInstanceOf(RuntimeException.class);
+
         assertThat((int[]) invokePrivate("toIntArray",
                 new Class<?>[] { byte.class, Object.class },
                 new Object[] { TypeCodes.TYPE_BOOLEAN, new boolean[] { true, false } }))
                         .containsExactly(1, 0);
         assertThat((int[]) invokePrivate("toIntArray",
                 new Class<?>[] { byte.class, Object.class },
-                new Object[] { TypeCodes.TYPE_INT, new byte[] { 1, 2 } }))
+                new Object[] { TypeCodes.TYPE_BYTE, new byte[] { 1, 2 } }))
                         .containsExactly(1, 2);
         assertThat((int[]) invokePrivate("toIntArray",
                 new Class<?>[] { byte.class, Object.class },
-                new Object[] { TypeCodes.TYPE_INT, new short[] { 3, 4 } }))
+                new Object[] { TypeCodes.TYPE_SHORT, new short[] { 3, 4 } }))
                         .containsExactly(3, 4);
         assertThat((int[]) invokePrivate("toIntArray",
                 new Class<?>[] { byte.class, Object.class },
@@ -378,7 +383,7 @@ class RuntimeExecutorGeneratorCoverageTest {
                         .containsExactly(FloatEncoding.floatToSortableInt(1.5f));
         assertThat((int[]) invokePrivate("toIntArray",
                 new Class<?>[] { byte.class, Object.class },
-                new Object[] { TypeCodes.TYPE_INT, new Object[] { 9, 10L } }))
+                new Object[] { TypeCodes.TYPE_INT, new Object[] { 9, 10 } }))
                         .containsExactly(9, 10);
         assertThat((int[]) invokePrivate("toIntArray",
                 new Class<?>[] { byte.class, Object.class },
@@ -386,8 +391,13 @@ class RuntimeExecutorGeneratorCoverageTest {
                         .containsExactly(11, 12);
         assertThat((int[]) invokePrivate("toIntArray",
                 new Class<?>[] { byte.class, Object.class },
-                new Object[] { TypeCodes.TYPE_INT, 13L }))
+                new Object[] { TypeCodes.TYPE_INT, 13 }))
                         .containsExactly(13);
+        assertThatThrownBy(() -> invokePrivate("toIntArray",
+                new Class<?>[] { byte.class, Object.class },
+                new Object[] { TypeCodes.TYPE_INT, new byte[] { 1, 2 } }))
+                        .isInstanceOf(RuntimeException.class);
+
         assertThat((String[]) invokePrivate("toStringArray",
                 new Class<?>[] { Object.class },
                 new Object[] { List.of("a", "b") }))
@@ -398,12 +408,16 @@ class RuntimeExecutorGeneratorCoverageTest {
                         .containsExactly("x", "y");
         assertThat((String[]) invokePrivate("toStringArray",
                 new Class<?>[] { Object.class },
+                new Object[] { "z" }))
+                        .containsExactly("z");
+        assertThatThrownBy(() -> invokePrivate("toStringArray",
+                new Class<?>[] { Object.class },
                 new Object[] { new Object[] { "x", 1 } }))
-                        .containsExactly("x", "1");
-        assertThat((String[]) invokePrivate("toStringArray",
+                        .isInstanceOf(RuntimeException.class);
+        assertThatThrownBy(() -> invokePrivate("toStringArray",
                 new Class<?>[] { Object.class },
                 new Object[] { 99 }))
-                        .containsExactly("99");
+                        .isInstanceOf(RuntimeException.class);
 
         assertThat((Long) invokePrivate("convertToLong",
                 new Class<?>[] { byte.class, Object.class },
