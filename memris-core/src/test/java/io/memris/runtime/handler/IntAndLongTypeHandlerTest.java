@@ -14,6 +14,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class IntAndLongTypeHandlerTest {
+    // Ownership: canonical int/long handler semantic matrix (metadata/convert/equals/between/in).
+    // Out-of-scope: single-operator dispatch smoke tests in type-specific test classes.
 
     @ParameterizedTest(name = "metadata for {0}")
     @MethodSource("specs")

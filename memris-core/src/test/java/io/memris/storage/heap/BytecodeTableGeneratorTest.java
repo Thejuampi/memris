@@ -17,6 +17,8 @@ import static org.assertj.core.api.Assertions.fail;
  * 4. Use O(1) array access for type codes
  */
 class BytecodeTableGeneratorTest {
+        // Ownership: generated table contract (bytecode shape, direct accessors, generated scan/read behavior).
+        // Out-of-scope: interceptor branch matrices shared with MethodHandleImplementationInterceptorTest.
 
         @Test
         void generatedTableShouldSupportScanEqualsLong() throws Exception {
@@ -158,24 +160,6 @@ class BytecodeTableGeneratorTest {
         }
 
         @Test
-        void generatedTableShouldSupportStringIdLookupAndRemoval() throws Exception {
-                TableMetadata metadata = new TableMetadata(
-                                "Book",
-                                "io.memris.test.Book",
-                                java.util.List.of(
-                                                new FieldMetadata("isbn", io.memris.core.TypeCodes.TYPE_STRING, true, true),
-                                                new FieldMetadata("title", io.memris.core.TypeCodes.TYPE_STRING, false, false)));
-                Class<? extends AbstractTable> tableClass = BytecodeTableGenerator.generate(metadata);
-                GeneratedTable table = (GeneratedTable) tableClass.getConstructor(int.class, int.class, int.class)
-                                .newInstance(16, 2, 1);
-
-                long ref = table.insertFrom(new Object[] { "isbn-1", "Alpha" });
-                assertThat(table.lookupByIdString("isbn-1")).isEqualTo(ref);
-                new BytecodeTableGenerator.LookupInterceptor("remove").intercept("isbn-1", table);
-                assertThat(table.lookupByIdString("isbn-1")).isEqualTo(-1L);
-        }
-
-        @Test
         void generatedTableShouldTombstoneStringIdRows() throws Exception {
                 TableMetadata metadata = new TableMetadata(
                                 "Book",
@@ -222,60 +206,6 @@ class BytecodeTableGeneratorTest {
                 assertThat(table.isPresent(2, nullRow)).isFalse();
                 assertThat(table.isPresent(3, nullRow)).isFalse();
                 assertThat(table.isPresent(4, nullRow)).isFalse();
-        }
-
-        @Test
-        void lookupInterceptorShouldThrowForUnknownOperation() throws Exception {
-                TableMetadata metadata = createPersonMetadata();
-                Class<? extends AbstractTable> tableClass = BytecodeTableGenerator.generate(metadata);
-                GeneratedTable table = (GeneratedTable) tableClass.getConstructor(int.class, int.class, int.class)
-                                .newInstance(8, 2, 1);
-
-                var interceptor = new BytecodeTableGenerator.LookupInterceptor("unknown");
-                org.junit.jupiter.api.Assertions.assertThrows(IllegalStateException.class,
-                                () -> interceptor.intercept(1L, table));
-        }
-
-        @Test
-        void insertInterceptorShouldValidateTypedInputs() throws Exception {
-                // Double column expects Number
-                TableMetadata doubleMeta = new TableMetadata(
-                                "D",
-                                "io.memris.test.D",
-                                java.util.List.of(
-                                                new FieldMetadata("id", io.memris.core.TypeCodes.TYPE_LONG, true, true),
-                                                new FieldMetadata("score", io.memris.core.TypeCodes.TYPE_DOUBLE, false, false)));
-                GeneratedTable doubleTable = (GeneratedTable) BytecodeTableGenerator.generate(doubleMeta)
-                                .getConstructor(int.class, int.class, int.class)
-                                .newInstance(8, 2, 1);
-                org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class,
-                                () -> doubleTable.insertFrom(new Object[] { 1L, "bad" }));
-
-                // Boolean column expects Boolean
-                TableMetadata boolMeta = new TableMetadata(
-                                "B",
-                                "io.memris.test.B",
-                                java.util.List.of(
-                                                new FieldMetadata("id", io.memris.core.TypeCodes.TYPE_LONG, true, true),
-                                                new FieldMetadata("enabled", io.memris.core.TypeCodes.TYPE_BOOLEAN, false, false)));
-                GeneratedTable boolTable = (GeneratedTable) BytecodeTableGenerator.generate(boolMeta)
-                                .getConstructor(int.class, int.class, int.class)
-                                .newInstance(8, 2, 1);
-                org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class,
-                                () -> boolTable.insertFrom(new Object[] { 1L, 1 }));
-
-                // Char column expects Character
-                TableMetadata charMeta = new TableMetadata(
-                                "C",
-                                "io.memris.test.C",
-                                java.util.List.of(
-                                                new FieldMetadata("id", io.memris.core.TypeCodes.TYPE_LONG, true, true),
-                                                new FieldMetadata("grade", io.memris.core.TypeCodes.TYPE_CHAR, false, false)));
-                GeneratedTable charTable = (GeneratedTable) BytecodeTableGenerator.generate(charMeta)
-                                .getConstructor(int.class, int.class, int.class)
-                                .newInstance(8, 2, 1);
-                org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class,
-                                () -> charTable.insertFrom(new Object[] { 1L, 65 }));
         }
 
         @Test

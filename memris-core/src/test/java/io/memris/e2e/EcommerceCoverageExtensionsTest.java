@@ -31,6 +31,8 @@ import java.util.Set;
 import static org.assertj.core.api.Assertions.assertThat;
 
 class EcommerceCoverageExtensionsTest {
+    // Ownership: advanced runtime-branch coverage scenarios (ordering key builders, join materialization, churn, wide hydration).
+    // Out-of-scope: baseline ecommerce CRUD/repository semantics (owned by EcommerceEntitiesTest).
 
     private MemrisRepositoryFactory factory;
     private MemrisArena arena;

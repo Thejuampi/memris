@@ -31,6 +31,8 @@ import static org.assertj.core.api.Assertions.*;
  * since full relationship support is not yet implemented.
  */
 class ECommerceRealWorldTest {
+    // Ownership: query semantics and cross-type/operator behaviors not covered by baseline e2e suites.
+    // Out-of-scope: baseline ecommerce CRUD/status/sort/top/in flows owned by e2e EcommerceEntitiesTest.
 
     private MemrisRepositoryFactory factory;
     private MemrisArena arena;
@@ -46,37 +48,6 @@ class ECommerceRealWorldTest {
         if (factory != null) {
             factory.close();
         }
-    }
-
-    @Test
-    void shouldCreateAndFindCustomerByEmail() {
-        // Given
-        CustomerRepository customerRepo = arena.createRepository(CustomerRepository.class);
-        Customer customer = new Customer("john.doe@example.com", "John Doe", "555-1234");
-
-        // When
-        Customer saved = customerRepo.save(customer);
-        Optional<Customer> found = customerRepo.findByEmail("john.doe@example.com");
-
-        // Then
-        var actual = new CustomerLookupSnapshot(saved.id != null, found.isPresent(),
-                found.map(value -> new CustomerView(value.email, value.name, value.phone)).orElse(null));
-        var expected = new CustomerLookupSnapshot(true, true,
-                new CustomerView(customer.email, customer.name, customer.phone));
-        assertThat(actual).usingRecursiveComparison().isEqualTo(expected);
-    }
-
-    @Test
-    void shouldCheckCustomerExistsByEmail() {
-        // Given
-        CustomerRepository customerRepo = arena.createRepository(CustomerRepository.class);
-        Customer customer = new Customer("jane.smith@example.com", "Jane Smith", "555-5678");
-        customerRepo.save(customer);
-
-        // When & Then
-        assertThat(new ExistenceSnapshot(customerRepo.existsByEmail("jane.smith@example.com"),
-                customerRepo.existsByEmail("nonexistent@example.com"))).usingRecursiveComparison()
-                .isEqualTo(new ExistenceSnapshot(true, false));
     }
 
     @Test
@@ -119,146 +90,6 @@ class ECommerceRealWorldTest {
                 1299.99
         );
         assertThat(actual).usingRecursiveComparison().isEqualTo(expected);
-    }
-
-    @Test
-    void shouldFindProductsByPriceRange() {
-        // Given
-        ProductRepository productRepo = arena.createRepository(ProductRepository.class);
-        productRepo.save(new Product("MOUSE-001", "Wireless Mouse", 2999, 100)); // $29.99
-        productRepo.save(new Product("KEYBOARD-001", "Mechanical Keyboard", 14999, 75)); // $149.99
-        productRepo.save(new Product("MONITOR-001", "4K Monitor", 49999, 30)); // $499.99
-        productRepo.save(new Product("HEADSET-001", "Gaming Headset", 7999, 50)); // $79.99
-
-        // When
-        List<Product> results = productRepo.findByPriceBetween(5000, 20000);
-
-        // Then
-        assertThat(results).usingRecursiveFieldByFieldElementComparatorIgnoringFields("id").containsExactlyInAnyOrder(
-                new Product("KEYBOARD-001", "Mechanical Keyboard", 14999, 75),
-                new Product("HEADSET-001", "Gaming Headset", 7999, 50)
-        );
-    }
-
-    @Test
-    void shouldFindProductsWithStockGreaterThan() {
-        // Given
-        ProductRepository productRepo = arena.createRepository(ProductRepository.class);
-        productRepo.save(new Product("ITEM-001", "Item A", 1000, 10));
-        productRepo.save(new Product("ITEM-002", "Item B", 2000, 50));
-        productRepo.save(new Product("ITEM-003", "Item C", 3000, 100));
-
-        // When
-        List<Product> results = productRepo.findByStockGreaterThan(25);
-
-        // Then
-        assertThat(results).usingRecursiveFieldByFieldElementComparatorIgnoringFields("id").containsExactlyInAnyOrder(
-                new Product("ITEM-002", "Item B", 2000, 50),
-                new Product("ITEM-003", "Item C", 3000, 100)
-        );
-    }
-
-    @Test
-    void shouldCreateAndFindOrderWithItems() {
-        // Given
-        CustomerRepository customerRepo = arena.createRepository(CustomerRepository.class);
-        OrderRepository orderRepo = arena.createRepository(OrderRepository.class);
-        OrderItemRepository orderItemRepo = arena.createRepository(OrderItemRepository.class);
-
-        // Create customer
-        Customer customer = new Customer("order.test@example.com", "Order Test", "555-9999");
-        Customer savedCustomer = customerRepo.save(customer);
-
-        // Create order
-        Order order = new Order(savedCustomer.id, "PENDING", 24997); // $249.97
-        Order savedOrder = orderRepo.save(order);
-
-        // Create order items
-        OrderItem item1 = new OrderItem(savedOrder.id, 1L, 2, 9999); // 2 x $99.99
-        OrderItem item2 = new OrderItem(savedOrder.id, 2L, 1, 4999); // 1 x $49.99
-        orderItemRepo.save(item1);
-        orderItemRepo.save(item2);
-
-        // When
-        Optional<Order> foundOrder = orderRepo.findById(savedOrder.id);
-        List<OrderItem> orderItems = orderItemRepo.findByOrder(savedOrder.id);
-
-        // Then
-        var actual = new OrderLookupSnapshot(foundOrder.isPresent(),
-                foundOrder.map(value -> new OrderView(value.customerId, value.status, value.total)).orElse(null),
-                orderItems.size());
-        var expected = new OrderLookupSnapshot(true, new OrderView(order.customerId, order.status, order.total), 2);
-        assertThat(actual).usingRecursiveComparison().isEqualTo(expected);
-    }
-
-    @Test
-    void shouldHydrateOneToManyJoinCollections() {
-        var customerRepo = arena.createRepository(JoinCustomerRepository.class);
-        var orderRepo = arena.createRepository(JoinOrderRepository.class);
-
-        var customer = customerRepo.save(new JoinCustomer("Join Customer"));
-        var paid = new JoinOrder(customer, "PAID");
-        var pending = new JoinOrder(customer, "PENDING");
-        orderRepo.save(paid);
-        orderRepo.save(pending);
-
-        var results = customerRepo.findByOrdersStatus("PAID");
-        var resolved = results.get(0);
-        var actual = new JoinCollectionSnapshot(
-                results.size(),
-                resolved.name,
-                resolved.orders.stream().map(order -> order.status).sorted().toList());
-        var expected = new JoinCollectionSnapshot(
-                1,
-                "Join Customer",
-                List.of("PAID", "PENDING").stream().sorted().toList());
-
-        assertThat(actual).usingRecursiveComparison().isEqualTo(expected);
-    }
-
-    @Test
-    void shouldFindOrdersByCustomerAndStatus() {
-        // Given
-        CustomerRepository customerRepo = arena.createRepository(CustomerRepository.class);
-        OrderRepository orderRepo = arena.createRepository(OrderRepository.class);
-
-        Customer customer1 = customerRepo.save(new Customer("cust1@example.com", "Customer One", "555-1111"));
-        Customer customer2 = customerRepo.save(new Customer("cust2@example.com", "Customer Two", "555-2222"));
-
-        // Customer 1 orders
-        Order o1 = orderRepo.save(new Order(customer1.id, "PENDING", 10000));
-        orderRepo.save(new Order(customer1.id, "CONFIRMED", 20000));
-        Order o2 = orderRepo.save(new Order(customer1.id, "PENDING", 15000));
-
-        // Customer 2 orders
-        orderRepo.save(new Order(customer2.id, "PENDING", 5000));
-
-        // When
-        List<Order> customer1Pending = orderRepo.findByCustomerIdAndStatus(customer1.id, "PENDING");
-
-        // Then
-        assertThat(new PendingOrderSnapshot(customer1Pending.size(), customer1Pending.stream()
-                .allMatch(order -> order.customerId.equals(customer1.id) && order.status.equals("PENDING"))))
-                .usingRecursiveComparison()
-                .isEqualTo(new PendingOrderSnapshot(2, true));
-    }
-
-    @Test
-    void shouldCountOrdersByStatus() {
-        // Given
-        OrderRepository orderRepo = arena.createRepository(OrderRepository.class);
-
-        orderRepo.save(new Order(1L, "PENDING", 10000));
-        orderRepo.save(new Order(2L, "PENDING", 20000));
-        orderRepo.save(new Order(3L, "CONFIRMED", 15000));
-        orderRepo.save(new Order(4L, "SHIPPED", 5000));
-        orderRepo.save(new Order(5L, "PENDING", 8000));
-
-        // When
-        long pendingCount = orderRepo.countByStatus("PENDING");
-
-        // Then
-        assertThat(pendingCount).isEqualTo(3);
     }
 
     @Test
@@ -412,32 +243,6 @@ class ECommerceRealWorldTest {
     }
 
     @Test
-    void shouldHandleUpdateSemantics() {
-        // Given
-        CustomerRepository customerRepo = arena.createRepository(CustomerRepository.class);
-        Customer customer = new Customer("old@example.com", "Old Name", "555-1111");
-        Customer saved = customerRepo.save(customer);
-        String oldEmail = "old@example.com";
-        String newEmail = "new@example.com";
-
-        // When
-        saved.email = newEmail;
-        saved.name = "New Name";
-        Customer updated = customerRepo.save(saved);
-
-        // Then
-        var foundNew = customerRepo.findByEmail(newEmail);
-        var actual = new UpdateSemanticsSnapshot(
-                customerRepo.findByEmail(oldEmail).isPresent(),
-                foundNew.isPresent(),
-                foundNew.map(value -> new CustomerView(value.email, value.name, value.phone)).orElse(null)
-        );
-        var expected = new UpdateSemanticsSnapshot(false, true,
-                new CustomerView(newEmail, "New Name", "555-1111"));
-        assertThat(actual).usingRecursiveComparison().isEqualTo(expected);
-    }
-
-    @Test
     void shouldHandleIdHandling() {
         // Given
         CustomerRepository customerRepo = arena.createRepository(CustomerRepository.class);
@@ -455,63 +260,6 @@ class ECommerceRealWorldTest {
     }
 
     @Test
-    void shouldHandleDeleteBehavior() {
-        // Given
-        CustomerRepository customerRepo = arena.createRepository(CustomerRepository.class);
-        Customer c1 = customerRepo.save(new Customer("c1@example.com", "Customer 1", "555-1111"));
-        Customer c2 = customerRepo.save(new Customer("c2@example.com", "Customer 2", "555-2222"));
-        Customer c3 = customerRepo.save(new Customer("c3@example.com", "Customer 3", "555-3333"));
-
-        // When
-        customerRepo.deleteById(c2.id);
-        Customer c4 = customerRepo.save(new Customer("c4@example.com", "Customer 4", "555-4444"));
-
-        // Then
-        assertThat(new DeleteBehaviorSnapshot(
-                customerRepo.findById(c1.id).isPresent(),
-                customerRepo.findById(c2.id).isPresent(),
-                customerRepo.findById(c3.id).isPresent(),
-                customerRepo.findById(c4.id).isPresent(),
-                customerRepo.findAll().size()))
-                .usingRecursiveComparison()
-                .isEqualTo(new DeleteBehaviorSnapshot(true, false, true, true, 3));
-    }
-
-    @Test
-    void shouldHandleBetweenBoundarySemantics() {
-        // Given
-        ProductRepository productRepo = arena.createRepository(ProductRepository.class);
-        productRepo.save(new Product("P1", "Product 1", 5000, 10));
-        productRepo.save(new Product("P2", "Product 2", 20000, 10));
-        productRepo.save(new Product("P3", "Product 3", 15000, 10));
-
-        // When
-        List<Product> results = productRepo.findByPriceBetween(5000, 20000);
-
-        // Then - boundaries should be inclusive
-        assertThat(results).usingRecursiveFieldByFieldElementComparatorIgnoringFields("id").containsExactlyInAnyOrder(
-                new Product("P1", "Product 1", 5000, 10),
-                new Product("P2", "Product 2", 20000, 10),
-                new Product("P3", "Product 3", 15000, 10)
-        );
-    }
-
-    @Test
-    void shouldHandleGreaterThanBoundary() {
-        // Given
-        ProductRepository productRepo = arena.createRepository(ProductRepository.class);
-        productRepo.save(new Product("P1", "Product 1", 1000, 25));
-        productRepo.save(new Product("P2", "Product 2", 2000, 26));
-
-        // When
-        List<Product> results = productRepo.findByStockGreaterThan(25);
-
-        // Then - boundary should be exclusive
-        assertThat(new GreaterThanSnapshot(results.size(), results.get(0).stock)).usingRecursiveComparison()
-                .isEqualTo(new GreaterThanSnapshot(1, 26));
-    }
-
-    @Test
     void shouldHandleNumericRangeOverflow() {
         // Given
         ProductRepository productRepo = arena.createRepository(ProductRepository.class);
@@ -526,19 +274,6 @@ class ECommerceRealWorldTest {
                 new Product("P1", "Product 1", Integer.MAX_VALUE - 1, 10),
                 new Product("P2", "Product 2", Integer.MAX_VALUE, 10)
         );
-    }
-
-    @Test
-    void shouldHandleExistsAfterDelete() {
-        // Given
-        CustomerRepository customerRepo = arena.createRepository(CustomerRepository.class);
-        Customer customer = customerRepo.save(new Customer("test@example.com", "Test User", "555-1234"));
-
-        // When
-        customerRepo.deleteById(customer.id);
-
-        // Then
-        assertThat(customerRepo.existsByEmail("test@example.com")).isFalse();
     }
 
     @Test
@@ -573,61 +308,6 @@ class ECommerceRealWorldTest {
     }
 
     @Test
-    void shouldHandleSorting() {
-        // Given
-        OrderRepository orderRepo = arena.createRepository(OrderRepository.class);
-        orderRepo.save(new Order(1L, "PENDING", 10000));
-        orderRepo.save(new Order(1L, "PENDING", 30000));
-        orderRepo.save(new Order(1L, "PENDING", 20000));
-
-        // When
-        List<Order> results = orderRepo.findByStatusOrderByTotalDesc("PENDING");
-
-        // Then - results should be sorted by total descending
-        assertThat(results).usingRecursiveFieldByFieldElementComparatorIgnoringFields("id").containsExactly(
-                new Order(1L, "PENDING", 30000),
-                new Order(1L, "PENDING", 20000),
-                new Order(1L, "PENDING", 10000)
-        );
-    }
-
-    @Test
-    void shouldHandleTopFirst() {
-        // Given
-        OrderRepository orderRepo = arena.createRepository(OrderRepository.class);
-        Order o1 = orderRepo.save(new Order(1L, "PENDING", 10000));
-        Order o2 = orderRepo.save(new Order(1L, "PENDING", 20000));
-        Order o3 = orderRepo.save(new Order(1L, "PENDING", 30000));
-        Order o4 = orderRepo.save(new Order(1L, "PENDING", 40000));
-
-        // When
-        List<Order> top3 = orderRepo.findTop3ByStatusOrderByIdAsc("PENDING");
-
-        // Then - only 3 results returned, sorted by ID ascending
-        assertThat(top3).usingRecursiveFieldByFieldElementComparatorIgnoringFields("id").containsExactly(
-                o1, o2, o3
-        );
-    }
-
-    @Test
-    void shouldHandleInQueries() {
-        // Given
-        OrderRepository orderRepo = arena.createRepository(OrderRepository.class);
-        Order o1 = orderRepo.save(new Order(1L, "PENDING", 10000));
-        Order o2 = orderRepo.save(new Order(2L, "SHIPPED", 20000));
-        Order o3 = orderRepo.save(new Order(3L, "DELIVERED", 30000));
-        Order o4 = orderRepo.save(new Order(4L, "PENDING", 15000));
-
-        // When
-        List<Order> results = orderRepo.findByStatusIn(List.of("PENDING", "SHIPPED"));
-
-        // Then
-        assertThat(results).usingRecursiveFieldByFieldElementComparatorIgnoringFields("id").containsExactlyInAnyOrder(
-                o1, o2, o4
-        );
-    }
-
-    @Test
     void shouldHandleInQueriesEmptyList() {
         // Given
         OrderRepository orderRepo = arena.createRepository(OrderRepository.class);
@@ -638,23 +318,6 @@ class ECommerceRealWorldTest {
 
         // Then - empty list should return empty results
         assertThat(results).isEmpty();
-    }
-
-    @Test
-    void shouldHandleAndOrPrecedence() {
-        // Given
-        OrderRepository orderRepo = arena.createRepository(OrderRepository.class);
-        Order o1 = orderRepo.save(new Order(1L, "PENDING", 25000));
-        Order o2 = orderRepo.save(new Order(1L, "PENDING", 15000));
-        Order o3 = orderRepo.save(new Order(2L, "CONFIRMED", 30000));
-        Order o4 = orderRepo.save(new Order(1L, "SHIPPED", 20000));
-
-        // When - findByStatusAndTotalGreaterThanEqual means (status = X AND total >= Y)
-        List<Order> results = orderRepo.findByStatusAndTotalGreaterThanEqual("PENDING", 20000);
-
-        // Then
-        assertThat(new AndPrecedenceSnapshot(results.size(), results.get(0).total)).usingRecursiveComparison()
-                .isEqualTo(new AndPrecedenceSnapshot(1, 25000));
     }
 
     @Disabled("Test expectations don't match current implementation behavior")
@@ -673,53 +336,6 @@ class ECommerceRealWorldTest {
         // Then - should exclude "Alice" and null names (depending on implementation)
         assertThat(results).hasSize(2);
         assertThat(results).extracting(c -> c.name).containsExactlyInAnyOrder("Bob", "Charlie");
-    }
-
-    public static class JoinCustomer {
-        @Id
-        public Long id;
-        public String name;
-
-        @OneToMany(mappedBy = "customer")
-        public List<JoinOrder> orders;
-
-        public JoinCustomer() {
-        }
-
-        public JoinCustomer(String name) {
-            this.name = name;
-        }
-    }
-
-    public static class JoinOrder {
-        @Id
-        public Long id;
-        public String status;
-
-        @ManyToOne
-        @JoinColumn(name = "customer_id")
-        public JoinCustomer customer;
-
-        public JoinOrder() {
-        }
-
-        public JoinOrder(JoinCustomer customer, String status) {
-            this.customer = customer;
-            this.status = status;
-        }
-    }
-
-    public interface JoinCustomerRepository extends MemrisRepository<JoinCustomer> {
-        JoinCustomer save(JoinCustomer customer);
-
-        List<JoinCustomer> findByOrdersStatus(String status);
-    }
-
-    public interface JoinOrderRepository extends MemrisRepository<JoinOrder> {
-        JoinOrder save(JoinOrder order);
-    }
-
-    private record JoinCollectionSnapshot(int customerCount, String customerName, List<String> orderStatuses) {
     }
 
     @Test
@@ -1296,19 +912,7 @@ class ECommerceRealWorldTest {
         assertThat(actual).usingRecursiveComparison().isEqualTo(expected);
     }
 
-    private record CustomerLookupSnapshot(boolean idAssigned, boolean found, CustomerView customer) {
-    }
-
-    private record ExistenceSnapshot(boolean exists, boolean missing) {
-    }
-
     private record ProductLookupSnapshot(boolean idAssigned, boolean found, ProductView product, double dollars) {
-    }
-
-    private record OrderLookupSnapshot(boolean found, OrderView order, int itemCount) {
-    }
-
-    private record PendingOrderSnapshot(int size, boolean allMatch) {
     }
 
     private record ArenaIsolationSnapshot(boolean arena1Email, boolean arena2Email, boolean arena1Id, boolean arena2Id) {
@@ -1317,32 +921,13 @@ class ECommerceRealWorldTest {
     private record EmptyAndWhitespaceSnapshot(int emptySize, int whitespaceSize) {
     }
 
-    private record UpdateSemanticsSnapshot(boolean oldEmailPresent, boolean newEmailPresent, CustomerView customer) {
-    }
-
     private record PresetIdSnapshot(boolean presetAssigned, boolean generatedAssigned) {
-    }
-
-    private record DeleteBehaviorSnapshot(boolean c1Present, boolean c2Present, boolean c3Present, boolean c4Present,
-                                          int total) {
-    }
-
-    private record GreaterThanSnapshot(int size, int stock) {
-    }
-
-    private record AndPrecedenceSnapshot(int size, long total) {
     }
 
     private record ManyToManySnapshot(Set<String> mathStudents, int physicsCount, String physicsName) {
     }
 
-    private record CustomerView(String email, String name, String phone) {
-    }
-
     private record ProductView(String sku, String name, long price, int stock) {
-    }
-
-    private record OrderView(Long customerId, String status, long total) {
     }
 
     public static class ManyToManyStudent {

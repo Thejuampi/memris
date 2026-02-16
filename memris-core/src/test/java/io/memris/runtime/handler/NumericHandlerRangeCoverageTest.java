@@ -9,28 +9,10 @@ import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class NumericHandlerRangeCoverageTest {
-
-    @Test
-    void intTypeHandlerCoversComparisonAndSingleInPaths() {
-        IntTypeHandler handler = new IntTypeHandler();
-        IntTable table = new IntTable(new int[] { 5, 10, 15, 20 });
-
-        assertThat(handler.executeCondition(table, 0, LogicalQuery.Operator.GT, 10, false).toIntArray())
-                .containsExactly(2, 3);
-        assertThat(handler.executeCondition(table, 0, LogicalQuery.Operator.GTE, 10, false).toIntArray())
-                .containsExactly(1, 2, 3);
-        assertThat(handler.executeCondition(table, 0, LogicalQuery.Operator.LT, 15, false).toIntArray())
-                .containsExactly(0, 1);
-        assertThat(handler.executeCondition(table, 0, LogicalQuery.Operator.LTE, 15, false).toIntArray())
-                .containsExactly(0, 1, 2);
-        assertThat(handler.executeCondition(table, 0, LogicalQuery.Operator.IN, 10, false).toIntArray())
-                .containsExactly(1);
-
-        assertThatThrownBy(() -> handler.convertValue("bad")).isInstanceOf(IllegalArgumentException.class);
-    }
+    // Ownership: non-int/long numeric and temporal comparison breadth.
+    // Out-of-scope: int/long semantic matrix (owned by IntAndLongTypeHandlerTest).
 
     @Test
     void shortTypeHandlerCoversComparisonAndSingleInPaths() {

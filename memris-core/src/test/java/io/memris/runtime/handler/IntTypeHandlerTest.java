@@ -8,9 +8,11 @@ import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
 
 class IntTypeHandlerTest {
+    // Ownership: int-specific operator dispatch behavior not covered by parameterized int/long semantics.
+    // Out-of-scope: full equals/between/in semantic matrix (owned by IntAndLongTypeHandlerTest).
 
     @Test
-    void basic_int_handler_behaviour() {
+    void shouldRouteComparisonAndNullOperatorsThroughExecuteCondition() {
         IntTypeHandler handler = new IntTypeHandler();
 
         GeneratedTable table = new GeneratedTable() {
@@ -28,31 +30,30 @@ class IntTypeHandlerTest {
             @Override public long currentGeneration() { return 0; }
             @Override public long rowGeneration(int rowIndex) { return 0L; }
             @Override public int[] scanEqualsLong(int columnIndex, long value) { return new int[0]; }
-            @Override public int[] scanEqualsInt(int columnIndex, int value) { return value == 7 ? new int[]{2} : new int[0]; }
+            @Override public int[] scanEqualsInt(int columnIndex, int value) { return new int[0]; }
             @Override public int[] scanEqualsString(int columnIndex, String value) { return new int[0]; }
             @Override public int[] scanEqualsStringIgnoreCase(int columnIndex, String value) { return new int[0]; }
-            @Override public int[] scanBetweenInt(int columnIndex, int min, int max) { return (min <= 10 && max >= 10) ? new int[]{3} : new int[0]; }
+            @Override public int[] scanBetweenInt(int columnIndex, int min, int max) {
+                if (min == 8 && max == Integer.MAX_VALUE) {
+                    return new int[] {3, 4};
+                }
+                return new int[0];
+            }
             @Override public int[] scanBetweenLong(int columnIndex, long min, long max) { return new int[0]; }
             @Override public int[] scanInLong(int columnIndex, long[] values) { return new int[0]; }
-            @Override public int[] scanInInt(int columnIndex, int[] values) { return values.length==2 && values[0]==1 && values[1]==2 ? new int[]{4,5} : new int[0]; }
+            @Override public int[] scanInInt(int columnIndex, int[] values) { return new int[0]; }
             @Override public int[] scanInString(int columnIndex, String[] values) { return new int[0]; }
-            @Override public int[] scanAll() { return new int[]{0,1,2}; }
+            @Override public int[] scanAll() { return new int[]{0, 1, 2, 3, 4}; }
             @Override public long readLong(int columnIndex, int rowIndex) { return 0; }
-            @Override public int readInt(int columnIndex, int rowIndex) { return 10; }
+            @Override public int readInt(int columnIndex, int rowIndex) { return 0; }
             @Override public String readString(int columnIndex, int rowIndex) { return null; }
-            @Override public boolean isPresent(int columnIndex, int rowIndex) { return rowIndex != 1; }
+            @Override public boolean isPresent(int columnIndex, int rowIndex) { return rowIndex != 1 && rowIndex != 4; }
         };
 
-        Selection eq = handler.executeCondition(table, 0, LogicalQuery.Operator.EQ, 7, false);
-        assertThat(eq.toIntArray()).containsExactly(2);
-
-        Selection between = handler.executeBetweenRange(table, 0, 5, 15);
-        assertThat(between.toIntArray()).containsExactly(3);
-
-        Selection in = handler.executeIn(table, 0, new int[]{1,2});
-        assertThat(in.toIntArray()).containsExactly(4,5);
+        Selection gt = handler.executeCondition(table, 0, LogicalQuery.Operator.GT, 7, false);
+        assertThat(gt.toIntArray()).containsExactly(3, 4);
 
         Selection isNull = handler.executeCondition(table, 0, LogicalQuery.Operator.IS_NULL, null, false);
-        assertThat(isNull.toIntArray()).containsExactly(1);
+        assertThat(isNull.toIntArray()).containsExactly(1, 4);
     }
 }

@@ -19,6 +19,8 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 
 class EcommerceEntitiesTest {
+    // Ownership: baseline ecommerce repository semantics (CRUD, joins, status/count/sort/in/top).
+    // Out-of-scope: type-matrix and runtime branch forcing (covered by EcommerceCoverageExtensionsTest).
 
     private MemrisRepositoryFactory factory;
     private MemrisArena arena;
@@ -65,10 +67,15 @@ class EcommerceEntitiesTest {
 
         assertThat(orderRepo.countByStatus("CONFIRMED")).isEqualTo(1L);
         assertThat(orderRepo.findByCustomerId(customer.id)).hasSize(1);
+        assertThat(orderRepo.findByCustomerIdAndStatus(customer.id, "CONFIRMED")).hasSize(1);
         assertThat(orderRepo.findByStatusIn(List.of("PENDING", "CONFIRMED"))).hasSize(1);
         assertThat(orderRepo.findByStatusAndTotalGreaterThanEqual("CONFIRMED", 100_000L)).hasSize(1);
         assertThat(orderRepo.findByStatusOrderByTotalDesc("CONFIRMED")).hasSize(1);
         assertThat(orderRepo.findTop3ByStatusOrderByIdAsc("CONFIRMED")).hasSize(1);
+
+        assertThat(productRepo.findByStockGreaterThan(10)).extracting(product -> product.sku).containsExactly("SKU-MOUSE");
+        assertThat(productRepo.findTop3ByOrderByPriceDesc()).extracting(product -> product.sku)
+                .containsExactly("SKU-LAPTOP", "SKU-MOUSE");
 
         assertThat(itemRepo.findByOrderId(order.id)).hasSize(2);
         assertThat(itemRepo.findByProductId(mouse.id)).hasSize(1);
@@ -121,6 +128,7 @@ class EcommerceEntitiesTest {
         customerRepo.deleteById(customer.id);
         Optional<Customer> deleted = customerRepo.findById(customer.id);
         assertThat(deleted).isEmpty();
+        assertThat(customerRepo.existsByEmail("new@example.com")).isFalse();
     }
 
     @Entity
