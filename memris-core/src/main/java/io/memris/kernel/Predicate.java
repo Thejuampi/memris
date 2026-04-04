@@ -60,6 +60,12 @@ public sealed interface Predicate permits Predicate.Comparison, Predicate.In, Pr
             if (column == null || column.isBlank()) {
                 throw new IllegalArgumentException("column required");
             }
+            if (lower == null) {
+                throw new IllegalArgumentException("lower bound required");
+            }
+            if (upper == null) {
+                throw new IllegalArgumentException("upper bound required");
+            }
         }
     }
 

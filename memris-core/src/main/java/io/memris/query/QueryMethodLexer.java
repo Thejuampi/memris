@@ -296,6 +296,9 @@ public final class QueryMethodLexer {
         var prefix = extractPrefix(methodName);
         var remaining = methodName.substring(prefix.length());
 
+        remaining = stripDistinct(remaining);
+        remaining = stripTopOrFirst(remaining);
+
         // Generic operation classification based on prefix + remaining
         if (entityClass != null) {
             QueryMethodTokenType operationType = classifyOperation(prefix, remaining);
@@ -579,6 +582,31 @@ public final class QueryMethodLexer {
         return methodName;
     }
 
+    private static String stripDistinct(String remaining) {
+        if (remaining.startsWith("Distinct")) {
+            return remaining.substring(8);
+        }
+        return remaining;
+    }
+
+    private static String stripTopOrFirst(String remaining) {
+        if (remaining.startsWith("Top")) {
+            return stripDigits(remaining, 3);
+        }
+        if (remaining.startsWith("First")) {
+            return stripDigits(remaining, 5);
+        }
+        return remaining;
+    }
+
+    private static String stripDigits(String s, int prefixLen) {
+        var i = prefixLen;
+        while (i < s.length() && Character.isDigit(s.charAt(i))) {
+            i++;
+        }
+        return s.substring(i);
+    }
+
     private static String extractOrderBy(String methodNameSuffix) {
         int orderByIdx = methodNameSuffix.indexOf("OrderBy");
         if (orderByIdx == -1) {
@@ -640,7 +668,7 @@ public final class QueryMethodLexer {
 
         // Check for operators
         for (String operator : OPERATORS) {
-            var idx = input.indexOf(operator, start);
+            var idx = findOperatorIndex(input, start, operator);
             if (idx != -1 && idx < earliest) {
                 earliest = idx;
             }
@@ -669,6 +697,18 @@ public final class QueryMethodLexer {
 
         // Not a valid combinator - find next occurrence
         return findCombinatorIndex(input, idx + 1, combinator);
+    }
+
+    private static int findOperatorIndex(String input, int start, String operator) {
+        var idx = input.indexOf(operator, start);
+        if (idx == -1) {
+            return -1;
+        }
+        var afterOp = idx + operator.length();
+        if (afterOp >= input.length() || Character.isUpperCase(input.charAt(afterOp))) {
+            return idx;
+        }
+        return findOperatorIndex(input, idx + 1, operator);
     }
 
     private static int findMinIndex(int... idxs) {
@@ -706,8 +746,12 @@ public final class QueryMethodLexer {
         }
 
         for (String operator : OPERATORS) {
-            if (input.startsWith(operator, start))
-                return operator;
+            if (input.startsWith(operator, start)) {
+                var afterOp = start + operator.length();
+                if (afterOp >= input.length() || Character.isUpperCase(input.charAt(afterOp))) {
+                    return operator;
+                }
+            }
         }
         return null;
     }

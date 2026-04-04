@@ -349,7 +349,7 @@ public final class MultiColumnOrderCompiler {
                 final var row = rows[i];
                 table.readWithSeqLock(row, () -> {
                     present[idx] = table.isPresent(columnIndex, row);
-                    values[idx] = Double.longBitsToDouble(table.readLong(columnIndex, row));
+                    values[idx] = FloatEncoding.sortableLongToDouble(table.readLong(columnIndex, row));
                     return null;
                 });
             }
@@ -371,7 +371,7 @@ public final class MultiColumnOrderCompiler {
             var values = new double[rows.length];
             for (var i = 0; i < rows.length; i++) {
                 final int ri = rows[i];
-                values[i] = table.readWithSeqLock(ri, () -> Double.longBitsToDouble(table.readLong(columnIndex, ri)));
+                values[i] = table.readWithSeqLock(ri, () -> FloatEncoding.sortableLongToDouble(table.readLong(columnIndex, ri)));
             }
             return new DoubleOrderKeyNonNull(ascending, values);
         }

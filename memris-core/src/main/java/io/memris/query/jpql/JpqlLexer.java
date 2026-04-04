@@ -186,6 +186,7 @@ public final class JpqlLexer {
                 case '\'' -> {
                     i++;
                     StringBuilder sb = new StringBuilder();
+                    boolean closed = false;
                     while (i < length) {
                         char ch = input.charAt(i);
                         if (ch == '\'') {
@@ -195,12 +196,44 @@ public final class JpqlLexer {
                                 continue;
                             }
                             i++;
+                            closed = true;
                             break;
                         }
                         sb.append(ch);
                         i++;
                     }
+                    if (!closed) {
+                        throw new IllegalArgumentException("Unterminated string literal at position " + pos);
+                    }
                     tokens.add(new Token(TokenType.STRING, sb.toString(), sb.toString(), pos));
+                }
+                case '-' -> {
+                    if (i + 1 < length && Character.isDigit(input.charAt(i + 1))) {
+                        i++;
+                        int start = i;
+                        boolean hasDot = false;
+                        while (i < length) {
+                            char ch = input.charAt(i);
+                            if (Character.isDigit(ch)) {
+                                i++;
+                                continue;
+                            }
+                            if (ch == '.') {
+                                if (hasDot) {
+                                    break;
+                                }
+                                hasDot = true;
+                                i++;
+                                continue;
+                            }
+                            break;
+                        }
+                        String text = "-" + input.substring(start, i);
+                        Object value = hasDot ? new BigDecimal(text) : Long.valueOf(text);
+                        tokens.add(new Token(TokenType.NUMBER, text, value, pos));
+                    } else {
+                        throw new IllegalArgumentException("Unexpected character '-' at position " + pos);
+                    }
                 }
                 default -> {
                     if (Character.isDigit(c)) {
