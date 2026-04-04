@@ -295,9 +295,14 @@ public final class QueryMethodLexer {
         List<QueryMethodToken> tokens = new ArrayList<>();
         var prefix = extractPrefix(methodName);
         var remaining = methodName.substring(prefix.length());
+        var strippedLen = 0;
 
-        remaining = stripDistinct(remaining);
-        remaining = stripTopOrFirst(remaining);
+        var distinctLen = stripDistinctLength(remaining);
+        remaining = remaining.substring(distinctLen);
+        strippedLen += distinctLen;
+        var topFirstLen = stripTopOrFirstLength(remaining);
+        remaining = remaining.substring(topFirstLen);
+        strippedLen += topFirstLen;
 
         // Generic operation classification based on prefix + remaining
         if (entityClass != null) {
@@ -315,7 +320,7 @@ public final class QueryMethodLexer {
         }
 
         // Process the remaining part (predicates, OrderBy, etc.)
-        return processRemaining(tokens, remaining, prefix.length(), entityClass);
+        return processRemaining(tokens, remaining, prefix.length() + strippedLen, entityClass);
     }
 
     /**
@@ -582,29 +587,29 @@ public final class QueryMethodLexer {
         return methodName;
     }
 
-    private static String stripDistinct(String remaining) {
+    private static int stripDistinctLength(String remaining) {
         if (remaining.startsWith("Distinct")) {
-            return remaining.substring(8);
+            return 8;
         }
-        return remaining;
+        return 0;
     }
 
-    private static String stripTopOrFirst(String remaining) {
+    private static int stripTopOrFirstLength(String remaining) {
         if (remaining.startsWith("Top")) {
-            return stripDigits(remaining, 3);
+            return stripDigitsLength(remaining, 3);
         }
         if (remaining.startsWith("First")) {
-            return stripDigits(remaining, 5);
+            return stripDigitsLength(remaining, 5);
         }
-        return remaining;
+        return 0;
     }
 
-    private static String stripDigits(String s, int prefixLen) {
+    private static int stripDigitsLength(String s, int prefixLen) {
         var i = prefixLen;
         while (i < s.length() && Character.isDigit(s.charAt(i))) {
             i++;
         }
-        return s.substring(i);
+        return i;
     }
 
     private static String extractOrderBy(String methodNameSuffix) {

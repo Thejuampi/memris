@@ -8,7 +8,6 @@ import io.memris.query.LogicalQuery;
 import io.memris.query.OpCode;
 import io.memris.query.QueryMethodLexer;
 import io.memris.query.QueryMethodToken;
-import io.memris.query.QueryMethodTokenType;
 import io.memris.query.jpql.JpqlLexer;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.RepeatedTest;
@@ -21,11 +20,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.assertThatCode;
 
 import java.util.ArrayList;
-import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.concurrent.CyclicBarrier;
-
-import java.util.stream.LongStream;
+import java.util.concurrent.atomic.AtomicReference;
 
 import java.util.stream.Stream;
 
@@ -84,17 +81,19 @@ class BugFixTests {
         assertThatThrownBy(enumerator::nextLong).isInstanceOf(NoSuchElementException.class);
     }
 
-    // ===== H1: IntAccumulator.union forgets size (tested indirectly) =====
+    // ===== H1: RowIdBitSet add/remove/contains consistency =====
 
     @Test
-    void bitSetUnionFromEmptyShouldReflectSize() {
+    void bitSetAddRemoveShouldReflectSize() {
         var set = new RowIdBitSet();
-        var other = new RowIdBitSet();
-        other.add(RowId.fromLong(10));
-        other.add(RowId.fromLong(20));
-        other.add(RowId.fromLong(30));
-        assertThat(set.size()).isZero();
-        assertThat(other.size()).isEqualTo(3);
+        set.add(RowId.fromLong(10));
+        set.add(RowId.fromLong(20));
+        set.add(RowId.fromLong(30));
+        set.remove(RowId.fromLong(20));
+        assertThat(set.size()).isEqualTo(2);
+        assertThat(set.contains(RowId.fromLong(10))).isTrue();
+        assertThat(set.contains(RowId.fromLong(20))).isFalse();
+        assertThat(set.contains(RowId.fromLong(30))).isTrue();
     }
 
     // ===== H3: RowIdBitSet size counter can go negative =====
@@ -104,6 +103,7 @@ class BugFixTests {
         var set = new RowIdBitSet();
         var rowId = RowId.fromLong(42);
         var barrier = new CyclicBarrier(2);
+        var firstError = new AtomicReference<Throwable>();
         var threads = new ArrayList<Thread>();
         for (var t = 0; t < 2; t++) {
             threads.add(Thread.startVirtualThread(() -> {
@@ -113,12 +113,16 @@ class BugFixTests {
                         set.add(rowId);
                         set.remove(rowId);
                     }
-                } catch (Exception ignored) {}
+                } catch (Throwable e) {
+                    firstError.compareAndSet(null, e);
+                }
             }));
         }
         for (var thread : threads) {
             thread.join(5000);
+            assertThat(thread.isAlive()).isFalse();
         }
+        assertThat(firstError.get()).isNull();
         assertThat(set.size()).isNotNegative();
     }
 
@@ -223,7 +227,6 @@ class BugFixTests {
     }
 
     // ===== L2: MethodKey primitive boxing =====
-    // IdParam explicitly excludes primitives, which is correct behavior
 
     @Test
     void idParamShouldRejectPrimitiveLong() {
