@@ -84,8 +84,8 @@ class RuntimeExecutorGeneratorCoverageTest {
         assertThat(generator.generateFieldValueReader(1, TypeCodes.TYPE_DOUBLE, null)
                 .read(table, 0)).isEqualTo(2.5d);
 
-        assertThat(generator.generateFieldValueReader(2, (byte) 127, null).read(table, 0))
-                .isEqualTo(table.readInt(2, 0));
+        assertThatThrownBy(() -> generator.generateFieldValueReader(2, (byte) 127, null))
+                .isInstanceOf(IllegalArgumentException.class);
 
         table.present(0, false);
         assertThat(generator.generateFieldValueReader(0, TypeCodes.TYPE_STRING, null).read(table, 0))
@@ -124,8 +124,8 @@ class RuntimeExecutorGeneratorCoverageTest {
                 .isEqualTo(77L);
         assertThat(generator.generateFkReader(2, TypeCodes.TYPE_INT).read(table, 0))
                 .isEqualTo(33);
-        assertThat(generator.generateFkReader(2, (byte) 127).read(table, 0))
-                .isEqualTo(33L);
+        assertThatThrownBy(() -> generator.generateFkReader(2, (byte) 127))
+                .isInstanceOf(IllegalArgumentException.class);
 
         table.lookupByIdStringResult = Selection.pack(15, 1);
         var idStringResolver = generator.generateTargetRowResolver(true, TypeCodes.TYPE_STRING, 1);
@@ -135,10 +135,10 @@ class RuntimeExecutorGeneratorCoverageTest {
         table.lookupByIdResult = Selection.pack(19, 1);
         var idLongResolver = generator.generateTargetRowResolver(true, TypeCodes.TYPE_LONG, 1);
         var idIntResolver = generator.generateTargetRowResolver(true, TypeCodes.TYPE_INT, 1);
-        var idDefaultResolver = generator.generateTargetRowResolver(true, (byte) 90, 1);
+        assertThatThrownBy(() -> generator.generateTargetRowResolver(true, (byte) 90, 1))
+                .isInstanceOf(IllegalArgumentException.class);
         assertThat(idLongResolver.resolve(table, 99L)).isEqualTo(19);
         assertThat(idIntResolver.resolve(table, 99)).isEqualTo(19);
-        assertThat(idDefaultResolver.resolve(table, 99)).isEqualTo(19);
 
         table.scanEqualsStringResult = new int[] { 8, 9 };
         table.scanEqualsLongResult = new int[] { 6 };
@@ -146,11 +146,11 @@ class RuntimeExecutorGeneratorCoverageTest {
         var stringResolver = generator.generateTargetRowResolver(false, TypeCodes.TYPE_STRING, 0);
         var longResolver = generator.generateTargetRowResolver(false, TypeCodes.TYPE_LONG, 1);
         var intResolver = generator.generateTargetRowResolver(false, TypeCodes.TYPE_INT, 2);
-        var defaultResolver = generator.generateTargetRowResolver(false, (byte) 90, 1);
+        assertThatThrownBy(() -> generator.generateTargetRowResolver(false, (byte) 90, 1))
+                .isInstanceOf(IllegalArgumentException.class);
         assertThat(stringResolver.resolve(table, "id-1")).isEqualTo(8);
         assertThat(longResolver.resolve(table, 77L)).isEqualTo(6);
         assertThat(intResolver.resolve(table, 33)).isEqualTo(5);
-        assertThat(defaultResolver.resolve(table, 77L)).isEqualTo(6);
         assertThat(stringResolver.resolve(table, null)).isEqualTo(-1);
     }
 
@@ -188,8 +188,8 @@ class RuntimeExecutorGeneratorCoverageTest {
                 .isEqualTo(1.25f);
         assertThat(generator.generateGroupingValueReader(1, TypeCodes.TYPE_DOUBLE).read(table, 0))
                 .isEqualTo(3.5d);
-        assertThat(generator.generateGroupingValueReader(2, (byte) 100).read(table, 0))
-                .isEqualTo(table.readInt(2, 0));
+        assertThatThrownBy(() -> generator.generateGroupingValueReader(2, (byte) 100))
+                .isInstanceOf(IllegalArgumentException.class);
 
         table.scanBetweenLongResult = new int[] { 2, 4 };
         table.scanBetweenIntResult = new int[] { 1, 3 };
@@ -310,8 +310,8 @@ class RuntimeExecutorGeneratorCoverageTest {
                 .isEqualTo(1.75f);
         assertThat(generator.generateGroupingValueReader(1, TypeCodes.TYPE_DOUBLE).read(table, 0))
                 .isEqualTo(2.25d);
-        assertThat(generator.generateGroupingValueReader(2, (byte) 101).read(table, 0))
-                .isEqualTo(table.readInt(2, 0));
+        assertThatThrownBy(() -> generator.generateGroupingValueReader(2, (byte) 101))
+                .isInstanceOf(IllegalArgumentException.class);
 
         assertThat(rows(generator.generateInListExecutor(2, TypeCodes.TYPE_INT)
                 .execute(table, new int[] { 1, 2 }))).containsExactly(8);

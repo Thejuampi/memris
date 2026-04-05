@@ -163,8 +163,6 @@
                         <target>${java.version}</target>
                         <parameters>true</parameters>
                         <compilerArgs>
-                            <arg>--add-modules</arg>
-                            <arg>java.base</arg>
                             <arg>-XDcompilePolicy=simple</arg>
                             <arg>-J--add-exports=jdk.compiler/com.sun.tools.javac.api=ALL-UNNAMED</arg>
                             <arg>-J--add-exports=jdk.compiler/com.sun.tools.javac.file=ALL-UNNAMED</arg>

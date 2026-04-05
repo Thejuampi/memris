@@ -3,6 +3,7 @@ package io.memris.storage.heap;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * TDD tests for PageColumnInt.
@@ -174,5 +175,185 @@ class PageColumnIntTest {
         column.set(15, 123);
         column.publish(16);
         assertThat(column.get(15)).isEqualTo(123);
+    }
+
+    @Test
+    void scanInWithDuplicateTargetsReturnsDistinctOffsets() {
+        var column = new PageColumnInt(64);
+        column.set(0, 10);
+        column.set(1, 20);
+        column.set(2, 30);
+        column.publish(3);
+
+        var matches = column.scanIn(new int[]{20, 20, 20}, 3);
+
+        assertThat(matches).containsExactly(1);
+    }
+
+    @Test
+    void scanInWithSingleTarget() {
+        var column = new PageColumnInt(64);
+        column.set(0, 10);
+        column.set(1, 20);
+        column.publish(2);
+
+        var matches = column.scanIn(new int[]{20}, 2);
+
+        assertThat(matches).containsExactly(1);
+    }
+
+    @Test
+    void scanInWithManyTargets() {
+        var column = new PageColumnInt(64);
+        for (var i = 0; i < 64; i++) {
+            column.set(i, i);
+        }
+        column.publish(64);
+
+        var targets = new int[32];
+        for (var i = 0; i < 32; i++) {
+            targets[i] = i * 2;
+        }
+        var matches = column.scanIn(targets, 64);
+
+        assertThat(matches).hasSize(32);
+    }
+
+    @Test
+    void scanInWithUnsortedTargetsStillMatches() {
+        var column = new PageColumnInt(64);
+        column.set(0, 50);
+        column.set(1, 10);
+        column.set(2, 30);
+        column.publish(3);
+
+        var matches = column.scanIn(new int[]{30, 10, 50}, 3);
+
+        assertThat(matches).containsExactly(0, 1, 2);
+    }
+
+    @Test
+    void constructorRejectsZeroCapacity() {
+        assertThatThrownBy(() -> new PageColumnInt(0))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void multiPageConstructorRejectsZeroPageSize() {
+        assertThatThrownBy(() -> new PageColumnInt(0, 4))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void multiPageConstructorRejectsZeroMaxPages() {
+        assertThatThrownBy(() -> new PageColumnInt(4, 0))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void multiPageConstructorRejectsZeroInitialPages() {
+        assertThatThrownBy(() -> new PageColumnInt(4, 4, 0))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void scanCrossPageBoundary() {
+        var col = new PageColumnInt(4, 4, 4);
+        col.set(3, 10);
+        col.set(4, 10);
+        col.set(12, 10);
+        col.set(15, 10);
+        col.publish(16);
+        assertThat(col.scanEquals(10, 16)).containsExactlyInAnyOrder(3, 4, 12, 15);
+    }
+
+    @Test
+    void publishAtExactCapacity() {
+        var col = new PageColumnInt(4, 4, 4);
+        col.publish(16);
+        assertThat(col.publishedCount()).isEqualTo(16);
+    }
+
+    @Test
+    void publishSameValueIsNoOp() {
+        var col = new PageColumnInt(4, 4, 4);
+        col.publish(8);
+        col.publish(8);
+        assertThat(col.publishedCount()).isEqualTo(8);
+    }
+
+    @Test
+    void scanLastPageOnly() {
+        var col = new PageColumnInt(4, 4, 4);
+        col.set(12, 10);
+        col.set(13, 10);
+        col.set(14, 10);
+        col.set(15, 10);
+        col.publish(16);
+        assertThat(col.scanEquals(10, 16)).containsExactlyInAnyOrder(12, 13, 14, 15);
+    }
+
+    @Test
+    void scanWithNullPageInMiddle() {
+        var col = new PageColumnInt(4, 4, 1);
+        col.set(0, 10);
+        col.set(5, 10);
+        col.publish(16);
+        assertThat(col.scanEquals(10, 16)).containsExactlyInAnyOrder(0, 5);
+    }
+
+    @Test
+    void getRejectsExactCapacity() {
+        var col = new PageColumnInt(4);
+        assertThatThrownBy(() -> col.get(4))
+                .isInstanceOf(IndexOutOfBoundsException.class)
+                .hasMessageContaining("offset out of range");
+    }
+
+    @Test
+    void setRejectsExactCapacity() {
+        var col = new PageColumnInt(4);
+        assertThatThrownBy(() -> col.set(4, 1))
+                .isInstanceOf(IndexOutOfBoundsException.class)
+                .hasMessageContaining("offset out of range");
+    }
+
+    @Test
+    void threeArgConstructorRejectsZeroPageSize() {
+        assertThatThrownBy(() -> new PageColumnInt(0, 4, 1))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("pageSize must be positive");
+    }
+
+    @Test
+    void threeArgConstructorRejectsZeroMaxPages() {
+        assertThatThrownBy(() -> new PageColumnInt(4, 0, 1))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("maxPages must be positive");
+    }
+
+    @Test
+    void threeArgConstructorRejectsZeroInitialPages() {
+        assertThatThrownBy(() -> new PageColumnInt(4, 4, 0))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("initialPages must be positive");
+    }
+
+    @Test
+    void publishAtExactCapacitySucceeds() {
+        var col = new PageColumnInt(4);
+        col.publish(4);
+        assertThat(col.publishedCount()).isEqualTo(4);
+    }
+
+    @Test
+    void trimResultsPartialFill() {
+        var col = new PageColumnInt(64);
+        col.set(0, 10);
+        col.set(1, 20);
+        col.publish(2);
+        var result = col.scanEquals(10, 2);
+        assertThat(result).containsExactly(0);
+        assertThat(result.length).isEqualTo(1);
     }
 }

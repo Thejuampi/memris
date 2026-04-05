@@ -16,7 +16,7 @@ class RuntimeExecutorGeneratorConcurrencyTest {
 
     @Test
     void shouldReuseFieldReaderForSameKeyUnderConcurrency() throws Exception {
-        var generator = new RuntimeExecutorGenerator(MemrisConfiguration.builder().codegenEnabled(false).build());
+        var generator = new RuntimeExecutorGenerator(MemrisConfiguration.builder().codegenEnabled(true).build());
         generator.clearCache();
 
         int threads = 12;

@@ -125,6 +125,14 @@ public final class StringSuffixIndex {
         String reversed = new StringBuilder(suffix).reverse().toString();
         return reversedIndex.startsWith(reversed);
     }
+
+    public RowIdSet endsWith(String suffix, java.util.function.Predicate<RowId> filter) {
+        if (suffix == null) {
+            return RowIdSets.empty();
+        }
+        String reversed = new StringBuilder(suffix).reverse().toString();
+        return reversedIndex.startsWith(reversed, filter);
+    }
     
     /**
      * Finds all row IDs for strings that do NOT end with the given suffix.
@@ -134,6 +142,9 @@ public final class StringSuffixIndex {
      * @return a RowIdSet containing all non-matching row IDs
      */
     public RowIdSet notEndsWith(String suffix, int[] allRowIds) {
+        if (suffix == null) {
+            return RowIdSets.empty();
+        }
         return reversedIndex.notStartsWith(
             new StringBuilder(suffix).reverse().toString(), 
             allRowIds

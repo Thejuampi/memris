@@ -124,7 +124,7 @@ public final class PageColumnString {
         var pageId = offset / pageSize;
         var pageOffset = offset % pageSize;
         var page = pages.get(pageId);
-        return page != null && page.present[pageOffset] != 0;
+        return page != null && page.present[pageOffset] == 1;
     }
 
     /**
@@ -144,8 +144,13 @@ public final class PageColumnString {
         page.present[pageOffset] = 1;
     }
 
+    private static final byte PRESENT_NULL = 2;
+
     /**
      * Set null at offset.
+     * <p>
+     * Uses a distinct present flag ({@code 2}) so that {@link #scanNull} can
+     * distinguish explicitly-set-null from never-written slots.
      */
     public void setNull(int offset) {
         if (offset < 0 || offset >= capacity) {
@@ -155,7 +160,7 @@ public final class PageColumnString {
         var pageOffset = offset % pageSize;
         var page = getOrCreatePage(pageId);
         page.values[pageOffset] = null;
-        page.present[pageOffset] = 0;
+        page.present[pageOffset] = PRESENT_NULL;
     }
 
     /**
@@ -310,6 +315,9 @@ public final class PageColumnString {
 
     /**
      * Scan for null values.
+     * <p>
+     * Only matches slots that were explicitly set to null via {@link #setNull}.
+     * Never-written slots (present == 0) are not included.
      */
     private int[] scanNull(int limit) {
         var count = Math.min(published, limit);
@@ -327,7 +335,7 @@ public final class PageColumnString {
             }
             byte[] present = page.present;
             for (var i = 0; i < pageLimit; i++) {
-                if (present[i] == 0) {
+                if (present[i] == PRESENT_NULL) {
                     results[found++] = base + i;
                 }
             }

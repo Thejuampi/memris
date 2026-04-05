@@ -6,6 +6,7 @@ import io.memris.kernel.RowIdSet;
 import io.memris.kernel.RowIdSetFactory;
 import io.memris.kernel.RowIdSets;
 
+import java.util.ArrayList;
 import java.util.NavigableMap;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentSkipListMap;
@@ -72,11 +73,17 @@ public final class RangeIndex<K extends Comparable<K>> {
         if (lowerInclusive == null || upperInclusive == null) {
             return RowIdSets.empty();
         }
+        if (lowerInclusive.compareTo(upperInclusive) > 0) {
+            return RowIdSets.empty();
+        }
         return collect(index.subMap(lowerInclusive, true, upperInclusive, true));
     }
 
     public RowIdSet between(K lowerInclusive, K upperInclusive, java.util.function.Predicate<RowId> filter) {
         if (lowerInclusive == null || upperInclusive == null) {
+            return RowIdSets.empty();
+        }
+        if (lowerInclusive.compareTo(upperInclusive) > 0) {
             return RowIdSets.empty();
         }
         RowIdSet set = collect(index.subMap(lowerInclusive, true, upperInclusive, true));
@@ -162,6 +169,13 @@ public final class RangeIndex<K extends Comparable<K>> {
         return index.size();
     }
 
+    public void removeAll(K key) {
+        if (key == null) {
+            throw new IllegalArgumentException("key required");
+        }
+        index.remove(key);
+    }
+
     public void clear() {
         index.clear();
     }
@@ -170,12 +184,13 @@ public final class RangeIndex<K extends Comparable<K>> {
         if (map.isEmpty()) {
             return RowIdSets.empty();
         }
+        var entries = new ArrayList<>(map.entrySet());
         var expected = 0;
-        for (var set : map.values()) {
-            expected += set.size();
+        for (var entry : entries) {
+            expected += entry.getValue().size();
         }
         var result = setFactory.create(expected);
-        for (var entry : map.entrySet()) {
+        for (var entry : entries) {
             var e = entry.getValue().enumerator();
             while (e.hasNext()) {
                 result.add(RowId.fromLong(e.nextLong()));

@@ -3,6 +3,15 @@ package io.memris.index;
 import io.memris.kernel.RowId;
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -165,5 +174,68 @@ class RangeIndexTest {
                 .containsExactly(11L);
         assertThat(index.lessThanOrEqual(2, rowId -> rowId.value() >= 22L).toLongArray())
                 .containsExactly(22L);
+    }
+
+    @Test
+    void collectIsConsistentUnderConcurrentModification() throws Exception {
+        var index = new RangeIndex<Integer>();
+        int keyCount = 500;
+        for (int i = 0; i < keyCount; i++) {
+            index.add(i, RowId.fromLong(i));
+        }
+
+        int threadCount = 4;
+        var latch = new CountDownLatch(threadCount);
+        List<Throwable> errors = Collections.synchronizedList(new ArrayList<>());
+        AtomicInteger queryCount = new AtomicInteger();
+
+        try (ExecutorService pool = Executors.newFixedThreadPool(threadCount)) {
+            for (int t = 0; t < threadCount; t++) {
+                final int tid = t;
+                pool.submit(() -> {
+                    latch.countDown();
+                    try {
+                        latch.await();
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        return;
+                    }
+                    try {
+                        for (int i = 0; i < 200; i++) {
+                            var result = index.between(0, keyCount - 1);
+                            queryCount.incrementAndGet();
+                            assertThat(result.size()).isBetween(0, keyCount);
+                        }
+                    } catch (Throwable e) {
+                        errors.add(e);
+                    }
+                });
+            }
+            pool.shutdown();
+            assertThat(pool.awaitTermination(10, TimeUnit.SECONDS)).isTrue();
+        }
+
+        assertThat(errors).isEmpty();
+    }
+
+    @Test
+    void removeAllRemovesAllRowsForKey() {
+        var index = new RangeIndex<Integer>();
+        index.add(1, RowId.fromLong(10L));
+        index.add(1, RowId.fromLong(20L));
+        index.add(2, RowId.fromLong(30L));
+
+        index.removeAll(1);
+
+        assertThat(index.lookup(1).size()).isZero();
+        assertThat(index.lookup(2).toLongArray()).containsExactly(30L);
+    }
+
+    @Test
+    void removeAllRejectsNullKey() {
+        var index = new RangeIndex<Integer>();
+
+        assertThatThrownBy(() -> index.removeAll(null))
+                .isInstanceOf(IllegalArgumentException.class);
     }
 }

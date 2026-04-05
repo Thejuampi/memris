@@ -681,12 +681,22 @@ public final class RepositoryRuntime<T> {
     }
 
     private static final class SortBuffers {
+        private static final int MAX_BUFFER_SIZE = 1 << 20;
         private int[] intKeys;
         private long[] longKeys;
         private float[] floatKeys;
         private double[] doubleKeys;
         private String[] stringKeys;
         private boolean[] present;
+
+        void reset() {
+            if (intKeys != null && intKeys.length > MAX_BUFFER_SIZE) intKeys = null;
+            if (longKeys != null && longKeys.length > MAX_BUFFER_SIZE) longKeys = null;
+            if (floatKeys != null && floatKeys.length > MAX_BUFFER_SIZE) floatKeys = null;
+            if (doubleKeys != null && doubleKeys.length > MAX_BUFFER_SIZE) doubleKeys = null;
+            if (stringKeys != null && stringKeys.length > MAX_BUFFER_SIZE) stringKeys = null;
+            if (present != null && present.length > MAX_BUFFER_SIZE) present = null;
+        }
 
         private int[] intKeys(int size) {
             if (intKeys == null || intKeys.length < size) {
@@ -1363,8 +1373,8 @@ public final class RepositoryRuntime<T> {
             return buildMapResult(query, rows, max, args);
         }
 
-        List results2 = returnSet2 ? null : new ArrayList<>(max);
-        java.util.Set resultSet2 = returnSet2 ? new java.util.LinkedHashSet<>(Math.max(16, max)) : null;
+        List<T> results2 = returnSet2 ? null : new ArrayList<>(max);
+        java.util.Set<T> resultSet2 = returnSet2 ? new java.util.LinkedHashSet<>(Math.max(16, max)) : null;
         java.util.Set<DistinctKey> distinctKeys = query.distinct()
                 ? new java.util.HashSet<>(Math.max(16, max))
                 : null;
@@ -1375,7 +1385,7 @@ public final class RepositoryRuntime<T> {
             applyPostLoad(entity);
             hydrateJoins(entity, rowIndex, query);
             hydrateCollections(entity, rowIndex);
-            if (distinctKeys != null && !distinctKeys.add(DistinctKey.from(entity))) {
+            if (distinctKeys != null && !distinctKeys.add(DistinctKey.of(rows[i]))) {
                 continue;
             }
             if (returnSet2) {
@@ -1563,12 +1573,9 @@ public final class RepositoryRuntime<T> {
         return result;
     }
 
-    private record DistinctKey(Class<?> type, Object value) {
-        private static DistinctKey from(Object entity) {
-            if (entity == null) {
-                return new DistinctKey(null, null);
-            }
-            return new DistinctKey(entity.getClass(), entity);
+    private record DistinctKey(int rowIndex) {
+        private static DistinctKey of(int rowIndex) {
+            return new DistinctKey(rowIndex);
         }
     }
 
