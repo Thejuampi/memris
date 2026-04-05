@@ -3,6 +3,7 @@ package io.memris.kernel;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class RowIdSetFactoryTest {
 
@@ -53,5 +54,44 @@ class RowIdSetFactoryTest {
 
         assertThat(factory.maybeUpgrade(set).toLongArray())
                 .containsExactlyInAnyOrder(0L, 1L);
+    }
+
+    @Test
+    void maybeUpgradeSkipsBitSetWhenRowIdExceedsMaxInt() {
+        var factory = new RowIdSetFactory(2);
+        var set = factory.create(1);
+
+        set.add(RowId.fromLong(1L));
+        set.add(RowId.fromLong((long) Integer.MAX_VALUE + 1));
+
+        var upgraded = factory.maybeUpgrade(set);
+        assertThat(upgraded).isInstanceOf(RowIdArraySet.class);
+        assertThat(upgraded.toLongArray()).containsExactlyInAnyOrder(1L, (long) Integer.MAX_VALUE + 1);
+    }
+
+    @Test
+    void bitSetRejectsRowIdAboveMaxInt() {
+        var set = new RowIdBitSet();
+        assertThatThrownBy(() -> set.add(RowId.fromLong((long) Integer.MAX_VALUE + 1)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("too large");
+    }
+
+    @Test
+    void bitSetAcceptsMaxIntRowId() {
+        var set = new RowIdBitSet();
+        set.add(RowId.fromLong(Integer.MAX_VALUE));
+        assertThat(set.contains(RowId.fromLong(Integer.MAX_VALUE))).isTrue();
+    }
+
+    @Test
+    void maybeUpgradeUpgradesWithMaxIntRowId() {
+        var factory = new RowIdSetFactory(2);
+        var set = factory.create(1);
+        set.add(RowId.fromLong(1L));
+        set.add(RowId.fromLong(Integer.MAX_VALUE));
+        var upgraded = factory.maybeUpgrade(set);
+        assertThat(upgraded).isInstanceOf(RowIdBitSet.class);
+        assertThat(upgraded.toLongArray()).containsExactlyInAnyOrder(1L, (long) Integer.MAX_VALUE);
     }
 }

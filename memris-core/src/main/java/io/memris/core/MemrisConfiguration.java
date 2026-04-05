@@ -1,5 +1,7 @@
 package io.memris.core;
 
+import java.util.Objects;
+
 /**
  * Immutable configuration for Memris repository factory.
  * <p>
@@ -321,6 +323,22 @@ public final class MemrisConfiguration {
          * @return a new MemrisConfiguration instance
          */
         public MemrisConfiguration build() {
+            if (pageSize <= 0) {
+                throw new IllegalArgumentException("pageSize must be > 0: " + pageSize);
+            }
+            if (maxPages <= 0) {
+                throw new IllegalArgumentException("maxPages must be > 0: " + maxPages);
+            }
+            if (initialPages < 0) {
+                throw new IllegalArgumentException("initialPages must be >= 0: " + initialPages);
+            }
+            if (initialPages > maxPages) {
+                throw new IllegalArgumentException("initialPages (" + initialPages + ") > maxPages (" + maxPages + ")");
+            }
+            if (parallelSortThreshold < 0) {
+                throw new IllegalArgumentException("parallelSortThreshold must be >= 0: " + parallelSortThreshold);
+            }
+            Objects.requireNonNull(tableImplementation, "tableImplementation must not be null");
             return new MemrisConfiguration(this);
         }
     }

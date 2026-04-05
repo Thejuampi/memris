@@ -1,6 +1,7 @@
 package io.memris.spring.boot.autoconfigure;
 
 import io.memris.core.MemrisConfiguration;
+import io.memris.core.MemrisConfiguration.TableImplementation;
 import lombok.Data;
 
 /**
@@ -16,6 +17,7 @@ public class MemrisConfigurationProperties {
     private boolean codegenEnabled = true;
     private boolean enablePrefixIndex = true;
     private boolean enableSuffixIndex = true;
+    private TableImplementation tableImplementation = TableImplementation.BYTECODE;
 
     /**
      * Creates property values with defaults suitable for local development.
@@ -38,6 +40,7 @@ public class MemrisConfigurationProperties {
                 .codegenEnabled(codegenEnabled)
                 .enablePrefixIndex(enablePrefixIndex)
                 .enableSuffixIndex(enableSuffixIndex)
+                .tableImplementation(tableImplementation)
                 .build();
     }
 }

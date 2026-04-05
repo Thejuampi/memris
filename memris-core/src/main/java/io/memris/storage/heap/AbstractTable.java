@@ -44,12 +44,12 @@ public abstract class AbstractTable {
     private final AtomicLong globalGeneration = new AtomicLong(1);
 
     private static final class RowMetaPage {
-        private final long[] generations;
+        private final AtomicLongArray generations;
         private final AtomicIntegerArray tombstones;
         private final AtomicLongArray seqLocks;
 
         private RowMetaPage(int pageSize) {
-            this.generations = new long[pageSize];
+            this.generations = new AtomicLongArray(pageSize);
             this.tombstones = new AtomicIntegerArray(pageSize);
             this.seqLocks = new AtomicLongArray(pageSize);
         }
@@ -183,16 +183,23 @@ public abstract class AbstractTable {
             return new RowId(pageId, offset);
         }
 
-        // Monotonic allocation
-        var rowId = nextRowId.getAndIncrement();
-        if (rowId >= capacity()) {
-            throw new IllegalStateException("Table capacity exceeded: " + capacity());
+        // Monotonic allocation with CAS to avoid overshooting capacity
+        int rowId;
+        while (true) {
+            long current = nextRowId.get();
+            if (current >= capacity()) {
+                throw new IllegalStateException("Table capacity exceeded: " + capacity());
+            }
+            if (nextRowId.compareAndSet(current, current + 1)) {
+                rowId = (int) current;
+                break;
+            }
         }
-        ensurePageAllocated((int) rowId);
+        ensurePageAllocated(rowId);
         var generation = globalGeneration.incrementAndGet();
-        setRowGenerationAt((int) rowId, generation);
-        var pageId = (int) (rowId / pageSize);
-        var offset = (int) (rowId % pageSize);
+        setRowGenerationAt(rowId, generation);
+        var pageId = rowId / pageSize;
+        var offset = rowId % pageSize;
         return new RowId(pageId, offset);
     }
 
@@ -238,13 +245,13 @@ public abstract class AbstractTable {
         if (page == null) {
             return 0L;
         }
-        return page.generations[rowIndex % pageSize];
+        return page.generations.get(rowIndex % pageSize);
     }
 
     private void setRowGenerationAt(int rowIndex, long generation) {
         var offset = rowIndex % pageSize;
         var page = metaPage(rowIndex);
-        page.generations[offset] = generation;
+        page.generations.set(offset, generation);
     }
 
     /**
@@ -333,10 +340,11 @@ public abstract class AbstractTable {
         validateRowIndex(rowIndex);
         var seqLocks = metaPage(rowIndex).seqLocks;
         var offset = rowIndex % pageSize;
+        var spins = 0;
         while (true) {
             var seqBefore = seqLocks.get(offset);
             if ((seqBefore & 1) == 1) {
-                // Writer active, retry
+                backoff(spins++);
                 continue;
             }
             T value = reader.get();
@@ -344,7 +352,7 @@ public abstract class AbstractTable {
             if (seqBefore == seqAfter) {
                 return value;
             }
-            // Seqlock changed, retry
+            backoff(spins++);
         }
     }
 
@@ -515,10 +523,7 @@ public abstract class AbstractTable {
         int[] filtered = new int[rows.length];
         int count = 0;
         for (int rowIndex : rows) {
-            int pageId = rowIndex / pageSize;
-            int offset = rowIndex % pageSize;
-            RowId rowId = new RowId(pageId, offset);
-            if (!isTombstone(rowId)) {
+            if (!isTombstonedByIndex(rowIndex)) {
                 filtered[count++] = rowIndex;
             }
         }
@@ -530,5 +535,14 @@ public abstract class AbstractTable {
         int[] result = new int[count];
         System.arraycopy(filtered, 0, result, 0, count);
         return result;
+    }
+
+    private boolean isTombstonedByIndex(int rowIndex) {
+        var pageId = rowIndex / pageSize;
+        var page = rowMetaPages.get(pageId);
+        if (page == null) {
+            return false;
+        }
+        return page.tombstones.get(rowIndex % pageSize) != 0;
     }
 }

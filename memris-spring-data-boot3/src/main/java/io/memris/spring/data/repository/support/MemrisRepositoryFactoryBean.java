@@ -4,6 +4,7 @@ import io.memris.repository.MemrisArena;
 import io.memris.spring.boot.autoconfigure.MemrisArenaProvider;
 import org.springframework.beans.factory.BeanFactory;
 import org.springframework.beans.factory.BeanFactoryAware;
+import org.springframework.beans.factory.NoSuchBeanDefinitionException;
 import org.springframework.data.repository.Repository;
 import org.springframework.data.repository.core.support.RepositoryFactoryBeanSupport;
 import org.springframework.data.repository.core.support.RepositoryFactorySupport;
@@ -31,7 +32,14 @@ public class MemrisRepositoryFactoryBean<T extends Repository<S, ID>, S, ID>
 
     @Override
     protected RepositoryFactorySupport createRepositoryFactory() {
-        var arenaProvider = beanFactory.getBean(MemrisArenaProvider.class);
+        MemrisArenaProvider arenaProvider;
+        try {
+            arenaProvider = beanFactory.getBean(MemrisArenaProvider.class);
+        } catch (NoSuchBeanDefinitionException e) {
+            throw new IllegalStateException(
+                    "MemrisArenaProvider bean not found. Ensure @EnableMemrisRepositories is configured on a @Configuration class.",
+                    e);
+        }
         MemrisArena arena = arenaProvider.getDefaultArena();
         return new MemrisSpringRepositoryFactory(arena);
     }

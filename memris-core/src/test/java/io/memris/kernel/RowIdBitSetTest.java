@@ -301,4 +301,66 @@ class RowIdBitSetTest {
         assertThatThrownBy(enumerator::nextLong).isInstanceOf(java.util.NoSuchElementException.class);
     }
 
+    @Test
+    void shouldContainInSecondChunk() {
+        var set = new RowIdBitSet();
+        set.add(RowId.fromLong(5000));
+        assertThat(set.contains(RowId.fromLong(5000))).isTrue();
+        assertThat(set.contains(RowId.fromLong(4999))).isFalse();
+    }
+
+    @Test
+    void shouldRemoveFromSecondChunk() {
+        var set = new RowIdBitSet();
+        set.add(RowId.fromLong(5000));
+        set.add(RowId.fromLong(5001));
+        set.remove(RowId.fromLong(5000));
+        assertThat(set.contains(RowId.fromLong(5000))).isFalse();
+        assertThat(set.contains(RowId.fromLong(5001))).isTrue();
+        assertThat(set.size()).isEqualTo(1);
+    }
+
+    @Test
+    void shouldReturnFalseForAbsentInUnallocatedChunk() {
+        var set = new RowIdBitSet();
+        assertThat(set.contains(RowId.fromLong(5000))).isFalse();
+    }
+
+    @Test
+    void shouldRemoveAbsentFromUnallocatedChunkWithoutError() {
+        var set = new RowIdBitSet();
+        set.remove(RowId.fromLong(5000));
+        assertThat(set.size()).isZero();
+    }
+
+    @Test
+    void toLongArrayEmptySetReturnsEmpty() {
+        var set = new RowIdBitSet();
+        assertThat(set.toLongArray()).isEmpty();
+    }
+
+    @Test
+    void containsAbsentInNullChunkReturnsFalse() {
+        var set = new RowIdBitSet();
+        set.add(RowId.fromLong(10000));
+        assertThat(set.contains(RowId.fromLong(5000))).isFalse();
+    }
+
+    @Test
+    void addAndRemoveManyPreservesOddElements() {
+        var set = new RowIdBitSet();
+        for (long i = 0; i < 200; i++) {
+            set.add(RowId.fromLong(i));
+        }
+        for (long i = 0; i < 200; i += 2) {
+            set.remove(RowId.fromLong(i));
+        }
+        for (long i = 1; i < 200; i += 2) {
+            assertThat(set.contains(RowId.fromLong(i))).isTrue();
+        }
+        for (long i = 0; i < 200; i += 2) {
+            assertThat(set.contains(RowId.fromLong(i))).isFalse();
+        }
+    }
+
 }

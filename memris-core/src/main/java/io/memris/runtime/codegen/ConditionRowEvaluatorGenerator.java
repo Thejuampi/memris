@@ -45,7 +45,7 @@ public final class ConditionRowEvaluatorGenerator {
     private static boolean isSupported(CompiledQuery.CompiledCondition condition) {
         var operator = condition.operator();
         return switch (operator) {
-            case EQ, NE, IN, NOT_IN, IGNORE_CASE_EQ, GT, GTE, LT, LTE, BETWEEN, IS_NULL, NOT_NULL, BEFORE, AFTER -> true;
+            case EQ, NE, IN, NOT_IN, IGNORE_CASE_EQ, IGNORE_CASE_LIKE, GT, GTE, LT, LTE, BETWEEN, IS_NULL, NOT_NULL, BEFORE, AFTER -> true;
             default -> false;
         };
     }
@@ -70,7 +70,7 @@ public final class ConditionRowEvaluatorGenerator {
                 Class<?> implClass = unloaded.load(ConditionRowEvaluatorGenerator.class.getClassLoader()).getLoaded();
                 return (RowConditionEvaluator) implClass.getDeclaredConstructor().newInstance();
             }
-        } catch (Exception ignored) {
+        } catch (Exception e) {
             return delegate::matches;
         }
     }
@@ -84,7 +84,7 @@ public final class ConditionRowEvaluatorGenerator {
         int columnIndex = condition.columnIndex();
         int argumentIndex = condition.argumentIndex();
         byte typeCode = condition.typeCode();
-        boolean ignoreCase = condition.ignoreCase() || condition.operator() == LogicalQuery.Operator.IGNORE_CASE_EQ;
+        boolean ignoreCase = condition.ignoreCase() || condition.operator() == LogicalQuery.Operator.IGNORE_CASE_EQ || condition.operator() == LogicalQuery.Operator.IGNORE_CASE_LIKE;
 
         if (operator == LogicalQuery.Operator.IS_NULL || operator == LogicalQuery.Operator.NOT_NULL) {
             return new NullMatcher(columnIndex, primitiveNonNull, operator == LogicalQuery.Operator.IS_NULL);
@@ -104,6 +104,7 @@ public final class ConditionRowEvaluatorGenerator {
     private static LogicalQuery.Operator normalizeOperator(LogicalQuery.Operator operator) {
         return switch (operator) {
             case IGNORE_CASE_EQ -> LogicalQuery.Operator.EQ;
+            case IGNORE_CASE_LIKE -> LogicalQuery.Operator.LIKE;
             case BEFORE -> LogicalQuery.Operator.LT;
             case AFTER -> LogicalQuery.Operator.GT;
             default -> operator;

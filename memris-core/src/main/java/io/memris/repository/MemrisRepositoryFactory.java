@@ -170,16 +170,15 @@ public final class MemrisRepositoryFactory implements AutoCloseable {
             }
             case StringPrefixIndex prefixIndex when value instanceof String s -> {
                 if (operator == Predicate.Operator.STARTING_WITH) {
-                    yield rowIdSetToIntArray(prefixIndex.startsWith(s));
+                    yield rowIdSetToIntArray(prefixIndex.startsWith(s, validator));
                 } else if (operator == Predicate.Operator.EQ) {
-                    // Prefix index can also handle exact matches
-                    yield rowIdSetToIntArray(prefixIndex.startsWith(s));
+                    yield rowIdSetToIntArray(prefixIndex.startsWith(s, validator));
                 }
                 yield null;
             }
             case StringSuffixIndex suffixIndex when value instanceof String s -> {
                 if (operator == Predicate.Operator.ENDING_WITH) {
-                    yield rowIdSetToIntArray(suffixIndex.endsWith(s));
+                    yield rowIdSetToIntArray(suffixIndex.endsWith(s, validator));
                 }
                 yield null;
             }

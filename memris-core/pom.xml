@@ -113,9 +113,50 @@
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
                 <configuration>
-                    <argLine>@{argLine} -Xms256m -Xmx768m --enable-native-access=ALL-UNNAMED</argLine>
+                    <argLine>-Xms256m -Xmx768m --enable-native-access=ALL-UNNAMED</argLine>
                     <excludedGroups>benchmark</excludedGroups>
                 </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.pitest</groupId>
+                <artifactId>pitest-maven</artifactId>
+                <version>1.19.1</version>
+                <configuration>
+                    <skip>true</skip>
+                    <targetClasses>
+                        <param>io.memris.index.*</param>
+                        <param>io.memris.kernel.RowIdSetFactory</param>
+                        <param>io.memris.kernel.RowIdBitSet</param>
+                        <param>io.memris.kernel.RowIdArraySet</param>
+                        <param>io.memris.storage.heap.PageColumnString</param>
+                        <param>io.memris.storage.heap.PageColumnInt</param>
+                        <param>io.memris.storage.heap.PageColumnLong</param>
+                        <param>io.memris.storage.SelectionImpl</param>
+                    </targetClasses>
+                    <targetTests>
+                        <param>io.memris.index.*</param>
+                        <param>io.memris.kernel.*</param>
+                        <param>io.memris.storage.*</param>
+                        <param>io.memris.storage.heap.*</param>
+                    </targetTests>
+                    <mutationThreshold>85</mutationThreshold>
+                    <coverageThreshold>90</coverageThreshold>
+                    <jvmArgs>
+                        <arg>-Xms2g</arg>
+                        <arg>-Xmx4g</arg>
+                        <arg>-XX:+UseG1GC</arg>
+                    </jvmArgs>
+                    <threads>8</threads>
+                    <timeoutFactor>20</timeoutFactor>
+                    <timeoutConstant>30000</timeoutConstant>
+                </configuration>
+                <dependencies>
+                    <dependency>
+                        <groupId>org.pitest</groupId>
+                        <artifactId>pitest-junit5-plugin</artifactId>
+                        <version>1.2.3</version>
+                    </dependency>
+                </dependencies>
             </plugin>
             <plugin>
                 <groupId>pw.krejci</groupId>

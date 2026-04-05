@@ -97,6 +97,10 @@ public final class RuntimeExecutorGenerator {
      */
     public FieldValueReader generateFieldValueReader(int columnIndex, byte typeCode,
             TypeConverter<?, ?> converter) {
+        if (!isEnabled()) {
+            return createFallbackFieldValueReader(columnIndex, typeCode, converter);
+        }
+
         String converterKey = converter != null ? "_C" + System.identityHashCode(converter) : "";
         String key = "FVR_" + columnIndex + "_" + typeCode + converterKey;
 
@@ -160,7 +164,7 @@ public final class RuntimeExecutorGenerator {
             case TypeCodes.TYPE_DOUBLE ->
                 new DoubleFieldReader(columnIndex, converter);
             default ->
-                new IntFieldReader(columnIndex, converter);
+                throw new IllegalArgumentException("Unsupported type code: " + typeCode);
         };
     }
 
@@ -342,6 +346,95 @@ public final class RuntimeExecutorGenerator {
         return ((TypeConverter<Object, Object>) converter).fromStorage(value);
     }
 
+    private static FieldValueReader createFallbackFieldValueReader(int columnIndex, byte typeCode,
+            TypeConverter<?, ?> converter) {
+        return switch (typeCode) {
+            case TypeCodes.TYPE_STRING, TypeCodes.TYPE_BIG_DECIMAL, TypeCodes.TYPE_BIG_INTEGER ->
+                (table, rowIndex) -> {
+                    if (!table.isPresent(columnIndex, rowIndex)) {
+                        return null;
+                    }
+                    Object value = table.readString(columnIndex, rowIndex);
+                    return converter != null ? applyConverter(converter, value) : value;
+                };
+            case TypeCodes.TYPE_LONG ->
+                (table, rowIndex) -> {
+                    if (!table.isPresent(columnIndex, rowIndex)) {
+                        return null;
+                    }
+                    Object value = table.readLong(columnIndex, rowIndex);
+                    return converter != null ? applyConverter(converter, value) : value;
+                };
+            case TypeCodes.TYPE_INSTANT, TypeCodes.TYPE_LOCAL_DATE, TypeCodes.TYPE_LOCAL_DATE_TIME,
+                    TypeCodes.TYPE_DATE ->
+                (table, rowIndex) -> {
+                    if (!table.isPresent(columnIndex, rowIndex)) {
+                        return null;
+                    }
+                    Object value = table.readLong(columnIndex, rowIndex);
+                    return converter != null ? applyConverter(converter, value) : value;
+                };
+            case TypeCodes.TYPE_INT ->
+                (table, rowIndex) -> {
+                    if (!table.isPresent(columnIndex, rowIndex)) {
+                        return null;
+                    }
+                    Object value = table.readInt(columnIndex, rowIndex);
+                    return converter != null ? applyConverter(converter, value) : value;
+                };
+            case TypeCodes.TYPE_BOOLEAN ->
+                (table, rowIndex) -> {
+                    if (!table.isPresent(columnIndex, rowIndex)) {
+                        return null;
+                    }
+                    Object value = table.readInt(columnIndex, rowIndex) != 0;
+                    return converter != null ? applyConverter(converter, value) : value;
+                };
+            case TypeCodes.TYPE_BYTE ->
+                (table, rowIndex) -> {
+                    if (!table.isPresent(columnIndex, rowIndex)) {
+                        return null;
+                    }
+                    Object value = (byte) table.readInt(columnIndex, rowIndex);
+                    return converter != null ? applyConverter(converter, value) : value;
+                };
+            case TypeCodes.TYPE_SHORT ->
+                (table, rowIndex) -> {
+                    if (!table.isPresent(columnIndex, rowIndex)) {
+                        return null;
+                    }
+                    Object value = (short) table.readInt(columnIndex, rowIndex);
+                    return converter != null ? applyConverter(converter, value) : value;
+                };
+            case TypeCodes.TYPE_CHAR ->
+                (table, rowIndex) -> {
+                    if (!table.isPresent(columnIndex, rowIndex)) {
+                        return null;
+                    }
+                    Object value = (char) table.readInt(columnIndex, rowIndex);
+                    return converter != null ? applyConverter(converter, value) : value;
+                };
+            case TypeCodes.TYPE_FLOAT ->
+                (table, rowIndex) -> {
+                    if (!table.isPresent(columnIndex, rowIndex)) {
+                        return null;
+                    }
+                    Object value = FloatEncoding.sortableIntToFloat(table.readInt(columnIndex, rowIndex));
+                    return converter != null ? applyConverter(converter, value) : value;
+                };
+            case TypeCodes.TYPE_DOUBLE ->
+                (table, rowIndex) -> {
+                    if (!table.isPresent(columnIndex, rowIndex)) {
+                        return null;
+                    }
+                    Object value = FloatEncoding.sortableLongToDouble(table.readLong(columnIndex, rowIndex));
+                    return converter != null ? applyConverter(converter, value) : value;
+                };
+            default ->
+                throw new IllegalArgumentException("Unsupported type code: " + typeCode);
+        };
+    }
+
     // ========================================================================
     // FkReader Generation
     // ========================================================================
@@ -358,6 +451,10 @@ public final class RuntimeExecutorGenerator {
      * Generate a specialized FkReader for the given column and type.
      */
     public FkReader generateFkReader(int columnIndex, byte typeCode) {
+        if (!isEnabled()) {
+            return createFallbackFkReader(columnIndex, typeCode);
+        }
+
         String key = "FK_" + columnIndex + "_" + typeCode;
         return (FkReader) cache.computeIfAbsent(key, k -> doGenerateFkReader(columnIndex, typeCode));
     }
@@ -396,7 +493,7 @@ public final class RuntimeExecutorGenerator {
             case TypeCodes.TYPE_STRING -> new StringFkReader(columnIndex);
             case TypeCodes.TYPE_LONG -> new LongFkReader(columnIndex);
             case TypeCodes.TYPE_INT -> new IntFkReader(columnIndex);
-            default -> new LongFkReader(columnIndex);
+            default -> throw new IllegalArgumentException("Unsupported type code: " + typeCode);
         };
     }
 
@@ -450,6 +547,22 @@ public final class RuntimeExecutorGenerator {
         }
     }
 
+    private static FkReader createFallbackFkReader(int columnIndex, byte typeCode) {
+        return switch (typeCode) {
+            case TypeCodes.TYPE_STRING ->
+                (table, rowIndex) -> table.isPresent(columnIndex, rowIndex)
+                        ? table.readString(columnIndex, rowIndex) : null;
+            case TypeCodes.TYPE_LONG ->
+                (table, rowIndex) -> table.isPresent(columnIndex, rowIndex)
+                        ? table.readLong(columnIndex, rowIndex) : null;
+            case TypeCodes.TYPE_INT ->
+                (table, rowIndex) -> table.isPresent(columnIndex, rowIndex)
+                        ? table.readInt(columnIndex, rowIndex) : null;
+            default ->
+                throw new IllegalArgumentException("Unsupported type code: " + typeCode);
+        };
+    }
+
     // ========================================================================
     // TargetRowResolver Generation
     // ========================================================================
@@ -467,6 +580,10 @@ public final class RuntimeExecutorGenerator {
      */
     public TargetRowResolver generateTargetRowResolver(
             boolean targetColumnIsId, byte fkTypeCode, int targetColumnIndex) {
+        if (!isEnabled()) {
+            return createFallbackTargetRowResolver(targetColumnIsId, fkTypeCode, targetColumnIndex);
+        }
+
         String key = "TRR_" + targetColumnIsId + "_" + fkTypeCode + "_" + targetColumnIndex;
         return (TargetRowResolver) cache.computeIfAbsent(key,
                 k -> doGenerateTargetRowResolver(targetColumnIsId, fkTypeCode, targetColumnIndex));
@@ -509,14 +626,14 @@ public final class RuntimeExecutorGenerator {
                 case TypeCodes.TYPE_STRING -> new StringIdResolver();
                 case TypeCodes.TYPE_LONG -> new LongIdResolver();
                 case TypeCodes.TYPE_INT -> new IntIdResolver();
-                default -> new LongIdResolver();
+                default -> throw new IllegalArgumentException("Unsupported FK type code: " + fkTypeCode);
             };
         } else {
             return switch (fkTypeCode) {
                 case TypeCodes.TYPE_STRING -> new StringColumnResolver(targetColumnIndex);
                 case TypeCodes.TYPE_LONG -> new LongColumnResolver(targetColumnIndex);
                 case TypeCodes.TYPE_INT -> new IntColumnResolver(targetColumnIndex);
-                default -> new LongColumnResolver(targetColumnIndex);
+                default -> throw new IllegalArgumentException("Unsupported FK type code: " + fkTypeCode);
             };
         }
     }
@@ -603,6 +720,57 @@ public final class RuntimeExecutorGenerator {
         }
     }
 
+    private static TargetRowResolver createFallbackTargetRowResolver(
+            boolean targetColumnIsId, byte fkTypeCode, int targetColumnIndex) {
+        if (targetColumnIsId) {
+            return switch (fkTypeCode) {
+                case TypeCodes.TYPE_STRING ->
+                    (table, fkValue) -> {
+                        if (fkValue == null) return -1;
+                        long ref = table.lookupByIdString((String) fkValue);
+                        return ref >= 0 ? (int) (ref & 0xFFFFFFFFL) : -1;
+                    };
+                case TypeCodes.TYPE_LONG ->
+                    (table, fkValue) -> {
+                        if (fkValue == null) return -1;
+                        long ref = table.lookupById(((Number) fkValue).longValue());
+                        return ref >= 0 ? (int) (ref & 0xFFFFFFFFL) : -1;
+                    };
+                case TypeCodes.TYPE_INT ->
+                    (table, fkValue) -> {
+                        if (fkValue == null) return -1;
+                        long ref = table.lookupById(((Number) fkValue).intValue());
+                        return ref >= 0 ? (int) (ref & 0xFFFFFFFFL) : -1;
+                    };
+                default ->
+                    throw new IllegalArgumentException("Unsupported FK type code: " + fkTypeCode);
+            };
+        } else {
+            return switch (fkTypeCode) {
+                case TypeCodes.TYPE_STRING ->
+                    (table, fkValue) -> {
+                        if (fkValue == null) return -1;
+                        int[] matches = table.scanEqualsString(targetColumnIndex, (String) fkValue);
+                        return matches.length > 0 ? matches[0] : -1;
+                    };
+                case TypeCodes.TYPE_LONG ->
+                    (table, fkValue) -> {
+                        if (fkValue == null) return -1;
+                        int[] matches = table.scanEqualsLong(targetColumnIndex, ((Number) fkValue).longValue());
+                        return matches.length > 0 ? matches[0] : -1;
+                    };
+                case TypeCodes.TYPE_INT ->
+                    (table, fkValue) -> {
+                        if (fkValue == null) return -1;
+                        int[] matches = table.scanEqualsInt(targetColumnIndex, ((Number) fkValue).intValue());
+                        return matches.length > 0 ? matches[0] : -1;
+                    };
+                default ->
+                    throw new IllegalArgumentException("Unsupported FK type code: " + fkTypeCode);
+            };
+        }
+    }
+
     // ========================================================================
     // GroupingValueReader Generation
     // ========================================================================
@@ -680,7 +848,7 @@ public final class RuntimeExecutorGenerator {
             case TypeCodes.TYPE_DOUBLE ->
                 new DoubleGroupingReader(columnIndex);
             default ->
-                new IntGroupingReader(columnIndex);
+                throw new IllegalArgumentException("Unsupported type code: " + typeCode);
         };
     }
 
@@ -843,8 +1011,7 @@ public final class RuntimeExecutorGenerator {
                         ? FloatEncoding.sortableLongToDouble(table.readLong(columnIndex, rowIndex))
                         : null;
             default ->
-                (table, rowIndex) -> table.isPresent(columnIndex, rowIndex) ? table.readInt(columnIndex, rowIndex)
-                        : null;
+                throw new IllegalArgumentException("Unsupported type code: " + typeCode);
         };
     }
 

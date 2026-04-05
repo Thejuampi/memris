@@ -257,7 +257,8 @@ class PredicateTest {
                 Predicate.Operator.IS_NOT_NULL,
                 Predicate.Operator.AFTER,
                 Predicate.Operator.BEFORE,
-                Predicate.Operator.IGNORE_CASE
+                Predicate.Operator.IGNORE_CASE_EQ,
+                Predicate.Operator.IGNORE_CASE_LIKE
         );
     }
 

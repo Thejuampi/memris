@@ -40,30 +40,31 @@ public final class StringPrefixIndex {
     }
     
     public void add(String key, RowId rowId) {
-        if (key == null || rowId == null) {
+        if (key == null) {
+            throw new IllegalArgumentException("key required");
+        }
+        if (rowId == null) {
+            throw new IllegalArgumentException("rowId required");
+        }
+
+        var normalizedKey = normalize(key);
+
+        if (normalizedKey.isEmpty()) {
+            prefixMap.compute("", (ignored, existing) -> {
+                MutableRowIdSet set = existing == null ? setFactory.create(4) : existing;
+                set.add(rowId);
+                return setFactory.maybeUpgrade(set);
+            });
             return;
         }
 
-        String normalizedKey = normalize(key);
-
-        // Add rowId for every prefix of the key using lock-free pattern:
-        // 1. Try get() first (no lock)
-        // 2. If missing, create new set and try putIfAbsent
-        // 3. Use whichever set won the race
         for (int i = 1; i <= normalizedKey.length(); i++) {
             var prefix = normalizedKey.substring(0, i);
-            var set = prefixMap.get(prefix);
-            if (set == null) {
-                var newSet = setFactory.create(4);
-                var existing = prefixMap.putIfAbsent(prefix, newSet);
-                set = existing != null ? existing : newSet;
-            }
-            set.add(rowId);
-            // Check if upgrade needed (best effort, may race)
-            var upgraded = setFactory.maybeUpgrade(set);
-            if (upgraded != set) {
-                prefixMap.replace(prefix, set, upgraded);
-            }
+            prefixMap.compute(prefix, (ignored, existing) -> {
+                MutableRowIdSet set = existing == null ? setFactory.create(4) : existing;
+                set.add(rowId);
+                return setFactory.maybeUpgrade(set);
+            });
         }
     }
     
@@ -72,19 +73,22 @@ public final class StringPrefixIndex {
             return;
         }
 
-        String normalizedKey = normalize(key);
+        var normalizedKey = normalize(key);
 
-        // Remove rowId from every prefix of the key using lock-free get-then-remove
+        if (normalizedKey.isEmpty()) {
+            prefixMap.computeIfPresent("", (ignored, existing) -> {
+                existing.remove(rowId);
+                return existing.size() == 0 ? null : existing;
+            });
+            return;
+        }
+
         for (int i = 1; i <= normalizedKey.length(); i++) {
             var prefix = normalizedKey.substring(0, i);
-            var set = prefixMap.get(prefix);
-            if (set != null) {
-                set.remove(rowId);
-                // Best effort cleanup of empty sets (may race with adds)
-                if (set.size() == 0) {
-                    prefixMap.remove(prefix, set);
-                }
-            }
+            prefixMap.computeIfPresent(prefix, (ignored, existing) -> {
+                existing.remove(rowId);
+                return existing.size() == 0 ? null : existing;
+            });
         }
     }
     
@@ -92,11 +96,39 @@ public final class StringPrefixIndex {
         if (prefix == null) {
             return RowIdSets.empty();
         }
-        
+
         String normalizedPrefix = normalize(prefix);
+        if (normalizedPrefix.isEmpty()) {
+            MutableRowIdSet result = setFactory.create(prefixMap.size() * 4);
+            for (var set : prefixMap.values()) {
+                var e = set.enumerator();
+                while (e.hasNext()) {
+                    result.add(RowId.fromLong(e.nextLong()));
+                }
+                result = setFactory.maybeUpgrade(result);
+            }
+            return result;
+        }
+
         MutableRowIdSet result = prefixMap.get(normalizedPrefix);
-        
         return result == null ? RowIdSets.empty() : result;
+    }
+
+    public RowIdSet startsWith(String prefix, java.util.function.Predicate<RowId> filter) {
+        RowIdSet unfiltered = startsWith(prefix);
+        if (filter == null || unfiltered.size() == 0) {
+            return unfiltered;
+        }
+        MutableRowIdSet result = setFactory.create(unfiltered.size());
+        io.memris.kernel.LongEnumerator e = unfiltered.enumerator();
+        while (e.hasNext()) {
+            RowId rowId = RowId.fromLong(e.nextLong());
+            if (filter.test(rowId)) {
+                result.add(rowId);
+                result = setFactory.maybeUpgrade(result);
+            }
+        }
+        return result;
     }
     
     public RowIdSet notStartsWith(String prefix, int[] allRowIds) {

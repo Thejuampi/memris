@@ -145,6 +145,7 @@ public record HeapRuntimeKernel(
     }
 
     private Selection subtractSelections(int[] allRows, Selection toRemove) {
-        return SelectionImpl.fromScanIndices(table, allRows).subtract(toRemove);
+        var all = SelectionImpl.fromScanIndices(table, allRows);
+        return all.subtract(toRemove);
     }
 }

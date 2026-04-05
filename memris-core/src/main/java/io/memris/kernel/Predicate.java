@@ -30,7 +30,8 @@ public sealed interface Predicate permits Predicate.Comparison, Predicate.In, Pr
         IS_NOT_NULL,
         AFTER,
         BEFORE,
-        IGNORE_CASE
+        IGNORE_CASE_EQ,
+        IGNORE_CASE_LIKE
     }
 
     record Comparison(String column, Operator operator, Object value) implements Predicate {

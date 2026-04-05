@@ -96,14 +96,19 @@ public final class RowIdBitSet implements MutableRowIdSet {
         if (chunkIndex >= currentChunks.length()) {
             return;
         }
-        var chunk = currentChunks.get(chunkIndex);
-        if (chunk == null) {
-            return;
-        }
 
         while (true) {
+            currentChunks = chunks;
+            if (chunkIndex >= currentChunks.length()) {
+                return;
+            }
+            var chunk = currentChunks.get(chunkIndex);
+            if (chunk == null) {
+                return;
+            }
+
             if ((chunk[wordInChunk] & bitMask) == 0L) {
-                return; // Not present
+                return;
             }
 
             var newChunk = chunk.clone();
@@ -111,11 +116,6 @@ public final class RowIdBitSet implements MutableRowIdSet {
 
             if (currentChunks.compareAndSet(chunkIndex, chunk, newChunk)) {
                 SIZE_UPDATER.decrementAndGet(this);
-                return;
-            }
-            // Reload chunk after failed CAS
-            chunk = currentChunks.get(chunkIndex);
-            if (chunk == null) {
                 return;
             }
         }

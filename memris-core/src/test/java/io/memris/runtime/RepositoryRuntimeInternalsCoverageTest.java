@@ -59,22 +59,19 @@ class RepositoryRuntimeInternalsCoverageTest {
     }
 
     @Test
-    void distinctKeyFromHandlesNullAndNonNullEntities() throws Exception {
+    void distinctKeyOfHandlesVariousRowIndices() throws Exception {
         Class<?> distinctKeyClass = Class.forName("io.memris.runtime.RepositoryRuntime$DistinctKey");
-        Method from = distinctKeyClass.getDeclaredMethod("from", Object.class);
-        Method type = distinctKeyClass.getDeclaredMethod("type");
-        Method value = distinctKeyClass.getDeclaredMethod("value");
-        from.setAccessible(true);
-        type.setAccessible(true);
-        value.setAccessible(true);
+        Method of = distinctKeyClass.getDeclaredMethod("of", int.class);
+        Method rowIndex = distinctKeyClass.getDeclaredMethod("rowIndex");
+        of.setAccessible(true);
+        rowIndex.setAccessible(true);
 
-        Object nullKey = from.invoke(null, new Object[] { null });
-        Object valueKey = from.invoke(null, "abc");
+        Object key42 = of.invoke(null, 42);
+        Object key99 = of.invoke(null, 99);
 
-        assertThat(type.invoke(nullKey)).isNull();
-        assertThat(value.invoke(nullKey)).isNull();
-        assertThat(type.invoke(valueKey)).isEqualTo(String.class);
-        assertThat(value.invoke(valueKey)).isEqualTo("abc");
-        assertThat(Arrays.asList(nullKey, valueKey)).doesNotHaveDuplicates();
+        assertThat(rowIndex.invoke(key42)).isEqualTo(42);
+        assertThat(rowIndex.invoke(key99)).isEqualTo(99);
+        assertThat(key42).isNotEqualTo(key99);
+        assertThat(key42).isEqualTo(of.invoke(null, 42));
     }
 }

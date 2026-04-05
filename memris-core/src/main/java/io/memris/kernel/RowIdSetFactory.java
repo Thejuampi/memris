@@ -22,8 +22,14 @@ public record RowIdSetFactory(int bitSetThreshold) {
 
     public MutableRowIdSet maybeUpgrade(MutableRowIdSet set) {
         if (set instanceof RowIdArraySet arraySet && arraySet.size() >= bitSetThreshold) {
-            RowIdBitSet bitSet = new RowIdBitSet();
             LongEnumerator e = arraySet.enumerator();
+            while (e.hasNext()) {
+                if (e.nextLong() > Integer.MAX_VALUE) {
+                    return set;
+                }
+            }
+            RowIdBitSet bitSet = new RowIdBitSet();
+            e = arraySet.enumerator();
             while (e.hasNext()) {
                 bitSet.add(RowId.fromLong(e.nextLong()));
             }
