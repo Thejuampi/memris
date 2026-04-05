@@ -295,6 +295,14 @@ public final class QueryMethodLexer {
         List<QueryMethodToken> tokens = new ArrayList<>();
         var prefix = extractPrefix(methodName);
         var remaining = methodName.substring(prefix.length());
+        var strippedLen = 0;
+
+        var distinctLen = stripDistinctLength(remaining);
+        remaining = remaining.substring(distinctLen);
+        strippedLen += distinctLen;
+        var topFirstLen = stripTopOrFirstLength(remaining);
+        remaining = remaining.substring(topFirstLen);
+        strippedLen += topFirstLen;
 
         // Generic operation classification based on prefix + remaining
         if (entityClass != null) {
@@ -312,7 +320,7 @@ public final class QueryMethodLexer {
         }
 
         // Process the remaining part (predicates, OrderBy, etc.)
-        return processRemaining(tokens, remaining, prefix.length(), entityClass);
+        return processRemaining(tokens, remaining, prefix.length() + strippedLen, entityClass);
     }
 
     /**
@@ -579,6 +587,31 @@ public final class QueryMethodLexer {
         return methodName;
     }
 
+    private static int stripDistinctLength(String remaining) {
+        if (remaining.startsWith("Distinct")) {
+            return 8;
+        }
+        return 0;
+    }
+
+    private static int stripTopOrFirstLength(String remaining) {
+        if (remaining.startsWith("Top")) {
+            return stripDigitsLength(remaining, 3);
+        }
+        if (remaining.startsWith("First")) {
+            return stripDigitsLength(remaining, 5);
+        }
+        return 0;
+    }
+
+    private static int stripDigitsLength(String s, int prefixLen) {
+        var i = prefixLen;
+        while (i < s.length() && Character.isDigit(s.charAt(i))) {
+            i++;
+        }
+        return i;
+    }
+
     private static String extractOrderBy(String methodNameSuffix) {
         int orderByIdx = methodNameSuffix.indexOf("OrderBy");
         if (orderByIdx == -1) {
@@ -640,7 +673,7 @@ public final class QueryMethodLexer {
 
         // Check for operators
         for (String operator : OPERATORS) {
-            var idx = input.indexOf(operator, start);
+            var idx = findOperatorIndex(input, start, operator);
             if (idx != -1 && idx < earliest) {
                 earliest = idx;
             }
@@ -669,6 +702,18 @@ public final class QueryMethodLexer {
 
         // Not a valid combinator - find next occurrence
         return findCombinatorIndex(input, idx + 1, combinator);
+    }
+
+    private static int findOperatorIndex(String input, int start, String operator) {
+        var idx = input.indexOf(operator, start);
+        if (idx == -1) {
+            return -1;
+        }
+        var afterOp = idx + operator.length();
+        if (afterOp >= input.length() || Character.isUpperCase(input.charAt(afterOp))) {
+            return idx;
+        }
+        return findOperatorIndex(input, idx + 1, operator);
     }
 
     private static int findMinIndex(int... idxs) {
@@ -706,8 +751,12 @@ public final class QueryMethodLexer {
         }
 
         for (String operator : OPERATORS) {
-            if (input.startsWith(operator, start))
-                return operator;
+            if (input.startsWith(operator, start)) {
+                var afterOp = start + operator.length();
+                if (afterOp >= input.length() || Character.isUpperCase(input.charAt(afterOp))) {
+                    return operator;
+                }
+            }
         }
         return null;
     }

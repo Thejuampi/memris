@@ -11,10 +11,9 @@ import net.bytebuddy.implementation.bind.annotation.AllArguments;
 import net.bytebuddy.implementation.bind.annotation.RuntimeType;
 import net.bytebuddy.implementation.bind.annotation.This;
 
-import java.lang.reflect.Field;
-
-import java.util.ArrayList;
 import java.util.List;
+import java.util.ArrayList;
+import java.lang.reflect.Field;
 
 public final class TableGenerator {
 

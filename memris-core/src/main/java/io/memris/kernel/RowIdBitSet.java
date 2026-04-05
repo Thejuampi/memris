@@ -235,6 +235,9 @@ public final class RowIdBitSet implements MutableRowIdSet {
                         return ((long) chunkIdx * BITS_PER_CHUNK)
                                 + ((long) wordIdx * BITS_PER_WORD) + bit;
                     }
+                    if (chunkIdx >= numChunks) {
+                        return -1L;
+                    }
                     // Advance to next non-zero word
                     wordIdx++;
                     while (true) {

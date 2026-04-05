@@ -3104,7 +3104,7 @@ public final class RepositoryRuntime<T> {
         GeneratedTable table = plan.table();
         for (int i = 0; i < result.length; i++) {
             final int ri = result[i];
-            keys[i] = table.readWithSeqLock(ri, () -> Double.longBitsToDouble(table.readLong(columnIndex, ri)));
+            keys[i] = table.readWithSeqLock(ri, () -> FloatEncoding.sortableLongToDouble(table.readLong(columnIndex, ri)));
         }
         quickSortDoubleNonNull(result, keys, 0, result.length - 1, ascending);
         return result;
@@ -3121,7 +3121,7 @@ public final class RepositoryRuntime<T> {
             final int row = result[i];
             table.readWithSeqLock(row, () -> {
                 present[idx] = table.isPresent(columnIndex, row);
-                keys[idx] = Double.longBitsToDouble(table.readLong(columnIndex, row));
+                keys[idx] = FloatEncoding.sortableLongToDouble(table.readLong(columnIndex, row));
                 return null;
             });
         }

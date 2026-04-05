@@ -126,11 +126,14 @@ class PredicateTest {
     }
 
     @Test
-    @DisplayName("Between should accept null bounds")
-    void between_shouldAcceptNullBounds() {
-        Predicate.Between between = new Predicate.Between("age", null, null);
-        assertThat(between.lower()).isNull();
-        assertThat(between.upper()).isNull();
+    @DisplayName("Between should reject null bounds")
+    void between_shouldRejectNullBounds() {
+        assertThatThrownBy(() -> new Predicate.Between("age", null, null))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> new Predicate.Between("age", null, 10))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> new Predicate.Between("age", 1, null))
+                .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test

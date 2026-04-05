@@ -212,6 +212,8 @@ public record LogicalQuery(
                 && java.util.Arrays.equals(boundValues, that.boundValues)
                 && java.util.Arrays.equals(parameterIndices, that.parameterIndices)
                 && java.util.Arrays.equals(conditions, that.conditions)
+                && java.util.Arrays.equals(updateAssignments, that.updateAssignments)
+                && java.util.Objects.equals(projection, that.projection)
                 && java.util.Arrays.equals(joins, that.joins)
                 && java.util.Arrays.equals(orderBy, that.orderBy)
                 && java.util.Objects.equals(grouping, that.grouping)
@@ -225,6 +227,8 @@ public record LogicalQuery(
         result = 31 * result + java.util.Arrays.hashCode(boundValues);
         result = 31 * result + java.util.Arrays.hashCode(parameterIndices);
         result = 31 * result + java.util.Arrays.hashCode(conditions);
+        result = 31 * result + java.util.Arrays.hashCode(updateAssignments);
+        result = 31 * result + java.util.Objects.hashCode(projection);
         result = 31 * result + java.util.Arrays.hashCode(joins);
         result = 31 * result + java.util.Objects.hashCode(grouping);
         result = 31 * result + java.util.Arrays.hashCode(havingConditions);

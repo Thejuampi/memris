@@ -6,12 +6,12 @@ import io.memris.kernel.Table;
 import io.memris.core.TypeCodes;
 
 import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.Collections;
 
 public final class SimpleTable implements Table {
     private static final int OFFSET_BITS = 16;
