@@ -695,7 +695,7 @@ public final class QueryPlanner {
             }
             if (!groupingPart.isEmpty()) {
         String[] properties = parseGroupingProperties(groupingPart, methodName);
-        var valueType = methodName.toLowerCase().startsWith("count")
+        var valueType = methodName.toLowerCase(ROOT).startsWith("count")
                 ? LogicalQuery.Grouping.GroupValueType.COUNT
                 : (methodName.contains("AsSet")
                         ? LogicalQuery.Grouping.GroupValueType.SET
@@ -705,7 +705,7 @@ public final class QueryPlanner {
         }
 
         var byIndex = methodName.indexOf("By");
-        if (byIndex >= 0 && methodName.toLowerCase().startsWith("count")) {
+        if (byIndex >= 0 && methodName.toLowerCase(ROOT).startsWith("count")) {
             var afterBy = methodName.substring(byIndex + 2);
             if (!afterBy.isEmpty()) {
                 String[] properties = parseGroupingProperties(afterBy, methodName);
@@ -754,7 +754,7 @@ public final class QueryPlanner {
      * Uses QueryMethodLexer.PREFIXES to ensure consistency.
      */
     private static String extractPrefix(String methodName) {
-        String lower = methodName.toLowerCase();
+        String lower = methodName.toLowerCase(ROOT);
         for (String prefix : QueryMethodLexer.PREFIXES) {
             if (lower.startsWith(prefix)) {
                 return methodName.substring(0, prefix.length());
@@ -765,7 +765,7 @@ public final class QueryPlanner {
     }
 
     private static boolean isFindPrefix(String prefix) {
-        return switch (prefix.toLowerCase()) {
+        return switch (prefix.toLowerCase(ROOT)) {
             case "find", "read", "query", "get" -> true;
             default -> false;
         };

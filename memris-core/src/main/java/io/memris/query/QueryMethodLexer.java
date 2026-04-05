@@ -690,30 +690,26 @@ public final class QueryMethodLexer {
      */
     private static int findCombinatorIndex(String input, int start, String combinator) {
         var idx = input.indexOf(combinator, start);
-        if (idx == -1) {
-            return -1;
+        while (idx != -1) {
+            var afterCombinator = idx + combinator.length();
+            if (afterCombinator >= input.length() || Character.isUpperCase(input.charAt(afterCombinator))) {
+                return idx;
+            }
+            idx = input.indexOf(combinator, idx + 1);
         }
-
-        var afterCombinator = idx + combinator.length();
-        // Valid if at end of string or followed by uppercase letter
-        if (afterCombinator >= input.length() || Character.isUpperCase(input.charAt(afterCombinator))) {
-            return idx;
-        }
-
-        // Not a valid combinator - find next occurrence
-        return findCombinatorIndex(input, idx + 1, combinator);
+        return -1;
     }
 
     private static int findOperatorIndex(String input, int start, String operator) {
         var idx = input.indexOf(operator, start);
-        if (idx == -1) {
-            return -1;
+        while (idx != -1) {
+            var afterOp = idx + operator.length();
+            if (afterOp >= input.length() || Character.isUpperCase(input.charAt(afterOp))) {
+                return idx;
+            }
+            idx = input.indexOf(operator, idx + 1);
         }
-        var afterOp = idx + operator.length();
-        if (afterOp >= input.length() || Character.isUpperCase(input.charAt(afterOp))) {
-            return idx;
-        }
-        return findOperatorIndex(input, idx + 1, operator);
+        return -1;
     }
 
     private static int findMinIndex(int... idxs) {

@@ -65,13 +65,9 @@ class PageColumnSeqLockConcurrencyTest {
                         int value = column.get(offset);
                         boolean isPresent = column.isPresent(offset);
 
-                        // Check for torn state: value should only be 0 if not present
-                        // In a torn state, we might see non-zero value with present=false
-                        // or vice versa
-                        if (isPresent && value == 0) {
-                            // This could be a legitimate 0 value, not necessarily torn
-                            // But if we see this pattern consistently with concurrent writes,
-                            // it indicates a problem
+                        if (!isPresent && value != 0) {
+                            tornReadCount.incrementAndGet();
+                            firstTornRead.compareAndSet(null, "present=false but value=" + value + " at offset=" + offset);
                         }
                     }
                 } catch (InterruptedException e) {

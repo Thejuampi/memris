@@ -56,9 +56,7 @@ public final class SelectionImpl implements Selection {
             int rowIndex = indices[i];
             packed[i] = Selection.pack(rowIndex, table.rowGeneration(rowIndex));
         }
-        // Scan results are in ascending row-index order, and pack preserves
-        // that order (generation is in the high bits), so skip re-sorting.
-        return new SelectionImpl(packed, true);
+        return new SelectionImpl(packed, false);
     }
 
     @Override
@@ -86,7 +84,7 @@ public final class SelectionImpl implements Selection {
 
     @Override
     public long[] toRefArray() {
-        return refs;
+        return refs.clone();
     }
 
     @Override

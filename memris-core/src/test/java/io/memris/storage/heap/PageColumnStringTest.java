@@ -3,6 +3,7 @@ package io.memris.storage.heap;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * TDD tests for PageColumnString.
@@ -134,5 +135,100 @@ class PageColumnStringTest {
         int[] matches = column.scanEqualsIgnoreCase("apple", 4);
 
         assertThat(matches).containsExactly(0, 3);
+    }
+
+    @Test
+    void scanNullMatchesExplicitlySetNullButNotNeverWritten() {
+        PageColumnString column = new PageColumnString(PAGE_SIZE);
+
+        column.set(0, "hello");
+        column.setNull(1);
+        // offset 2: never written
+        column.set(3, "world");
+        column.setNull(4);
+        column.publish(5);
+
+        int[] matches = column.scanEquals(null, 5);
+
+        assertThat(matches).containsExactly(1, 4);
+    }
+
+    @Test
+    void setNullIsNotPresentAndReturnsNull() {
+        PageColumnString column = new PageColumnString(PAGE_SIZE);
+
+        column.setNull(0);
+        column.publish(1);
+
+        assertThat(column.isPresent(0)).isFalse();
+        assertThat(column.get(0)).isNull();
+    }
+
+    @Test
+    void neverWrittenIsNotPresent() {
+        PageColumnString column = new PageColumnString(PAGE_SIZE);
+
+        column.set(1, "value");
+        column.publish(2);
+
+        assertThat(column.isPresent(0)).isFalse();
+    }
+
+    @Test
+    void constructorRejectsZeroCapacity() {
+        assertThatThrownBy(() -> new PageColumnString(0))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void scanCrossPageBoundary() {
+        var col = new PageColumnString(4, 4, 4);
+        col.set(3, "x");
+        col.set(4, "x");
+        col.set(12, "x");
+        col.set(15, "x");
+        col.publish(16);
+        assertThat(col.scanEquals("x", 16)).containsExactlyInAnyOrder(3, 4, 12, 15);
+    }
+
+    @Test
+    void publishSameValueIsNoOp() {
+        var col = new PageColumnString(4, 4, 4);
+        col.publish(8);
+        col.publish(8);
+        assertThat(col.publishedCount()).isEqualTo(8);
+    }
+
+    @Test
+    void scanLastPageOnly() {
+        var col = new PageColumnString(4, 4, 4);
+        col.set(12, "a");
+        col.set(13, "a");
+        col.set(14, "a");
+        col.set(15, "a");
+        col.publish(16);
+        assertThat(col.scanEquals("a", 16)).containsExactlyInAnyOrder(12, 13, 14, 15);
+    }
+
+    @Test
+    void getRejectsExactCapacity() {
+        var col = new PageColumnString(4);
+        assertThatThrownBy(() -> col.get(4))
+                .isInstanceOf(IndexOutOfBoundsException.class)
+                .hasMessageContaining("offset out of range");
+    }
+
+    @Test
+    void threeArgConstructorRejectsZeroMaxPages() {
+        assertThatThrownBy(() -> new PageColumnString(4, 0, 1))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("maxPages must be positive");
+    }
+
+    @Test
+    void threeArgConstructorRejectsZeroInitialPages() {
+        assertThatThrownBy(() -> new PageColumnString(4, 4, 0))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("initialPages must be positive");
     }
 }

@@ -62,7 +62,7 @@ public final class CompositeKey implements Comparable<CompositeKey> {
         if (left instanceof Comparable comp) {
             return comp.compareTo(right);
         }
-        return left.toString().compareTo(right.toString());
+        return Integer.compare(System.identityHashCode(left), System.identityHashCode(right));
     }
 
     @Override

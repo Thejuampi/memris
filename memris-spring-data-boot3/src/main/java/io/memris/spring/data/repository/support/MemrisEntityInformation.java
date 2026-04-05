@@ -37,7 +37,8 @@ public final class MemrisEntityInformation<T, ID> implements EntityInformation<T
             var value = (ID) idField.get(entity);
             return value;
         } catch (ReflectiveOperationException e) {
-            return null;
+            throw new IllegalStateException(
+                    "Failed to read ID field '" + idProperty + "' on " + domainClass.getName(), e);
         }
     }
 

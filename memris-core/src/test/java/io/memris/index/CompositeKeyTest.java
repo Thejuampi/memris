@@ -21,8 +21,23 @@ class CompositeKeyTest {
 
         Object left = new NonComparable("a");
         Object right = new NonComparable("b");
+        var cmp = CompositeKey.of(new Object[] { left }).compareTo(CompositeKey.of(new Object[] { right }));
+        assertThat(cmp).isNotZero();
+    }
+
+    @Test
+    void nonComparableFallbackUsesIdentityHashCode() {
+        var left = new NonComparable("same");
+        var right = new NonComparable("same");
         assertThat(CompositeKey.of(new Object[] { left }).compareTo(CompositeKey.of(new Object[] { right })))
-                .isNegative();
+                .isEqualTo(Integer.compare(System.identityHashCode(left), System.identityHashCode(right)));
+    }
+
+    @Test
+    void nonComparableSameInstanceCompareIsZero() {
+        var obj = new NonComparable("x");
+        assertThat(CompositeKey.of(new Object[] { obj }).compareTo(CompositeKey.of(new Object[] { obj })))
+                .isZero();
     }
 
     @Test

@@ -25,7 +25,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class AbstractTableConcurrencyTest {
 
     private static final int PAGE_SIZE = 64;
-    private static final int MAX_PAGES = 4;
+    private static final int MAX_PAGES = 16;
 
     /**
      * Test entity table for concurrency testing.
@@ -111,10 +111,8 @@ class AbstractTableConcurrencyTest {
         executor.shutdown();
         
         // Verify the test ran to completion
-        // Note: The free-list race condition means duplicates MAY occur, but
-        // they are timing-dependent and may not reproduce reliably.
-        // This test verifies concurrent allocation completes without crashing.
-        assertThat(duplicateCount.get()).isGreaterThanOrEqualTo(0);
+        int totalAllocated = threadCount * allocationsPerThread;
+        assertThat(table.allocatedCount()).isGreaterThanOrEqualTo(totalAllocated + initialRows.size() - deallocatedCount);
     }
 
     @Test

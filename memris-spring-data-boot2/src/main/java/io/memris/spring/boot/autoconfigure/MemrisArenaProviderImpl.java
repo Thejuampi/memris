@@ -43,7 +43,7 @@ public final class MemrisArenaProviderImpl implements MemrisArenaProvider {
     private MemrisArena createArena(String name) {
         var arenaName = name == null || name.isBlank() ? defaultArenaName : name;
         var configProps = arenaConfigs.get(arenaName);
-        if (configProps == null || defaultArenaName.equals(arenaName)) {
+        if (configProps == null) {
             return defaultFactory.createArena();
         }
         MemrisConfiguration config = configProps.toConfiguration();

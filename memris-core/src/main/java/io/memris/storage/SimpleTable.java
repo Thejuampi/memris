@@ -13,6 +13,13 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 
+/**
+ * Simple columnar table backed by {@code Object[]} arrays.
+ * <p>
+ * <b>Not thread-safe.</b> This implementation is intended for single-threaded use
+ * only (e.g. testing, prototyping, or when external synchronization is provided).
+ * For concurrent scenarios use the heap-based paged table implementations instead.
+ */
 public final class SimpleTable implements Table {
     private static final int OFFSET_BITS = 16;
     private static final int DEFAULT_CAPACITY = 1024;
