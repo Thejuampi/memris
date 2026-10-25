@@ -45,11 +45,6 @@ import io.memris.runtime.dispatch.SingleOrderProgramCompiler;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
-import java.time.Instant;
-import java.time.LocalDate;
-import java.time.LocalDateTime;
-import java.time.ZoneOffset;
-import java.util.Date;
 
 import java.lang.reflect.RecordComponent;
 import java.util.ArrayList;
@@ -2764,8 +2759,7 @@ public final class RepositoryRuntime<T> {
     }
 
     private int compareIntForTopKNonNull(int keyA, int keyB, boolean ascending) {
-        int cmp = Integer.compare(keyA, keyB);
-        return ascending ? cmp : -cmp;
+        return ascending ? Integer.compare(keyA, keyB) : Integer.compare(keyB, keyA);
     }
 
     private int[] topKLongNonNull(int[] rows, int columnIndex, boolean ascending, int k) {
@@ -2887,8 +2881,7 @@ public final class RepositoryRuntime<T> {
     }
 
     private int compareLongForTopKNonNull(long keyA, long keyB, boolean ascending) {
-        int cmp = Long.compare(keyA, keyB);
-        return ascending ? cmp : -cmp;
+        return ascending ? Long.compare(keyA, keyB) : Long.compare(keyB, keyA);
     }
 
     private int[] topKString(int[] rows, int columnIndex, boolean ascending, int k) {
@@ -3432,11 +3425,11 @@ public final class RepositoryRuntime<T> {
     }
 
     private static int compareIntNonNull(int value, int row, int pivot, int pivotRow, boolean ascending) {
-        int cmp = Integer.compare(value, pivot);
+        int cmp = ascending ? Integer.compare(value, pivot) : Integer.compare(pivot, value);
         if (cmp == 0) {
-            cmp = Integer.compare(row, pivotRow);
+            cmp = ascending ? Integer.compare(row, pivotRow) : Integer.compare(pivotRow, row);
         }
-        return ascending ? cmp : -cmp;
+        return cmp;
     }
 
     private static int compareFloat(float value, boolean present, int row,
