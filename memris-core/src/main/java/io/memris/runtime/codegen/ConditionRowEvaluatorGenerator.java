@@ -70,7 +70,7 @@ public final class ConditionRowEvaluatorGenerator {
                 Class<?> implClass = unloaded.load(ConditionRowEvaluatorGenerator.class.getClassLoader()).getLoaded();
                 return (RowConditionEvaluator) implClass.getDeclaredConstructor().newInstance();
             }
-        } catch (Exception e) {
+        } catch (ReflectiveOperationException | RuntimeException e) {
             return delegate::matches;
         }
     }
@@ -84,7 +84,9 @@ public final class ConditionRowEvaluatorGenerator {
         int columnIndex = condition.columnIndex();
         int argumentIndex = condition.argumentIndex();
         byte typeCode = condition.typeCode();
-        boolean ignoreCase = condition.ignoreCase() || condition.operator() == LogicalQuery.Operator.IGNORE_CASE_EQ || condition.operator() == LogicalQuery.Operator.IGNORE_CASE_LIKE;
+        boolean ignoreCase = condition.ignoreCase()
+                || condition.operator() == LogicalQuery.Operator.IGNORE_CASE_EQ
+                || condition.operator() == LogicalQuery.Operator.IGNORE_CASE_LIKE;
 
         if (operator == LogicalQuery.Operator.IS_NULL || operator == LogicalQuery.Operator.NOT_NULL) {
             return new NullMatcher(columnIndex, primitiveNonNull, operator == LogicalQuery.Operator.IS_NULL);

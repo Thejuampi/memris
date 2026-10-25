@@ -949,7 +949,7 @@ public final class BytecodeTableGenerator {
         private final List<ColumnFieldInfo> columnFields;
         private final int targetTypeCode; // TYPE_LONG, TYPE_INT, or TYPE_STRING
 
-        public ReadMethodImplementation(List<ColumnFieldInfo> columnFields, int targetTypeCode) {
+        ReadMethodImplementation(List<ColumnFieldInfo> columnFields, int targetTypeCode) {
             this.columnFields = columnFields;
             this.targetTypeCode = targetTypeCode;
         }
@@ -968,7 +968,7 @@ public final class BytecodeTableGenerator {
             private final List<ColumnFieldInfo> columnFields;
             private final int targetTypeCode;
 
-            public Appender(List<ColumnFieldInfo> columnFields, int targetTypeCode) {
+            Appender(List<ColumnFieldInfo> columnFields, int targetTypeCode) {
                 this.columnFields = columnFields;
                 this.targetTypeCode = targetTypeCode;
             }
@@ -1166,7 +1166,7 @@ public final class BytecodeTableGenerator {
         static final int SCAN_IN_INT = 7;
         static final int SCAN_IN_STRING = 8;
 
-        public ScanMethodImplementation(List<ColumnFieldInfo> columnFields, int scanType) {
+        ScanMethodImplementation(List<ColumnFieldInfo> columnFields, int scanType) {
             this.columnFields = columnFields;
             this.scanType = scanType;
         }
@@ -1185,7 +1185,7 @@ public final class BytecodeTableGenerator {
             private final List<ColumnFieldInfo> columnFields;
             private final int scanType;
 
-            public Appender(List<ColumnFieldInfo> columnFields, int scanType) {
+            Appender(List<ColumnFieldInfo> columnFields, int scanType) {
                 this.columnFields = columnFields;
                 this.scanType = scanType;
             }
@@ -1404,7 +1404,7 @@ public final class BytecodeTableGenerator {
         private final ColumnFieldInfo field;
         private final int targetTypeCode;
 
-        public PerColumnReadImplementation(ColumnFieldInfo field, int targetTypeCode) {
+        PerColumnReadImplementation(ColumnFieldInfo field, int targetTypeCode) {
             this.field = field;
             this.targetTypeCode = targetTypeCode;
         }
@@ -1423,7 +1423,7 @@ public final class BytecodeTableGenerator {
             private final ColumnFieldInfo field;
             private final int targetTypeCode;
 
-            public Appender(ColumnFieldInfo field, int targetTypeCode) {
+            Appender(ColumnFieldInfo field, int targetTypeCode) {
                 this.field = field;
                 this.targetTypeCode = targetTypeCode;
             }
@@ -1552,7 +1552,7 @@ public final class BytecodeTableGenerator {
         private final ColumnFieldInfo field;
         private final int scanType;
 
-        public PerColumnScanImplementation(ColumnFieldInfo field, int scanType) {
+        PerColumnScanImplementation(ColumnFieldInfo field, int scanType) {
             this.field = field;
             this.scanType = scanType;
         }
@@ -1571,7 +1571,7 @@ public final class BytecodeTableGenerator {
             private final ColumnFieldInfo field;
             private final int scanType;
 
-            public Appender(ColumnFieldInfo field, int scanType) {
+            Appender(ColumnFieldInfo field, int scanType) {
                 this.field = field;
                 this.scanType = scanType;
             }

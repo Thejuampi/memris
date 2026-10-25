@@ -1,6 +1,5 @@
 package io.memris.repository;
 
-import io.memris.core.MemrisConfiguration;
 import io.memris.storage.GeneratedTable;
 
 import java.util.Map;
