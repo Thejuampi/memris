@@ -40,7 +40,8 @@ public class IntTypeHandler extends AbstractTypeHandler<Integer> {
     
     @Override
     protected Selection executeGreaterThan(GeneratedTable table, int columnIndex, Integer value) {
-        return createSelection(table, table.scanBetweenInt(columnIndex, value + 1, Integer.MAX_VALUE));
+        return createSelection(table, value == Integer.MAX_VALUE ? new int[0]
+                : table.scanBetweenInt(columnIndex, value + 1, Integer.MAX_VALUE));
     }
     
     @Override
@@ -50,7 +51,8 @@ public class IntTypeHandler extends AbstractTypeHandler<Integer> {
     
     @Override
     protected Selection executeLessThan(GeneratedTable table, int columnIndex, Integer value) {
-        return createSelection(table, table.scanBetweenInt(columnIndex, Integer.MIN_VALUE, value - 1));
+        return createSelection(table, value == Integer.MIN_VALUE ? new int[0]
+                : table.scanBetweenInt(columnIndex, Integer.MIN_VALUE, value - 1));
     }
     
     @Override
