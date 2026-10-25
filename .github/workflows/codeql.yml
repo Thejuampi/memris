@@ -32,8 +32,20 @@ jobs:
           languages: ${{ matrix.language }}
           queries: security-and-quality
 
-      - name: Autobuild
-        uses: github/codeql-action/autobuild@v3
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-provider: basic
+
+      # CodeQL must observe compilation rather than restore cached class files.
+      - name: Build for analysis
+        run: bash ./gradlew clean classes --no-build-cache --no-configuration-cache
 
       - name: Perform CodeQL analysis
         uses: github/codeql-action/analyze@v3

@@ -126,14 +126,12 @@ Result:
 ## Running the Benchmarks
 
 ```bash
-cd memris-core
-mvn exec:java \
-  -Dexec.mainClass="io.memris.benchmarks.MemrisBenchmarks" \
-  -Dexec.classpathScope=test \
-  -Dexec.args="-i 3 -wi 2 -f 0 -bm avgt -tu ms"
+./gradlew :memris-core:jmh '-PjmhIncludes=io.memris.benchmarks.MemrisBenchmarks.*' \
+  -PjmhWarmupIterations=2 -PjmhIterations=3
 ```
 
-**Note:** `-f 0` disables forking (required for Maven exec plugin). For production benchmarks, use forking with proper classpath setup.
+The historical measurements above used no forks. The current Gradle task uses
+one fork by default; see [DEVELOPMENT.md](DEVELOPMENT.md) for configuration.
 
 ---
 
@@ -179,22 +177,12 @@ The dispatch-focused benchmark suite targets query dispatch paths introduced by 
 ### Run Commands
 
 ```bash
-mvn.cmd -q -e -pl memris-core test-compile
-
-mvn.cmd -pl memris-core exec:java \
-  -Dexec.mainClass="org.openjdk.jmh.Main" \
-  -Dexec.classpathScope=test \
-  -Dexec.args="io.memris.benchmarks.DispatchSelectionBenchmark io.memris.benchmarks.DispatchAllocationBenchmark -wi 3 -i 5 -f 1 -bm avgt -tu ns -prof gc -rf json -rff target/jmh-results/dispatch-avgt.json"
-
-mvn.cmd -pl memris-core exec:java \
-  -Dexec.mainClass="org.openjdk.jmh.Main" \
-  -Dexec.classpathScope=test \
-  -Dexec.args="io.memris.benchmarks.DispatchSelectionBenchmark io.memris.benchmarks.DispatchAllocationBenchmark -wi 2 -i 3 -f 1 -bm thrpt -tu ops/s -rf csv -rff target/jmh-results/dispatch-thrpt.csv"
+./gradlew :memris-core:jmh '-PjmhIncludes=io.memris.benchmarks.Dispatch(Selection|Allocation)Benchmark.*' \
+  -PjmhWarmupIterations=3 -PjmhIterations=5 -PjmhResult=reports/jmh/dispatch.json
 ```
 
 ### Artifacts
-- `memris-core/target/jmh-results/dispatch-avgt.json`
-- `memris-core/target/jmh-results/dispatch-thrpt.csv`
+- `memris-core/build/reports/jmh/dispatch.json`
 
 ---
 
@@ -216,16 +204,11 @@ plan-driven embedded-path refactor.
 ### Run + Check
 
 ```bash
-mvn -q -pl memris-core -DskipTests test-compile dependency:build-classpath \
-  -Dmdep.includeScope=test -Dmdep.outputFile=target/jmh-cp.txt
-
-CP="memris-core/target/test-classes:memris-core/target/classes:$(cat memris-core/target/jmh-cp.txt)"
-java -cp "$CP" org.openjdk.jmh.Main io.memris.benchmarks.EmbeddedPathBenchmark.* \
-  -wi 1 -i 1 -f 1 -rf json -rff memris-core/target/jmh-embedded.json
+./gradlew :memris-core:jmh
 
 python scripts/check-jmh-regression.py \
   --baseline memris-core/src/jmh/resources/embedded-path-baseline.json \
-  --current memris-core/target/jmh-embedded.json \
+  --current memris-core/build/reports/jmh/embedded.json \
   --flat-threshold 0.10 \
   --embedded-threshold 0.15
 ```
