@@ -3,16 +3,16 @@
 *For overall architecture, see [ARCHITECTURE.md](../ARCHITECTURE.md)*
 
 ## Guiding Principle
-**O(1) first, O(log n) second, O(n) forbidden.**
-
-All core operations must meet this contract.
+Choose the representation for the operation and workload. Dense bitsets provide
+constant-time membership checks; sparse arrays trade linear membership checks
+for compact storage. Filtering, iteration, and export visit selected rows.
 
 ## SelectionVector Interface
 
 ```java
 public interface SelectionVector {
     int size();                         // O(1)
-    boolean contains(int rowIndex);     // O(1) - bitset or array lookup
+    boolean contains(int rowIndex);     // Representation-dependent
     int[] toIntArray();                 // O(n) - export only
     IntEnumerator enumerator();         // O(1) - primitive cursor
     SelectionVector filter(Predicate p, SelectionVectorFactory f); // O(n) over selected
@@ -26,7 +26,7 @@ Row-level selection with 64-bit RowId support:
 ```java
 public interface RowIdSet {
     int size();                         // O(1)
-    boolean contains(RowId rowId);      // O(1)
+    boolean contains(RowId rowId);      // Representation-dependent
     LongEnumerator enumerator();        // O(1) - primitive cursor
 }
 ```

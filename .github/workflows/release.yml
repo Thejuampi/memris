@@ -7,133 +7,88 @@ concurrency:
   group: release-main
   cancel-in-progress: false
 
+permissions:
+  contents: write
+
 jobs:
   release:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      packages: write
-      id-token: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          token: ${{ github.token }}
 
-      - name: Setup JDK
+      - name: Set up JDK 21
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '21'
-          cache: maven
+          java-version: "21"
 
-      - name: Configure git author
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-provider: basic
+
+      - name: Compute release versions
+        id: versions
+        run: |
+          python3 - <<'PY'
+          import os
+          import pathlib
+          import re
+
+          properties = pathlib.Path('gradle.properties').read_text(encoding='utf-8')
+          match = re.search(r'^version=(\d+)\.(\d+)\.(\d+)-SNAPSHOT$', properties, re.MULTILINE)
+          if match is None:
+              raise SystemExit('Expected a major.minor.patch-SNAPSHOT version in gradle.properties')
+          major, minor, patch = map(int, match.groups())
+          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as output:
+              output.write(f'release_version={major}.{minor}.{patch}\n')
+              output.write(f'development_version={major}.{minor}.{patch + 1}-SNAPSHOT\n')
+          PY
+
+      - name: Package and test the release
+        env:
+          RELEASE_VERSION: ${{ steps.versions.outputs.release_version }}
+        run: bash ./gradlew assemble test "-Pversion=$RELEASE_VERSION"
+
+      - name: Publish signed artifacts to Maven Central
+        env:
+          RELEASE_VERSION: ${{ steps.versions.outputs.release_version }}
+          ORG_GRADLE_PROJECT_mavenCentralPublishing: "true"
+          ORG_GRADLE_PROJECT_signAllPublications: "true"
+          ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.OSSRH_USERNAME }}
+          ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ secrets.OSSRH_TOKEN }}
+          ORG_GRADLE_PROJECT_signingInMemoryKey: ${{ secrets.GPG_PRIVATE_KEY }}
+          ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.GPG_PASSPHRASE }}
+        run: bash ./gradlew publishAndReleaseToMavenCentral "-Pversion=$RELEASE_VERSION" --no-configuration-cache
+
+      - name: Record release and next snapshot
+        env:
+          RELEASE_VERSION: ${{ steps.versions.outputs.release_version }}
+          DEVELOPMENT_VERSION: ${{ steps.versions.outputs.development_version }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-
-      - name: Import GPG private key
-        env:
-          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
-        run: |
-          set -euo pipefail
-          mkdir -p ~/.gnupg
-          chmod 700 ~/.gnupg
-          printf "%s" "$GPG_PRIVATE_KEY" > ~/.gnupg/private.key
-          chmod 600 ~/.gnupg/private.key
-          if grep -q "BEGIN PGP PRIVATE KEY BLOCK" ~/.gnupg/private.key; then
-            gpg --batch --import ~/.gnupg/private.key
-          else
-            echo "GPG_PRIVATE_KEY must be ASCII-armored (-----BEGIN PGP PRIVATE KEY BLOCK-----)." >&2
-            exit 1
-          fi
-          rm -f ~/.gnupg/private.key
-          echo "allow-loopback-pinentry" >> ~/.gnupg/gpg-agent.conf || true
-          gpgconf --kill gpg-agent || true
-
-      - name: Configure Maven settings.xml with OSSRH credentials
-        env:
-          OSSRH_USERNAME: ${{ secrets.OSSRH_USERNAME }}
-          OSSRH_TOKEN: ${{ secrets.OSSRH_TOKEN }}
-        run: |
-          mkdir -p ~/.m2
-          printf '%s\n' "<settings xmlns=\"http://maven.apache.org/SETTINGS/1.0.0\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xsi:schemaLocation=\"http://maven.apache.org/SETTINGS/1.0.0 https://maven.apache.org/xsd/settings-1.0.0.xsd\">" > ~/.m2/settings.xml
-          printf '%s\n' "  <servers>" >> ~/.m2/settings.xml
-          printf '%s\n' "    <server>" >> ~/.m2/settings.xml
-          printf '%s\n' "      <id>central</id>" >> ~/.m2/settings.xml
-          printf '%s\n' "      <username>$OSSRH_USERNAME</username>" >> ~/.m2/settings.xml
-          printf '%s\n' "      <password>$OSSRH_TOKEN</password>" >> ~/.m2/settings.xml
-          printf '%s\n' "    </server>" >> ~/.m2/settings.xml
-          printf '%s\n' "  </servers>" >> ~/.m2/settings.xml
-          printf '%s\n' "</settings>" >> ~/.m2/settings.xml
-
-      - name: Compute next release versions
-        id: versions
-        run: |
-          python - << 'PY'
+          python3 - <<'PY'
           import os
-          import xml.etree.ElementTree as ET
-
-          def increment_patch(version: str) -> str:
-              parts = version.split('.')
-              if not parts or not parts[-1].isdigit():
-                  raise ValueError(f"Cannot increment non-numeric patch segment in version: {version}")
-              parts[-1] = str(int(parts[-1]) + 1)
-              return '.'.join(parts)
-
-          ns = {'m': 'http://maven.apache.org/POM/4.0.0'}
-          root = ET.parse('pom.xml').getroot()
-          version_node = root.find('m:version', ns)
-          if version_node is None or not (version_node.text or '').strip():
-              raise RuntimeError('Unable to determine project version from pom.xml')
-
-          current_version = version_node.text.strip()
-          if not current_version.endswith('-SNAPSHOT'):
-              raise RuntimeError(f'Current version must end with -SNAPSHOT, got: {current_version}')
-
-          release_version = current_version.removesuffix('-SNAPSHOT')
-
-          development_version = increment_patch(release_version) + '-SNAPSHOT'
-
-          output_path = os.environ.get('GITHUB_OUTPUT')
-          if not output_path:
-              raise RuntimeError('GITHUB_OUTPUT environment variable is not available')
-
-          with open(output_path, "a", encoding="utf-8") as output:
-              output.write(f"current_version={current_version}\n")
-              output.write(f"release_version={release_version}\n")
-              output.write(f"development_version={development_version}\n")
-
-          print(f"Current version: {current_version}")
-          print(f"Release version: {release_version}")
-          print(f"Next development version: {development_version}")
+          import pathlib
+          import re
+          path = pathlib.Path('gradle.properties')
+          path.write_text(re.sub(r'^version=.*$', 'version=' + os.environ['RELEASE_VERSION'], path.read_text(), flags=re.MULTILINE))
           PY
-
-      - name: Release with Maven
-        env:
-          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
-        run: |
-          mvn -B release:prepare release:perform \
-            -DreleaseVersion=${{ steps.versions.outputs.release_version }} \
-            -DdevelopmentVersion=${{ steps.versions.outputs.development_version }} \
-            -Dtag=v${{ steps.versions.outputs.release_version }} \
-            -Darguments="-DskipTests -Dcheckstyle.skip=true -Dmodernizer.skip=true -Dpmd.skip=true -Dspotbugs.skip=true -Denforcer.skip=true -Dgpg.passphrase=$GPG_PASSPHRASE -Dgpg.executable=gpg -Dgpg.useagent=false" \
-            -DskipTests \
-            -Dcheckstyle.skip=true \
-            -Dmodernizer.skip=true \
-            -Dpmd.skip=true \
-            -Dspotbugs.skip=true \
-            -Denforcer.skip=true \
-            -Dgpg.passphrase="$GPG_PASSPHRASE" \
-            -Dgpg.executable=gpg \
-            -Dgpg.useagent=false
-
-      - name: Push release commits and tags
-        if: success()
-        run: |
-          git checkout main
-          git pull --ff-only origin main
-          git push origin main
-          git push origin v${{ steps.versions.outputs.release_version }}
+          git add gradle.properties
+          git commit -m "release: prepare release v$RELEASE_VERSION"
+          git tag "v$RELEASE_VERSION"
+          python3 - <<'PY'
+          import os
+          import pathlib
+          import re
+          path = pathlib.Path('gradle.properties')
+          path.write_text(re.sub(r'^version=.*$', 'version=' + os.environ['DEVELOPMENT_VERSION'], path.read_text(), flags=re.MULTILINE))
+          PY
+          git add gradle.properties
+          git commit -m "chore: bump to $DEVELOPMENT_VERSION"
+          git push --atomic origin HEAD:main "refs/tags/v$RELEASE_VERSION"

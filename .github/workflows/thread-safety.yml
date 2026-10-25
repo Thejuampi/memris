@@ -5,7 +5,13 @@ on:
   pull_request:
     paths:
       - "memris-core/**"
+      - "*.gradle.kts"
+      - "gradle/**"
+      - "gradle.properties"
       - ".github/workflows/thread-safety.yml"
+
+permissions:
+  contents: read
 
 jobs:
   concurrency-codegen:
@@ -17,19 +23,13 @@ jobs:
       - name: Set up JDK 21
         uses: actions/setup-java@v4
         with:
-          distribution: "temurin"
+          distribution: temurin
           java-version: "21"
-          cache: "maven"
 
-      - name: Install parent POM
-        run: mvn -q -e -N install
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-provider: basic
 
       - name: Run forked parallel thread-safety suite
-        run: |
-          mvn -q -e -pl memris-core test \
-            -Dtest=MemrisArenaConcurrencyTest,RuntimeExecutorGeneratorConcurrencyTest,ConditionRowEvaluatorGeneratorConcurrencyTest,EntitySaverGeneratorCacheTest,EntityMaterializerGeneratorCacheTest,RuntimeExecutorGeneratorArenaIsolationTest \
-            -DforkCount=2 \
-            -DreuseForks=false \
-            -Djunit.jupiter.execution.parallel.enabled=true \
-            -Djunit.jupiter.execution.parallel.mode.default=same_thread \
-            -Djunit.jupiter.execution.parallel.mode.classes.default=concurrent
+        run: bash ./gradlew :memris-core:threadSafetyTest

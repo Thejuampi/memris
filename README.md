@@ -177,10 +177,10 @@ public class Main {
 
 ### Design Principles
 
-1. **O(1) First, O(log n) Second, O(n) Forbidden** — for hot paths
+1. **Operation-Specific Complexity** — direct access and hash lookups, logarithmic range lookups, and linear scans
 2. **Primitive-Only APIs** — no boxing in critical sections
 3. **TypeCode Switch** — Java 21 pattern matching with static byte constants
-4. **Zero Reflection Hot Path** — compile-time metadata extraction
+4. **Zero Reflection Hot Path** — metadata extraction and code generation at runtime initialization
 5. **Dense Arrays Over Maps** — column indices, type codes in indexed arrays
 
 ---
@@ -597,15 +597,18 @@ public class Course {
 ## 🛠️ Requirements
 
 - **Java Version**: 21 (required)
-- **Maven**: 3.8+ (for building from source)
+- **Gradle**: use the checked-in wrapper (no separate installation required)
 
 ---
 
 ## 🔧 Build Locally
 
 ```bash
-mvn -B clean install
+./gradlew build
 ```
+
+On Windows PowerShell, use `.\gradlew.bat build`. For the fast JShell
+feedback loop and focused tests, see [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md).
 
 ### Performance Guardrails
 
@@ -639,6 +642,8 @@ Local documentation files:
 ## 🤝 Contributing
 
 Contributions welcome — open an issue or a PR. See [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) for the development workflow and test guidelines.
+
+Coding-agent guidance, engine constraints, and the Git/worktree workflow live in [`AGENTS.md`](AGENTS.md).
 
 ---
 

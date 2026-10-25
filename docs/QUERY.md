@@ -303,4 +303,4 @@ For detailed information about query execution architecture, zero-reflection run
 
 ---
 
-*For development guidelines, see [../CLAUDE.md](../CLAUDE.md)*
+*For development guidelines, see [DEVELOPMENT.md](DEVELOPMENT.md)*

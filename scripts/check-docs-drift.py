@@ -8,7 +8,6 @@ import fnmatch
 import os
 import re
 import sys
-import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import List, Tuple
 
@@ -35,20 +34,14 @@ def parse_semver(raw_version: str) -> tuple[str, tuple[int, int, int]] | None:
     return f"{major}.{minor}.{patch}", (major, minor, patch)
 
 
-def baseline_version_from_pom() -> str | None:
-    pom_path = ROOT / "pom.xml"
-    if not pom_path.exists():
+def baseline_version_from_build() -> str | None:
+    properties_path = ROOT / "gradle.properties"
+    if not properties_path.exists():
         return None
-    try:
-        root = ET.parse(pom_path).getroot()
-    except ET.ParseError:
+    match = re.search(r"^version\s*=\s*([^\s#]+)\s*$", properties_path.read_text(encoding="utf-8"), re.MULTILINE)
+    if match is None:
         return None
-
-    namespace = {"m": "http://maven.apache.org/POM/4.0.0"}
-    version = root.findtext("m:version", namespaces=namespace)
-    if version is None:
-        return None
-    parsed = parse_semver(version)
+    parsed = parse_semver(match.group(1))
     return parsed[0] if parsed else None
 
 
@@ -61,7 +54,7 @@ def resolve_docs_baseline_version() -> str | None:
                 "Invalid DOCS_BASELINE_VERSION: expected semantic version (e.g. 0.2.0)"
             )
         return parsed[0]
-    return baseline_version_from_pom()
+    return baseline_version_from_build()
 
 
 def stale_version_rule() -> tuple[str, re.Pattern[str], str] | None:

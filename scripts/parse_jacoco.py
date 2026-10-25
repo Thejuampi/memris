@@ -12,7 +12,7 @@ def percent(missed, covered):
     return (c / total) * 100.0
 
 def main():
-    path = Path(sys.argv[1]) if len(sys.argv) > 1 else Path('memris-core/target/site/jacoco/jacoco.xml')
+    path = Path(sys.argv[1]) if len(sys.argv) > 1 else Path('memris-core/build/reports/jacoco/test/jacocoTestReport.xml')
     if not path.exists():
         print(f'ERROR: file not found: {path}', file=sys.stderr)
         sys.exit(2)

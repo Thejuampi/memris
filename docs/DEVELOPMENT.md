@@ -1,477 +1,197 @@
 # Development Guide
 
-This guide provides comprehensive development guidelines for working on the Memris project.
+Use JDK 21 and the checked-in Gradle wrapper: `./gradlew` on Bash or
+`.\gradlew.bat` on Windows PowerShell. No system Gradle installation is needed.
+`settings.gradle.kts` lists the five modules, `gradle/libs.versions.toml` holds
+dependency/tool versions, and `gradle.properties` holds the project version.
 
-## Getting Started
+The daemon, build cache, configuration cache, and parallel execution are enabled.
+Reuse the same checkout and JDK between commands; keep incremental outputs for
+routine development. Use `clean` to diagnose stale outputs or verify a clean build.
 
-### Build Commands
+## Fast feedback, then regression tests
+
+Start with the smallest observable proof that exercises the behavior being
+changed: a JShell probe, a small reproduction, or an existing focused test.
+Use real project entry points and check the expected result, including the
+relevant boundary case. Iterate with that check while the code is changing.
+
+Once the behavior works, turn the useful cases into durable tests, run the
+affected suite, and expand verification when shared contracts are involved.
+Test-first development is available when useful; strict RED/GREEN sequencing
+is not required. A successful REPL experiment guides the implementation and
+does not replace the final regression tests.
+
+## JShell
+
+Prepare the core classes and runtime classpath once:
+
+```sh
+./gradlew :memris-core:writeRuntimeClasspath
+```
+
+On Bash:
 
 ```bash
-# Full clean build
-mvn.cmd clean compile
-
-# Quick compile (quiet mode)
-mvn.cmd -q -e compile
-
-# Run all tests
-mvn.cmd -q -e -pl memris-core test
-
-# Run single test class
-mvn.cmd -q -e -pl memris-core test -Dtest=ClassName
-
-# Run single test method
-mvn.cmd -q -e -pl memris-core test -Dtest=ClassName#methodName
+jshell --class-path "$(cat memris-core/build/runtime-classpath.txt)"
 ```
 
-### Release (Maven Central)
+On PowerShell:
 
-1. Update versions to a release (remove `-SNAPSHOT`).
-2. Commit the version bump.
-3. Tag the release: `git tag vX.Y.Z` and push the tag.
-4. GitHub Actions runs `mvn -P release deploy` and publishes to Central via OSSRH.
-5. Bump to the next `-SNAPSHOT` after the release.
-
-### Java Runtime Requirements
-
-- **Java Version**: 21 (required)
-- **Storage**: 100% heap-based (primitive arrays, no FFM/MemorySegment required)
-
-## Project Overview
-
-**Memris** is a blazingly fast, concurrency-safe, in-memory storage engine for Java 21 with:
-- Heap-based columnar storage using primitive arrays (int[], long[], String[])
-- ByteBuddy dynamic bytecode generation for table classes
-- Zero-reflection hot paths with compile-time MethodHandle extraction
-- O(1) design principle: no O(n) operations allowed in hot paths
-- Spring Data-compatible query method parsing
-
-**Architecture Notes:**
-- Generates **TABLE** classes via ByteBuddy, not repository classes
-- Storage is 100% Java heap (no FFM, no MemorySegment, no off-heap)
-- SIMD not implemented; plain loops used (JIT may auto-vectorize)
-- Custom annotations (`@Entity`, `@Index`, etc.) instead of Jakarta/JPA
-
-## Critical Design Principles
-
-### O(1) Design Principle
-**O(1) first, O(log n) second, O(n) forbidden.**
-
-- `contains()` must be O(1) - use `BitSet` for dense sets
-- `add()` should be O(1) amortized
-- Enumerator creation O(1) - return preallocated cursor
-- Index lookups O(1) via hash or direct access
-- Range queries use `ConcurrentSkipListMap` (O(log n)) as fallback
-
-### Zero Reflection in Hot Paths
-- Use ByteBuddy bytecode generation with pre-compiled MethodHandles
-- No reflective field access in generated table implementations
-- Compile-time type safety through bytecode generation
-
-## Runtime Code Generation
-
-### RuntimeExecutorGenerator
-
-**Purpose:** Eliminates runtime type switches by generating type-specialized executors.
-
-**Generated Executors:**
-- `FieldValueReader` - Type-safe column value readers
-- `FkReader` - Foreign key value readers
-- `TargetRowResolver` - Projection target row resolvers
-- `ConditionExecutor` - Query condition executors
-- `OrderKeyBuilder` - Sort key builders for ordering
-
-**Benefits:**
-- Eliminates TypeCode switch on hot paths
-- Per-arena cache for reuse across repositories in the same arena
-- No static mutable registry or cross-arena cache sharing
-- Feature toggle: `-Dmemris.codegen.enabled=false` to disable
-
-**Usage:**
-Generated automatically at runtime and cached by each arena-owned emitter. No manual configuration needed.
-
-### Embedded Path Generation
-
-- Embedded/dotted persisted paths are compiled once into `ColumnAccessPlan`.
-- `EntitySaverGenerator` and `EntityMaterializerGenerator` always generate runtime accessors (no reflection strategy fallback).
-- Generated saver/materializer instances are cached by entity shape (classloader + column/converter signature) per arena.
-
-## Code Style Guidelines
-
-### Primitive-Only APIs (CRITICAL)
-**Never use boxed types in hot paths.**
-- Use `int`, `long`, `double` instead of `Integer`, `Long`, `Double`
-- Use `IntEnumerator`/`LongEnumerator` instead of `Iterator<Integer>`/`Iterator<Long>`
-- Never implement `Iterable<T>` - use `IntEnumerator` interface
-- Never use `for (Object o : collection)` - use enumerator pattern
-
-```java
-// GOOD
-public interface IntEnumerator {
-    boolean hasNext();
-    int nextInt();
-}
-
-// BAD - boxing
-public interface IntEnumerator extends Iterator<Integer> {
-    @Override
-    Integer next();  // BOXING!
-}
-```
-
-## Java 21 Pattern Matching Switches (CRITICAL)
-
-**Always use type switches with class literals for type dispatch.**
-
-- Use `switch (Class<?> type)` with pattern matching - faster than if-else chains
-- Match both primitive and wrapper types explicitly
-- Use class literals (`int.class`, `String.class`) instead of strings
-- Never use `switch (type.getName())` or string comparisons
-
-```java
-// GOOD - Java 21 pattern matching switch with TypeCodes
-byte typeCode = switch (type) {
-    case int.class, Integer.class -> TypeCodes.TYPE_INT;
-    case long.class, Long.class -> TypeCodes.TYPE_LONG;
-    case boolean.class, Boolean.class -> TypeCodes.TYPE_BOOLEAN;
-    case byte.class, Byte.class -> TypeCodes.TYPE_BYTE;
-    case short.class, Short.class -> TypeCodes.TYPE_SHORT;
-    case float.class, Float.class -> TypeCodes.TYPE_FLOAT;
-    case double.class, Double.class -> TypeCodes.TYPE_DOUBLE;
-    case char.class, Character.class -> TypeCodes.TYPE_CHAR;
-    case String.class -> TypeCodes.TYPE_STRING;
-    default -> throw new IllegalArgumentException("Unsupported type: " + type);
-};
-
-// GOOD - Using TypeCodes.forClass()
-byte typeCode = TypeCodes.forClass(type);
-
-// BAD - string-based switch (slower, no type safety)
-switch (type.getName()) {
-    case "int" -> ...
-}
-
-// BAD - if-else chain (slower, harder to read)
-if (type == int.class) {
-    ...
-} else if (type == long.class) {
-    ...
-}
-```
-
-## Naming Conventions
-
-| Element | Convention | Example |
-|---------|------------|---------|
-| Classes | PascalCase | `PageColumnInt`, `RowIdSet` |
-| Interfaces | PascalCase | `SelectionVector`, `IntEnumerator` |
-| Records | PascalCase | `Predicate.Comparison` |
-| Methods | camelCase | `scanEquals()`, `enumerator()` |
-| Constants | UPPER_SNAKE_CASE | `OFFSET_BITS`, `DEFAULT_CAPACITY` |
-| Variables | camelCase | `rowIndex`, `bitSet` |
-| Packages | lowercase | `io.memris.kernel.selection` |
-| Test classes | ClassNameTest | `PageColumnIntTest` |
-
-## Class Design Guidelines
-
-- Use `final` classes for implementations
-- Use `sealed` interfaces for extensible types (Predicate, PlanNode)
-- Use `record` for simple data carriers
-- Package-private when not part of public API
-- Public API must have Javadoc
-
-```java
-// Sealed interface for extensibility
-public sealed interface Predicate permits Predicate.Comparison, Predicate.In, Predicate.Between { }
-
-// Record for data carrier
-public record Comparison(String column, Operator operator, Object value) implements Predicate { }
-
-// Final implementation
-public final class IntSelection implements MutableSelectionVector { }
-```
-
-## Error Handling
-
-- Use `IllegalArgumentException` for parameter validation
-- Use `IndexOutOfBoundsException` for index errors
-- Use `NoSuchElementException` for enumerator exhaustion
-- Guard clauses with early returns
-- Validate null checks on public APIs
-
-```java
-public void add(int rowIndex) {
-    if (rowIndex < 0) {
-        throw new IllegalArgumentException("rowIndex must be non-negative: " + rowIndex);
-    }
-    // ... rest of implementation
-}
-```
-
-## Import Organization
-
-```java
-// JDK imports first (alphabetical)
-import java.util.*;
-import java.util.concurrent.*;
-
-// Third-party imports
-import net.bytebuddy.*;
-
-// Project imports (absolute)
-import io.memris.kernel.*;
-import io.memris.kernel.selection.*;
-import io.memris.storage.heap.*;
-```
-
-## TypeCodes Usage
-
-**TypeCodes** is a final class with static byte constants (NOT an enum):
-
-```java
-public final class TypeCodes {
-    public static final byte TYPE_INT = 0;
-    public static final byte TYPE_LONG = 1;
-    public static final byte TYPE_BOOLEAN = 2;
-    // ... etc
-}
-```
-
-**Benefits:**
-- Constants inlined by JIT (zero overhead)
-- Switch compiles to tableswitch (O(1) jump table)
-- No enum allocation overhead
-
-**Usage:**
-```java
-// Lookup type code
-byte typeCode = TypeCodes.forClass(int.class);  // Returns TYPE_INT
-
-// Switch on type code
-switch (typeCode) {
-    case TypeCodes.TYPE_LONG -> handleLong();
-    case TypeCodes.TYPE_INT -> handleInt();
-    case TypeCodes.TYPE_STRING -> handleString();
-}
-```
-
-## Testing Guidelines (CRITICAL)
-
-**NEVER use `System.out.println` for test verification** - Use REAL assertions only
-- Follow TDD: RED -> GREEN -> REFACTOR
-- Place tests in `memris-core/src/test/java/io/memris/`
-- Test class naming: `ClassNameTest`
-- **Use AssertJ idiomatic assertions** - 1 test, 1 assertion, fluent chaining
-- Test O(1) guarantees explicitly
-- **All tests must verify behavior through assertions, not print statements**
-
-```java
-// GOOD - AssertJ idiomatic (1 test, 1 assertion)
-assertThat(table.scanEqualsInt(0, 42))
-    .hasSize(2)
-    .containsExactly(5, 10);
-
-assertThat(index.get(123L))
-    .isNotNull()
-    .extracting("page")
-    .isEqualTo(0);
-
-// BAD - Multiple scattered assertions
-int[] results = table.scanEqualsInt(0, 42);
-assertEquals(2, results.length);
-assertEquals(5, results[0]);
-
-// BAD - Print statements don't verify behavior
-int[] results = table.scanEqualsInt(0, 42);
-System.out.println("Found " + results.length + " matches");  // NOT A TEST!
-```
-
-## Documentation Standards
-
-- Public APIs must have Javadoc
-- Include complexity guarantees in Javadoc
-- Update `docs/QUERY.md` for query specification changes
-- Historical design documents are in `docs/archive/`
-
-## Performance Validation
-
-- Target: Table scan of 1M rows < 10ms
-- Target: Hash index lookup O(1) < 1μs
-- Target: Range index lookup O(log n) < 10μs
-- Use JMH for microbenchmarks when needed
-
-### Embedded Path Perf Guardrails
-
-- Dedicated workflow: `.github/workflows/perf.yml`
-- Benchmark suite: `io.memris.benchmarks.EmbeddedPathBenchmark`
-- Baseline thresholds:
-  - flat benchmarks: fail above 10% slowdown
-  - embedded benchmarks: fail above 15% slowdown
-- Baseline source: `memris-core/src/jmh/resources/embedded-path-baseline.json`
-- Checker script: `scripts/check-jmh-regression.py`
-
-Run locally:
-```bash
-mvn -q -pl memris-core -DskipTests test-compile dependency:build-classpath \
-  -Dmdep.includeScope=test -Dmdep.outputFile=target/jmh-cp.txt
-
-CP="memris-core/target/test-classes:memris-core/target/classes:$(cat memris-core/target/jmh-cp.txt)"
-java -cp "$CP" org.openjdk.jmh.Main io.memris.benchmarks.EmbeddedPathBenchmark.* \
-  -wi 1 -i 1 -f 1 -rf json -rff memris-core/target/jmh-embedded.json
-
-python scripts/check-jmh-regression.py \
-  --baseline memris-core/src/jmh/resources/embedded-path-baseline.json \
-  --current memris-core/target/jmh-embedded.json \
-  --flat-threshold 0.10 \
-  --embedded-threshold 0.15
-```
-
-### Thread-Safety Guardrails
-
-- Dedicated workflow: `.github/workflows/thread-safety.yml`
-- Runs a focused concurrency/codegen suite with forked JVMs and parallel class execution.
-
-Run locally (bash):
-```bash
-mvn -q -pl memris-core test \
-  -Dtest=MemrisArenaConcurrencyTest,RuntimeExecutorGeneratorConcurrencyTest,ConditionRowEvaluatorGeneratorConcurrencyTest,EntitySaverGeneratorCacheTest,EntityMaterializerGeneratorCacheTest,RuntimeExecutorGeneratorArenaIsolationTest \
-  -DforkCount=2 \
-  -DreuseForks=false \
-  -Djunit.jupiter.execution.parallel.enabled=true \
-  -Djunit.jupiter.execution.parallel.mode.default=same_thread \
-  -Djunit.jupiter.execution.parallel.mode.classes.default=concurrent
-```
-
-Run locally (PowerShell):
 ```powershell
-mvn --% -q -pl memris-core test -Dtest=MemrisArenaConcurrencyTest,RuntimeExecutorGeneratorConcurrencyTest,ConditionRowEvaluatorGeneratorConcurrencyTest,EntitySaverGeneratorCacheTest,EntityMaterializerGeneratorCacheTest,RuntimeExecutorGeneratorArenaIsolationTest -DforkCount=2 -DreuseForks=false -Djunit.jupiter.execution.parallel.enabled=true -Djunit.jupiter.execution.parallel.mode.default=same_thread -Djunit.jupiter.execution.parallel.mode.classes.default=concurrent
+$memrisClasspath = (Get-Content -Raw memris-core/build/runtime-classpath.txt).Trim()
+jshell --class-path $memrisClasspath
 ```
 
-### Benchmark Baseline (2026-02-01)
+For example, check type resolution and arena initialization against the actual
+core classes and dependencies:
 
-Environment: Java 21, Windows 11, Single-threaded
-
-| Operation | Rows/Operations | Ops/sec | Avg Time |
-|-----------|----------------|---------|----------|
-| Insert | 100k | ~146,000 | 0.007 ms/op |
-| Lookup by ID | 100k | ~413,000 | 0.002 ms/op |
-| Scan All | 100k | ~533,000 rows/sec | 188 ms total |
-
-Run benchmarks:
-```bash
-cd memris-core
-mvn exec:java -Dexec.mainClass=io.memris.benchmarks.SimpleBenchmarkRunner -Dexec.classpathScope=test
+```java
+import io.memris.core.TypeCodes;
+import io.memris.repository.MemrisRepositoryFactory;
+if (TypeCodes.forClass(int.class) != TypeCodes.TYPE_INT) throw new AssertionError("int dispatch");
+try (var factory = new MemrisRepositoryFactory()) {
+    try (var arena = factory.createArena()) {
+        if (arena.getArenaId() <= 0) throw new AssertionError("arena initialization");
+    }
+}
 ```
 
-### Concurrent Read/Write Baseline (2026-02-01)
+Replace the example with the entry point and assertions for the feature. To use
+compiled test entities/repositories, run `:memris-core:writeTestRuntimeClasspath`
+and open JShell with `memris-core/build/test-runtime-classpath.txt` instead.
 
-Environment: Java 21, Windows 11, Multi-threaded (10s duration, 100k initial rows)
+For a save/query probe with those existing fixtures:
 
-| Writers | Readers | Write Ops/sec | Read Ops/sec | Total Ops/sec |
-|---------|---------|---------------|--------------|---------------|
-| 1 | 1 | 132,648 | 402,791 | 535,438 |
-| 2 | 2 | 168,966 | 426,599 | 595,565 |
-| 4 | 4 | 0* | 1,055,791 | 1,055,791 |
-| 8 | 8 | 0* | 1,935,835 | 1,935,835 |
-| 4 | 8 | 0* | 1,476,892 | 1,476,892 |
-| 8 | 4 | 0* | 483,223 | 483,223 |
-
-\* Write operations show 0 at higher thread counts due to lock contention in the seqlock-based concurrency model. This is a known limitation where write-heavy workloads with many threads can experience starvation.
-
-Run concurrent benchmark:
-```bash
-cd memris-core
-mvn exec:java -Dexec.mainClass=io.memris.benchmarks.ConcurrentReadWriteBaseline -Dexec.classpathScope=test
+```java
+import io.memris.runtime.TestEntity;
+import io.memris.runtime.TestEntityRepository;
+try (var factory = new MemrisRepositoryFactory(); var arena = factory.createArena()) {
+    var repo = arena.createRepository(TestEntityRepository.class);
+    var saved = repo.save(new TestEntity(null, "Ada", 37));
+    if (!repo.findById(saved.id).orElseThrow().name.equals("Ada")) throw new AssertionError("findById");
+    if (repo.findByName("Ada").size() != 1) throw new AssertionError("derived query");
+}
 ```
 
-## Forbidden Patterns
+Redefine methods or classes entered as snippets directly in the session. Save
+useful snippets with `/save memris-core/build/probe.jsh`. When changing checked-in
+Java classes, run `:memris-core:classes` (or `:memris-core:testClasses` for fixtures)
+in another terminal, then use `/reload` in JShell to reload classes and replay
+the session. This rebuilds the affected source set, not the full project. Rebuild
+the classpath file when dependencies change and reopen JShell with that classpath.
+Close disposable arenas/factories in each probe so replay starts from fresh state.
+See the [JDK 21 JShell reference](https://docs.oracle.com/en/java/javase/21/docs/specs/man/jshell.html).
 
-- Boxing primitives (`Integer`, `Long`, `Boolean`) in hot paths
-- `Iterator`/`Iterable` in hot paths
-- `Collection.contains()` for lookups (use HashIndex)
-- Linear scans without early termination
-- O(n) operations without justification
-- Throwing generic `Exception`
-- Mutable collections in public APIs
+## Build and test commands
 
-## Git Commit Requirements (CRITICAL)
+| Purpose | Command |
+| --- | --- |
+| Compile core only | `./gradlew :memris-core:classes` |
+| Compile core tests/fixtures | `./gradlew :memris-core:testClasses` |
+| Select one test | `./gradlew :memris-core:test --tests 'io.memris.core.TypeCodesTest.resolvesCommonTypes'` |
+| Test core | `./gradlew :memris-core:test` |
+| Test a Spring adapter | `./gradlew :memris-spring-data-boot3:test` |
+| Test all modules | `./gradlew test` |
+| Package all modules and run tests | `./gradlew build` |
+| Include static analysis | `./gradlew build -Pquality=true` |
+| Generate core coverage | `./gradlew :memris-core:jacocoTestReport` |
 
-**NEVER include information about AI assistants in commit messages.**
-- Commit messages must describe technical changes only
-- No "Co-Authored-By: Claude" or similar attribution
-- No mention of AI tools in commit history
-- Use conventional commit format: `type: description`
-- Types: `fix`, `feat`, `refactor`, `test`, `docs`, `perf`, `style`
+Use the matching `boot2` task for Boot 2 changes. Gradle builds project
+dependencies as needed without installing artifacts into a local Maven repository.
+Core contract changes should be checked against both Spring integrations.
+Test results are under each module's `build/test-results/` and `build/reports/tests/`.
 
-```bash
-# GOOD
-git commit -m "fix: handle @ManyToOne foreign key relationships in materializeSingle"
+Tests use JUnit 5 and AssertJ. Related assertions can share a test when they
+describe one outcome. Choose unit or repository-level tests according to the
+behavior. Use deterministic data and close test factories/arenas.
 
-# BAD
-git commit -m "fix: handle @ManyToOne foreign keys (Co-Authored-By: Claude)"
+Normal tests exclude the `benchmark` tag. JMH has its own source set and task,
+so ordinary test compilation does not compile the benchmarks. JaCoCo XML reports
+can be inspected with `python scripts/parse_jacoco.py`.
+
+Optional mutation testing retains the existing scoped targets and thresholds:
+`./gradlew :memris-core:pitest --no-configuration-cache`. It runs separately from
+the normal build and writes reports under `memris-core/build/reports/pitest/`.
+
+## Runtime boundaries
+
+Storage is heap-backed. Metadata extraction, query compilation, and ByteBuddy
+generation happen at runtime initialization. Generated execution paths reuse
+primitive columns, `TypeCodes`, and compiled `ColumnAccessPlan` instances.
+Scans are linear; index lookups and sorting have different operation costs.
+Use the workload being changed to assess performance.
+
+Generated artifact caches belong to an arena. Consult
+[ARCHITECTURE.md](ARCHITECTURE.md), [CONCURRENCY.md](CONCURRENCY.md), and
+the root `AGENTS.md` for lifecycle and row/index guarantees before changing them.
+Spring Boot 2 uses Spring 5, `javax.persistence`, and SLF4J 1.x; Boot 3 uses
+Spring 6, `jakarta.persistence`, and SLF4J 2.x. Keep these dependency families separate.
+
+## Concurrency and performance
+
+Run the arena/codegen suite in isolated forks with parallel class execution:
+
+```sh
+./gradlew :memris-core:threadSafetyTest
 ```
 
-## Join Table Implementation Notes
+Run the embedded-path JMH suite:
 
-When implementing join tables (@OneToMany, @ManyToMany):
-- Join tables must support the ID types of referenced entities
-- For numeric IDs (int, long): direct mapping to int/long columns
-- For UUID IDs: store as two long columns (128 bits total) for performance
-- For String IDs: store in String columns with proper indexing
-- Ensure join table columns match the ID type of the entities they reference
+```sh
+./gradlew :memris-core:jmh
+```
 
-## Key Implementation Files
+Select another benchmark with `-PjmhIncludes=...`. Warmup iterations, measurement
+iterations, forks, and the result path are configurable with
+`-PjmhWarmupIterations`, `-PjmhIterations`, `-PjmhForks`, and `-PjmhResult`.
+The result path is relative to `memris-core/build/` and defaults to
+`reports/jmh/embedded.json`.
 
-| File | Purpose |
-|------|---------|
-| `TableGenerator.java` | ByteBuddy table class generation |
-| `RuntimeExecutorGenerator.java` | Runtime codegen for type-specialized executors |
-| `HeapRuntimeKernel.java` | Zero-reflection query execution |
-| `QueryMethodLexer.java` | Query method tokenization |
-| `QueryPlanner.java` | Logical query creation |
-| `BuiltInResolver.java` | Built-in operation resolution |
-| `GeneratedTable.java` | Low-level table interface |
-| `TypeCodes.java` | Type code constants (final class) |
+```sh
+python scripts/check-jmh-regression.py --baseline memris-core/src/jmh/resources/embedded-path-baseline.json --current memris-core/build/reports/jmh/embedded.json --flat-threshold 0.10 --embedded-threshold 0.15
+```
 
----
+The concurrency and performance workflows live in `.github/workflows/`.
+Record JDK, hardware, workload, warmup, and forks with performance results.
+[BENCHMARK_BASELINES.md](BENCHMARK_BASELINES.md) contains historical measurements.
 
-*For detailed architecture and package structure, see [ARCHITECTURE.md](ARCHITECTURE.md)*
-*For Spring Data integration details, see [SPRING_DATA.md](SPRING_DATA.md)*
-*For query method reference, see [QUERY.md](QUERY.md)*
+## Documentation and analysis
 
-## Concurrency Guidelines
+Install `requirements.txt` in a Python environment once, then run:
 
-### Current Concurrency Model
+```sh
+python scripts/check-docs-drift.py
+python -m mkdocs build --site-dir build/docs-site
+git diff --check
+```
 
-- **Multi-reader**: Thread-safe concurrent queries
-- **Multi-writer**: Thread-safe row writes coordinated by per-row seqlock
-- **Read-write**: Best-effort isolation (seqlock for rows, no MVCC)
-- **Isolation**: Best-effort (no transactions)
-- **Arena lifecycle**: Thread-safe fail-fast close; `close()` is terminal for the arena
+The drift check covers known API/version patterns; MkDocs checks the documentation
+build. Update [QUERY.md](QUERY.md), [SPRING_DATA.md](SPRING_DATA.md), or
+[CONCURRENCY.md](CONCURRENCY.md) when the corresponding public behavior changes.
 
-### When to Use External Synchronization
+Add `-Pquality=true` to run Checkstyle, PMD, and SpotBugs with `check`/`build`.
+This separates the normal test loop from the broader analysis previously run by
+Maven's `verify` phase. PMD reports violations without failing the build, matching
+the previous policy. XML rule/filter files live under `config/`.
 
-Use external synchronization only when you need strict index/row atomicity across multiple operations:
-1. You require read-your-writes guarantees across index queries
-2. You need strict consistency across multiple writes in a batch
-3. You want deterministic ordering between concurrent writers
+## Agent guidance and releases
 
-### Best Practices
+All agent instructions, engine invariants, and the Git/worktree workflow live in
+the single root `AGENTS.md`. Keep persistent instructions focused on durable
+project facts and easy-to-miss constraints, and consult references according to
+the task. Local plans and tool sessions are ignored. Add a shared skill when a
+recurring workflow needs additional guidance.
+This follows OpenAI's guidance on
+[repository instructions](https://learn.chatgpt.com/docs/agent-configuration/agents-md)
+and [focused agent context](https://developers.openai.com/blog/rethinking-skills-and-prompts-for-gpt-6-astra).
 
-1. Prefer query-only workloads (thread-safe)
-2. Use single-writer thread pattern for writes
-3. Partition repositories by entity type for isolation
-4. Avoid concurrent saves to same table
-5. Do not reuse an arena after calling `close()`
+Use conventional commit subjects describing technical changes without generated
+assistant attribution. Include the relevant verification results in PRs.
 
-### Current Limitations
-
-- Index updates are eventually consistent with row writes
-- No MVCC or snapshot isolation
-- No optimistic locking support for full transactions
-
-**Recently Fixed (Previously Issues):**
-- ~~Free-list race condition~~ → LockFreeFreeList with CAS
-- ~~Tombstone BitSet not thread-safe~~ → AtomicIntegerArray with CAS
-- ~~SeqLock not implemented~~ → AtomicLongArray for per-row versioning
-
-See [CONCURRENCY.md](CONCURRENCY.md) for detailed concurrency model and improvement roadmap.
+The manual release workflow is `.github/workflows/release.yml`, dispatched on
+`main`. It tests and packages a release version, publishes signed artifacts to
+Maven Central through Gradle, then records the release tag and next snapshot.
+Central Portal credentials and signing keys are supplied by CI secrets. For local
+publication inspection, use `./gradlew publishAllPublicationsToBuildRepository`;
+artifacts and generated POMs go to `build/repository/` without publishing remotely.

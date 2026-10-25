@@ -1,5 +1,5 @@
 param(
-    [string]$Path = "memris-core/target/site/jacoco/jacoco.xml",
+    [string]$Path = "memris-core/build/reports/jacoco/test/jacocoTestReport.xml",
     [int]$Top = 20
 )
 

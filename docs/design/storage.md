@@ -137,7 +137,7 @@ Tables are generated at runtime via ByteBuddy with:
 - Selection pipeline: primitive array access -> SelectionVector (bitset or int list)
 
 ### 2026-01-21
-- **Design Principle**: O(1) operations preferred, O(log n) second, O(n) forbidden
+- **Original performance goal**: Prefer direct access and indexes; scans still visit rows linearly
 - All iteration uses primitive enumerators (IntEnumerator, LongEnumerator) - no boxing
 - SelectionVector interface with O(1) `contains()` and O(1) upgrade from sparse to dense
 - HeapRuntimeKernel with direct array access for scans
@@ -150,6 +150,7 @@ Tables are generated at runtime via ByteBuddy with:
 - **Scan operations**: All scan methods return int[] of matching offsets with O(n) complexity
 
 ### Design Principles
-All core operations follow the O(1) first, O(log n) second, O(n) forbidden principle.
+Direct access, index lookups, and scans have different complexity. Preserve
+efficient per-row operations and measure the workload being changed.
 For details on SelectionVector interface and primitive enumerators,
 see [Selection Pipeline Design](selection.md).

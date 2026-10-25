@@ -7,8 +7,8 @@ Heap-based, zero-reflection, columnar in-memory storage engine for Java 21.
 Memris is a high-performance in-memory storage engine with the following principles:
 
 - **Heap-based storage**: 100% Java heap using primitive arrays and object pools
-- **Zero reflection hot paths**: Compile-time metadata extraction, runtime queryId dispatch
-- **ByteBuddy table generation**: Generates optimized table classes at build time
+- **Zero reflection hot paths**: Metadata extraction at runtime initialization, then queryId dispatch
+- **ByteBuddy table generation**: Generates optimized table classes at runtime initialization
 - **Plan-driven property paths**: Embedded/dotted access compiled once into `ColumnAccessPlan`
 - **Generated entity accessors**: Saver/materializer bytecode for flat and embedded columns
 - **Primitive-only APIs**: Direct array access, no boxing in hot paths
@@ -40,7 +40,7 @@ Memris is a high-performance in-memory storage engine with the following princip
 │                                                                      │
 │  Entity Class + Annotations → TableMetadata                          │
 │         │                                                            │
-│         │ Build-time (once per entity)                               │
+│         │ Runtime initialization                                    │
 │         ▼                                                            │
 │  TableGenerator.generate() → PersonTable.class (ByteBuddy)           │
 │         │                                                            │
@@ -196,14 +196,18 @@ Custom annotations for entity marking:
 
 ## Critical Design Principles
 
-### 1. O(1) First, O(log n) Second, O(n) Forbidden
+### 1. Complexity by Operation
 
-All hot path operations are O(1):
+Use constant-time primitives where the operation supports them:
 - Direct array access via column indices
 - Hash-based ID lookups
 - BitSet for dense row sets
 - TypeCode switch dispatch (tableswitch bytecode)
 - Lock-free row allocation via `LockFreeFreeList`
+
+Scans and selection filtering are linear in the rows inspected; range lookups
+and sorting have their own costs. Avoid repeated work inside each row operation
+and use workload-specific benchmarks to assess performance changes.
 
 ### 2. Primitive-Only APIs
 
@@ -232,8 +236,8 @@ JVM inlines these constants and compiles switch to tableswitch (direct jump).
 
 ### 4. Zero Reflection Hot Path
 
-- MethodHandles extracted at build time
-- Column indices resolved at compile time
+- MethodHandles extracted during runtime initialization
+- Column indices resolved during query compilation
 - queryId-based dispatch (int lookup, not string)
 - No `Class.forName()`, no `Method.invoke()` in hot path
 - Embedded property chains compiled once in `ColumnAccessPlan` and reused
