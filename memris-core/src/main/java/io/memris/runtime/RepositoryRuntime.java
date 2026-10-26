@@ -1327,7 +1327,7 @@ public final class RepositoryRuntime<T> {
 
         var limit = query.limit();
         var orderExecutor = plan.orderExecutorFor(query);
-        if (orderExecutor != null) {
+        if (orderExecutor != null && rows.length > 1) {
             rows = orderExecutor.apply(this, rows);
         }
 

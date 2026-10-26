@@ -173,6 +173,30 @@ boolean existsByEmail(String email);
 - `long` - Count
 - `boolean` - Existence check
 
+### Nulls, duplicate values, and single results
+
+String equality accepts a null argument and matches rows where the queried field
+is null. This also applies to `existsBy...` and `countBy...`. Positive string
+patterns (`Like`, `Containing`, `StartingWith`, `EndingWith`) skip null field
+values; a null pattern matches no rows. Nulls in other fields do not affect the
+predicate.
+
+`Not` is the complement of equality: `findByNameNot("Alice")` includes rows with
+a null name, while `findByNameNot(null)` selects non-null names. Use an explicit
+null condition when needed, for example
+`findByNameNotNullAndNameNot("Alice")` to exclude both Alice and null names.
+
+Plain fields do not impose uniqueness. Saving two customers with the same email
+and different IDs preserves both rows; saving an existing ID updates that row.
+An `Optional<T>` query returns empty when there are no matches, or the first match
+after ordering and limiting. It does not validate uniqueness. Use `OrderBy` with
+a suitable tie-breaker to select predictably, or return a `List<T>` to retrieve
+all matches. Without ordering, the selected match is unspecified.
+
+Case-insensitive string patterns lowercase both operands with `Locale.ROOT`, so
+the default JVM locale does not change their results. This is lowercasing rather
+than full Unicode case folding: for example, German `ß` does not expand to `ss`.
+
 ## Alternative Query Patterns
 
 The following patterns show alternative approaches when using advanced operators that may not be fully parsed or executed.

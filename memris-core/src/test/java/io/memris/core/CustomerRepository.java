@@ -69,4 +69,18 @@ public interface CustomerRepository extends MemrisRepository<Customer> {
      * Find customers by name not equal to given name.
      */
     List<Customer> findByNameNot(String name);
+
+    List<Customer> queryByEmail(String email);
+
+    Optional<Customer> findByEmailOrderByNameAsc(String email);
+
+    Optional<Customer> findByEmailOrderByNameDesc(String email);
+
+    List<Customer> findByNameNotNullAndNameNot(String name);
+
+    List<Customer> findByNameLikeIgnoreCase(String pattern);
+
+    List<Customer> findByNameStartingWithIgnoreCase(String prefix);
+
+    List<Customer> findByNameEndingWithIgnoreCase(String suffix);
 }
