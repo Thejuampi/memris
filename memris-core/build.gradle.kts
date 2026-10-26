@@ -27,7 +27,7 @@ pitest {
         "io.memris.storage.heap.PageColumnLong",
         "io.memris.storage.SelectionImpl",
     ))
-    targetTests.set(setOf("io.memris.index.*", "io.memris.kernel.*", "io.memris.storage.*"))
+    targetTests.set(setOf("io.memris.realworld.*", "io.memris.index.*", "io.memris.kernel.*", "io.memris.storage.*"))
     excludedGroups.set(setOf("benchmark"))
     mutationThreshold.set(85)
     coverageThreshold.set(90)

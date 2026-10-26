@@ -1,8 +1,9 @@
 package io.memris.spring.data.repository.config;
 
-import io.memris.spring.data.repository.MemrisSpringRepository;
 import io.memris.spring.data.repository.support.MemrisRepositoryFactoryBean;
+import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.Import;
+import org.springframework.data.repository.config.DefaultRepositoryBaseClass;
 
 import java.lang.annotation.Documented;
 import java.lang.annotation.ElementType;
@@ -18,6 +19,41 @@ import java.lang.annotation.Target;
 @Documented
 @Import(MemrisRepositoriesRegistrar.class)
 public @interface EnableMemrisRepositories {
+    /**
+     * Additional base packages, using the standard Spring Data shorthand.
+     *
+     * @return package names to scan
+     */
+    String[] value() default {};
+
+    /**
+     * Filters that explicitly include repository candidates.
+     *
+     * @return inclusion filters
+     */
+    ComponentScan.Filter[] includeFilters() default {};
+
+    /**
+     * Filters that exclude repository candidates.
+     *
+     * @return exclusion filters
+     */
+    ComponentScan.Filter[] excludeFilters() default {};
+
+    /**
+     * Optional resource containing named queries.
+     *
+     * @return named-query resource location
+     */
+    String namedQueriesLocation() default "";
+
+    /**
+     * Suffix used when discovering custom repository implementations.
+     *
+     * @return implementation suffix
+     */
+    String repositoryImplementationPostfix() default "Impl";
+
     /**
      * Base packages to scan for repository interfaces.
      *
@@ -40,11 +76,11 @@ public @interface EnableMemrisRepositories {
     Class<?> repositoryFactoryBeanClass() default MemrisRepositoryFactoryBean.class;
 
     /**
-     * Base repository interface that discovered repositories should extend.
+     * Optional repository implementation class; the default uses the generated Memris implementation.
      *
-     * @return base repository interface type
+     * @return base repository implementation type
      */
-    Class<?> repositoryBaseClass() default MemrisSpringRepository.class;
+    Class<?> repositoryBaseClass() default DefaultRepositoryBaseClass.class;
 
     /**
      * Whether nested repository interfaces should be considered.

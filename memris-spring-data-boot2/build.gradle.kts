@@ -7,6 +7,7 @@ dependencies {
     api(libs.spring.boot2.autoconfigure)
     api(libs.spring.data2.commons)
     api(libs.spring5.context)
+    implementation(libs.spring5.tx)
     implementation(libs.slf4j1)
     compileOnly(libs.javax.persistence)
     testImplementation(libs.javax.persistence)

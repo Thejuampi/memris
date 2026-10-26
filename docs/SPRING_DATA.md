@@ -108,30 +108,25 @@ Memris provides Spring Data integration modules that allow using standard Spring
 
 ### Annotation Compatibility
 
-The Spring Data integration layer **accepts both JPA and Memris annotations** and normalizes them dynamically:
+The default repository factory uses Memris metadata. Entity IDs use
+`@io.memris.core.Id`; relationships, generated values, and other storage mappings
+also use the Memris annotations. The default metadata provider does not normalize
+JPA entity/relationship annotations into Memris mappings.
 
-**Supported JPA Annotations (Boot 2 - javax.persistence):**
-- `@javax.persistence.Entity` → normalized to `io.memris.core.Entity`
-- `@javax.persistence.Id` → normalized to `io.memris.core.Id`
-- `@javax.persistence.GeneratedValue` → normalized to `io.memris.core.GeneratedValue`
-- `@javax.persistence.OneToOne`, `@javax.persistence.ManyToOne` → normalized to Memris equivalents
+Spring's `EntityInformation` accepts an explicit Memris ID or the integration's
+JPA ID annotation (`javax.persistence.Id` for Boot 2, `jakarta.persistence.Id` for
+Boot 3). JPA attribute converter beans are registered with the engine and support
+round trips and null values. The generations remain separate dependencies.
 
-**Supported JPA Annotations (Boot 3 - jakarta.persistence):**
-- `@jakarta.persistence.Entity` → normalized to `io.memris.core.Entity`
-- `@jakarta.persistence.Id` → normalized to `io.memris.core.Id`
-- `@jakarta.persistence.GeneratedValue` → normalized to `io.memris.core.GeneratedValue`
-- `@jakarta.persistence.OneToOne`, `@jakarta.persistence.ManyToOne` → normalized to Memris equivalents
-
-**Memris Annotations (always supported):**
-- `@io.memris.core.Entity`, `@io.memris.core.Id`, etc.
-
-This allows existing Spring Data applications to work with Memris with minimal changes, while also supporting Memris-specific features.
+The [Spring real-world scenarios](TESTING.md) verify repository scanning,
+injection, converter use, stock queries, configuration overrides, named-arena
+isolation, and arena cleanup when the application context closes.
 
 ### Repository Usage
 
 ```java
-// Standard Spring Data repository
-public interface UserRepository extends CrudRepository<User, Long> {
+// Memris marker with Spring Data repository support
+public interface UserRepository extends MemrisSpringRepository<User, Long> {
     List<User> findByEmail(String email);
     List<User> findByAgeGreaterThan(int age);
 }

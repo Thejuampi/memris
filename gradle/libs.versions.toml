@@ -55,6 +55,8 @@ spring-data2-commons = { module = "org.springframework.data:spring-data-commons"
 spring-data3-commons = { module = "org.springframework.data:spring-data-commons", version.ref = "spring-data3" }
 spring5-context = { module = "org.springframework:spring-context", version.ref = "spring5" }
 spring6-context = { module = "org.springframework:spring-context", version.ref = "spring6" }
+spring5-tx = { module = "org.springframework:spring-tx", version.ref = "spring5" }
+spring6-tx = { module = "org.springframework:spring-tx", version.ref = "spring6" }
 
 [plugins]
 maven-publish = { id = "com.vanniktech.maven.publish", version = "0.37.0" }
