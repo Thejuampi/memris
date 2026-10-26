@@ -38,7 +38,10 @@ def baseline_version_from_build() -> str | None:
     properties_path = ROOT / "gradle.properties"
     if not properties_path.exists():
         return None
-    match = re.search(r"^version\s*=\s*([^\s#]+)\s*$", properties_path.read_text(encoding="utf-8"), re.MULTILINE)
+    properties = properties_path.read_text(encoding="utf-8")
+    match = re.search(r"^releasedVersion\s*=\s*([^\s#]+)\s*$", properties, re.MULTILINE)
+    if match is None:
+        match = re.search(r"^version\s*=\s*([^\s#]+)\s*$", properties, re.MULTILINE)
     if match is None:
         return None
     parsed = parse_semver(match.group(1))
@@ -69,16 +72,6 @@ def stale_version_rule() -> tuple[str, re.Pattern[str], str] | None:
     if stale_overrides:
         escaped = "|".join(re.escape(v) for v in stale_overrides)
         pattern = rf"\b(?:{escaped})\b"
-    elif baseline:
-        parsed = parse_semver(baseline)
-        if parsed:
-            _, (major, minor, _) = parsed
-            if minor > 0:
-                # For baseline X.Y.Z, flag stale literals from X.(Y-1).*
-                pattern = rf"\b{major}\.{minor - 1}\.\d+\b"
-            elif major > 0:
-                # For baseline X.0.Z, flag stale literals from (X-1).*.*
-                pattern = rf"\b{major - 1}\.\d+\.\d+\b"
 
     if not pattern:
         return None
@@ -89,6 +82,25 @@ def stale_version_rule() -> tuple[str, re.Pattern[str], str] | None:
         re.compile(pattern),
         f"stale version literal detected (expected docs baseline: {baseline_note})",
     )
+
+
+def dependency_version_findings(content: str, expected: str) -> list[tuple[int, str]]:
+    """Check installable Memris dependencies, preserving historical version prose."""
+    findings = []
+
+    def record(offset: int, version: str) -> None:
+        if version != expected:
+            findings.append((content.count("\n", 0, offset) + 1, version))
+
+    for match in re.finditer(r"io\.github\.thejuampi:[\w-]+:([\w.+-]+)", content):
+        record(match.start(1), match.group(1))
+    for dependency in re.finditer(r"<dependency>.*?</dependency>", content, re.DOTALL):
+        block = dependency.group()
+        if re.search(r"<groupId>\s*io\.github\.thejuampi\s*</groupId>", block):
+            version = re.search(r"<version>\s*([^<\s]+)\s*</version>", block)
+            if version:
+                record(dependency.start() + version.start(1), version.group(1))
+    return findings
 
 
 RULES = [
@@ -129,7 +141,13 @@ def main() -> int:
         if is_allowlisted(path):
             continue
         relative = path.relative_to(ROOT).as_posix()
-        for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+        content = path.read_text(encoding="utf-8")
+        baseline = resolve_docs_baseline_version()
+        if baseline:
+            for line_number, version in dependency_version_findings(content, baseline):
+                findings.append((relative, line_number, "stale-dependency-version",
+                                 f"Memris dependency version {version} differs from published version {baseline}"))
+        for line_number, line in enumerate(content.splitlines(), start=1):
             for rule_id, pattern, message in RULES:
                 if pattern.search(line):
                     findings.append((relative, line_number, rule_id, message))

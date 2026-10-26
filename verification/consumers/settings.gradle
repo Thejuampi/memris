@@ -1,0 +1,2 @@
+rootProject.name = 'memris-consumers'
+include 'core', 'boot2', 'boot3'

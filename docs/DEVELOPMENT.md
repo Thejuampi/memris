@@ -198,8 +198,26 @@ Use conventional commit subjects describing technical changes without generated
 assistant attribution. Include the relevant verification results in PRs.
 
 The manual release workflow is `.github/workflows/release.yml`, dispatched on
-`main`. It tests and packages a release version, publishes signed artifacts to
-Maven Central through Gradle, then records the release tag and next snapshot.
-Central Portal credentials and signing keys are supplied by CI secrets. For local
-publication inspection, use `./gradlew publishAllPublicationsToBuildRepository`;
-artifacts and generated POMs go to `build/repository/` without publishing remotely.
+`main`. `version` in `gradle.properties` is the repository version;
+`releasedVersion` is the published dependency-example baseline. Start a release
+from `major.minor.patch-SNAPSHOT`, with notes in `docs/releases/<version>.md`.
+
+The workflow rejects existing coordinates/tags, runs tests, inspects all five
+publications, and executes the independent core/Boot 2/Boot 3 consumers against
+both Gradle metadata and Maven POMs. It then publishes signed artifacts to Maven
+Central, records the release tag, updates dependency examples and version tables,
+advances the next patch snapshot, and creates the matching GitHub Release.
+Central Portal credentials and signing keys are supplied by CI secrets.
+
+For local publication inspection, use
+`./gradlew publishAllPublicationsToBuildRepository`; artifacts and generated POMs
+go to `build/repository/` without publishing remotely. Run
+`python scripts/release.py verify-artifacts --version <version>` and follow the
+[packaged consumer instructions](https://github.com/Thejuampi/memris/tree/main/verification/consumers). CI runs
+the same packaging checks. Release/checker regressions run with
+`python -m unittest discover -s scripts -p 'test_*.py'`.
+
+If publication succeeds and recording a tag or GitHub Release fails, recover the
+records for the published version; do not dispatch publication of that immutable
+version again. Verify the five Maven Central artifacts and re-run consumers
+against Central before considering the release complete.

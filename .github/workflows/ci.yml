@@ -17,7 +17,9 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Docs drift check
-        run: python3 scripts/check-docs-drift.py
+        run: |
+          python3 -m unittest discover -s scripts -p 'test_*.py'
+          python3 scripts/check-docs-drift.py
 
       - name: Set up JDK 21
         uses: actions/setup-java@v4
@@ -32,3 +34,11 @@ jobs:
 
       - name: Package and test all modules
         run: bash ./gradlew assemble test
+
+      - name: Verify packaged consumers
+        run: |
+          VERSION=$(sed -n 's/^version=//p' gradle.properties)
+          bash ./gradlew publishAllPublicationsToBuildRepository
+          python3 scripts/release.py verify-artifacts --version "$VERSION"
+          bash ./gradlew -p verification/consumers verifyConsumers "-PmemrisVersion=$VERSION" "-PmemrisRepository=$GITHUB_WORKSPACE/build/repository" --refresh-dependencies --no-configuration-cache
+          bash ./gradlew -p verification/consumers verifyConsumers "-PmemrisVersion=$VERSION" "-PmemrisRepository=$GITHUB_WORKSPACE/build/repository" -PpomOnly --refresh-dependencies --no-configuration-cache

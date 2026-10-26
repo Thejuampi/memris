@@ -14,6 +14,30 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 
 class IndexedCatalogRealWorldTest {
+    @ParameterizedTest(name = "case-insensitive indexed catalog with pattern indexes={0}")
+    @ValueSource(booleans = { true, false })
+    void shouldMatchCaseInsensitiveAliasesOnIndexedColumnsAndResidualFilters(boolean patternIndexes) {
+        var config = RealWorldSupport.configuration()
+                .enablePrefixIndex(patternIndexes).enableSuffixIndex(patternIndexes).build();
+        try (var factory = new MemrisRepositoryFactory(config); var arena = factory.createArena()) {
+            var catalog = arena.createRepository(CatalogRepository.class);
+            var laptop = catalog.save(new CatalogProduct("LAPTOP", "Pro Laptop", "Acme", "devices", 2000, 3));
+            var tablet = catalog.save(new CatalogProduct("TABLET", "PRO Tablet", "Acme", "devices", 1500, 2));
+            catalog.save(new CatalogProduct("MOUSE", "Pro Mouse", "Acme", "devices", 200, 0));
+            catalog.save(new CatalogProduct("DRAFT", null, null, "draft", 500, 5));
+
+            assertThat(catalog.findBySkuEqualsIgnoreCase("laptop")).extracting(row -> row.id)
+                    .containsExactly(laptop.id);
+            assertThat(catalog.findByCategoryAndSkuEqualsIgnoreCase("devices", "laptop"))
+                    .extracting(row -> row.id).containsExactly(laptop.id);
+            assertThat(catalog.findByNameStartingWithAndStockGreaterThanAllIgnoreCaseOrderByPriceAsc("pRo", 0))
+                    .extracting(row -> row.id).containsExactly(tablet.id, laptop.id);
+            assertThat(catalog.removeBySku("LAPTOP")).isEqualTo(1);
+            assertThat(catalog.findBySkuEqualsIgnoreCase("laptop")).isEmpty();
+            assertThat(catalog.findByCategoryAndSkuEqualsIgnoreCase("devices", "laptop")).isEmpty();
+        }
+    }
+
     @ParameterizedTest(name = "catalog lifecycle with pattern indexes={0}")
     @ValueSource(booleans = { true, false })
     void shouldKeepCatalogSearchesConsistentAfterRepricingRenamingDeletionAndRestocking(boolean patternIndexes) {
@@ -126,6 +150,10 @@ class IndexedCatalogRealWorldTest {
         CatalogProduct save(CatalogProduct product);
         Optional<CatalogProduct> findById(Long id);
         Optional<CatalogProduct> findBySku(String sku);
+        List<CatalogProduct> findBySkuEqualsIgnoreCase(String sku);
+        List<CatalogProduct> findByCategoryAndSkuEqualsIgnoreCase(String category, String sku);
+        List<CatalogProduct> findByNameStartingWithAndStockGreaterThanAllIgnoreCaseOrderByPriceAsc(String name, int stock);
+        long removeBySku(String sku);
         List<CatalogProduct> findByNameStartingWith(String prefix);
         List<CatalogProduct> findByBrandEndingWith(String suffix);
         List<CatalogProduct> findByPriceBetween(long min, long max);

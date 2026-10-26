@@ -31,7 +31,7 @@ This document provides a complete query operator reference for Memris.
 | NOT_ENDING_WITH | `findByXxxNotEndingWith` | ✅ |
 | CONTAINING | `findByXxxContaining` | ✅ |
 | NOT_CONTAINING | `findByXxxNotContaining` | ✅ |
-| IGNORE_CASE | `findByXxxIgnoreCase`<br>`findByXxxAndYyyAllIgnoreCase` | ✅ |
+| IGNORE_CASE | `findByXxxIgnoreCase`<br>`findByXxxEqualsIgnoreCase`<br>`findByXxxIsIgnoreCase`<br>`findByXxxAndYyyAllIgnoreCase` | ✅ |
 
 ### Boolean Operators
 | Operator | JPA Pattern | Status |
@@ -78,6 +78,17 @@ This document provides a complete query operator reference for Memris.
 | Set\<T\> | `findByXxx` | ✅ |
 | long | `countByXxx` | ✅ |
 | boolean | `existsByXxx` | ✅ |
+
+Derived deletion accepts `deleteBy...` and `removeBy...`; a numeric return type
+receives the deleted-row count. Both spellings use the same deletion path.
+`IsNotNull` and `NotNull` are equivalent unary predicates.
+
+`AllIgnoreCase` applies to string equality and pattern predicates, including
+before `OrderBy`; numeric predicates retain their normal comparisons. Equality
+ignoring case uses Java `String.equalsIgnoreCase`, independent of the default
+locale, in scans and generated residual filters. Case-insensitive string patterns
+use `Locale.ROOT` normalization. Case-sensitive indexes fall back to a scan or a
+residual filter for case-insensitive predicates.
 
 ## @Query (JPQL-like)
 

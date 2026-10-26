@@ -3,6 +3,7 @@ package io.memris.benchmarks;
 import io.memris.repository.MemrisArena;
 import io.memris.core.MemrisConfiguration;
 import io.memris.repository.MemrisRepositoryFactory;
+import io.memris.repository.MemrisRepository;
 import io.memris.runtime.TestEntity;
 import io.memris.runtime.TestEntityRepository;
 import org.openjdk.jmh.annotations.Benchmark;
@@ -41,6 +42,7 @@ public class StringPatternBenchmark {
     private MemrisRepositoryFactory factory;
     private MemrisArena arena;
     private TestEntityRepository repository;
+    private EqualityRepository equalityRepository;
 
     @Setup(Level.Trial)
     public void setup() {
@@ -52,6 +54,7 @@ public class StringPatternBenchmark {
         factory = new MemrisRepositoryFactory(configuration);
         arena = factory.createArena();
         repository = arena.createRepository(TestEntityRepository.class);
+        equalityRepository = arena.createRepository(EqualityRepository.class);
 
         // Populate with test data - names with common prefixes/suffixes
         for (int i = 0; i < rowCount; i++) {
@@ -130,6 +133,15 @@ public class StringPatternBenchmark {
         // Baseline: exact equality (should be fast with HashIndex)
         List<TestEntity> results = repository.findByName("AliceSmith0");
         blackhole.consume(results);
+    }
+
+    @Benchmark
+    public void equals_ignoreCase(Blackhole blackhole) {
+        blackhole.consume(equalityRepository.findByNameIgnoreCase("aLICEsMITH0"));
+    }
+
+    public interface EqualityRepository extends MemrisRepository<TestEntity> {
+        List<TestEntity> findByNameIgnoreCase(String name);
     }
 
     public static void main(String[] args) throws Exception {

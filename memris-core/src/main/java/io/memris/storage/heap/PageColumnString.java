@@ -238,7 +238,6 @@ public final class PageColumnString {
         var results = new int[count];
         var found = 0;
 
-        var lowerTarget = target.toLowerCase();
         var remaining = count;
         for (var pageId = 0; pageId < maxPages && remaining > 0; pageId++) {
             var pageLimit = Math.min(pageSize, remaining);
@@ -255,7 +254,7 @@ public final class PageColumnString {
                     continue;
                 }
                 var value = data[i];
-                if (value != null && value.toLowerCase().equals(lowerTarget)) {
+                if (value != null && value.equalsIgnoreCase(target)) {
                     results[found++] = base + i;
                 }
             }

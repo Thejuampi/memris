@@ -33,26 +33,33 @@ jobs:
 
       - name: Compute release versions
         id: versions
-        run: |
-          python3 - <<'PY'
-          import os
-          import pathlib
-          import re
+        run: python3 scripts/release.py versions
 
-          properties = pathlib.Path('gradle.properties').read_text(encoding='utf-8')
-          match = re.search(r'^version=(\d+)\.(\d+)\.(\d+)-SNAPSHOT$', properties, re.MULTILINE)
-          if match is None:
-              raise SystemExit('Expected a major.minor.patch-SNAPSHOT version in gradle.properties')
-          major, minor, patch = map(int, match.groups())
-          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as output:
-              output.write(f'release_version={major}.{minor}.{patch}\n')
-              output.write(f'development_version={major}.{minor}.{patch + 1}-SNAPSHOT\n')
-          PY
+      - name: Check release coordinates and notes
+        env:
+          RELEASE_VERSION: ${{ steps.versions.outputs.release_version }}
+        run: |
+          if git rev-parse --verify "refs/tags/v$RELEASE_VERSION" >/dev/null 2>&1; then
+            echo "Tag v$RELEASE_VERSION already exists"
+            exit 1
+          fi
+          python3 scripts/release.py check-available --version "$RELEASE_VERSION"
+          python3 -m unittest discover -s scripts -p 'test_*.py'
+          python3 scripts/check-docs-drift.py
 
       - name: Package and test the release
         env:
           RELEASE_VERSION: ${{ steps.versions.outputs.release_version }}
         run: bash ./gradlew assemble test "-Pversion=$RELEASE_VERSION"
+
+      - name: Verify packaged consumers before publication
+        env:
+          RELEASE_VERSION: ${{ steps.versions.outputs.release_version }}
+        run: |
+          bash ./gradlew publishAllPublicationsToBuildRepository "-Pversion=$RELEASE_VERSION"
+          python3 scripts/release.py verify-artifacts --version "$RELEASE_VERSION"
+          bash ./gradlew -p verification/consumers verifyConsumers "-PmemrisVersion=$RELEASE_VERSION" "-PmemrisRepository=$GITHUB_WORKSPACE/build/repository" --refresh-dependencies --no-configuration-cache
+          bash ./gradlew -p verification/consumers verifyConsumers "-PmemrisVersion=$RELEASE_VERSION" "-PmemrisRepository=$GITHUB_WORKSPACE/build/repository" -PpomOnly --refresh-dependencies --no-configuration-cache
 
       - name: Publish signed artifacts to Maven Central
         env:
@@ -72,23 +79,19 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          python3 - <<'PY'
-          import os
-          import pathlib
-          import re
-          path = pathlib.Path('gradle.properties')
-          path.write_text(re.sub(r'^version=.*$', 'version=' + os.environ['RELEASE_VERSION'], path.read_text(), flags=re.MULTILINE))
-          PY
-          git add gradle.properties
+          python3 scripts/release.py record-release --version "$RELEASE_VERSION"
+          python3 scripts/check-docs-drift.py
+          git add gradle.properties README.md docs
           git commit -m "release: prepare release v$RELEASE_VERSION"
           git tag "v$RELEASE_VERSION"
-          python3 - <<'PY'
-          import os
-          import pathlib
-          import re
-          path = pathlib.Path('gradle.properties')
-          path.write_text(re.sub(r'^version=.*$', 'version=' + os.environ['DEVELOPMENT_VERSION'], path.read_text(), flags=re.MULTILINE))
-          PY
-          git add gradle.properties
+          python3 scripts/release.py record-development --version "$DEVELOPMENT_VERSION"
+          python3 scripts/check-docs-drift.py
+          git add gradle.properties README.md docs
           git commit -m "chore: bump to $DEVELOPMENT_VERSION"
           git push --atomic origin HEAD:main "refs/tags/v$RELEASE_VERSION"
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ steps.versions.outputs.release_version }}
+        run: gh release create "v$RELEASE_VERSION" --verify-tag --title "Memris $RELEASE_VERSION" --notes-file "docs/releases/$RELEASE_VERSION.md"

@@ -78,6 +78,7 @@ public class StringTypeHandler extends AbstractTypeHandler<String> {
     public Selection executeCondition(GeneratedTable table, int columnIndex,
                                       io.memris.query.LogicalQuery.Operator operator, String value, boolean ignoreCase) {
         return switch (operator) {
+            case IGNORE_CASE_EQ -> executeEquals(table, columnIndex, value, true);
             case LIKE -> executeLike(table, columnIndex, value, ignoreCase);
             case IGNORE_CASE_LIKE -> executeLike(table, columnIndex, value, true);
             case NOT_LIKE -> executeNotLike(table, columnIndex, value, ignoreCase);

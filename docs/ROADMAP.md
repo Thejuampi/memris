@@ -1,7 +1,6 @@
 # Roadmap
 
-Baseline: `main` through [PR #55](https://github.com/Thejuampi/memris/pull/55),
-reviewed on October 25, 2026. Implementation and executable scenarios determine
+Baseline: the 0.3.0 release line, reviewed on October 25, 2026. Implementation and executable scenarios determine
 current support; an annotation, lexer token, or historical plan alone does not.
 
 ## Version and release state
@@ -9,13 +8,11 @@ current support; an annotation, lexer token, or historical plan alone does not.
 | Item | Current state |
 | --- | --- |
 | Published artifacts | `0.2.4` for core, both Spring integrations, and both starters; see [Maven Central metadata](https://repo.maven.apache.org/maven2/io/github/thejuampi/memris/maven-metadata.xml) |
-| Development version | `0.2.5-SNAPSHOT` in [gradle.properties](../gradle.properties); not yet released |
-| Release automation | Manual Gradle-based [release workflow](../.github/workflows/release.yml) from `main`, with signing/publication, a release tag, and the next snapshot commit |
+| Repository version | `0.3.0-SNAPSHOT` in [gradle.properties](../gradle.properties) |
+| Release automation | Manual Gradle-based [release workflow](../.github/workflows/release.yml) from `main`, with packaged-consumer checks, signed publication, a tag/GitHub Release, dependency-example updates, and the next snapshot commit |
 
-Recent fixes on `main` are not present merely because `0.2.4` is available on
-Maven Central. GitHub release notes, tags, and published artifacts also need to be
-aligned during release preparation; the latest GitHub Release entry is still
-[v0.2.3](https://github.com/Thejuampi/memris/releases/tag/v0.2.3).
+Published and repository versions are tracked separately in `gradle.properties`.
+The [0.3.0 release notes](releases/0.3.0.md) describe the changes in this release line.
 
 ## Implemented baseline
 
@@ -48,58 +45,38 @@ structures do not make every operation lock-free or eliminate all contention.
 - [#54](https://github.com/Thejuampi/memris/pull/54): Six disabled e-commerce tests restored with explicit contracts; locale-independent patterns, `LikeIgnoreCase` dispatch and empty ordered selections corrected.
 - [#55](https://github.com/Thejuampi/memris/pull/55): Real-world suite centralization and the four-mode matrix; stock/catalog/workforce workflows; redundant tests removed; Spring startup, delegation and Memris ID discovery corrected.
 
+## 0.3.0 release line
+
+The release includes the completed query aliases (`EqualsIgnoreCase`,
+`IsIgnoreCase`, `AllIgnoreCase`, `IsNotNull`, and `removeBy`), locale/index parity
+scenarios, and independent [core and starter consumers](https://github.com/Thejuampi/memris/tree/main/verification/consumers).
+The consumers validate repository discovery, CRUD, converter/null handling, named
+arenas, and terminal context shutdown through packaged dependency graphs.
+Both adapters publish the required persistence API alongside their own Spring
+generation. Publication checks inspect all five artifact versions and POMs.
+
+The [release workflow](../.github/workflows/release.yml) runs these checks before
+signed publication, then records the tag, GitHub Release, documentation versions,
+and next snapshot. The version table above records publication state.
+
 ## Next priorities
 
-These are proposed next PRs, in order. They have no promised delivery dates or
+These are proposed next PRs, in order, without promised delivery dates or
 throughput multipliers.
 
-### 1. Complete derived-query compatibility
-
-Resolve concrete gaps before claiming broader Spring Data method-name support:
-
-| Example | Current behavior | Working form or follow-up |
-| --- | --- | --- |
-| `findByNameEqualsIgnoreCase("alice")` on an unindexed string | Accepted by the planner but throws `UnsupportedOperationException` for `IGNORE_CASE_EQ` during execution | `findByNameIgnoreCase` works for basic equality; normalize explicit equality aliases and verify locale/index parity |
-| `findByNameAndEmailAllIgnoreCase(...)` | Repository creation fails while resolving `email.all` | Explicit per-property modifiers require their own compatibility coverage; implement or reject `AllIgnoreCase` consistently |
-| `findByNameIsNotNull()` | Repository creation rejects consecutive `Is` and `NotNull` operators | `findByNameNotNull()` |
-| `removeByName(...)` | Repository creation rejects the prefix | `deleteByName(...)`; decide and test the `remove` alias |
-
-Acceptance: express these contracts in the central real-world suite, including
-nulls, case behavior, indexed/unindexed paths, and all four execution modes.
-Every accepted operator must have an execution path. Update the detailed query
-reference and remaining examples to list the supported spellings accurately.
-
-### 2. Validate consumer examples and the Spring boundary
-
-Add small consumer applications for core and each starter, built against packaged
-artifacts with separate dependency graphs. Exercise repository discovery, CRUD,
-named arenas, converter/null handling, and context shutdown outside the module
-test classpath.
+### 1. Expand Spring compatibility evidence
 
 Keep the metadata contract explicit: the default engine provider reads Memris
 annotations. Spring `EntityInformation` accepts a Memris ID or its generation's
-JPA ID, and the converter bridge handles JPA attribute converter beans; this is
-not automatic normalization of JPA entity/relationship mappings. Any expansion
-of that boundary needs its own design and real-world scenarios.
+JPA ID, and the converter bridge handles JPA attribute converters. This does not
+provide a general JPA metadata adapter. Extend repository scenarios for any
+additional mappings or method spellings before documenting them as supported.
 
-Acceptance: runnable examples for both generations, documented configuration and
-annotation requirements, and no accidental dependency mixing. Audit remaining
-reference pages for unsupported aliases, ID-generation strategies and API claims;
-the existence of `GenerationType.CUSTOM`/`IdGenerator` does not establish an
-implemented registration/execution path.
+Document ID strategies from executed behavior: the existence of
+`GenerationType.CUSTOM`/`IdGenerator` alone does not establish a registration or
+execution path. Keep Boot 2 and Boot 3 dependency families separate.
 
-### 3. Prepare the next release
-
-Prepare `0.2.5` after the preceding contract and consumer checks. Verify generated
-POMs and dependencies for all five artifacts, signing/publication configuration,
-and the manual release workflow. Run the real-world matrix, internal/concurrency
-checks, quality analysis and relevant performance guardrails for the release
-candidate. Smoke-test the packaged consumer examples.
-
-Acceptance: matching artifact versions, release notes describing changes since
-`0.2.4`, a matching tag/GitHub Release, and a verified post-release snapshot bump.
-
-### 4. Optimize measured bottlenecks
+### 2. Optimize measured bottlenecks
 
 Use the existing JMH suites to select work: scan/membership dispatch, string
 patterns, index selectivity, sorting, materialization and write contention. Native
@@ -131,6 +108,6 @@ requirements for the next release:
 - [README](../README.md): project entry point and minimal example
 - [TESTING.md](TESTING.md): scenario ownership and execution matrix
 - [DEVELOPMENT.md](DEVELOPMENT.md): builds, quality checks, JMH and releases
-- [QUERY.md](QUERY.md): query language and public contracts; alias gaps are listed above
+- [QUERY.md](QUERY.md): query language and supported method spellings
 - [SPRING_DATA.md](SPRING_DATA.md): Spring module boundaries
 - [ARCHITECTURE.md](ARCHITECTURE.md) and [CONCURRENCY.md](CONCURRENCY.md): implementation model and guarantees

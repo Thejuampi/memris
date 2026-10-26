@@ -49,7 +49,7 @@ enum QueryOperator {
 
     // Null check operators
     IS_NULL("IsNull", LogicalQuery.Operator.IS_NULL),
-    NOT_NULL("NotNull", LogicalQuery.Operator.NOT_NULL),
+    NOT_NULL("NotNull", "IsNotNull", LogicalQuery.Operator.NOT_NULL),
 
     // Boolean operators
     IS_TRUE("True", LogicalQuery.Operator.IS_TRUE),
@@ -199,6 +199,7 @@ public final class QueryPlanner {
         String pendingProperty;
         String pendingOperatorValue;
         boolean pendingIgnoreCase;
+        boolean allIgnoreCase;
 
         // OrderBy state
         boolean inOrderBy;
@@ -325,6 +326,7 @@ public final class QueryPlanner {
                             state.pendingIgnoreCase, state.argIndex, conditions, state.nextCombinator, state);
                 }
             }
+            applyAllIgnoreCase(entityClass, conditions, state.allIgnoreCase);
             return LogicalQuery.of(
                     determineOpCodeForDerived(parseName, returnKind),
                     returnKind,
@@ -398,6 +400,7 @@ public final class QueryPlanner {
         // Determine OpCode for derived queries based on method prefix
         var opCode = determineOpCodeForDerived(parseName, returnKind);
 
+        applyAllIgnoreCase(entityClass, conditions, state.allIgnoreCase);
         return LogicalQuery.of(opCode, returnKind,
                 conditions.toArray(new LogicalQuery.Condition[0]),
                 new LogicalQuery.UpdateAssignment[0],
@@ -420,7 +423,7 @@ public final class QueryPlanner {
         String lower = methodName.toLowerCase(ROOT);
 
         // Check for deleteBy prefix
-        if (lower.startsWith("deleteby")) {
+        if (lower.startsWith("deleteby") || lower.startsWith("removeby")) {
             return OpCode.DELETE_QUERY;
         }
 
@@ -431,6 +434,16 @@ public final class QueryPlanner {
             case EXISTS_BOOL -> OpCode.EXISTS;
             default -> throw new IllegalArgumentException("Unexpected return kind for derived query: " + returnKind);
         };
+    }
+
+    private static void applyAllIgnoreCase(Class<?> entityClass, List<LogicalQuery.Condition> conditions,
+            boolean allIgnoreCase) {
+        if (allIgnoreCase) {
+            conditions.replaceAll(condition -> QueryMethodLexer.isStringProperty(entityClass, condition.propertyPath())
+                    ? LogicalQuery.Condition.of(condition.propertyPath(), condition.operator(),
+                            condition.argumentIndex(), true, condition.nextCombinator())
+                    : condition);
+        }
     }
 
     /**
@@ -503,7 +516,9 @@ public final class QueryPlanner {
                 state.pendingOperatorValue = null;
                 state.pendingIgnoreCase = false;
             }
-        } else             if ("IgnoreCase".equals(value)) {
+        } else if ("AllIgnoreCase".equals(value)) {
+            state.allIgnoreCase = true;
+        } else if ("IgnoreCase".equals(value)) {
             state.pendingIgnoreCase = true;
         } else {
             validateNoConsecutiveOperators(state.lastTokenWasOperator, state.pendingOperatorValue, methodName, value);
@@ -645,7 +660,7 @@ public final class QueryPlanner {
                     ? LogicalQuery.ReturnKind.MANY_MAP
                     : LogicalQuery.ReturnKind.COUNT_LONG; // count() or countByXxx()
             case "exists" -> LogicalQuery.ReturnKind.EXISTS_BOOL; // existsByXxx()
-            case "delete" -> {
+            case "delete", "remove" -> {
                 if (hasBy && remaining.startsWith("ById"))
                     yield LogicalQuery.ReturnKind.DELETE_BY_ID;
                 if (hasBy)

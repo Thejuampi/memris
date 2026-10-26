@@ -77,6 +77,49 @@ class ECommerceRealWorldTest {
                 .isEqualTo(Set.of("Alice Johnson", "Alicia Brown"));
     }
 
+    @ParameterizedTest(name = "customer lookup aliases under {0}")
+    @ValueSource(strings = { "en-US", "tr-TR", "lt-LT" })
+    @ResourceLock(Resources.LOCALE)
+    void shouldFindAndRemoveCustomersWithCaseInsensitiveAliases(String languageTag) {
+        var previousLocale = Locale.getDefault();
+        var previousDisplayLocale = Locale.getDefault(Locale.Category.DISPLAY);
+        var previousFormatLocale = Locale.getDefault(Locale.Category.FORMAT);
+        try {
+            Locale.setDefault(Locale.forLanguageTag(languageTag));
+            var customers = arena.createRepository(CustomerRepository.class);
+            var first = new Customer("ALICE@example.com", "IZMIR", "555-1111");
+            first.created = 1;
+            first = customers.save(first);
+            var second = new Customer("alice@EXAMPLE.com", "izmir", "555-2222");
+            second.created = 2;
+            second = customers.save(second);
+            var bob = customers.save(new Customer("bob@example.com", "Bob", "555-3333"));
+            var draft = customers.save(new Customer(null, null, "555-4444"));
+
+            assertThat(customers.findByNameIgnoreCase("Izmir")).extracting(row -> row.id)
+                    .containsExactlyInAnyOrder(first.id, second.id);
+            assertThat(customers.findByNameEqualsIgnoreCase("Izmir")).extracting(row -> row.id)
+                    .containsExactlyInAnyOrder(first.id, second.id);
+            assertThat(customers.findByNameIsIgnoreCase("Izmir")).extracting(row -> row.id)
+                    .containsExactlyInAnyOrder(first.id, second.id);
+            assertThat(customers.findByNameAndEmailAllIgnoreCaseOrderByCreatedAsc("Izmir", "Alice@Example.Com"))
+                    .extracting(row -> row.id).containsExactly(first.id, second.id);
+            assertThat(customers.findByNameOrEmailAllIgnoreCase("Izmir", "BOB@EXAMPLE.COM"))
+                    .extracting(row -> row.id).containsExactlyInAnyOrder(first.id, second.id, bob.id);
+            assertThat(customers.findByNameIsNotNull()).extracting(row -> row.id)
+                    .containsExactlyInAnyOrder(first.id, second.id, bob.id);
+
+            assertThat(customers.removeByEmailIgnoreCase("Alice@Example.Com")).isEqualTo(2);
+            assertThat(customers.removeByEmailIgnoreCase("Alice@Example.Com")).isZero();
+            assertThat(customers.findByNameIsNotNull()).extracting(row -> row.id).containsExactly(bob.id);
+            assertThat(customers.findById(draft.id)).isPresent();
+        } finally {
+            Locale.setDefault(previousLocale);
+            Locale.setDefault(Locale.Category.DISPLAY, previousDisplayLocale);
+            Locale.setDefault(Locale.Category.FORMAT, previousFormatLocale);
+        }
+    }
+
     @Test
     void shouldCreateAndFindProductBySku() {
         // Given

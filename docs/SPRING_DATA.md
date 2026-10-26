@@ -2,10 +2,12 @@
 
 ## Overview
 
-Memris provides a lightweight, high-performance Spring Data-compatible API for in-memory storage with custom annotation support. The system focuses on O(1) operations, zero-reflection hot paths, and compile-once query generation for maximum performance.
+Memris provides Spring Data-style repositories over heap-backed in-memory storage.
+Repository discovery, injection, configuration, and converter registration use
+Spring; the core engine compiles access plans during runtime initialization.
 
 **Key Design Philosophy:**
-- **Zero Reflection Hot Path**: Query planning happens at compile-time, runtime uses direct array access
+- **Zero Reflection Hot Path**: Query planning happens at runtime initialization; row execution reuses compiled access plans
 - **Dense Arrays Over Maps**: Column indices, type codes, and method handles stored in indexed arrays
 - **TypeCode Switch**: Java 21 pattern matching for zero-allocation type dispatch
 - **Heap-Based Storage**: 100% Java heap using primitive arrays
@@ -14,12 +16,12 @@ Memris provides a lightweight, high-performance Spring Data-compatible API for i
 - Spring Data-like query method patterns (`findBy…And…`, `In`, `Between`, comparisons)
 - Custom annotations (`@Entity`, `@Index`, `@GeneratedValue`, `@OneToOne`)
 - **Note:** Core system uses custom annotations, NOT Jakarta/JPA annotations
-- **Note:** Spring Data integration accepts both JPA (javax/jakarta) and Memris annotations
+- **Note:** Spring entity information recognizes Memris IDs and the matching JPA ID; storage mappings use Memris annotations, as detailed below
 - **Note:** Transactions and session management are not supported (in-memory, no persistence context)
 
 **Architecture Note:**
-- Generates **TABLE** classes via ByteBuddy, not repository classes
-- Callers implement their own repository layer on top of generated tables
+- Generates tables and repository implementations via ByteBuddy
+- Spring delegates repository methods to the arena-owned generated repository
 - Storage is 100% heap-based (no FFM, no MemorySegment)
 
 ## Current Implementation Status
@@ -116,11 +118,15 @@ JPA entity/relationship annotations into Memris mappings.
 Spring's `EntityInformation` accepts an explicit Memris ID or the integration's
 JPA ID annotation (`javax.persistence.Id` for Boot 2, `jakarta.persistence.Id` for
 Boot 3). JPA attribute converter beans are registered with the engine and support
-round trips and null values. The generations remain separate dependencies.
+round trips and null values. Each adapter publishes its own persistence API as a
+transitive dependency, required by the converter registrar. Boot 2 uses
+`javax.persistence`; Boot 3 uses `jakarta.persistence`.
 
 The [Spring real-world scenarios](TESTING.md) verify repository scanning,
 injection, converter use, stock queries, configuration overrides, named-arena
 isolation, and arena cleanup when the application context closes.
+The [packaged consumers](https://github.com/Thejuampi/memris/tree/main/verification/consumers) also verify these
+contracts against the actual starter JARs, Gradle metadata, and Maven POMs.
 
 ### Repository Usage
 

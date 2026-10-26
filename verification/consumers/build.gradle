@@ -1,0 +1,39 @@
+def candidateVersion = providers.gradleProperty('memrisVersion').get()
+def candidateRepository = providers.gradleProperty('memrisRepository')
+
+subprojects {
+    apply plugin: 'application'
+    repositories {
+        if (candidateRepository.isPresent()) {
+            exclusiveContent {
+                forRepository {
+                    maven {
+                        url = rootProject.uri(candidateRepository.get())
+                        if (providers.gradleProperty('pomOnly').isPresent()) {
+                            metadataSources { mavenPom(); artifact(); ignoreGradleMetadataRedirection() }
+                        }
+                    }
+                }
+                filter { includeGroup 'io.github.thejuampi' }
+            }
+        }
+        mavenCentral()
+    }
+    java { toolchain { languageVersion = JavaLanguageVersion.of(21) } }
+    tasks.withType(JavaCompile).configureEach {
+        options.release = 21
+        options.compilerArgs.add('-parameters')
+    }
+    application { mainClass = 'io.memris.consumer.InventoryApplication' }
+    dependencies {
+        implementation "io.github.thejuampi:${project.name == 'core' ? 'memris' : 'memris-spring-boot-starter-' + (project.name == 'boot2' ? '2' : '3')}:${candidateVersion}"
+    }
+}
+
+configure([project(':boot2'), project(':boot3')]) {
+    sourceSets.main.java.srcDir rootProject.file('spring/src/main/java')
+}
+
+tasks.register('verifyConsumers') {
+    dependsOn subprojects.collect { it.tasks.named('run') }
+}

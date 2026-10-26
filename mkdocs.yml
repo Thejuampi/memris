@@ -117,7 +117,9 @@ nav:
     - Basic CRUD: examples/basic-crud.md
   - Development:
     - Development Guide: DEVELOPMENT.md
+    - Test Scenarios: TESTING.md
     - Roadmap: ROADMAP.md
+    - Release 0.3.0: releases/0.3.0.md
 
 # Extra social links
 extra:
