@@ -65,6 +65,7 @@ jobs:
         env:
           RELEASE_VERSION: ${{ steps.versions.outputs.release_version }}
           ORG_GRADLE_PROJECT_mavenCentralPublishing: "true"
+          ORG_GRADLE_PROJECT_mavenCentralDeploymentValidation: "PUBLISHED"
           ORG_GRADLE_PROJECT_signAllPublications: "true"
           ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.OSSRH_USERNAME }}
           ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ secrets.OSSRH_TOKEN }}
