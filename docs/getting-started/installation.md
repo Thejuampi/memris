@@ -23,7 +23,7 @@ Add the core library to your `pom.xml`:
 <dependency>
     <groupId>io.github.thejuampi</groupId>
     <artifactId>memris</artifactId>
-    <version>0.2.4</version>
+    <version>0.3.0</version>
 </dependency>
 ```
 
@@ -35,7 +35,7 @@ For Spring Boot 3.x applications, use the starter:
 <dependency>
     <groupId>io.github.thejuampi</groupId>
     <artifactId>memris-spring-boot-starter-3</artifactId>
-    <version>0.2.4</version>
+    <version>0.3.0</version>
 </dependency>
 ```
 
@@ -47,7 +47,7 @@ For Spring Boot 2.7.x applications:
 <dependency>
     <groupId>io.github.thejuampi</groupId>
     <artifactId>memris-spring-boot-starter-2</artifactId>
-    <version>0.2.4</version>
+    <version>0.3.0</version>
 </dependency>
 ```
 
@@ -59,7 +59,7 @@ Add to your `build.gradle`:
 
 ```groovy
 dependencies {
-    implementation 'io.github.thejuampi:memris:0.2.4'
+    implementation 'io.github.thejuampi:memris:0.3.0'
 }
 ```
 
@@ -67,7 +67,7 @@ dependencies {
 
 ```groovy
 dependencies {
-    implementation 'io.github.thejuampi:memris-spring-boot-starter-3:0.2.4'
+    implementation 'io.github.thejuampi:memris-spring-boot-starter-3:0.3.0'
 }
 ```
 
@@ -75,7 +75,7 @@ dependencies {
 
 ```groovy
 dependencies {
-    implementation 'io.github.thejuampi:memris-spring-boot-starter-2:0.2.4'
+    implementation 'io.github.thejuampi:memris-spring-boot-starter-2:0.3.0'
 }
 ```
 

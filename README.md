@@ -17,8 +17,8 @@ access on each row.
 
 | Version | Status |
 | --- | --- |
-| `0.2.4` | Latest published version of all five artifacts on [Maven Central](https://repo.maven.apache.org/maven2/io/github/thejuampi/memris/maven-metadata.xml) |
-| `0.3.0-SNAPSHOT` | Current repository version in [gradle.properties](gradle.properties) |
+| `0.3.0` | Latest published version of all five artifacts on [Maven Central](https://repo.maven.apache.org/maven2/io/github/thejuampi/memris/maven-metadata.xml) |
+| `0.3.0` | Current repository version in [gradle.properties](gradle.properties) |
 
 The feature descriptions below refer to **current `main`**. The
 [0.3.0 release notes](docs/releases/0.3.0.md) describe the numeric-boundary,
@@ -74,20 +74,20 @@ Use Java 21. The published core artifact is:
 <dependency>
   <groupId>io.github.thejuampi</groupId>
   <artifactId>memris</artifactId>
-  <version>0.2.4</version>
+  <version>0.3.0</version>
 </dependency>
 ```
 
 Gradle Kotlin:
 
 ```kotlin
-implementation("io.github.thejuampi:memris:0.2.4")
+implementation("io.github.thejuampi:memris:0.3.0")
 ```
 
 Gradle Groovy:
 
 ```groovy
-implementation 'io.github.thejuampi:memris:0.2.4'
+implementation 'io.github.thejuampi:memris:0.3.0'
 ```
 
 The following minimal core example works with the published artifact and current
