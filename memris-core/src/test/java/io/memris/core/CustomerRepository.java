@@ -83,4 +83,18 @@ public interface CustomerRepository extends MemrisRepository<Customer> {
     List<Customer> findByNameStartingWithIgnoreCase(String prefix);
 
     List<Customer> findByNameEndingWithIgnoreCase(String suffix);
+
+    List<Customer> findByNameIgnoreCase(String name);
+
+    List<Customer> findByNameEqualsIgnoreCase(String name);
+
+    List<Customer> findByNameIsIgnoreCase(String name);
+
+    List<Customer> findByNameAndEmailAllIgnoreCaseOrderByCreatedAsc(String name, String email);
+
+    List<Customer> findByNameOrEmailAllIgnoreCase(String name, String email);
+
+    List<Customer> findByNameIsNotNull();
+
+    long removeByEmailIgnoreCase(String email);
 }

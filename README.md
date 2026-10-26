@@ -18,12 +18,12 @@ access on each row.
 | Version | Status |
 | --- | --- |
 | `0.2.4` | Latest published version of all five artifacts on [Maven Central](https://repo.maven.apache.org/maven2/io/github/thejuampi/memris/maven-metadata.xml) |
-| `0.2.5-SNAPSHOT` | Current development version in [gradle.properties](gradle.properties); unreleased |
+| `0.3.0-SNAPSHOT` | Current repository version in [gradle.properties](gradle.properties) |
 
-The feature descriptions below refer to **current `main`**. Recent numeric-boundary,
-query-contract, Spring startup, and test-suite improvements are part of the
-unreleased development version. See the [roadmap](docs/ROADMAP.md) for the current
-baseline, known gaps, and next steps.
+The feature descriptions below refer to **current `main`**. The
+[0.3.0 release notes](docs/releases/0.3.0.md) describe the numeric-boundary,
+query-contract, Spring startup, packaging, and test-suite changes since the
+previous release. See the [roadmap](docs/ROADMAP.md) for the baseline and next steps.
 
 ## Implemented on main
 
@@ -31,7 +31,7 @@ baseline, known gaps, and next steps.
 | --- | --- |
 | Storage and code generation | Heap-backed paged columns; bytecode and method-handle table implementations; generated savers/materializers; compiled embedded access plans |
 | Repositories | Explicit `@Id`, generated numeric IDs for new entities, CRUD and bulk operations, derived find/count/exists methods |
-| Queries | Comparisons, inclusive ranges, IN/NOT_IN, null and boolean predicates, positive/negative string patterns, AND/OR, ordering, first/top, and distinct modifiers |
+| Queries | Comparisons, inclusive ranges, IN/NOT_IN, null and boolean predicates, case-insensitive equality/patterns, `AllIgnoreCase`, `removeBy`, AND/OR, ordering, first/top, and distinct modifiers |
 | Annotated queries | A JPQL-like subset with named/positional parameters, joins, record projections, grouping/count/HAVING, and modifying queries |
 | Indexes | Hash, ordered range (`BTREE`), prefix, suffix, and composite hash/range indexes |
 | Mapping | Primitive/boxed scalar fields, strings, time and big-number types, registered converters, embedded graphs, and eager relationship hydration including many-to-many |
@@ -51,9 +51,6 @@ The current implementation has the following boundaries:
   does not normalize JPA entity mappings. See [SPRING_DATA.md](docs/SPRING_DATA.md).
 - Relationships load eagerly. The annotated query language supports a subset of
   JPQL; general SQL, subqueries, and aggregates beyond count are outside it.
-- Method-name compatibility still has gaps, including `EqualsIgnoreCase`,
-  `AllIgnoreCase`, `IsNotNull`, and the `removeBy` prefix. Working alternatives
-  and the follow-up scope are listed in the [roadmap](docs/ROADMAP.md#next-priorities).
 
 ### Physical storage
 
@@ -185,7 +182,8 @@ extend `MemrisSpringRepository<T, ID>` and use `@EnableMemrisRepositories`.
 The [Spring reference](docs/SPRING_DATA.md) describes the metadata boundary;
 the [inventory scenarios](memris-spring-data-boot3/src/test/java/io/memris/realworld/SpringInventoryRealWorldTest.java)
 show the current repository/converter workflow. The equivalent Boot 2 scenario
-lives in its own module. The recent startup fixes are unreleased.
+lives in its own module. [Independent consumers](verification/consumers/README.md)
+verify all three packaged dependency graphs in CI and before publication.
 
 ## Build and verify
 
@@ -207,7 +205,7 @@ Public behavior is centralized in `io.memris.realworld`; unit tests isolate
 internal edge cases. See [TESTING.md](docs/TESTING.md) for the scenario map,
 individual task names, reports, and coverage aggregation.
 
-For the unreleased artifacts in a local build repository:
+To inspect artifacts in a local build repository:
 
 ```sh
 ./gradlew publishAllPublicationsToBuildRepository
@@ -231,9 +229,8 @@ arena/codegen checks in parallel, isolated JVM forks.
 
 ## Next steps and references
 
-The immediate priorities are derived-query compatibility, consumer examples and
-Spring contract coverage, preparation of the next release, and measured query
-optimization. MVCC, transactions, off-heap storage, and distribution remain
+The next priorities are expanded Spring mapping/ID compatibility evidence and
+measured query optimization. MVCC, transactions, off-heap storage, and distribution remain
 design proposals. See the [roadmap](docs/ROADMAP.md) for scope and acceptance criteria.
 
 - [Architecture](docs/ARCHITECTURE.md)

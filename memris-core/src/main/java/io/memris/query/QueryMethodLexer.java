@@ -124,10 +124,10 @@ public final class QueryMethodLexer {
             "StartingWith", "EndingWith", "Containing",
             "GreaterThan", "LessThan",
             "Between",
-            "IgnoreCase",
+            "AllIgnoreCase", "IgnoreCase",
             "NotLike",
             "NotIn",
-            "NotNull",
+            "IsNotNull", "NotNull",
             "NotEqual",
             "Not",
             "Like",
@@ -147,7 +147,7 @@ public final class QueryMethodLexer {
      * Includes "save" for prefix extraction. Built-in methods are matched
      * by exact name first, then derived queries use prefix matching.
      */
-    static final String[] PREFIXES = { "find", "read", "query", "count", "exists", "delete", "save", "get" };
+    static final String[] PREFIXES = { "find", "read", "query", "count", "exists", "delete", "remove", "save", "get" };
 
     private static final ConcurrentMap<Class<?>, EntityMetadata> ENTITY_METADATA_CACHE = new ConcurrentHashMap<>();
 
@@ -203,6 +203,26 @@ public final class QueryMethodLexer {
 
             return new EntityMetadata(fields, relatedTypes);
         });
+    }
+
+    static boolean isStringProperty(Class<?> entityClass, String propertyPath) {
+        var metadata = extractEntityMetadata(entityClass);
+        var segments = propertyPath.split("\\.");
+        for (int i = 0; i < segments.length; i++) {
+            var field = metadata.getField(segments[i]);
+            if (field == null) {
+                return false;
+            }
+            if (i == segments.length - 1) {
+                return field.getType() == String.class;
+            }
+            var relatedType = resolveRelatedType(field, field.getType());
+            if (relatedType == null) {
+                return false;
+            }
+            metadata = extractEntityMetadata(relatedType);
+        }
+        return false;
     }
 
     private static Field[] getAllFields(Class<?> clazz) {
@@ -355,7 +375,7 @@ public final class QueryMethodLexer {
                 // exists() or existsByXxx()
                 yield QueryMethodTokenType.EXISTS_BY;
             }
-            case "delete" -> {
+            case "delete", "remove" -> {
                 // delete(), deleteAll(), or deleteByXxx()
                 if (hasBy)
                     yield QueryMethodTokenType.DELETE_BY;

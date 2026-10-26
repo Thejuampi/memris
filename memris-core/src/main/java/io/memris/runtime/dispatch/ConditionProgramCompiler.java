@@ -31,6 +31,7 @@ public final class ConditionProgramCompiler {
 
                 return switch (operator) {
                         case EQ -> compileEq(columnIndex, argumentIndex, ignoreCase, typeCode);
+                        case IGNORE_CASE_EQ -> compileEq(columnIndex, argumentIndex, true, typeCode);
                         case NE -> compileNe(columnIndex, argumentIndex, ignoreCase, typeCode);
                         case GT -> compileGt(columnIndex, argumentIndex, typeCode);
                         case GTE -> compileGte(columnIndex, argumentIndex, typeCode);
