@@ -8,7 +8,7 @@ current support; an annotation, lexer token, or historical plan alone does not.
 | Item | Current state |
 | --- | --- |
 | Published artifacts | `0.3.0` for core, both Spring integrations, and both starters; see [Maven Central metadata](https://repo.maven.apache.org/maven2/io/github/thejuampi/memris/maven-metadata.xml) |
-| Repository version | `0.3.0` in [gradle.properties](../gradle.properties) |
+| Repository version | `0.3.1-SNAPSHOT` in [gradle.properties](../gradle.properties) |
 | Release automation | Manual Gradle-based [release workflow](../.github/workflows/release.yml) from `main`, with packaged-consumer checks, signed publication, a tag/GitHub Release, dependency-example updates, and the next snapshot commit |
 
 Published and repository versions are tracked separately in `gradle.properties`.

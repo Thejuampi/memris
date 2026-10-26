@@ -18,7 +18,7 @@ access on each row.
 | Version | Status |
 | --- | --- |
 | `0.3.0` | Latest published version of all five artifacts on [Maven Central](https://repo.maven.apache.org/maven2/io/github/thejuampi/memris/maven-metadata.xml) |
-| `0.3.0` | Current repository version in [gradle.properties](gradle.properties) |
+| `0.3.1-SNAPSHOT` | Current repository version in [gradle.properties](gradle.properties) |
 
 The feature descriptions below refer to **current `main`**. The
 [0.3.0 release notes](docs/releases/0.3.0.md) describe the numeric-boundary,
