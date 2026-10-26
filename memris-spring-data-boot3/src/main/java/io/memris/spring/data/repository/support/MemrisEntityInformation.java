@@ -3,7 +3,7 @@ package io.memris.spring.data.repository.support;
 import org.springframework.data.repository.core.EntityInformation;
 
 /**
- * Spring Data {@link EntityInformation} implementation backed by explicit JPA ID metadata.
+ * Spring Data {@link EntityInformation} implementation backed by explicit Memris or JPA ID metadata.
  *
  * @param <T> aggregate type
  * @param <ID> identifier type
@@ -64,11 +64,12 @@ public final class MemrisEntityInformation<T, ID> implements EntityInformation<T
 
     private static String resolveIdProperty(Class<?> domainClass) {
         for (var field : domainClass.getDeclaredFields()) {
-            if (hasAnnotation(field, "jakarta.persistence.Id")) {
+            if (hasAnnotation(field, "jakarta.persistence.Id") || field.isAnnotationPresent(io.memris.core.Id.class)) {
                 return field.getName();
             }
         }
-        throw new IllegalStateException("Missing explicit jakarta.persistence.Id field on " + domainClass.getName());
+        throw new IllegalStateException("Missing explicit jakarta.persistence.Id field or io.memris.core.Id field on "
+                + domainClass.getName());
     }
 
     private static boolean hasAnnotation(java.lang.reflect.Field field, String name) {

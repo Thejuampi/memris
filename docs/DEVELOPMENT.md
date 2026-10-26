@@ -89,6 +89,8 @@ See the [JDK 21 JShell reference](https://docs.oracle.com/en/java/javase/21/docs
 | --- | --- |
 | Compile core only | `./gradlew :memris-core:classes` |
 | Compile core tests/fixtures | `./gradlew :memris-core:testClasses` |
+| All real-world scenarios and execution modes | `./gradlew realWorldTest` |
+| One real-world scenario in one mode | `./gradlew :memris-core:realWorldBytecodeTest --tests 'io.memris.realworld.ECommerceRealWorldTest'` |
 | Select one test | `./gradlew :memris-core:test --tests 'io.memris.core.TypeCodesTest.resolvesCommonTypes'` |
 | Test core | `./gradlew :memris-core:test` |
 | Test a Spring adapter | `./gradlew :memris-spring-data-boot3:test` |
@@ -103,8 +105,14 @@ Core contract changes should be checked against both Spring integrations.
 Test results are under each module's `build/test-results/` and `build/reports/tests/`.
 
 Tests use JUnit 5 and AssertJ. Related assertions can share a test when they
-describe one outcome. Choose unit or repository-level tests according to the
-behavior. Use deterministic data and close test factories/arenas.
+describe one business outcome. Public behavior is covered by the centralized
+real-world scenarios; isolated tests cover internal edge cases. The scenario map,
+execution matrix, and retained unit-test responsibilities are in [TESTING.md](TESTING.md).
+Use deterministic data and close test factories/arenas.
+
+Normal `test` runs the real-world matrix before the remaining unit tests. Each
+matrix variant has a separate results/report directory under `build/`.
+JaCoCo combines the four variants with the unit-test results.
 
 Normal tests exclude the `benchmark` tag. JMH has its own source set and task,
 so ordinary test compilation does not compile the benchmarks. JaCoCo XML reports

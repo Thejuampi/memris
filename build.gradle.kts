@@ -54,6 +54,33 @@ subprojects {
         jvmArgs("--enable-native-access=ALL-UNNAMED")
     }
 
+    val testSourceSet = extensions.getByType<SourceSetContainer>().getByName("test")
+    val realWorldVariants = listOf(
+        Triple("realWorldBytecodeTest", "BYTECODE", true),
+        Triple("realWorldBytecodeFallbackTest", "BYTECODE", false),
+        Triple("realWorldMethodHandleTest", "METHOD_HANDLE", true),
+        Triple("realWorldMethodHandleFallbackTest", "METHOD_HANDLE", false),
+    ).map { (taskName, table, codegen) ->
+        tasks.register<Test>(taskName) {
+            description = "Runs real-world scenarios with $table tables and codegen=$codegen."
+            group = "verification"
+            testClassesDirs = testSourceSet.output.classesDirs
+            classpath = testSourceSet.runtimeClasspath
+            include("**/realworld/**")
+            systemProperty("memris.test.table", table)
+            systemProperty("memris.test.codegen", codegen.toString())
+        }
+    }
+    tasks.register("realWorldTest") {
+        description = "Runs the complete real-world table/codegen matrix."
+        group = "verification"
+        dependsOn(realWorldVariants)
+    }
+    tasks.named<Test>("test") {
+        exclude("**/realworld/**")
+        dependsOn(realWorldVariants)
+    }
+
     tasks.withType<Javadoc>().configureEach {
         isFailOnError = false
         (options as StandardJavadocDocletOptions).addStringOption("Xdoclint:none", "-quiet")
@@ -64,6 +91,9 @@ subprojects {
     }
     tasks.withType<JacocoReport>().configureEach {
         dependsOn(tasks.named("test"))
+        executionData.setFrom((listOf("test") + realWorldVariants.map { it.name }).map {
+            layout.buildDirectory.file("jacoco/$it.exec")
+        })
         reports {
             xml.required.set(true)
             html.required.set(true)
@@ -139,4 +169,10 @@ tasks.named("assemble") {
 }
 tasks.named("check") {
     dependsOn(subprojects.map { it.tasks.named("check") })
+}
+
+tasks.register("realWorldTest") {
+    description = "Runs real-world scenarios in core and both Spring generations."
+    group = "verification"
+    dependsOn(subprojects.map { it.tasks.named("realWorldTest") })
 }

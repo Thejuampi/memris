@@ -24,6 +24,15 @@ project classes, a small reproduction, or an existing focused test. Iterate with
 that check, then add/update durable regression tests and run the affected suite
 before handing off behavior changes. Test-first ordering is optional.
 
+Public contracts belong in the centralized `io.memris.realworld` scenarios, using
+real factories, arenas, repositories, and business workflows. Extend those cases
+before adding a separate test class. Keep unit tests only for concrete internal
+edge cases that repository scenarios cannot reliably isolate (for example races,
+packed references, invalid low-level inputs, or parser ambiguity). Do not mirror
+ordinary repository behavior with fake tables or add getter/constant smoke tests.
+`realWorldTest` runs the table/codegen matrix across core and both Spring adapters;
+normal `test` includes that matrix. See `docs/TESTING.md` for scenario ownership.
+
 Compile only the module/source set needed for the next check. Keep the Gradle
 daemon and incremental outputs warm; use `clean` when investigating stale outputs.
 Documentation edits need documentation checks rather than a Java test run.
@@ -83,6 +92,7 @@ PowerShell. The wrapper pins Gradle; daemon and caches are configured in
 ```sh
 ./gradlew :memris-core:classes
 ./gradlew :memris-core:writeRuntimeClasspath
+./gradlew realWorldTest
 ./gradlew :memris-core:test --tests 'io.memris.core.TypeCodesTest'
 ./gradlew test
 python scripts/check-docs-drift.py

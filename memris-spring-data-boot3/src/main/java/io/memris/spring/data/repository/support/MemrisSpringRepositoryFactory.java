@@ -30,8 +30,10 @@ public final class MemrisSpringRepositoryFactory extends RepositoryFactorySuppor
     }
 
     @Override
+    @SuppressWarnings({"rawtypes", "unchecked"})
     protected Class<?> getRepositoryBaseClass(RepositoryMetadata metadata) {
-        return metadata.getRepositoryInterface();
+        // Memris already implements derived queries. Spring must dispatch them to that implementation.
+        return arena.createRepository((Class) metadata.getRepositoryInterface()).getClass();
     }
 
     @Override
