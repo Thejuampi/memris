@@ -6,8 +6,11 @@ import io.memris.repository.MemrisArena;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.parallel.ResourceLock;
+import org.junit.jupiter.api.parallel.Resources;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.math.BigDecimal;
 import java.math.BigInteger;
@@ -16,6 +19,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Date;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
 
@@ -146,25 +150,28 @@ class ECommerceRealWorldTest {
         assertThat(allProducts).hasSize(4);
     }
 
-    @Disabled("Test expectations don't match current implementation behavior")
     @Test
     void shouldHandleNullParameters() {
-        // Given
         CustomerRepository customerRepo = arena.createRepository(CustomerRepository.class);
         OrderRepository orderRepo = arena.createRepository(OrderRepository.class);
         customerRepo.save(new Customer("test@example.com", "Test User", "555-1234"));
         orderRepo.save(new Order(1L, "PENDING", 10000));
 
-        // When & Then - null parameters should throw IllegalArgumentException
-        assertThatThrownBy(() -> customerRepo.findByEmail(null))
-                .isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> customerRepo.existsByEmail(null))
-                .isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> orderRepo.countByStatus(null))
-                .isInstanceOf(IllegalArgumentException.class);
+        // String equality with a null argument matches null values, rather than rejecting the argument.
+        assertThat(customerRepo.findByEmail(null)).isEmpty();
+        assertThat(customerRepo.existsByEmail(null)).isFalse();
+        assertThat(orderRepo.countByStatus(null)).isZero();
+
+        Customer withoutEmail = customerRepo.save(new Customer(null, "No Email", "555-5678"));
+        orderRepo.save(new Order(1L, null, 20000));
+        orderRepo.save(new Order(2L, null, 30000));
+
+        assertThat(customerRepo.findByEmail(null)).map(customer -> customer.id).contains(withoutEmail.id);
+        assertThat(customerRepo.existsByEmail(null)).isTrue();
+        assertThat(orderRepo.countByStatus(null)).isEqualTo(2);
+        assertThat(customerRepo.findByNameContainingIgnoreCase(null)).isEmpty();
     }
 
-    @Disabled("Test expectations don't match current implementation behavior")
     @Test
     void shouldHandleNullFieldValuesInQueries() {
         // Given
@@ -179,9 +186,9 @@ class ECommerceRealWorldTest {
         // When
         List<Customer> results = customerRepo.findByNameContainingIgnoreCase("ali");
 
-        // Then - null field values should not match
-        assertThat(results).hasSize(1);
-        assertThat(results.get(0).name).isEqualTo("Alice Smith");
+        // Only the queried field affects matching; a null email does not exclude Alice Johnson.
+        assertThat(results).extracting(customer -> customer.id).containsExactlyInAnyOrder(c1.id, c3.id);
+        assertThat(customerRepo.findById(c2.id)).get().extracting(customer -> customer.name).isNull();
     }
 
     @Test
@@ -202,44 +209,66 @@ class ECommerceRealWorldTest {
                 .isEqualTo(new EmptyAndWhitespaceSnapshot(3, 0));
     }
 
-    @Disabled("Test expectations don't match current implementation behavior")
-    @Test
-    void shouldHandleCaseFoldingCorrectness() {
-        // Given
-        CustomerRepository customerRepo = arena.createRepository(CustomerRepository.class);
-        Customer c1 = new Customer("test1@example.com", "İstanbul", "555-1111");
-        Customer c2 = new Customer("test2@example.com", "straße", "555-2222");
-        Customer c3 = new Customer("test3@example.com", "München", "555-3333");
-        customerRepo.save(c1);
-        customerRepo.save(c2);
-        customerRepo.save(c3);
+    @ParameterizedTest(name = "case folding with default locale {0}")
+    @ValueSource(strings = { "en-US", "tr-TR", "lt-LT" })
+    @ResourceLock(Resources.LOCALE)
+    void shouldHandleCaseFoldingCorrectness(String languageTag) {
+        var previousLocale = Locale.getDefault();
+        var previousDisplayLocale = Locale.getDefault(Locale.Category.DISPLAY);
+        var previousFormatLocale = Locale.getDefault(Locale.Category.FORMAT);
+        try {
+            Locale.setDefault(Locale.forLanguageTag(languageTag));
+            var customerRepo = arena.createRepository(CustomerRepository.class);
+            customerRepo.save(new Customer("test1@example.com", "İstanbul", "555-1111"));
+            customerRepo.save(new Customer("test2@example.com", "straße", "555-2222"));
+            customerRepo.save(new Customer("test3@example.com", "München", "555-3333"));
+            customerRepo.save(new Customer("test4@example.com", "IZMIR", "555-4444"));
+            customerRepo.save(new Customer("test5@example.com", "I\u0301ris", "555-5555"));
+            customerRepo.save(new Customer("test6@example.com", null, "555-6666"));
 
-        // When
-        List<Customer> resultsI = customerRepo.findByNameContainingIgnoreCase("i");
-        List<Customer> resultsSS = customerRepo.findByNameContainingIgnoreCase("ss");
-
-        // Then - case-folding should use Locale.ROOT
-        assertThat(resultsI).hasSize(1);
-        assertThat(resultsSS).hasSize(0);
+            assertThat(customerRepo.findByNameContainingIgnoreCase("i")).extracting(customer -> customer.name)
+                    .containsExactlyInAnyOrder("İstanbul", "IZMIR", "I\u0301ris");
+            assertThat(customerRepo.findByNameLikeIgnoreCase("%I%")).extracting(customer -> customer.name)
+                    .containsExactlyInAnyOrder("İstanbul", "IZMIR", "I\u0301ris");
+            assertThat(customerRepo.findByNameStartingWithIgnoreCase("I")).extracting(customer -> customer.name)
+                    .containsExactlyInAnyOrder("İstanbul", "IZMIR", "I\u0301ris");
+            assertThat(customerRepo.findByNameEndingWithIgnoreCase("ir")).extracting(customer -> customer.name)
+                    .containsExactly("IZMIR");
+            assertThat(customerRepo.findByNameContainingIgnoreCase("i\u0301")).extracting(customer -> customer.name)
+                    .containsExactly("I\u0301ris");
+            // ROOT lowercasing does not expand the German sharp s to "ss".
+            assertThat(customerRepo.findByNameContainingIgnoreCase("ss")).isEmpty();
+            assertThat(customerRepo.findByNameContainingIgnoreCase("ß")).extracting(customer -> customer.name)
+                    .containsExactly("straße");
+        } finally {
+            Locale.setDefault(previousLocale);
+            Locale.setDefault(Locale.Category.DISPLAY, previousDisplayLocale);
+            Locale.setDefault(Locale.Category.FORMAT, previousFormatLocale);
+        }
     }
 
     @Test
-    @Disabled("email is not unique, there is not enough context")
     void shouldHandleDuplicateNaturalKeys() {
-        // Given
-        CustomerRepository customerRepo = arena.createRepository(CustomerRepository.class);
-        Customer c1 = new Customer("duplicate@example.com", "First User", "555-1111");
-        Customer c2 = new Customer("duplicate@example.com", "Second User", "555-2222");
-        customerRepo.save(c1);
-        Customer saved = customerRepo.save(c2);
+        var customerRepo = arena.createRepository(CustomerRepository.class);
+        Customer first = customerRepo.save(new Customer("duplicate@example.com", "First User", "555-1111"));
+        Customer second = customerRepo.save(new Customer("duplicate@example.com", "Second User", "555-2222"));
 
-        // When
-        Optional<Customer> found = customerRepo.findByEmail("duplicate@example.com");
+        // Email is not unique. Only the ID identifies an existing row for an update.
+        assertThat(first.id).isNotEqualTo(second.id);
+        assertThat(customerRepo.queryByEmail("duplicate@example.com")).extracting(customer -> customer.id)
+                .containsExactlyInAnyOrder(first.id, second.id);
 
-        // Then - last-write-wins should apply
-        assertThat(found).isPresent();
-        assertThat(found.orElseThrow().name).isEqualTo("Second User");
-        assertThat(found.orElseThrow().id).isEqualTo(saved.id);
+        first.name = "Updated First User";
+        assertThat(customerRepo.save(first).id).isEqualTo(first.id);
+        assertThat(customerRepo.findById(first.id)).get().extracting(customer -> customer.name)
+                .isEqualTo("Updated First User");
+        assertThat(customerRepo.findById(second.id)).get().extracting(customer -> customer.name)
+                .isEqualTo("Second User");
+        assertThat(customerRepo.findAll()).hasSize(2);
+
+        customerRepo.deleteById(first.id);
+        assertThat(customerRepo.queryByEmail("duplicate@example.com")).extracting(customer -> customer.id)
+                .containsExactly(second.id);
     }
 
     @Test
@@ -291,20 +320,30 @@ class ECommerceRealWorldTest {
         assertThat(customerRepo.findByEmail("SKU-001")).isEmpty();
     }
 
-    @Disabled("Test expectations don't match current implementation behavior")
     @Test
     void shouldHandleReturnTypeCardinality() {
-        // Given
-        CustomerRepository customerRepo = arena.createRepository(CustomerRepository.class);
-        Customer c1 = customerRepo.save(new Customer("duplicate@example.com", "First", "555-1111"));
-        Customer c2 = customerRepo.save(new Customer("duplicate@example.com", "Second", "555-2222"));
+        var customerRepo = arena.createRepository(CustomerRepository.class);
+        assertThat(customerRepo.findByEmail("duplicate@example.com")).isEmpty();
+        assertThat(customerRepo.findByEmailOrderByNameAsc("duplicate@example.com")).isEmpty();
+        assertThat(customerRepo.findByEmailOrderByNameDesc("duplicate@example.com")).isEmpty();
+        assertThat(customerRepo.queryByEmail("duplicate@example.com")).isEmpty();
 
-        // When
-        Optional<Customer> found = customerRepo.findByEmail("duplicate@example.com");
+        Customer first = customerRepo.save(new Customer("duplicate@example.com", "First", "555-1111"));
+        assertThat(customerRepo.findByEmail("duplicate@example.com")).map(customer -> customer.id).contains(first.id);
+        assertThat(customerRepo.findByEmailOrderByNameAsc("duplicate@example.com"))
+                .map(customer -> customer.id).contains(first.id);
 
-        // Then - Optional should return single result (last-write-wins)
-        assertThat(found).isPresent();
-        assertThat(found.orElseThrow().name).isEqualTo("Second");
+        Customer second = customerRepo.save(new Customer("duplicate@example.com", "Second", "555-2222"));
+        assertThat(customerRepo.findByEmail("duplicate@example.com"))
+                .hasValueSatisfying(customer -> assertThat(customer.id).isIn(first.id, second.id));
+        // Optional selects the first match; ordering makes that choice deterministic for non-unique fields.
+        assertThat(customerRepo.findByEmailOrderByNameAsc("duplicate@example.com"))
+                .map(customer -> customer.id).contains(first.id);
+        assertThat(customerRepo.findByEmailOrderByNameDesc("duplicate@example.com"))
+                .map(customer -> customer.id).contains(second.id);
+        assertThat(customerRepo.queryByEmail("duplicate@example.com")).extracting(customer -> customer.id)
+                .containsExactlyInAnyOrder(first.id, second.id);
+        assertThat(customerRepo.findByEmailOrderByNameAsc("missing@example.com")).isEmpty();
     }
 
     @Test
@@ -320,11 +359,9 @@ class ECommerceRealWorldTest {
         assertThat(results).isEmpty();
     }
 
-    @Disabled("Test expectations don't match current implementation behavior")
     @Test
     void shouldHandleNotNegation() {
-        // Given
-        CustomerRepository customerRepo = arena.createRepository(CustomerRepository.class);
+        var customerRepo = arena.createRepository(CustomerRepository.class);
         Customer c1 = customerRepo.save(new Customer("test1@example.com", "Alice", "555-1111"));
         Customer c2 = customerRepo.save(new Customer("test2@example.com", "Bob", "555-2222"));
         Customer c3 = customerRepo.save(new Customer("test3@example.com", "Charlie", "555-3333"));
@@ -333,9 +370,12 @@ class ECommerceRealWorldTest {
         // When
         List<Customer> results = customerRepo.findByNameNot("Alice");
 
-        // Then - should exclude "Alice" and null names (depending on implementation)
-        assertThat(results).hasSize(2);
-        assertThat(results).extracting(c -> c.name).containsExactlyInAnyOrder("Bob", "Charlie");
+        // NE is the complement of EQ, so null names are included when the argument is non-null.
+        assertThat(results).extracting(customer -> customer.id).containsExactlyInAnyOrder(c2.id, c3.id, c4.id);
+        assertThat(customerRepo.findByNameNot(null)).extracting(customer -> customer.id)
+                .containsExactlyInAnyOrder(c1.id, c2.id, c3.id);
+        assertThat(customerRepo.findByNameNotNullAndNameNot("Alice")).extracting(customer -> customer.id)
+                .containsExactlyInAnyOrder(c2.id, c3.id);
     }
 
     @Test

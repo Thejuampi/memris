@@ -5,11 +5,13 @@ import io.memris.runtime.AbstractTypeHandler;
 import io.memris.storage.GeneratedTable;
 import io.memris.storage.Selection;
 
+import java.util.Locale;
+
 /**
  * Type handler for String values.
  * 
- * <p>Supports equality, case-insensitive equality, and set operations.
- * Pattern matching operators (LIKE, CONTAINING) are not yet implemented.
+ * <p>Supports equality, set operations, and string pattern matching.
+ * Case-insensitive patterns use locale-independent lowercasing.
  */
 public class StringTypeHandler extends AbstractTypeHandler<String> {
     
@@ -77,6 +79,7 @@ public class StringTypeHandler extends AbstractTypeHandler<String> {
                                       io.memris.query.LogicalQuery.Operator operator, String value, boolean ignoreCase) {
         return switch (operator) {
             case LIKE -> executeLike(table, columnIndex, value, ignoreCase);
+            case IGNORE_CASE_LIKE -> executeLike(table, columnIndex, value, true);
             case NOT_LIKE -> executeNotLike(table, columnIndex, value, ignoreCase);
             case CONTAINING -> executeContaining(table, columnIndex, value, ignoreCase);
             case NOT_CONTAINING -> executeNotContaining(table, columnIndex, value, ignoreCase);
@@ -103,13 +106,12 @@ public class StringTypeHandler extends AbstractTypeHandler<String> {
     
     /**
      * Execute pattern matching with LIKE operator.
-     * Not yet implemented.
      */
     public Selection executeLike(GeneratedTable table, int columnIndex, String pattern, boolean ignoreCase) {
         if (pattern == null) {
             return createSelection(table, new int[0]);
         }
-        String effectivePattern = ignoreCase ? pattern.toLowerCase() : pattern;
+        String effectivePattern = ignoreCase ? pattern.toLowerCase(Locale.ROOT) : pattern;
         int[] rows = table.scanAll();
         int[] matches = new int[rows.length];
         int count = 0;
@@ -118,7 +120,7 @@ public class StringTypeHandler extends AbstractTypeHandler<String> {
             if (value == null) {
                 continue;
             }
-            String candidate = ignoreCase ? value.toLowerCase() : value;
+            String candidate = ignoreCase ? value.toLowerCase(Locale.ROOT) : value;
             if (matchesLike(candidate, effectivePattern)) {
                 matches[count++] = row;
             }
@@ -136,7 +138,6 @@ public class StringTypeHandler extends AbstractTypeHandler<String> {
     
     /**
      * Execute pattern matching with CONTAINING operator.
-     * Not yet implemented.
      */
     public Selection executeContaining(GeneratedTable table, int columnIndex, String substring, boolean ignoreCase) {
         if (substring == null) {
@@ -146,10 +147,10 @@ public class StringTypeHandler extends AbstractTypeHandler<String> {
         int[] matches = new int[rows.length];
         int count = 0;
         if (ignoreCase) {
-            String needle = substring.toLowerCase();
+            String needle = substring.toLowerCase(Locale.ROOT);
             for (int row : rows) {
                 String value = table.readString(columnIndex, row);
-                if (value != null && value.toLowerCase().contains(needle)) {
+                if (value != null && value.toLowerCase(Locale.ROOT).contains(needle)) {
                     matches[count++] = row;
                 }
             }
@@ -189,7 +190,6 @@ public class StringTypeHandler extends AbstractTypeHandler<String> {
     
     /**
      * Execute pattern matching with STARTING_WITH operator.
-     * Not yet implemented.
      */
     public Selection executeStartingWith(GeneratedTable table, int columnIndex, String prefix, boolean ignoreCase) {
         if (prefix == null) {
@@ -199,10 +199,10 @@ public class StringTypeHandler extends AbstractTypeHandler<String> {
         int[] matches = new int[rows.length];
         int count = 0;
         if (ignoreCase) {
-            String needle = prefix.toLowerCase();
+            String needle = prefix.toLowerCase(Locale.ROOT);
             for (int row : rows) {
                 String value = table.readString(columnIndex, row);
-                if (value != null && value.toLowerCase().startsWith(needle)) {
+                if (value != null && value.toLowerCase(Locale.ROOT).startsWith(needle)) {
                     matches[count++] = row;
                 }
             }
@@ -221,7 +221,6 @@ public class StringTypeHandler extends AbstractTypeHandler<String> {
     
     /**
      * Execute pattern matching with ENDING_WITH operator.
-     * Not yet implemented.
      */
     public Selection executeEndingWith(GeneratedTable table, int columnIndex, String suffix, boolean ignoreCase) {
         if (suffix == null) {
@@ -231,10 +230,10 @@ public class StringTypeHandler extends AbstractTypeHandler<String> {
         int[] matches = new int[rows.length];
         int count = 0;
         if (ignoreCase) {
-            String needle = suffix.toLowerCase();
+            String needle = suffix.toLowerCase(Locale.ROOT);
             for (int row : rows) {
                 String value = table.readString(columnIndex, row);
-                if (value != null && value.toLowerCase().endsWith(needle)) {
+                if (value != null && value.toLowerCase(Locale.ROOT).endsWith(needle)) {
                     matches[count++] = row;
                 }
             }
