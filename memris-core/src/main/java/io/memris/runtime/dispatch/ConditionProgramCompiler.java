@@ -94,19 +94,18 @@ public final class ConditionProgramCompiler {
                                         TypeCodes.TYPE_LOCAL_DATE_TIME,
                                         TypeCodes.TYPE_DATE,
                                         TypeCodes.TYPE_DOUBLE ->
-                                (table, kernel, args) -> selectionFromRows(table,
-                                                table.scanBetweenLong(columnIndex,
-                                                                ConditionArgDecoders.toLong(typeCode,
-                                                                                ConditionArgDecoders.argAt(args,
-                                                                                                argumentIndex))
-                                                                                + 1L,
-                                                                Long.MAX_VALUE));
-                        default -> (table, kernel, args) -> selectionFromRows(table,
-                                        table.scanBetweenInt(columnIndex,
-                                                        ConditionArgDecoders.toInt(typeCode,
-                                                                        ConditionArgDecoders.argAt(args, argumentIndex))
-                                                                        + 1,
-                                                        Integer.MAX_VALUE));
+                                (table, kernel, args) -> {
+                                        long value = ConditionArgDecoders.toLong(typeCode,
+                                                        ConditionArgDecoders.argAt(args, argumentIndex));
+                                        return selectionFromRows(table, value == Long.MAX_VALUE ? new int[0]
+                                                        : table.scanBetweenLong(columnIndex, value + 1L, Long.MAX_VALUE));
+                                };
+                        default -> (table, kernel, args) -> {
+                                int value = ConditionArgDecoders.toInt(typeCode,
+                                                ConditionArgDecoders.argAt(args, argumentIndex));
+                                return selectionFromRows(table, value == Integer.MAX_VALUE ? new int[0]
+                                                : table.scanBetweenInt(columnIndex, value + 1, Integer.MAX_VALUE));
+                        };
                 };
         }
 
@@ -141,19 +140,18 @@ public final class ConditionProgramCompiler {
                                         TypeCodes.TYPE_LOCAL_DATE_TIME,
                                         TypeCodes.TYPE_DATE,
                                         TypeCodes.TYPE_DOUBLE ->
-                                (table, kernel, args) -> selectionFromRows(table,
-                                                table.scanBetweenLong(columnIndex,
-                                                                Long.MIN_VALUE,
-                                                                ConditionArgDecoders.toLong(typeCode,
-                                                                                ConditionArgDecoders.argAt(args,
-                                                                                                argumentIndex))
-                                                                                - 1L));
-                        default -> (table, kernel, args) -> selectionFromRows(table,
-                                        table.scanBetweenInt(columnIndex,
-                                                        Integer.MIN_VALUE,
-                                                        ConditionArgDecoders.toInt(typeCode,
-                                                                        ConditionArgDecoders.argAt(args, argumentIndex))
-                                                                        - 1));
+                                (table, kernel, args) -> {
+                                        long value = ConditionArgDecoders.toLong(typeCode,
+                                                        ConditionArgDecoders.argAt(args, argumentIndex));
+                                        return selectionFromRows(table, value == Long.MIN_VALUE ? new int[0]
+                                                        : table.scanBetweenLong(columnIndex, Long.MIN_VALUE, value - 1L));
+                                };
+                        default -> (table, kernel, args) -> {
+                                int value = ConditionArgDecoders.toInt(typeCode,
+                                                ConditionArgDecoders.argAt(args, argumentIndex));
+                                return selectionFromRows(table, value == Integer.MIN_VALUE ? new int[0]
+                                                : table.scanBetweenInt(columnIndex, Integer.MIN_VALUE, value - 1));
+                        };
                 };
         }
 

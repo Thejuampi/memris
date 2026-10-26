@@ -40,7 +40,8 @@ public class LongTypeHandler extends AbstractTypeHandler<Long> {
     
     @Override
     protected Selection executeGreaterThan(GeneratedTable table, int columnIndex, Long value) {
-        return createSelection(table, table.scanBetweenLong(columnIndex, value + 1, Long.MAX_VALUE));
+        return createSelection(table, value == Long.MAX_VALUE ? new int[0]
+                : table.scanBetweenLong(columnIndex, value + 1, Long.MAX_VALUE));
     }
     
     @Override
@@ -50,7 +51,8 @@ public class LongTypeHandler extends AbstractTypeHandler<Long> {
     
     @Override
     protected Selection executeLessThan(GeneratedTable table, int columnIndex, Long value) {
-        return createSelection(table, table.scanBetweenLong(columnIndex, Long.MIN_VALUE, value - 1));
+        return createSelection(table, value == Long.MIN_VALUE ? new int[0]
+                : table.scanBetweenLong(columnIndex, Long.MIN_VALUE, value - 1));
     }
     
     @Override
