@@ -207,7 +207,9 @@ publications, and executes the independent core/Boot 2/Boot 3 consumers against
 both Gradle metadata and Maven POMs. It then publishes signed artifacts to Maven
 Central and waits for the deployment to reach `PUBLISHED`, records the release
 tag, updates dependency examples and version tables,
-advances the next patch snapshot, and creates the matching GitHub Release.
+advances the next patch snapshot, creates the matching GitHub Release, and
+dispatches the Pages workflow for the updated documentation. Version recording
+belongs to this single workflow; no separate tag-triggered updater is needed.
 Central Portal credentials and signing keys are supplied by CI secrets.
 
 For local publication inspection, use

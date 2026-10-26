@@ -9,6 +9,7 @@ concurrency:
 
 permissions:
   contents: write
+  actions: write
 
 jobs:
   release:
@@ -96,3 +97,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_VERSION: ${{ steps.versions.outputs.release_version }}
         run: gh release create "v$RELEASE_VERSION" --verify-tag --title "Memris $RELEASE_VERSION" --notes-file "docs/releases/$RELEASE_VERSION.md"
+
+      - name: Refresh published documentation
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run pages.yml --ref main
