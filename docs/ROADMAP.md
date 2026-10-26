@@ -1,112 +1,136 @@
 # Roadmap
 
-## Implemented Features
+Baseline: `main` through [PR #55](https://github.com/Thejuampi/memris/pull/55),
+reviewed on October 25, 2026. Implementation and executable scenarios determine
+current support; an annotation, lexer token, or historical plan alone does not.
 
-### Phase 1: Critical Concurrency Fixes ✅
+## Version and release state
 
-**1.1 Fix Critical Concurrency Issues** [Priority: CRITICAL] ✅
-- Fix free-list race condition (data corruption) ✅
-- Fix tombstone BitSet concurrency ✅
-- Implement seqlock for row updates ✅
-- Fix RepositoryRuntime ID counter concurrency ✅
-- **Status**: Complete - All critical concurrency issues resolved
+| Item | Current state |
+| --- | --- |
+| Published artifacts | `0.2.4` for core, both Spring integrations, and both starters; see [Maven Central metadata](https://repo.maven.apache.org/maven2/io/github/thejuampi/memris/maven-metadata.xml) |
+| Development version | `0.2.5-SNAPSHOT` in [gradle.properties](../gradle.properties); not yet released |
+| Release automation | Manual Gradle-based [release workflow](../.github/workflows/release.yml) from `main`, with signing/publication, a release tag, and the next snapshot commit |
 
-### Phase 2: Performance Optimizations ✅
+Recent fixes on `main` are not present merely because `0.2.4` is available on
+Maven Central. GitHub release notes, tags, and published artifacts also need to be
+aligned during release preparation; the latest GitHub Release entry is still
+[v0.2.3](https://github.com/Thejuampi/memris/releases/tag/v0.2.3).
 
-**2.1 Scan Method Completeness** [Priority: HIGH] ✅
-- Add missing scan methods for all type codes ✅
-- Complete scanIn implementations ✅
-- **Status**: Complete - scanIn method coverage for all types
+## Implemented baseline
 
-**2.2 Query Performance** [Priority: HIGH] ✅
-- Nested loop scanIn optimization (O(n) → O(1) average case) ✅
-- O(n) string pattern scans (documented trade-off, kept as-is) ✅
-- Allocation reduction in hot paths ✅
-- **Status**: Complete - Query execution optimized
+| Area | Implemented behavior | Evidence |
+| --- | --- | --- |
+| Heap storage | Paged int/long/string columns, typed row APIs, presence/null tracking, row generations and tombstones | [TableGenerator](../memris-core/src/main/java/io/memris/storage/heap/TableGenerator.java), [storage tests](../memris-core/src/test/java/io/memris/storage/) |
+| Runtime initialization | Generated tables/repositories/savers/materializers, compiled embedded access plans, arena-owned generated-artifact caches | [EmbeddedMappingRealWorldTest](../memris-core/src/test/java/io/memris/realworld/EmbeddedMappingRealWorldTest.java), [ConvertedMappingRealWorldTest](../memris-core/src/test/java/io/memris/realworld/ConvertedMappingRealWorldTest.java) |
+| Repository operations | CRUD and bulk operations, explicit IDs, typed find/count/exists queries, grouping and HAVING | [RepositoryCrudAndGroupingRealWorldTest](../memris-core/src/test/java/io/memris/realworld/RepositoryCrudAndGroupingRealWorldTest.java) |
+| Query execution | Comparisons, ranges, membership, positive/negative patterns, boolean/null predicates, AND/OR, sorting/top/first/distinct, a JPQL-like annotated subset and record projections | [ECommerceRealWorldTest](../memris-core/src/test/java/io/memris/realworld/ECommerceRealWorldTest.java), [EcommerceAnnotatedQueriesRealWorldTest](../memris-core/src/test/java/io/memris/realworld/EcommerceAnnotatedQueriesRealWorldTest.java) |
+| Indexes | Hash, range, prefix and suffix indexes; composite hash/range probes and indexed residual filtering | [IndexedCatalogRealWorldTest](../memris-core/src/test/java/io/memris/realworld/IndexedCatalogRealWorldTest.java), [CompositeIndexRealWorldTest](../memris-core/src/test/java/io/memris/realworld/CompositeIndexRealWorldTest.java) |
+| Mapping and relationships | Scalar converters, embedded graphs, eager one-to-one/many-to-one/one-to-many/many-to-many hydration | [CheckoutRealWorldTest](../memris-core/src/test/java/io/memris/realworld/CheckoutRealWorldTest.java), [RelationshipsAndTypesRealWorldTest](../memris-core/src/test/java/io/memris/realworld/RelationshipsAndTypesRealWorldTest.java) |
+| Concurrency and lifecycle | CAS-based row allocation/tombstones, row seqlocks and publication, concurrent repository creation, isolated arenas and terminal arena close | [Concurrency contract](CONCURRENCY.md), [ArenaLifecycleRealWorldTest](../memris-core/src/test/java/io/memris/realworld/ArenaLifecycleRealWorldTest.java), [concurrency workflow](../.github/workflows/thread-safety.yml) |
+| Spring integrations | Separate Boot 2/`javax` and Boot 3/`jakarta` modules, repository scanning/injection, configuration overrides, named arenas, converter round trips and context cleanup | [Boot 2 inventory scenarios](../memris-spring-data-boot2/src/test/java/io/memris/realworld/SpringInventoryRealWorldTest.java), [Boot 3 inventory scenarios](../memris-spring-data-boot3/src/test/java/io/memris/realworld/SpringInventoryRealWorldTest.java) |
+| Verification | Four table/codegen configurations, centralized real-world scenarios, focused internal edge cases, merged coverage, static analysis and JMH guardrails | [TESTING.md](TESTING.md), [DEVELOPMENT.md](DEVELOPMENT.md), [performance workflow](../.github/workflows/perf.yml) |
 
-**2.3 Relationship Support** [Priority: HIGH] ✅
-- @OneToOne relationships ✅
-- @ManyToOne relationships ✅
-- @OneToMany relationships ✅
-- @ManyToMany relationships ✅
-- **Status**: Complete - All relationship types fully implemented
+`NOT_IN`, `LIKE`, and `NOT_LIKE` already execute at repository level. Dedicated
+column scan kernels or faster dispatch for these operators would be optimizations,
+not the introduction of missing query features. Full scans remain linear; index
+operations include the cost of collecting matches and materializing entities.
 
-**1.2 Advanced Concurrency Optimizations** [Priority: HIGH] ⏳
-- Stripe-based index updates (4-8x throughput) - Not started
-- Optimistic locking for updates (2x throughput) - Not started
-- ~~Lock-free data structures~~ (5-10x throughput) ~~COMPLETED~~ - Not started
-- **Status**: Planned - Future work
+Row coordination does not provide transactions or snapshot isolation. Index and
+row publication can be observed at different times. Existing lock-free/CAS-based
+structures do not make every operation lock-free or eliminate all contention.
 
----
+### Recently completed
 
-## Future Features
+- [#51](https://github.com/Thejuampi/memris/pull/51): Gradle wrapper/build migration and consolidated repository guidance.
+- [#52](https://github.com/Thejuampi/memris/pull/52): Checkstyle and SpotBugs failures resolved.
+- [#53](https://github.com/Thejuampi/memris/pull/53): int/long exclusive range boundaries no longer overflow; regressions cover extrema, scans, indexes, residuals, count and exists.
+- [#54](https://github.com/Thejuampi/memris/pull/54): Six disabled e-commerce tests restored with explicit contracts; locale-independent patterns, `LikeIgnoreCase` dispatch and empty ordered selections corrected.
+- [#55](https://github.com/Thejuampi/memris/pull/55): Real-world suite centralization and the four-mode matrix; stock/catalog/workforce workflows; redundant tests removed; Spring startup, delegation and Memris ID discovery corrected.
 
-### Phase 3: Advanced Concurrency (Medium-Term)
+## Next priorities
 
-**3.1 Snapshot Isolation** [Priority: MEDIUM] ⏳
-- MVCC implementation for snapshot queries
-- Per-row version chains
-- Background version garbage collection
-- Expected: 3-5x read throughput, snapshot consistency
+These are proposed next PRs, in order. They have no promised delivery dates or
+throughput multipliers.
 
-**3.2 Transaction Support** [Priority: MEDIUM] ⏳
-- ACID transaction primitives
-- Begin/commit/rollback API
-- Optimistic concurrency control
-- Expected: Data consistency guarantees
+### 1. Complete derived-query compatibility
 
-### Phase 4: Query Enhancements (Medium-Term)
+Resolve concrete gaps before claiming broader Spring Data method-name support:
 
-**4.1 Additional Scan Methods** [Priority: MEDIUM] ⏳
-- scanNotIn implementations
-- scanLike / scanNotLike pattern matching
-- Expected: Complete scan method coverage
+| Example | Current behavior | Working form or follow-up |
+| --- | --- | --- |
+| `findByNameEqualsIgnoreCase("alice")` on an unindexed string | Accepted by the planner but throws `UnsupportedOperationException` for `IGNORE_CASE_EQ` during execution | `findByNameIgnoreCase` works for basic equality; normalize explicit equality aliases and verify locale/index parity |
+| `findByNameAndEmailAllIgnoreCase(...)` | Repository creation fails while resolving `email.all` | Explicit per-property modifiers require their own compatibility coverage; implement or reject `AllIgnoreCase` consistently |
+| `findByNameIsNotNull()` | Repository creation rejects consecutive `Is` and `NotNull` operators | `findByNameNotNull()` |
+| `removeByName(...)` | Repository creation rejects the prefix | `deleteByName(...)`; decide and test the `remove` alias |
 
-### Phase 5: Storage Evolution (Long-Term)
+Acceptance: express these contracts in the central real-world suite, including
+nulls, case behavior, indexed/unindexed paths, and all four execution modes.
+Every accepted operator must have an execution path. Update the detailed query
+reference and remaining examples to list the supported spellings accurately.
 
-**5.1 FFM Off-Heap Storage** [Priority: LOW] ⏳
-- Off-heap storage using Java Foreign Function & Memory (FFM) API
-- Reduced GC pressure for large datasets
-- Direct memory control
-- Memory-mapped file persistence
-- Expected: Better performance for large datasets
+### 2. Validate consumer examples and the Spring boundary
 
-**5.2 SIMD Vectorization** [Priority: LOW] ⏳
-- Java Vector API integration
-- Parallel scan operations
-- SIMD-optimized comparisons
-- Expected: 2-4x scan throughput
+Add small consumer applications for core and each starter, built against packaged
+artifacts with separate dependency graphs. Exercise repository discovery, CRUD,
+named arenas, converter/null handling, and context shutdown outside the module
+test classpath.
 
-### Phase 6: Enterprise Features (Long-Term)
+Keep the metadata contract explicit: the default engine provider reads Memris
+annotations. Spring `EntityInformation` accepts a Memris ID or its generation's
+JPA ID, and the converter bridge handles JPA attribute converter beans; this is
+not automatic normalization of JPA entity/relationship mappings. Any expansion
+of that boundary needs its own design and real-world scenarios.
 
-**6.1 Schema Evolution** [Priority: LOW] ⏳
-- Online schema changes
-- Migration support
-- Backward compatibility
-- Expected: Zero-downtime schema updates
+Acceptance: runnable examples for both generations, documented configuration and
+annotation requirements, and no accidental dependency mixing. Audit remaining
+reference pages for unsupported aliases, ID-generation strategies and API claims;
+the existence of `GenerationType.CUSTOM`/`IdGenerator` does not establish an
+implemented registration/execution path.
 
-**6.2 Distributed Storage** [Priority: LOW] ⏳
-- Partitioned tables
-- Distributed queries
-- Replication
-- Expected: Horizontal scalability
+### 3. Prepare the next release
 
----
+Prepare `0.2.5` after the preceding contract and consumer checks. Verify generated
+POMs and dependencies for all five artifacts, signing/publication configuration,
+and the manual release workflow. Run the real-world matrix, internal/concurrency
+checks, quality analysis and relevant performance guardrails for the release
+candidate. Smoke-test the packaged consumer examples.
 
-## Status Legend
+Acceptance: matching artifact versions, release notes describing changes since
+`0.2.4`, a matching tag/GitHub Release, and a verified post-release snapshot bump.
 
-| Status | Meaning |
-|---------|----------|
-| ✅ Implemented | Feature is complete and tested |
-| 🚧 In Progress | Feature is currently being developed |
-| ⏳ Planned | Feature is planned but not started |
-| 📋 Proposed | Feature is proposed for consideration |
-| ❌ Blocked | Feature has known blockers |
+### 4. Optimize measured bottlenecks
 
----
+Use the existing JMH suites to select work: scan/membership dispatch, string
+patterns, index selectivity, sorting, materialization and write contention. Native
+NOT_IN/LIKE kernels, fewer per-row allocations, or changes to concurrent index
+updates should follow measurements rather than an assumed speedup.
 
-## See Also
+Acceptance: before/after results with commit, JDK, host and dataset details;
+allocation/throughput evidence for the affected workload; unchanged public
+contracts across indexed and scan paths; and reproducible regression thresholds.
+Keep heap storage, primitive execution APIs, arena cache ownership and publication
+protocols intact.
 
-- [CONCURRENCY.md](CONCURRENCY.md) - Current concurrency model and improvements
-- [ARCHITECTURE.md](ARCHITECTURE.md) - Current architecture
-- [SPRING_DATA.md](SPRING_DATA.md) - Spring Data integration
+## Longer-term proposals
+
+The following ideas are uncommitted design work, not implemented features or
+requirements for the next release:
+
+| Proposal | Decision needed before implementation |
+| --- | --- |
+| MVCC / snapshot reads | Define observable consistency, version lifetime, reclamation and memory costs |
+| Transactions | Define atomicity across rows/indexes, conflict behavior, rollback and the public API |
+| SIMD scans | Establish a workload benefit and a Java/runtime compatibility policy |
+| Off-heap / FFM / persistence | Decide whether a separate storage backend fits the current heap-based contract, including recovery and lifecycle semantics |
+| Schema evolution | Define migration, compatibility and behavior of already-generated repositories |
+| Distribution / replication | Establish a concrete use case and a separate consistency, partitioning and failure model |
+
+## References
+
+- [README](../README.md): project entry point and minimal example
+- [TESTING.md](TESTING.md): scenario ownership and execution matrix
+- [DEVELOPMENT.md](DEVELOPMENT.md): builds, quality checks, JMH and releases
+- [QUERY.md](QUERY.md): query language and public contracts; alias gaps are listed above
+- [SPRING_DATA.md](SPRING_DATA.md): Spring module boundaries
+- [ARCHITECTURE.md](ARCHITECTURE.md) and [CONCURRENCY.md](CONCURRENCY.md): implementation model and guarantees
