@@ -6,26 +6,21 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /**
- * ID generation strategy annotation (subset of JPA).
- * Lock-free, thread-safe ID generation for maximum performance.
- * Supports numeric primitives, UUID, and custom generators.
+ * Declares numeric ID generation for a Memris {@link Id} field.
+ * The default engine supports Long and Integer IDs using a repository counter.
+ * UUID, CUSTOM, and named generators are reserved and rejected during metadata initialization.
  */
 @Target(ElementType.FIELD)
 @Retention(RetentionPolicy.RUNTIME)
 public @interface GeneratedValue {
     /**
-     * ID generation strategy (no locking).
-     * AUTO: Auto-detect based on field type (numeric = IDENTITY, UUID = UUID)
-     * IDENTITY: Numeric types only - atomic increment per entity class
-     * UUID: UUID types only - use UUID.randomUUID()
-     * CUSTOM: Use custom IdGenerator<T> implementation
+     * ID generation strategy. AUTO and IDENTITY use the numeric repository counter.
+     * UUID and CUSTOM are not implemented by the default engine.
      */
     GenerationType strategy() default GenerationType.AUTO;
 
     /**
-     * Optional custom generator class name or bean name.
-     * Generator must implement IdGenerator<T> interface.
-     * For CUSTOM strategy, generator() is required.
+     * Reserved custom generator name. Non-empty names are not supported by the default engine.
      */
     String generator() default "";
 }

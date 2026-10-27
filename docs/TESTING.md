@@ -63,6 +63,15 @@ queries and updates, deletion, named-arena isolation, fresh application contexts
 configuration overrides, and arena cleanup on context close. Each module retains
 its own persistence API and Spring dependency generation.
 
+The same scenarios also cover generic inherited converters, embedded nullable
+stock mappings with LocalDate/UUID values, receipt/inventory join hydration,
+`AUTO` Long IDs, `IDENTITY` Integer IDs, and assigned String warehouse keys.
+ID workflows include imported/generated key collisions, non-default primary-key
+names/positions, updates/deletion, and range exhaustion. Negative scenarios reject
+JPA-only IDs at context startup and unsupported/named generation declarations
+during repository creation. These public contracts remain in
+`SpringInventoryRealWorldTest`, without a parallel unit-test suite.
+
 ## Internal edge cases
 
 The remaining component tests isolate risks that a business workflow cannot

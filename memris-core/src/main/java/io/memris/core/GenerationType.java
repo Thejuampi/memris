@@ -1,30 +1,27 @@
 package io.memris.core;
 
 /**
- * Lock-free, thread-safe ID generation strategies.
- * No synchronization - uses atomic operations for maximum performance.
+ * ID generation strategy declarations.
+ * The default engine implements AUTO and IDENTITY for Long and Integer IDs.
  */
 public enum GenerationType {
     /**
-     * Auto-detect based on field type:
-     * - Numeric types: IDENTITY (atomic increment)
-     * - UUID: UUID.randomUUID()
+     * Numeric ID generation using the repository counter.
      */
     AUTO,
 
     /**
-     * Numeric types only - atomic increment per entity class.
-     * Uses AtomicLong for lock-free thread-safety.
+     * Numeric ID generation using the repository counter, as with AUTO.
      */
     IDENTITY,
 
     /**
-     * UUID types only - generates random UUID via UUID.randomUUID().
+     * Reserved UUID generation; rejected by the default metadata provider.
      */
     UUID,
 
     /**
-     * Custom generator - user provides IdGenerator implementation.
+     * Reserved custom generation; rejected by the default metadata provider.
      */
     CUSTOM
 }

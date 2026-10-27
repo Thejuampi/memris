@@ -8,7 +8,7 @@
 
 | Operation | Thread-Safety | Mechanism | Location |
 |-----------|--------------|------------|----------|
-| ID generation | Lock-free | `AtomicLong.getAndIncrement()` | `MemrisRepositoryFactory.java` |
+| ID generation | Atomic repository counter | `AtomicLong.getAndIncrement()`; assigned numeric keys advance the counter with CAS | `RepositoryRuntime.java` |
 | ID index lookups | Lock-free | `ConcurrentHashMap.get()` | `LongIdIndex.java`, `StringIdIndex.java` |
 | HashIndex lookups | Lock-free | `ConcurrentHashMap.get()` | `HashIndex.java` |
 | RangeIndex lookups | Lock-free | `ConcurrentSkipListMap.get()` | `RangeIndex.java` |
@@ -23,6 +23,13 @@
 | Index updates | Eventually consistent with row writes | Stale index entries are filtered at query time | `RepositoryRuntime.java` |
 
 ### Concurrency Model Summary
+
+ID counters belong to repository instances. Sequential imports of positive
+numeric keys advance the same repository's generator; exhaustion fails instead
+of wrapping. This does not reserve an application-assigned key against a
+concurrent writer, or coordinate counters across different repository interfaces
+sharing an entity table. Applications using such writers must coordinate their
+assigned/generated key spaces. These operations do not provide transactions.
 
 **Current Design:**
 - **Reads**: Thread-safe, lock-free for most operations

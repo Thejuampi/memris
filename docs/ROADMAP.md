@@ -66,15 +66,23 @@ throughput multipliers.
 
 ### 1. Expand Spring compatibility evidence
 
-Keep the metadata contract explicit: the default engine provider reads Memris
-annotations. Spring `EntityInformation` accepts a Memris ID or its generation's
-JPA ID, and the converter bridge handles JPA attribute converters. This does not
-provide a general JPA metadata adapter. Extend repository scenarios for any
-additional mappings or method spellings before documenting them as supported.
+The expanded `SpringInventoryRealWorldTest` in both integrations now exercises
+generic inherited converters, embedded nullable stock mappings, receipt/inventory
+join hydration, generated Long/Integer IDs, assigned String keys, import/update/
+delete lifecycles, and ID-range exhaustion in the four execution modes.
+JPA-only IDs and unsupported generation declarations have explicit rejection
+scenarios. See [the verified contracts](SPRING_DATA.md#mapping-and-id-scenarios).
 
-Document ID strategies from executed behavior: the existence of
-`GenerationType.CUSTOM`/`IdGenerator` alone does not establish a registration or
-execution path. Keep Boot 2 and Boot 3 dependency families separate.
+`AUTO`/`IDENTITY` use numeric repository counters. `UUID`, `CUSTOM`, named
+generators, and other annotated ID types are rejected by the default metadata
+provider. There is no custom-generator registration/execution path. Spring's
+entity information recognizes its JPA ID annotation; the engine still requires
+Memris metadata. Keep Boot 2 and Boot 3 dependency families separate.
+
+Follow-up scope: bind custom converted domain values in query predicates and
+define consistent to-one hydration for built-in `findById`/`findAll`. Current
+join-derived queries hydrate those relationships. Cross-repository ID allocation
+and general JPA mapping normalization need explicit designs before implementation.
 
 ### 2. Optimize measured bottlenecks
 

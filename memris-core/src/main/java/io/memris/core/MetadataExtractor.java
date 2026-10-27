@@ -52,6 +52,7 @@ public final class MetadataExtractor {
             Constructor<T> constructor = entityClass.getDeclaredConstructor();
 
             var idField = resolveIdField(entityClass);
+            validateIdGeneration(idField);
             var idColumnName = idField.getName();
             
             // Build field mappings with relationship support
@@ -62,7 +63,11 @@ public final class MetadataExtractor {
             var auditFields = new ArrayList<EntityMetadata.AuditField>();
             var colPos = 0;
             
-            for (var field : entityClass.getDeclaredFields()) {
+            // Table ID indexes use column zero, independently of declaration order.
+            var orderedFields = new ArrayList<>(List.of(entityClass.getDeclaredFields()));
+            orderedFields.remove(idField);
+            orderedFields.addFirst(idField);
+            for (var field : orderedFields) {
                 if (java.lang.reflect.Modifier.isStatic(field.getModifiers())) {
                     continue;
                 }
@@ -697,6 +702,23 @@ public final class MetadataExtractor {
 
     private static boolean isIdField(Field field) {
         return field.isAnnotationPresent(Id.class);
+    }
+
+    private static void validateIdGeneration(Field idField) {
+        var generated = idField.getAnnotation(GeneratedValue.class);
+        if (generated == null) {
+            return;
+        }
+        if (generated.strategy() == GenerationType.UUID || generated.strategy() == GenerationType.CUSTOM) {
+            throw new IllegalArgumentException("ID generation strategy " + generated.strategy()
+                    + " is not supported. Assign IDs in the application or use numeric AUTO/IDENTITY IDs.");
+        }
+        if (!generated.generator().isBlank()) {
+            throw new IllegalArgumentException("Named ID generators are not supported: " + generated.generator());
+        }
+        if (idField.getType() != Long.class && idField.getType() != Integer.class) {
+            throw new IllegalArgumentException("Generated IDs require Long or Integer fields: " + idField.getName());
+        }
     }
 
     private static Class<?> resolveStorageType(Class<?> fieldType) {
