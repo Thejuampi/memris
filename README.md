@@ -229,8 +229,9 @@ arena/codegen checks in parallel, isolated JVM forks.
 
 ## Next steps and references
 
-The next priorities are expanded Spring mapping/ID compatibility evidence and
-measured query optimization. MVCC, transactions, off-heap storage, and distribution remain
+The next priorities are converted query arguments, consistent relationship hydration
+for built-in lookups, and measured query optimization. Spring mapping/ID evidence
+is covered by the real-world matrix. MVCC, transactions, off-heap storage, and distribution remain
 design proposals. See the [roadmap](docs/ROADMAP.md) for scope and acceptance criteria.
 
 - [Architecture](docs/ARCHITECTURE.md)

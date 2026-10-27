@@ -90,6 +90,7 @@ public final class RepositoryRuntime<T> {
     private final CompositeIndexSelector.CompositeIndexPlan[] compositeIndexPlans;
     private final Map<String, IndexPlan> indexPlansByField;
     private final AtomicLong idCounter;
+    private final boolean integerId;
     private final IdLookup idLookup;
     private final boolean[] primitiveNonNullByColumn;
     private final java.util.concurrent.ConcurrentHashMap<CompiledQuery.CompiledCondition, DirectConditionExecutor> directConditionExecutors;
@@ -189,6 +190,8 @@ public final class RepositoryRuntime<T> {
         this.directConditionExecutors = new java.util.concurrent.ConcurrentHashMap<>();
         this.joinDirectConditionExecutors = new java.util.concurrent.ConcurrentHashMap<>();
         this.idColumnIndex = rootLayout != null ? rootLayout.idColumnIndex() : -1;
+        this.integerId = idColumnIndex >= 0
+                && columnDescriptorsByColumn[idColumnIndex].field().javaType() == Integer.class;
         this.oneToManyPlans = buildOneToManyPlans();
         this.manyToManyPlans = buildManyToManyPlans();
         this.indexPlans = buildIndexPlans(metadata);
@@ -1107,6 +1110,8 @@ public final class RepositoryRuntime<T> {
                 var existingRowIndex = io.memris.storage.Selection.index(existingRef);
                 updateIndexesOnDelete(existingRowIndex);
                 table.tombstone(existingRef);
+            } else {
+                advanceIdCounter(id);
             }
         }
 
@@ -1127,8 +1132,29 @@ public final class RepositoryRuntime<T> {
         return savedEntity;
     }
 
-    private Long generateNextId() {
-        return idCounter.getAndIncrement();
+    private Object generateNextId() {
+        long value = idCounter.getAndIncrement();
+        if (value <= 0 || (integerId && value > Integer.MAX_VALUE)) {
+            throw new IllegalStateException("Generated ID range exhausted");
+        }
+        if (integerId) {
+            return Integer.valueOf((int) value);
+        }
+        return Long.valueOf(value);
+    }
+
+    private void advanceIdCounter(Object id) {
+        if (id instanceof Number number) {
+            long assigned = number.longValue();
+            long current = idCounter.get();
+            while (current > 0 && current <= assigned) {
+                long next = assigned == Long.MAX_VALUE ? Long.MIN_VALUE : assigned + 1;
+                if (idCounter.compareAndSet(current, next)) {
+                    return;
+                }
+                current = idCounter.get();
+            }
+        }
     }
 
     private void applyPostLoad(T entity) {

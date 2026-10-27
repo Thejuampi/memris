@@ -1,8 +1,8 @@
 package io.memris.core;
 
 /**
- * Lock-free, thread-safe custom ID generator.
- * Implementations must be deterministic for testability.
+ * Custom ID generator extension declaration.
+ * The default engine does not discover, register, or invoke these implementations.
  *
  * @param <T> ID type (numeric primitives or UUID)
  */

@@ -58,9 +58,10 @@ Memris uses **custom annotations** (not Jakarta/JPA):
 - Improves query performance for indexed fields
 
 **@GeneratedValue** (`io.memris.core.GeneratedValue`)
-- Marks an ID field for automatic generation
-- Strategy: AUTO, IDENTITY, UUID, CUSTOM
-- Used with `@Id` (Memris) annotation
+- Declares automatic generation on an explicit Memris `@Id` field
+- `AUTO` and `IDENTITY` support boxed `Long` and `Integer` IDs
+- `UUID`, `CUSTOM`, named generators, and other annotated ID types are rejected
+  during metadata initialization
 
 **@OneToOne** (`io.memris.core.OneToOne`)
 - Marks a one-to-one relationship
@@ -74,30 +75,34 @@ Memris uses **custom annotations** (not Jakarta/JPA):
 - Binds a named `:param` in `@Query` to a method parameter
 
 **GenerationType** (`io.memris.core.GenerationType`)
-- `AUTO` - Automatic strategy selection
-- `IDENTITY` - Database identity (auto-increment)
-- `UUID` - UUID generation
-- `CUSTOM` - Custom IdGenerator implementation
+- `AUTO`, `IDENTITY` - Numeric repository counter
+- `UUID`, `CUSTOM` - Reserved declarations; no engine registration/execution path
+
+`IdGenerator` is an extension declaration. The default engine does not discover
+or invoke implementations, including Spring beans. Supply application-assigned
+keys without `@GeneratedValue` when using a business identifier.
 
 ### Usage Example
 
 ```java
 import io.memris.core.Entity;
+import io.memris.core.Id;
 import io.memris.core.Index;
 import io.memris.core.GeneratedValue;
 import io.memris.core.GenerationType;
 
 @Entity
 public class User {
+    @Id
     @Index(type = Index.IndexType.HASH)
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    public Long id;
     
     @Index(type = Index.IndexType.HASH)
-    private String email;
+    public String email;
     
-    private String name;
-    private int age;
+    public String name;
+    public int age;
 }
 ```
 
@@ -127,6 +132,33 @@ injection, converter use, stock queries, configuration overrides, named-arena
 isolation, and arena cleanup when the application context closes.
 The [packaged consumers](https://github.com/Thejuampi/memris/tree/main/verification/consumers) also verify these
 contracts against the actual starter JARs, Gradle metadata, and Maven POMs.
+
+### Mapping and ID scenarios
+
+Both Spring generations run the same inventory workflows in all four table/codegen
+configurations. The expanded cases cover:
+
+| Contract | Executed evidence |
+| --- | --- |
+| Scalar conversion | Direct `Sku` converter and `Money` converter inherited from a generic base; save, load, update, and null round trips |
+| Embedded values | Warehouse, nullable stock threshold, LocalDate, and UUID fields; nested queries, partial clearing, and removal of the entire embedded value |
+| Relationships | Receipt-to-inventory Memris `@ManyToOne`; join-derived queries hydrate the inventory and its converted SKU |
+| Long IDs with `AUTO` | Null/zero generation, preserved imports, updates/deletion, and range exhaustion |
+| Integer IDs with `IDENTITY` | Correct Integer values, a primary-key property named `receiptNumber` after a non-ID field, imports, updates/deletion, and range exhaustion |
+| Assigned String IDs | Warehouse business keys remain stable on resave and independent in named arenas |
+| Invalid mappings | JPA-only IDs fail context startup; unsupported generation declarations fail repository initialization without preventing subsequent valid operations |
+
+Null/zero numeric IDs are generated even without `@GeneratedValue`. Positive
+assigned numeric IDs advance that repository's counter. Reaching the ID type's
+maximum raises `IllegalStateException` for subsequent generated IDs; it does not
+wrap into an existing key. These counters belong to repository instances, not a
+shared database sequence. Row/index changes retain the [concurrency contract](CONCURRENCY.md).
+
+The converter scenarios validate storage/materialization and embedded-property
+queries. Binding custom domain values as query arguments remains separate work.
+To-one hydration is exercised through join-derived queries; built-in `findById`
+and `findAll` do not currently hydrate those associations. JPA annotations alone
+still do not supply engine mappings.
 
 ### Repository Usage
 

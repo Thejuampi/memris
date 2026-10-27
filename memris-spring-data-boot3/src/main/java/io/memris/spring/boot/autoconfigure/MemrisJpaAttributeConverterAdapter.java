@@ -2,7 +2,7 @@ package io.memris.spring.boot.autoconfigure;
 
 import io.memris.core.converter.TypeConverter;
 
-import java.lang.reflect.ParameterizedType;
+import org.springframework.core.GenericTypeResolver;
 
 /**
  * Adapts a JPA {@code AttributeConverter} into a Memris {@link TypeConverter}.
@@ -49,15 +49,10 @@ public final class MemrisJpaAttributeConverterAdapter<J, S> implements TypeConve
     }
 
     private static Class<?>[] resolveGenericType(Class<?> converterClass) {
-        var type = converterClass.getGenericInterfaces();
-        for (var iface : type) {
-            if (iface instanceof ParameterizedType pt) {
-                if (pt.getRawType() instanceof Class<?> raw
-                        && jakarta.persistence.AttributeConverter.class.isAssignableFrom(raw)) {
-                    var args = pt.getActualTypeArguments();
-                    return new Class<?>[] { (Class<?>) args[0], (Class<?>) args[1] };
-                }
-            }
+        var types = GenericTypeResolver.resolveTypeArguments(converterClass,
+                jakarta.persistence.AttributeConverter.class);
+        if (types != null && types.length == 2) {
+            return types;
         }
         throw new IllegalArgumentException("Cannot resolve AttributeConverter generic types: "
                 + converterClass.getName());

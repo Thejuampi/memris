@@ -53,6 +53,12 @@ Memris is a high-performance in-memory storage engine with the following princip
 
 ## Package Structure
 
+The default metadata extractor places the explicit Memris ID in column zero,
+then preserves the declaration order of the other fields. ID indexes use that
+first column. Entity field declaration order therefore does not need to put the
+ID first; compiled savers, materializers, and query plans use the normalized
+column positions.
+
 | Package | Purpose | Key Classes |
 |---------|---------|-------------|
 | `io.memris.core` | Annotations, types, configuration | `@Entity`, `@Id`, `@Index`, `@GeneratedValue`, `TypeCodes`, `MemrisConfiguration` |
